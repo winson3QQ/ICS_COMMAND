@@ -32,7 +32,7 @@
 | P1-07 | `docs/指揮部儀表板設計規格.md` 更新到 v3.0：(a) 移除 PWA-specific 描述但保留 federation 介面章節；(b) COP 章節對齊 Phase 1 凍結 schema |
 | P1-08 | `start_mac.sh` 已純化（Stage 1 完成）；補 `start_pi.sh` 與 systemd unit drop-in |
 | P1-09 | `deploy/`（Stage 1 未帶）補回必要部分：nginx reverse proxy + TLS（去掉 PWA server block，保留 ingress 通用路由） |
-| P1-10 | **地圖 UX baseline 升級**：前端 `static/js/map.js` 改採 **[MapLibre GL JS](https://github.com/maplibre/maplibre-gl-js)**（BSD-3，Mapbox GL JS v1.13 開源 fork，無 token 綁定、tile source 自由）。借鏡 [ianlkl11234s/mini-taiwan-learning-project](https://github.com/ianlkl11234s/mini-taiwan-learning-project)（MIT）的 layer 架構：entity layer / track 插值 / collision detection / 6 種日夜主題。預埋 P2 TAK CoT entity 與 MIL-STD-2525 符號渲染的接點 |
+| P1-10 | **地圖 UX baseline 升級**：見下方〈P1-10 細項展開〉。改採 **MapLibre GL JS + PMTiles + dark ops theme + SVG marker + 等寬字體**，全替換 Leaflet（不走 `leaflet-maplibre-gl` 折衷路線，避免 P2 二次手術），預埋 P2 TAK + MIL-STD-2525 渲染接點 |
 
 ### Definition of Done
 
@@ -48,8 +48,47 @@
 
 - **ASVS V14 / NIST SSDF PW.7**：測試覆蓋（DoD #1）
 - **ISO 25010 可靠性 / 可維護性**：federation 介面契約測試（DoD #4）
-- **供應鏈** (CLAUDE.md)：MapLibre GL JS（BSD-3，OpenStreetMap Foundation 維護，非中國）、milsymbol（MIT，瑞典）—— 對標 Mapbox proprietary 的乾淨替代
+- **供應鏈** (CLAUDE.md)：
+  - MapLibre GL JS — BSD-3，AWS/Meta/MapTiler/Felt 共同維護，非中國
+  - PMTiles / Protomaps — BSD-3，maintainer Brandon Liu（US/台美籍），非中國
+  - milsymbol — MIT，瑞典
+  - JetBrains Mono / IBM Plex Mono / Noto Sans TC — 皆 OFL，可離線打包
 - 證據路徑：`command-dashboard/tests/reports/p1-baseline.html`、PR# + commit hash 寫進 commit message
+
+### P1-10 細項展開（地圖 UX baseline）
+
+**設計原則**：指揮中心的「專業感」90% 來自 chrome（sidebar / chip / legend / 字級），不是地圖本身——dark ops theme 是最大 CP 值的單一改動。地圖核心則一次到位（MapLibre + PMTiles），不走 Leaflet 折衷以免 P2 二次手術。
+
+| 子項 | 內容 | 預估 |
+|---|---|---|
+| **P1-10a** | **Dark ops theme + 字體分軌** — sidebar / chip / legend / status panel 全套深色高對比；字體分兩類：(a) 一般 UI 用 IBM Plex Sans + Noto Sans TC、(b) **callsign / 座標 / MGRS / 時間戳一律等寬字體（JetBrains Mono 或 IBM Plex Mono）**，避免 0/O、1/l/I 誤讀（指揮場景誤讀座標會出人命，等寬是 ops 規範）。全字體離線打包進 `static/fonts/` | 2-3 天 |
+| **P1-10b** | **MapLibre GL JS 全替換** — 移除 Leaflet，map.js 核心重寫；marker / popup / polygon / layer 統一改 MapLibre Symbol Layer API。借鏡 mini-taiwan 的**架構**：entity layer 抽象、track 0–1 插值、collision detection 邏輯——**不借 Three.js 3D 實作**（COP 3D entity 價值低、Pi 500 GPU 會搶資源，3D 留作 P2 之後依需求評估） | 4-5 天 |
+| **P1-10c** | **PMTiles 台灣底圖** — 用 Protomaps 工具產出台灣全圖 PMTiles 單檔（約 200-400 MB），Pi 直接 serve，完全離線。提供 day / dusk / night / sat 四種 vector style | 1-2 天 |
+| **P1-10d** | **SVG marker 系統 + severity design token** — 每種 `node_type` × `event_severity` 一套 icon set；統一 stroke / corner radius / 陰影；severity 配色（critical / warning / info）以 CSS custom properties 集中管理，禁止散在 JS 寫死 hex；critical 事件用 `@keyframes` halo pulse（不用 JS 動畫，省 Pi CPU） | 2-3 天 |
+| **P1-10e** | **Polygon / route hover + selected 狀態** — hover: outline 加粗 + fill opacity 微升；selected: dashed animated border（純 CSS） | 1-2 天 |
+| **P1-10f** | **Symbol-layer-based clustering** — 用 MapLibre 內建 `cluster: true`（基於 supercluster），**不引入 leaflet.markercluster**；clustering 視覺與 design token 對齊 | 1 天 |
+| **P1-10g** | **圖層切換微動畫** — 200ms fade-in / opacity 過渡，避免「啪」一下 | 0.5 天 |
+| **P1-10h** | **CSP 對齊** — MapLibre + PMTiles 需要：`worker-src blob:` / `script-src 'wasm-unsafe-eval'` / `child-src blob:`；與 ICS_DMAS C1-B 階段 CSP 規劃對齊；補 CSP integration test | 1 天 |
+
+**總工時估**：12-17 天（單人）；演練前**至少 2.5-3 週**開工，留 buffer。
+
+**實作順序建議**（CP 值由高到低）：
+1. P1-10a（dark theme + 字體）— 視覺感受立即 +50%
+2. P1-10b + P1-10c（MapLibre + PMTiles）— 地圖質感 +40%，且為 P2 鋪路
+3. P1-10d（SVG marker + token）— 收斂業餘感
+4. P1-10e + P1-10f + P1-10g（hover / clustering / 微動畫）— 精緻度收尾
+5. P1-10h（CSP）— 與每步交叉驗證，最終整合測試
+
+**P1-10 DoD（補充上層 DoD）**：
+- [ ] Lighthouse Performance score ≥ 80（Pi 500 上）
+- [ ] 1000 個 entity 同時渲染 FPS ≥ 30
+- [ ] 主題切換無 FOUC（flash of unstyled content）
+- [ ] CSP test green，無 `unsafe-inline` 例外
+- [ ] PMTiles 離線（網路全斷）下地圖完整可用
+
+**明確排除（移到 P2）**：
+- **MGRS grid** — 軍規 grid 屬 TAK / MIL-STD-2525 同一生態，自然該與 CoT 符號渲染一批做。P1 只實作基本經緯度 grid。
+- **3D entity layer** — 同上理由，等真實山地 / 空域需求出現再評估。
 
 ---
 
@@ -65,7 +104,7 @@
 | P2-02 | `services/tak_service.py`：CoT XML 解析（規格相容，禁止自創欄位）；TAK Server 推播訂閱（TCP/SSL 8089 或 federation port 9000） |
 | P2-03 | `routers/tak.py`：從 stub 升級為真實 endpoint（接 TAK Server federation push + REST 查詢）；schema 已存在於 Stage 1 帶過來的 stub |
 | P2-04 | `cop_service.normalize_cot(event)` — CoT → COP entity 映射（type / uid / time / stale / lat / lon → COP `entity` + `track`） |
-| P2-05 | 前端 `static/js/map.js` 加 MIL-STD-2525 符號渲染（用 [milsymbol](https://github.com/spatialillusions/milsymbol) JS lib，MIT，非中國維護） |
+| P2-05 | 前端 `static/js/map.js` 加 MIL-STD-2525 符號渲染（用 [milsymbol](https://github.com/spatialillusions/milsymbol) JS lib，MIT，非中國維護）。**MGRS grid 一併於本項實作**（zoom-adaptive 密度、淡灰底 + 強調 100km / 10km 分層、label 避讓）——P1-10 已預埋 MapLibre Symbol Layer 接點 |
 | P2-06 | 時間軸支援：CoT `stale` 處理 + COP 快照寫入 `snapshot_repo`（Wave 6 時間軸回放預埋） |
 | P2-07 | Federation 設定：與外部 TAK 節點交換 CoT（可選；先單機 PoC） |
 | P2-08 | 測試：CoT parse unit + TAK Server ↔ command-dashboard integration（mock TAK 推播）+ security（CoT injection / XML XXE 防護） |
