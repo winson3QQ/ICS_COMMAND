@@ -67,8 +67,8 @@ Claude Code 在合適時機自動 spawn 這些（你也可以指名要求）：
 
 | Script | 觸發時機 | 誰跑 | 通過條件 |
 |---|---|---|---|
-| `doc_sync_check.py` | **每個 task 結尾**（步驟 7.5，merge 前）| Arch 指示 Code 跑 | exit 0 |
-| `roadmap_issue_sync.py` | **週期性**（建議週四 / phase 收尾 / 你想看時）| Arch 主動 or Human 觸發 | 落差數量 vs 上週對比 |
+| `scripts/doc_sync_check.py` | **每個 task 結尾**（步驟 7.5，merge 前）| Arch 指示 Code 跑 | exit 0 |
+| `scripts/roadmap_issue_sync.py` | **週期性**（建議週四 / phase 收尾 / 你想看時）| Arch 主動 or Human 觸發 | 落差數量 vs 上週對比 |
 
 ```bash
 python3 scripts/doc_sync_check.py        # task 結尾必跑
