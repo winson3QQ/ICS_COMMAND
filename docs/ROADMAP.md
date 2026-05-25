@@ -2,6 +2,17 @@
 
 由 [ICS_DMAS](https://github.com/winson3QQ/ICS_DMAS) 拆分而來的指揮部單體版本。本 ROADMAP 為**單一 SoT**，不再維護獨立的 `matrix.md`；compliance 對照以 inline 註記方式融入各 phase 的 Definition of Done。
 
+## 狀態 marker 約定
+
+每個 item 完成時在 row 開頭加 ✅，並寫入 `(#PR, commit hash)` 供 audit。維護由 [`docs/PROCESS.md`](PROCESS.md) step 8 強制（**merge 同時必勾 ROADMAP**，不是事後想到才補）。
+
+- ✅ = 完成 + merged
+- ⏳ = 進行中（branch 已開）
+- 🚧 = blocked（PR 留 `ESCALATE` 升級）
+- 無 marker = pending
+
+跨機器 / 跨 session 新接手者：跑 `python3 scripts/roadmap_issue_sync.py` 拿到「ROADMAP item ↔ GitHub issue」對照（Layer 3 status report 規劃中）。
+
 ---
 
 ## 願景
@@ -23,7 +34,7 @@
 
 | Item | 說明 |
 |---|---|
-| P1-01 | 盤點 18 routers / 18 repos / 7 services，移除真正的孤兒 import（**不刪除 federation infra**，見 P1-04） |
+| ✅ P1-01 | 盤點 18 routers / 18 repos / 7 services，移除真正的孤兒 import（**不刪除 federation infra**，見 P1-04） — 完成於 [#2](https://github.com/winson3QQ/ICS_COMMAND/pull/2) `05049e2`（2026-05-25）|
 | P1-02 | `routers/pi_push.py` → **改名 `ingress.py`** 並重構為通用 ingress 介面（為 P2 TAK、P3 WaveInk 共用；既有 Pi push 路徑保留為 `/api/ingress/pi-node`，介面相容） |
 | P1-03 | `services/cop_service.py` 正規化層 schema 凍結 v1（`source: enum[manual, pi-node, tak, waveink]` 必填欄位，預留 `pi-node` 不關門） |
 | P1-04 | **保留並重新定位** `pi_batch_repo`、`pi_node_repo`、`sync_repo`（三 Pass 對齊）為「**上游節點 federation 介面**」——架構上已是通用設計（`sync_repo._unit_to_node()` 已參數化 shelter/medical/forward/security）。命名不改，文件補充說明：未來 Medical / Shelter PWA 重新對接、或 ICS_Command 變成多 Pi 站台中樞時，這層直接用。**僅清理**真正死掉的測試與 import |

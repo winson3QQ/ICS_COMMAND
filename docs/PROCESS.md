@@ -16,7 +16,8 @@
 | 6. **Code review** | `/code-review` | skill spawn subagent 看 diff 找正確性 bug |
 | 7. **Security review** | `/security-review` | skill spawn subagent 看供應鏈 / auth / CSP |
 | **7.5 Quality gate** | （Arch 指示 Code 跑）`python3 scripts/doc_sync_check.py` | exit 0 才可 merge；非 0 → 回 CA 修 doc-vs-code drift |
-| 8. Merge + push main | （Code ask）「merge + push main ok?」→ 你回 `ok` | `gh pr merge --squash` 即可；Codeberg mirror 由 `.github/workflows/mirror-to-codeberg.yml` 自動補（需先設 `CODEBERG_TOKEN` secret）|
+| 8. Merge + push main | （Code ask）「merge + push main ok?」→ 你回 `ok` | `gh pr merge --squash` 即可；Codeberg mirror 由 `.github/workflows/mirror-to-codeberg.yml` 自動補（需先設 `CODEBERG_TOKEN` secret） |
+| **8.5 ROADMAP tick** | （Code 自動）merge 完同一輪內動作 | `docs/ROADMAP.md` 該 item row 開頭加 ✅ + 寫入 `(#PR, commit hash)`；**不是事後想到才補** — 漏勾就違反本步驟。狀態 marker 約定見 [ROADMAP 開頭](ROADMAP.md#狀態-marker-約定) |
 | 9. Tag（若版號升） | （Code ask）「tag command-vX.Y.Z ok?」→ 你回 `ok` | `git tag` + `git push --tags` |
 | 10. Memory（若有非顯而易見決策）| （Code ask）「memory 寫 X，ok?」→ 你回 `ok` | 寫 `.claude/memory/<slug>.md` + commit |
 
