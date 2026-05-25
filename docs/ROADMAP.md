@@ -52,7 +52,8 @@
   - MapLibre GL JS — BSD-3，AWS/Meta/MapTiler/Felt 共同維護，非中國
   - PMTiles / Protomaps — BSD-3，maintainer Brandon Liu（US/台美籍），非中國
   - milsymbol — MIT，瑞典
-  - JetBrains Mono / IBM Plex Mono / Noto Sans TC — 皆 OFL，可離線打包
+  - JetBrains Mono / Noto Sans TC — 皆 OFL，離線打包
+- **Design System provenance**：vendor 自 [WaveInk DESIGN.md + colors_and_type.css](https://codeberg.org/winson3QQ/WaveInk)，commit hash 釘版於 `docs/design/POLICY.md`；兩處 divergence（MIL-STD-2525 token、JetBrains Mono webfont）明文記錄
 - 證據路徑：`command-dashboard/tests/reports/p1-baseline.html`、PR# + commit hash 寫進 commit message
 
 ### P1-10 細項展開（地圖 UX baseline）
@@ -61,7 +62,7 @@
 
 | 子項 | 內容 | 預估 |
 |---|---|---|
-| **P1-10a** | **Dark ops theme + 字體分軌** — sidebar / chip / legend / status panel 全套深色高對比；字體分兩類：(a) 一般 UI 用 IBM Plex Sans + Noto Sans TC、(b) **callsign / 座標 / MGRS / 時間戳一律等寬字體（JetBrains Mono 或 IBM Plex Mono）**，避免 0/O、1/l/I 誤讀（指揮場景誤讀座標會出人命，等寬是 ops 規範）。全字體離線打包進 `static/fonts/` | 2-3 天 |
+| **P1-10a** | **採用 WaveInk Design System + MIL-STD-2525 token 體系 + 跨平台等寬字體**（**一次到位，不分階段**，TAK 整合就緒為優先設計約束）：<br>**(i) 基底**：vendor `colors_and_type.css` + `DESIGN.md` policy 自 WaveInk `docs/design/`（commit hash 釘版），落地為 `command-dashboard/static/css/ds-tokens.css` + `docs/design/POLICY.md`。直接繼承：GitHub Dark Dimmed 色階、`--space-1`~`--space-9`、`--radius` 三段、border-not-shadow 紀律、動畫節制（僅保留 keyframe，不引入 JS 動畫）、Unicode-as-iconography（禁 Material/Heroicons/Lucide/Phosphor/Font Awesome）、empty-state 文案語氣（terse / imperative / 無 marketing copy）。<br>**(ii) MIL-STD-2525 entity color token 作為一等公民**（**主要設計考量，非例外**）：新增 `--mil-friendly` / `--mil-hostile` / `--mil-neutral` / `--mil-unknown` token，標準色對齊 MIL-STD-2525C 附錄 A；frame 形狀（friendly 矩形 / hostile 菱形 / neutral 方形 / unknown 四葉草）由 P2-05 milsymbol 接管渲染，token 提供色彩 SoT。WaveInk policy 的「No new accents」原則於本 token group 例外開放，並反向標註：未來新增 entity affiliation 必須對齊 MIL-STD-2525，不得自創色。<br>**(iii) 字體 ops-grade upgrade**：**JetBrains Mono 離線打包進 `static/fonts/`** 取代 WaveInk 的 system mono 預設——指揮場景 callsign / 座標 / MGRS / 時間戳跨 Mac/Win/Linux 一致性是 ops 規範（system mono 在三平台分別是 Menlo / Consolas / DejaVu，視覺差異不可接受）；JetBrains Mono 對 0/O、1/l/I、5/S 有明確 disambiguation 設計。UI 文字維持 WaveInk system stack（Noto Sans TC fallback）。<br>**(iv) divergence 文件**：`docs/design/POLICY.md` 明文列出 ICS_Command 對 WaveInk DS 的兩處 fork 點（MIL-STD-2525 token、JetBrains Mono webfont）與 rationale，下次 WaveInk DS 升版時做為 conflict 解決依據 | 3-4 天 |
 | **P1-10b** | **MapLibre GL JS 全替換** — 移除 Leaflet，map.js 核心重寫；marker / popup / polygon / layer 統一改 MapLibre Symbol Layer API。借鏡 mini-taiwan 的**架構**：entity layer 抽象、track 0–1 插值、collision detection 邏輯——**不借 Three.js 3D 實作**（COP 3D entity 價值低、Pi 500 GPU 會搶資源，3D 留作 P2 之後依需求評估） | 4-5 天 |
 | **P1-10c** | **PMTiles 台灣底圖** — 用 Protomaps 工具產出台灣全圖 PMTiles 單檔（約 200-400 MB），Pi 直接 serve，完全離線。提供 day / dusk / night / sat 四種 vector style | 1-2 天 |
 | **P1-10d** | **SVG marker 系統 + severity design token** — 每種 `node_type` × `event_severity` 一套 icon set；統一 stroke / corner radius / 陰影；severity 配色（critical / warning / info）以 CSS custom properties 集中管理，禁止散在 JS 寫死 hex；critical 事件用 `@keyframes` halo pulse（不用 JS 動畫，省 Pi CPU） | 2-3 天 |
@@ -70,12 +71,12 @@
 | **P1-10g** | **圖層切換微動畫** — 200ms fade-in / opacity 過渡，避免「啪」一下 | 0.5 天 |
 | **P1-10h** | **CSP 對齊** — MapLibre + PMTiles 需要：`worker-src blob:` / `script-src 'wasm-unsafe-eval'` / `child-src blob:`；與 ICS_DMAS C1-B 階段 CSP 規劃對齊；補 CSP integration test | 1 天 |
 
-**總工時估**：12-17 天（單人）；演練前**至少 2.5-3 週**開工，留 buffer。
+**總工時估**：13-18 天（單人）；演練前**至少 3 週**開工，留 buffer。
 
-**實作順序建議**（CP 值由高到低）：
-1. P1-10a（dark theme + 字體）— 視覺感受立即 +50%
-2. P1-10b + P1-10c（MapLibre + PMTiles）— 地圖質感 +40%，且為 P2 鋪路
-3. P1-10d（SVG marker + token）— 收斂業餘感
+**實作順序建議**（CP 值由高到低，**TAK 就緒度為優先排序原則**）：
+1. P1-10a（WaveInk DS + MIL-STD-2525 token + JetBrains Mono）— 視覺感受立即 +50%，且 token 體系預埋 P2 直接吃
+2. P1-10b + P1-10c（MapLibre + PMTiles）— 地圖質感 +40%，P2 TAK Symbol Layer 直接套
+3. P1-10d（SVG marker + token）— 收斂業餘感；MIL-STD-2525 frame 等到 P2 milsymbol 接管
 4. P1-10e + P1-10f + P1-10g（hover / clustering / 微動畫）— 精緻度收尾
 5. P1-10h（CSP）— 與每步交叉驗證，最終整合測試
 
