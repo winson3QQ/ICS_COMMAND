@@ -42,7 +42,7 @@ export const NAPSG_EVENTS = {
   emergency:    { label: '緊急病症',   group: 'medical',  icon: 'event',     abbr: '急', defaultAssigned: 'medical',  severity: 'critical' },
   infectious:   { label: '傳染疑慮',   group: 'medical',  icon: 'event',     abbr: '疫', defaultAssigned: 'medical',  severity: 'warning'  },
   // ── 收容照護 ──────────────────────────────────────────────────
-  capacity:     { label: '量能超載',   group: 'care',     icon: 'event',     abbr: '滿', defaultAssigned: 'shelter',  severity: 'warning'  },
+  capacity:     { label: '量能超載',   group: 'care',     icon: 'event',     abbr: '滿', defaultAssigned: null,       severity: 'warning'  },
   isolation:    { label: '隔離事件',   group: 'care',     icon: 'shield',    abbr: '隔', defaultAssigned: 'shelter',  severity: 'warning'  },
   person_need:  { label: '人員狀況',   group: 'care',     icon: 'person',    abbr: '護', defaultAssigned: 'shelter',  severity: 'info'     },
   // ── 基礎設施 ──────────────────────────────────────────────────

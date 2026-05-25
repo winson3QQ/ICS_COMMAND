@@ -411,34 +411,7 @@ export function renderSparklines(d, sessionType, openZoneByType, showIpiBreakdow
     thresholds:[{value:70,color:'rgba(212,144,0,.4)',label:'70%'},{value:90,color:'rgba(204,42,42,.4)',label:'90%'}],
     rightAxis:{max:Math.max(sBt,mBt), unit:'人', label:'人'}}, N, isExp('sp-cap'), t);
 
-  // ② 流向（傷患來源分布）
-  const sa=d.srcA[N-1], sb=d.srcB[N-1], sc=d.srcC[N-1];
-  const srcTotal = sa + sb + sc;
-  const flowLvl = srcTotal >= 10 ? 'crit' : srcTotal >= 5 ? 'warn' : 'ok';
-  const flowText = srcTotal > 0
-    ? `在站${srcTotal}人` + (sa?` 前${sa}`:'') + (sb?` 收${sb}`:'') + (sc?` 自${sc}`:'')
-    : '無在站傷患';
-  const flowEl = document.getElementById('sp-flow-v');
-  if (flowEl) {
-    flowEl.textContent = flowText;
-    if (sessionType === 'real') {
-      flowEl.style.cursor = 'pointer';
-      flowEl.dataset.action = 'openZone';
-      flowEl.dataset.type = 'medical';
-    } else {
-      flowEl.style.cursor = 'default';
-      flowEl.removeAttribute('data-action');
-    }
-  }
-  setRag('sp-flow', flowLvl);
-  const srcMax = Math.max(...d.srcA.map((a,i)=>a+(d.srcB[i]||0)+(d.srcC[i]||0)), 5);
-  drawSparkline('sc2', [
-    {data:d.srcA, color:'#E74C3C', w:1.5, unit:'人', label:'前進'},
-    {data:d.srcB, color:'#F0883E', w:1.5, unit:'人', label:'收容'},
-    {data:d.srcC, color:'#2E7D32', w:1.5, unit:'人', label:'自行'},
-  ], {yMin:0, yMax:srcMax+2, yUnit:'人', noEndLabel:true, hover:true}, N, isExp('sp-flow'), t);
-
-  // ③ 事件
+  // ② 事件（原 ② 傷患流向 sp-flow card 已於 P1-11 移除，data prep 暫保留）
   const totalIPI = ipiCalc(d.incHigh[N-1], d.incMed[N-1]);
   const incLvl = totalIPI >= 6 ? 'crit' : totalIPI >= 3 ? 'warn' : 'ok';
   const incEl = document.getElementById('sp-inc-v');

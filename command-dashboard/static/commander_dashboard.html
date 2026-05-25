@@ -864,8 +864,6 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(
   <div id="zone-a-right">
     <div style="display:flex;flex-direction:column;align-items:center;gap:3px;">
       <div style="display:flex;align-items:center;gap:10px;">
-        <div class="conn-item"><span class="conn-dot lkp" id="cd-shelter"></span><span class="conn-label" id="cl-shelter">收容</span></div>
-        <div class="conn-item"><span class="conn-dot lkp" id="cd-medical"></span><span class="conn-label" id="cl-medical">醫療</span></div>
         <div class="conn-item"><span class="conn-dot lkp" id="cd-server"></span><span class="conn-label" id="cl-server">指揮部</span></div>
       </div>
       <div style="display:flex;align-items:center;gap:4px;">
@@ -896,24 +894,10 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(
           <span style="display:flex;align-items:center;"><span class="spark-val" id="sp-cap-v">—</span><span class="spark-rag ok" id="sp-cap-rag"></span></span>
         </div>
         <div class="spark-detail" id="sp-cap-detail">
-          <div class="li"><div class="ld" style="background:#E67E22"></div>收容量能</div>
-          <div class="li"><div class="ld" style="background:#C0392B"></div>醫療量能</div>
           <div class="li"><div class="ld dash" style="border-color:rgba(212,144,0,.6)"></div>警戒70%</div>
           <div class="li"><div class="ld dash" style="border-color:rgba(204,42,42,.6)"></div>危急90%</div>
         </div>
         <div class="spark-body"><canvas id="sc1"></canvas></div>
-      </div>
-      <div class="spark-card" id="sp-flow" data-action="expandSpark" data-id="sp-flow">
-        <div class="spark-hdr">
-          <span class="spark-title">傷患入站</span>
-          <span style="display:flex;align-items:center;"><span class="spark-val" id="sp-flow-v">—</span><span class="spark-rag ok" id="sp-flow-rag"></span></span>
-        </div>
-        <div class="spark-detail" id="sp-flow-detail">
-          <div class="li"><div class="ld" style="background:#E74C3C"></div>前進→醫</div>
-          <div class="li"><div class="ld" style="background:#F0883E"></div>收容→醫</div>
-          <div class="li"><div class="ld" style="background:#2E7D32"></div>自行抵達</div>
-        </div>
-        <div class="spark-body"><canvas id="sc2"></canvas></div>
       </div>
       <div class="spark-card" id="sp-inc" data-action="expandSpark" data-id="sp-inc">
         <div class="spark-hdr">
