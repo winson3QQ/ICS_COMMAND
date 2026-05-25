@@ -1,3 +1,9 @@
+"""
+pi_batch_repo.py — 上游節點批次推送資料存取層
+
+kept for upstream node federation (PWA / Pi reconnection); see ROADMAP P1-04 / Wave 7+
+Shelter / Medical PWA 未來回流時，本層介面直接承接，無需架構翻修。
+"""
 from core.database import get_conn
 
 from ._helpers import now_utc

@@ -24,6 +24,23 @@
 
 ---
 
+## Post Findings & Results — 強制紀律
+
+**任何 task 過程中產生的 finding、verification 結果、dogfood 副發現，必須留痕在 Issue 或 PR**，不能只在對話裡講過就算。理由：(a) 沒留痕 = 沒發生（review / audit 時消失）、(b) 跨 session 接手者看不到、(c) Codeberg / GitHub 哪邊壞了還能從另一邊還原。
+
+| 內容類型 | 留痕位置 | 時機 |
+|---|---|---|
+| Inventory / 盤點結果 | Issue comment（task 對應 issue）| 進實作前 |
+| Test result（pytest / pyflakes / app boot）| PR comment（步驟 4 開 PR 後）| Push branch 完成、開 PR 後 |
+| Verification 結果 | PR comment `VERIFY-PASS` / `VERIFY-FAIL: <step> <現象>` | Human ② verify 結束時 |
+| Dogfood 副發現（不屬本 task scope）| 寫進**新 Issue** 並在當前 PR description 連回 | 一發現就開，不留到事後 |
+| Plan subagent 輸出 | Issue comment 或 PR description 引用 | Plan 跑完當下 |
+| 升級給 Human 的 exception | PR comment 留 `ESCALATE: <一行原因>`，停手等回覆 | 任何時候 |
+
+**默契**：Code session 自動執行的指令輸出（如 pyflakes 0 lines、pytest 全綠）若要當作 verification 證據，必須**完整 paste 到 PR comment**（含指令 + 輸出），不只是 chat 裡說「跑了 pass」。
+
+---
+
 ## Skill 速查（Claude Code 內建）
 
 | 打這個 | 做什麼 | 何時用 |
@@ -67,8 +84,8 @@ Claude Code 在合適時機自動 spawn 這些（你也可以指名要求）：
 
 | Script | 觸發時機 | 誰跑 | 通過條件 |
 |---|---|---|---|
-| `doc_sync_check.py` | **每個 task 結尾**（步驟 7.5，merge 前）| Arch 指示 Code 跑 | exit 0 |
-| `roadmap_issue_sync.py` | **週期性**（建議週四 / phase 收尾 / 你想看時）| Arch 主動 or Human 觸發 | 落差數量 vs 上週對比 |
+| `scripts/doc_sync_check.py` | **每個 task 結尾**（步驟 7.5，merge 前）| Arch 指示 Code 跑 | exit 0 |
+| `scripts/roadmap_issue_sync.py` | **週期性**（建議週四 / phase 收尾 / 你想看時）| Arch 主動 or Human 觸發 | 落差數量 vs 上週對比 |
 
 ```bash
 python3 scripts/doc_sync_check.py        # task 結尾必跑

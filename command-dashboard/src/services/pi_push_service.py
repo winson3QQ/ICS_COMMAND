@@ -1,6 +1,9 @@
 """
 pi_push_service.py — Pi push 接收處理
 接收各組定時推送，寫入 pi_received_batches 並更新 resource_snapshots。
+
+kept for upstream node federation (PWA / Pi reconnection); see ROADMAP P1-04 / Wave 7+
+Shelter / Medical PWA 未來回流時，本層介面直接承接，無需架構翻修。
 """
 
 import json

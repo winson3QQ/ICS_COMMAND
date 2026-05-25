@@ -1,3 +1,10 @@
+"""
+pi_push.py — 上游節點推送接收路由
+
+kept for upstream node federation (PWA / Pi reconnection); see ROADMAP P1-04 / Wave 7+
+P1-02 將改名為 `ingress.py` 並重構為通用 ingress 介面（TAK / WaveInk 共用），
+舊路徑 `/api/pi-push/{unit_id}` 保留為 `/api/ingress/pi-node` 別名。
+"""
 import json
 
 from fastapi import APIRouter, Depends, HTTPException, Request

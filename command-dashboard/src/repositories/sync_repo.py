@@ -1,5 +1,9 @@
 """
 sync_repo.py — 三 Pass 對齊（網路恢復後同步）
+
+kept for upstream node federation (PWA / Pi reconnection); see ROADMAP P1-04 / Wave 7+
+`_unit_to_node()` 已參數化 shelter/medical/forward/security，
+Shelter / Medical PWA 未來回流時，本層介面直接承接，無需架構翻修。
 """
 
 import json

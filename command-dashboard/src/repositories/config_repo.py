@@ -51,7 +51,6 @@ def ensure_default_admin_pin(token_dir: str | None = None) -> str | None:
     回傳產生的 PIN（首次）或 None（已設定）。
     PIN 同時寫入 ~/.ics/admin_pin_token（chmod 600）。
     """
-    import logging
     import os
     import secrets
 

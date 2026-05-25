@@ -33,6 +33,7 @@
 | P1-08 | `start_mac.sh` 已純化（Stage 1 完成）；補 `start_pi.sh` 與 systemd unit drop-in |
 | P1-09 | `deploy/`（Stage 1 未帶）補回必要部分：nginx reverse proxy + TLS（去掉 PWA server block，保留 ingress 通用路由） |
 | P1-10 | **地圖 UX baseline 升級**：見下方〈P1-10 細項展開〉。改採 **MapLibre GL JS + PMTiles + dark ops theme + SVG marker + 等寬字體**，全替換 Leaflet（不走 `leaflet-maplibre-gl` 折衷路線，避免 P2 二次手術），預埋 P2 TAK + MIL-STD-2525 渲染接點 |
+| P1-11 | **Commander Dashboard UI 移除 PWA-specific 元素**：見下方〈P1-11 範圍〉。配合 P1-04 backend federation infra 保留決策，UI 層拿掉「收容/醫療」固定二元呈現，改為**動態依 `pi_nodes` 渲染**（未來 PWA 回流自動長回來）。源於 P1-01 dogfood 跑 dashboard 時的截圖盤點 |
 
 ### Definition of Done
 
@@ -90,6 +91,45 @@
 **明確排除（移到 P2）**：
 - **MGRS grid** — 軍規 grid 屬 TAK / MIL-STD-2525 同一生態，自然該與 CoT 符號渲染一批做。P1 只實作基本經緯度 grid。
 - **3D entity layer** — 同上理由，等真實山地 / 空域需求出現再評估。
+
+### P1-11 範圍（Dashboard UI PWA 清理）
+
+於 P1-01 dogfood 階段（commander_dashboard 登入截圖）盤點出的 PWA-specific UI 元素，分四級處理：
+
+**Tier 1 — 純 PWA，直接刪**
+
+| 元素 | 位置 |
+|---|---|
+| `cd-shelter` / `cd-medical` 連線燈（頂部「收容 離線 / 醫療 未連線」）| `commander_dashboard.html:867-868` |
+| 量能 chart legend「收容量能 / 醫療量能」 | `commander_dashboard.html:899-900` |
+| 「傷患入站」chart 整段 | `commander_dashboard.html:908` 起 |
+| `capacity` event defaultAssigned = `'shelter'` | `static/js/events.js:45` |
+
+**Tier 2 — 硬編碼 shelter+medical 數學，需 refactor**
+
+| 元素 | 位置 | 改法 |
+|---|---|---|
+| Zone A 量能狀態燈計算（`sp`/`mp` 二元） | `static/js/cop.js:331-358` | 改成依 `pi_nodes` 動態 unit 算（fed-ready）或暫 placeholder |
+| Zone C「物資見底/容量飽和/人力超載」KPI 資料源 | `commander_dashboard.html:1080-1090` + `cop.js` renderZoneC | 同上模型，refactor |
+| `cop.js:162` event labels 含 PWA 場景 | `static/js/cop.js:162` | 可清掉 `medication_mgmt` 等 |
+
+**Tier 3 — 周邊工具保留**
+
+- `static/icon_preview.html`（22 KB）— 設計資產 catalog，對未來 TAK / WaveInk icon set 有參考價值
+- `static/scenario_designer.html`（52 KB）— TTX 場景設計工具，沒 PWA 不影響運作
+
+**不在本 item scope（移其他 P1）**
+
+- 「地圖載入中」卡住 → P1-10 map UX baseline
+- 規格書同步移除 PWA 章節 → P1-07 規格書 v3.0
+
+### P1-11 DoD
+
+- [ ] Tier 1 四項移除，dashboard 載入無 console error
+- [ ] Tier 2 三項重構為依 `pi_nodes` 動態渲染或顯式 placeholder（不再寫死 shelter+medical）
+- [ ] §8 verification：用 admin 登入 commander_dashboard，頂部無「收容/醫療」連線燈、左側無「傷患入站」面板、無新增 broken UI
+- [ ] PR description 附 before/after 截圖對照
+- [ ] 對應測試：dashboard.html + js 模組 vitest / playwright 覆蓋（沿用既有 tests/js/）
 
 ---
 
