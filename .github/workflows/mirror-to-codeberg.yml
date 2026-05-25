@@ -1,0 +1,45 @@
+name: Mirror to Codeberg
+
+# 每次 push 到 main（含 `gh pr merge` squash、直推、snapshot 自動 commit）
+# 後，自動 mirror 到 Codeberg。
+#
+# 起因：`gh pr merge --squash` 在 GitHub server side merge，繞過本地
+# `git push origin main` 的 dual-push URL → Codeberg 會 out of sync。
+# 本 workflow 補這個缺口，server-side 保證 C 方案三邊一致。
+#
+# 與 `git push origin main` 並存：若 user 用 dual-push 推 main，Codeberg
+# 已有同 hash，本 workflow 跑 `Everything up to date` no-op，無害。
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: mirror-codeberg
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # 推 Codeberg 需要完整歷史
+
+      - name: Push to Codeberg
+        env:
+          CODEBERG_TOKEN: ${{ secrets.CODEBERG_TOKEN }}
+        run: |
+          if [ -z "${CODEBERG_TOKEN}" ]; then
+            echo "::warning::CODEBERG_TOKEN 未設定，跳過 Codeberg mirror"
+            echo "::warning::設定方式：repo Settings → Secrets → Actions → New repository secret"
+            echo "::warning::Token scope: write:repository（Codeberg User Settings → Applications）"
+            exit 0
+          fi
+          git remote add codeberg \
+            "https://winson3QQ:${CODEBERG_TOKEN}@codeberg.org/winson3QQ/ICS_COMMAND.git"
+          git push codeberg HEAD:main

@@ -76,5 +76,5 @@ jobs:
             exit 0
           fi
           git remote add codeberg \
-            "https://winson3QQ:${CODEBERG_TOKEN}@codeberg.org/winson3QQ/ICS_DMAS.git"
+            "https://winson3QQ:${CODEBERG_TOKEN}@codeberg.org/winson3QQ/ICS_COMMAND.git"
           git push codeberg HEAD:main
