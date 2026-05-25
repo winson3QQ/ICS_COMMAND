@@ -335,38 +335,19 @@ export function renderZoneA(d) {
   const N = d.N;
   const calc = _data?.calc || {};
 
-  // 量能狀態燈
-  const sp = d.sPct[N - 1], mp = d.mPct[N - 1];
-  const capMax = Math.max(sp, mp);
-  const capLvl = capMax >= 90 ? 'crit' : capMax >= 70 ? 'warn' : 'ok';
-
+  // 狀態燈（P1-11：量能與物資 lamp 已移除，僅依未結事件 IPI）
   const totalIPI = d.incHigh[N - 1] * 3 + d.incMed[N - 1];
   const incLvl = totalIPI >= 6 ? 'crit' : totalIPI >= 3 ? 'warn' : 'ok';
 
-  const ivLast = d.ivPct[N - 1], oxLast = d.oxPct[N - 1], toL = d.toPct[N - 1];
-  const minSupply = Math.min(ivLast, oxLast, toL);
-  const resLvl = minSupply <= 20 ? 'crit' : minSupply <= 40 ? 'warn' : 'ok';
-
-  const levels = [capLvl, incLvl, resLvl];
-  const overall = levels.includes('crit') ? 'crit' : levels.includes('warn') ? 'warn' : 'ok';
+  const overall = incLvl;
   const lamp = document.getElementById('status-lamp');
   if (lamp) {
     lamp.className = overall;
     lamp.textContent = overall === 'crit' ? '警報' : overall === 'warn' ? '注意' : '正常';
-    const reasons = [];
-    const lvlLabel = { ok: '正常', warn: '注意', crit: '警報' };
-    if (capLvl !== 'ok') reasons.push(`量能：${lvlLabel[capLvl]}（收${sp}% 醫${mp}%）`);
-    if (incLvl !== 'ok') reasons.push(`事件 IPI：${totalIPI}`);
-    if (resLvl !== 'ok') reasons.push(`物資最低：${minSupply}%`);
-    lamp.title = reasons.length ? reasons.join('\n') : '全局正常';
+    lamp.title = incLvl !== 'ok' ? `事件 IPI：${totalIPI}` : '全局正常';
   }
 
-  // 收容 / 醫療人數
-  const sBu = d.sBu[N - 1], mBu = d.mBu[N - 1];
-  const shelEl = document.getElementById('counts-shelter');
-  const medEl = document.getElementById('counts-medical');
-  if (shelEl) shelEl.textContent = `收容 ${sBu} 人`;
-  if (medEl) medEl.textContent = `醫療 ${mBu} 人`;
+  // P1-11: counts-shelter / counts-medical DOM 已移除
 
   // DCI
   const dci = calc.data_confidence?.overall;
@@ -407,10 +388,7 @@ function _renderZoneANoSnap() {
     const warnEvts = openEvts.filter(e => e.severity === 'warning').length;
     lamp.title = `未結事件 ${openEvts.length} 件\n緊急 ${critEvts} / 警告 ${warnEvts}`;
   }
-  const shelEl = document.getElementById('counts-shelter');
-  const medEl = document.getElementById('counts-medical');
-  if (shelEl) shelEl.textContent = openEvts.length > 0 ? `未結事件 ${openEvts.length} 件` : '等待資料中⋯';
-  if (medEl) medEl.textContent = '';
+  // P1-11: counts-shelter / counts-medical DOM 已移除
   const dciEl = document.getElementById('dci-val');
   const evtCount = allEvts.length;
   if (dciEl) {
@@ -489,44 +467,10 @@ export function renderZoneC(d) {
   const N = d ? d.N : 0;
   const calc = _data?.calc || {};
 
-  // 物資倒數
-  const br = calc.burn_rates || {};
-  const ivTTZ = br.iv?.time_to_zero_min;
-  const oxTTZ = br.oxygen?.time_to_zero_min;
-  const toTTZ = br.tourniquet?.time_to_zero_min;
-  const minTTZ = [ivTTZ, oxTTZ, toTTZ].filter(v => v != null && v >= 0);
-  const supplyMin = minTTZ.length > 0 ? Math.min(...minTTZ) : null;
-  setPill('zc-supply', 'zc-supply-t', supplyMin, 120, 240);
+  // P1-11: 物資見底 / 容量飽和 / 人力超載 三 pill 已移除（依 shelter/medical PWA 資料源）
+  //         setPill 計算邏輯一併拿掉；rate / minsUntil 工具仍供未來使用
 
-  // 容量倒數
-  const medCountdown = calc.medical?.countdown_to_red;
-  let capMins = medCountdown?.minutes_to_threshold;
-  if (capMins == null && d) {
-    const capR = rate(d.mPct);
-    capMins = capR > 0 ? minsUntil(d.mPct[N - 1], 90, capR, 5) : null;
-  }
-  setPill('zc-cap', 'zc-cap-t', capMins, 60, 120);
-
-  // 人力倒數
-  const staffR = d ? rate(d.opsM) : 0;
-  const staffMins = (staffR > 0 && d) ? minsUntil(d.opsM[N - 1], 8, staffR, 5) : null;
-  setPill('zc-staff', 'zc-staff-t', staffMins, 30, 60);
-
-  // 升降級
-  const esc = calc.escalation;
-  const escEl = document.getElementById('zc-esc-list');
-  if (esc && escEl) {
-    let html = '';
-    (esc.triggers_met || []).forEach(t => {
-      const cls = t.severity === 'critical' ? 'crit' : 'warn';
-      html += `<div class="zc-esc-item"><span class="tag ${cls}">${t.rule_id}</span>${t.description}</div>`;
-    });
-    (esc.deescalation || []).forEach(t => {
-      html += `<div class="zc-esc-item"><span class="tag ok">${t.rule_id}</span>${t.description}</div>`;
-    });
-    if (!html) html = '<div style="color:var(--green);font-size:11px;">無觸發條件</div>';
-    escEl.innerHTML = html;
-  }
+  // P1-11: 升降級 zc-esc-list DOM 已移除，本段 escalation render 拿掉
 
   // 裁示列表（委派給 decisions.js）
   const pendingDecs = _data?.decisions?.pending || [];

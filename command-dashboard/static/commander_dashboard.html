@@ -58,10 +58,13 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(
 
 /* ═══ ZONE B ═══ */
 #zone-b{
-  display:flex;height:calc(100vh - 64px - 52px);overflow:hidden;
+  /* P1-11: zone-c (52px) 已刪，把那 52px 收回給 zone-b */
+  display:flex;height:calc(100vh - 64px);overflow:hidden;
 }
 
 /* 側欄面板 */
+/* P1-11 note: 左 panel 已刪，僅 panel-right 用本 class；
+   寬度先維持原值（20% / 30%），有事件流量後再依實際需要調整 */
 .side-panel{
   flex:0 0 20%;display:flex;flex-direction:column;padding:4px 5px;gap:3px;overflow:hidden;min-height:0;
   border-right:1px solid var(--border);
@@ -855,93 +858,31 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(
         <span id="date-label" style="font-size:12px;color:var(--text3);"></span>
       </div>
       <div class="za-col za-col-r">
-        <span class="za-counts" id="counts-shelter"></span>
-        <span class="za-counts" id="counts-medical"></span>
+        <!-- counts-shelter / counts-medical 已於 P1-11 移除（PWA-specific 計數） -->
       </div>
     </div>
   </div>
   <!-- 右：連線燈號 + 齒輪/版號 -->
   <div id="zone-a-right">
-    <div style="display:flex;flex-direction:column;align-items:center;gap:3px;">
-      <div style="display:flex;align-items:center;gap:10px;">
-        <div class="conn-item"><span class="conn-dot lkp" id="cd-server"></span><span class="conn-label" id="cl-server">指揮部</span></div>
-      </div>
-      <div style="display:flex;align-items:center;gap:4px;">
-        <span id="cmd-user-badge"></span>
-        <span id="idle-countdown"></span>
-        <span data-action="openSettings" style="font-size:14px;cursor:pointer;color:var(--text3);" title="設定">&#9881;</span>
-        <span class="h-ver" id="h-ver"></span>
-        <button id="ttx-toggle" data-action="toggleTTXMode" style="padding:2px 8px;border:1px solid var(--text3);border-radius:4px;background:transparent;color:var(--text3);font-size:10px;font-weight:600;cursor:pointer;font-family:var(--mono);transition:all .2s;" title="切換實戰/演練模式">實戰</button>
-        <button data-action="cmdLogout" style="padding:2px 8px;border:1px solid var(--red);border-radius:4px;background:transparent;color:var(--red);font-size:10px;font-weight:600;cursor:pointer;font-family:var(--mono);transition:all .2s;"  >登出</button>
-      </div>
+    <!-- P1-11: 收容/醫療燈號刪除後，原本「conn-row + user-row」兩列，
+         合併為單列右側 toolbar，指揮部燈號 inline 在最左 -->
+    <div style="display:flex;align-items:center;gap:8px;">
+      <div class="conn-item"><span class="conn-dot lkp" id="cd-server"></span><span class="conn-label" id="cl-server">指揮部</span></div>
+      <span id="cmd-user-badge"></span>
+      <span id="idle-countdown"></span>
+      <span data-action="openSettings" style="font-size:14px;cursor:pointer;color:var(--text3);" title="設定">&#9881;</span>
+      <span class="h-ver" id="h-ver"></span>
+      <button id="ttx-toggle" data-action="toggleTTXMode" style="padding:2px 8px;border:1px solid var(--text3);border-radius:4px;background:transparent;color:var(--text3);font-size:10px;font-weight:600;cursor:pointer;font-family:var(--mono);transition:all .2s;" title="切換實戰/演練模式">實戰</button>
+      <button data-action="cmdLogout" style="padding:2px 8px;border:1px solid var(--red);border-radius:4px;background:transparent;color:var(--red);font-size:10px;font-weight:600;cursor:pointer;font-family:var(--mono);transition:all .2s;"  >登出</button>
     </div>
   </div>
 </div>
 
 <!-- ═══════ ZONE B — 態勢 + 地圖 + 資源 ═══════ -->
 <div id="zone-b">
-  <!-- 左：態勢 + 資源（3+2 切換） -->
-  <div class="side-panel" id="panel-left">
-    <div id="panel-left-tabs" style="display:flex;gap:0;flex-shrink:0;">
-      <div class="panel-tab active" data-group="situation" data-action="switchLeftPanel" data-group="situation">態勢</div>
-      <div class="panel-tab" data-group="resource" data-action="switchLeftPanel" data-group="resource">資源</div>
-    </div>
-    <!-- 態勢組（3格） -->
-    <div class="spark-group" id="sg-situation">
-      <div class="spark-card" id="sp-cap" data-action="expandSpark" data-id="sp-cap">
-        <div class="spark-hdr">
-          <span class="spark-title">量能</span>
-          <span style="display:flex;align-items:center;"><span class="spark-val" id="sp-cap-v">—</span><span class="spark-rag ok" id="sp-cap-rag"></span></span>
-        </div>
-        <div class="spark-detail" id="sp-cap-detail">
-          <div class="li"><div class="ld dash" style="border-color:rgba(212,144,0,.6)"></div>警戒70%</div>
-          <div class="li"><div class="ld dash" style="border-color:rgba(204,42,42,.6)"></div>危急90%</div>
-        </div>
-        <div class="spark-body"><canvas id="sc1"></canvas></div>
-      </div>
-      <div class="spark-card" id="sp-inc" data-action="expandSpark" data-id="sp-inc">
-        <div class="spark-hdr">
-          <span class="spark-title">事件</span>
-          <span style="display:flex;align-items:center;"><span class="spark-val" id="sp-inc-v">—</span><span class="spark-rag ok" id="sp-inc-rag"></span></span>
-        </div>
-        <div class="spark-detail" id="sp-inc-detail">
-          <div class="li"><div class="ld" style="background:#e6edf3;height:4px"></div>未結累計</div>
-          <div class="li"><div class="ld" style="background:var(--red)"></div>高</div>
-          <div class="li"><div class="ld" style="background:var(--yellow)"></div>中</div>
-          <div class="li"><div class="ld" style="background:var(--green)"></div>低</div>
-        </div>
-        <div class="spark-body"><canvas id="sc3"></canvas></div>
-      </div>
-    </div>
-    <!-- 資源組（2格，從右側移入） -->
-    <div class="spark-group" id="sg-resource" style="display:none;">
-      <div class="spark-card" id="sp-res" data-action="expandSpark" data-id="sp-res">
-        <div class="spark-hdr">
-          <span class="spark-title">物資</span>
-          <span style="display:flex;align-items:center;"><span class="spark-val" id="sp-res-v">—</span><span class="spark-rag ok" id="sp-res-rag"></span></span>
-        </div>
-        <div class="spark-detail" id="sp-res-detail">
-          <div class="li"><div class="ld dash" style="border-color:#D32F2F"></div>IV</div>
-          <div class="li"><div class="ld dash" style="border-color:#F57F17"></div>氧氣</div>
-          <div class="li"><div class="ld dash" style="border-color:#388E3C"></div>止血帶</div>
-          <div class="li"><div class="ld dash" style="border-color:rgba(204,42,42,.6)"></div>警戒20%</div>
-        </div>
-        <div class="spark-body"><canvas id="sc4"></canvas></div>
-      </div>
-      <div class="spark-card" id="sp-staff" data-action="expandSpark" data-id="sp-staff">
-        <div class="spark-hdr">
-          <span class="spark-title">人力</span>
-          <span style="display:flex;align-items:center;"><span class="spark-val" id="sp-staff-v">—</span><span class="spark-rag ok" id="sp-staff-rag"></span></span>
-        </div>
-        <div class="spark-detail" id="sp-staff-detail">
-          <div class="li"><div class="ld" style="background:#1976D2"></div>收容人均</div>
-          <div class="li"><div class="ld" style="background:#7B1FA2"></div>醫療人均</div>
-          <div class="li"><div class="ld dash" style="border-color:rgba(204,42,42,.6)"></div>超載 8</div>
-        </div>
-        <div class="spark-body"><canvas id="sc5"></canvas></div>
-      </div>
-    </div>
-  </div>
+  <!-- 左 panel 已於 P1-11 整刪（態勢/資源 tabs + 事件/物資/人力 cards 皆 PWA-derived）。
+       中央地圖將吃下這 20% 寬度。右側事件追蹤 + 裁示保留（與地圖連動）。
+       P2 TAK / P3 WaveInk 整合時，新 panel 設計另議。 -->
 
   <!-- 中：互動地圖 -->
   <div id="map-panel">
@@ -1056,28 +997,8 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(
   </div>
 </div>
 
-<!-- ═══════ ZONE C — 決策倒數 + 升降級 ═══════ -->
-<div id="zone-c">
-  <div class="zc-pill" id="zc-supply">
-    <div class="zc-icon">💉</div>
-    <div class="zc-time ok" id="zc-supply-t">—</div>
-    <div class="zc-label">物資見底</div>
-  </div>
-  <div class="zc-pill" id="zc-cap">
-    <div class="zc-icon">🛏</div>
-    <div class="zc-time ok" id="zc-cap-t">—</div>
-    <div class="zc-label">容量飽和</div>
-  </div>
-  <div class="zc-pill" id="zc-staff">
-    <div class="zc-icon">👤</div>
-    <div class="zc-time ok" id="zc-staff-t">—</div>
-    <div class="zc-label">人力超載</div>
-  </div>
-  <div class="zc-esc" id="zc-esc">
-    <div class="zc-esc-title">📋 升降級觸發</div>
-    <div id="zc-esc-list" style="font-size:11px;color:var(--text3);">等待資料⋯</div>
-  </div>
-</div>
+<!-- ZONE C 已於 P1-11 整刪（3 KPI pills 與 升降級觸發皆 PWA-derived）。
+     未來 TAK / WaveInk 進來再依需求重設計底部 KPI bar。 -->
 
 <!-- ═══════ 確認 OVERLAY ═══════ -->
 <div id="confirm-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:220;align-items:center;justify-content:center;">

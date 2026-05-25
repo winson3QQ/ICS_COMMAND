@@ -386,32 +386,10 @@ export function renderSparklines(d, sessionType, openZoneByType, showIpiBreakdow
   const isExp = id => _expandedSpark === id;
   const t = d.times; // X 軸時間陣列
 
-  // ① 量能
-  const sp = d.sPct[N-1], mp = d.mPct[N-1];
-  const capMax = Math.max(sp, mp);
-  const capLvl = capMax >= 90 ? 'crit' : capMax >= 70 ? 'warn' : 'ok';
-  const capEl = document.getElementById('sp-cap-v');
-  if (capEl) {
-    capEl.textContent = '收' + sp + '% 醫' + mp + '%';
-    if (sessionType === 'real') {
-      capEl.style.cursor = 'pointer';
-      capEl.dataset.action = 'openZone';
-      capEl.dataset.type = 'shelter';
-    } else {
-      capEl.style.cursor = 'default';
-      capEl.removeAttribute('data-action');
-    }
-  }
-  setRag('sp-cap', capLvl);
-  const sBt = d.sBt[N-1]||50, mBt = d.mBt[N-1]||30;
-  drawSparkline('sc1', [
-    {data:d.sPct, color:'#E67E22', w:1.5, fill:true, fillColor:'rgba(230,126,34,.15)', unit:'%', label:'收容', extraData:d.sBu, extraUnit:'人'},
-    {data:d.mPct, color:'#C0392B', w:1.5, fill:true, fillColor:'rgba(192,57,43,.12)', unit:'%', label:'醫療', extraData:d.mBu, extraUnit:'人'},
-  ], {yMin:0, yMax:100, yUnit:'%', noEndLabel:true, hover:true,
-    thresholds:[{value:70,color:'rgba(212,144,0,.4)',label:'70%'},{value:90,color:'rgba(204,42,42,.4)',label:'90%'}],
-    rightAxis:{max:Math.max(sBt,mBt), unit:'人', label:'人'}}, N, isExp('sp-cap'), t);
-
-  // ② 事件（原 ② 傷患流向 sp-flow card 已於 P1-11 移除，data prep 暫保留）
+  // ① 量能 panel 已於 P1-11 整個移除（依 shelter/medical PWA 資料源）。
+  //    data prep (d.sPct/mPct/sBu/mBu/sBt/mBt) 暫保留於 cop.js 上游，後續 cleanup 再處理。
+  //    原 ② 傷患流向（sp-flow）已於 P1-11 Tier 1 移除。
+  // ② 事件
   const totalIPI = ipiCalc(d.incHigh[N-1], d.incMed[N-1]);
   const incLvl = totalIPI >= 6 ? 'crit' : totalIPI >= 3 ? 'warn' : 'ok';
   const incEl = document.getElementById('sp-inc-v');
