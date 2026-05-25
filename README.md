@@ -10,8 +10,9 @@
 |---|---|
 | `command-dashboard/` | FastAPI + SQLite 後端、指揮官 / 幕僚儀表板（HTML + JS） |
 | `server/` | Node.js WebSocket relay（保留作前端 / security 整合介接點） |
+| `docs/ROADMAP.md` | 三 Phase 路線圖（基底重構 → TAK → WaveInk），含 compliance inline 對照 |
 | `docs/compliance/` | NIST SSDF / ASVS / ISO 25010 對照（policies + threat model） |
-| `deploy/`（Stage 2 補） | nginx + step-ca 內網 PKI |
+| `deploy/`（Phase 1 補） | nginx + step-ca 內網 PKI |
 
 ## 快速啟動（Mac）
 

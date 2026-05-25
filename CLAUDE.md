@@ -78,10 +78,10 @@
 1. 程式碼 merged（main）
 2. CI 測試補齊（unit / integration / security 對應）
 3. 規格書同步（若有介面 / 資料格式 / 行為變更）
-4. Compliance matrix 更新（若該項對應 control）
+4. ROADMAP 對應 phase item 勾選 / 證據連結（PR# + commit hash 寫進 commit message）
 5. Issue 在 GitHub 關閉
 
-**缺測不算完成。**
+**缺測不算完成。** Compliance 對照已 inline 於 [`docs/ROADMAP.md`](docs/ROADMAP.md) 各 phase 的 *Compliance touchpoints* 區塊，不再維護獨立 matrix.md。
 
 ## Memory 同步（跨機器）
 
