@@ -1,0 +1,9 @@
+#!/bin/bash
+# git pull 後自動同步 Claude memory（Mac + Windows Git Bash 通用）
+REPO=$(git rev-parse --show-toplevel)
+PY=$(command -v python3 || command -v python)
+PROJECT_DIR=$("$PY" -c "import re,sys; print(re.sub(r'[^a-zA-Z0-9]','-',sys.argv[1]).lstrip('-'))" "$REPO")
+DEST="$HOME/.claude/projects/$PROJECT_DIR/memory"
+mkdir -p "$DEST"
+cp "$REPO/.claude/memory/"* "$DEST/"
+echo "[memory sync] Claude memory 已同步 → $DEST"

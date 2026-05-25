@@ -1,0 +1,6 @@
+fastapi==0.136.0
+uvicorn[standard]==0.30.0
+python-multipart==0.0.26
+structlog>=24.1.0
+# Backup DR Drill (#41) — Fernet AES-128-CBC for encrypted backups (E-4 唯一允許新 dep)
+cryptography>=43.0.0

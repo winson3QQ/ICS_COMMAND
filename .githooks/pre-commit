@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# pre-commit hook — 從 command-dashboard 目錄執行 ruff + detect-secrets
+# 因 core.hooksPath=.githooks, pre-commit install 無法直接使用, 改用手動包裝
+#
+# Fix (#41 PR #42 follow-up): 移除 「--from-ref HEAD --to-ref HEAD」 空 range bug.
+#   舊版邏輯: 第一個指令空 range → 0 files → 必 exit 0 → || fallback 永不觸發.
+#            結果: pre-commit 跑了但 「no files to check」, 實際沒檢查 staged Python 檔.
+#   新版: 用 pre-commit run (no --from-ref/--to-ref) 讓它自動檢測 staged files
+#         (透過 git diff --cached). exec 讓 hook exit code 直接傳遞給 git, 失敗會 block commit.
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+CMD_DIR="$REPO_ROOT/command-dashboard"
+
+if [ ! -f "$CMD_DIR/.pre-commit-config.yaml" ]; then
+    exit 0  # 無 config → no-op
+fi
+
+cd "$CMD_DIR" || exit 1
+
+# 跑對 staged files (git diff --cached) 的 hooks; exit code 直接傳給 git
+exec python3 -m pre_commit run

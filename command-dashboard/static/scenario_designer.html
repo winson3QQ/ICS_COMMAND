@@ -1,0 +1,991 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>ICS-DMAS 情境設計器</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&display=swap');
+:root {
+  --bg:#0d1117; --surface:#161b22; --surface2:#1c2333;
+  --border:#30363d; --green:#1a9e52; --yellow:#d49000; --red:#cc2a2a;
+  --text:#e6edf3; --text2:#8b949e; --text3:#6e7681;
+  --orange:#FF6600; --mono:'IBM Plex Mono',monospace;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:var(--mono);background:var(--bg);color:var(--text);overflow:hidden;height:100vh;}
+
+/* ── 登入 ── */
+#login-screen{position:fixed;inset:0;z-index:9999;background:var(--bg);display:flex;align-items:center;justify-content:center;}
+.login-box{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:32px;width:320px;text-align:center;}
+.login-box h2{margin-bottom:20px;font-size:16px;}
+.login-box input{display:block;width:100%;margin:8px 0;padding:10px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-family:var(--mono);font-size:14px;}
+.login-box button{width:100%;margin-top:12px;padding:10px;background:var(--green);border:none;border-radius:4px;color:#fff;font-family:var(--mono);font-size:14px;font-weight:600;cursor:pointer;}
+.login-box .err{color:var(--red);font-size:12px;margin-top:8px;min-height:16px;}
+
+/* ── 頂部 ── */
+#top-bar{height:48px;background:linear-gradient(180deg,#1a2332,#141c28);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 16px;gap:12px;}
+#top-bar .title{font-size:14px;font-weight:700;}
+#top-bar .version{font-size:11px;color:var(--text3);}
+#top-bar .spacer{flex:1;}
+#top-bar .user-info{font-size:12px;color:var(--text2);}
+#top-bar button{padding:4px 10px;background:transparent;border:1px solid var(--text3);border-radius:4px;color:var(--text3);font-family:var(--mono);font-size:11px;cursor:pointer;}
+
+/* ── 主體 ── */
+#main{display:flex;height:calc(100vh - 48px);}
+#left-panel{width:340px;min-width:240px;max-width:600px;border-right:1px solid var(--border);overflow-y:auto;padding:12px 16px;position:relative;}
+#resize-handle{position:absolute;top:0;right:-3px;width:6px;height:100%;cursor:col-resize;z-index:2;}
+#resize-handle:hover,#resize-handle.dragging{background:var(--orange);opacity:.5;}
+#left-panel::-webkit-scrollbar{width:5px;}
+#left-panel::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px;}
+#right-panel{flex:1;display:flex;flex-direction:column;overflow:hidden;}
+
+/* ── 區段標題 ── */
+.sec{margin-bottom:14px;}
+.sec-title{font-size:12px;font-weight:700;color:var(--text2);padding:5px 0;border-bottom:1px solid var(--border);margin-bottom:8px;cursor:pointer;user-select:none;display:flex;justify-content:space-between;align-items:center;}
+.sec-title:hover{color:var(--text);}
+.sec-title .arrow{font-size:10px;transition:transform .15s;}
+.sec-title .arrow.collapsed{transform:rotate(-90deg);}
+.sec-body.collapsed{display:none;}
+
+/* ── Preset ── */
+.preset-grid{display:grid;grid-template-columns:1fr 1fr;gap:5px;}
+.preset-btn{padding:7px 6px;background:var(--surface);border:1px solid var(--border);border-radius:4px;color:var(--text2);font-family:var(--mono);font-size:11px;cursor:pointer;text-align:left;line-height:1.3;}
+.preset-btn:hover{border-color:var(--text2);color:var(--text);}
+.preset-btn.active{border-color:var(--orange);color:var(--orange);font-weight:600;}
+
+/* ── 壓力等級 ── */
+.level-row{display:flex;align-items:center;gap:6px;margin-bottom:6px;}
+.level-row .unit-label{width:48px;font-size:11px;color:var(--text2);flex-shrink:0;}
+.level-btns{display:flex;gap:0;}
+.level-btns button{padding:3px 8px;border:1px solid var(--border);background:var(--surface);color:var(--text3);font-family:var(--mono);font-size:10px;cursor:pointer;transition:all .15s;}
+.level-btns button:first-child{border-radius:3px 0 0 3px;}
+.level-btns button:last-child{border-radius:0 3px 3px 0;}
+.level-btns button:not(:first-child){border-left:none;}
+.level-btns button.active{font-weight:700;}
+.level-btns button[data-lv="0"].active{background:#1a3a2a;color:var(--green);border-color:var(--green);}
+.level-btns button[data-lv="1"].active{background:#2a2a1a;color:var(--yellow);border-color:var(--yellow);}
+.level-btns button[data-lv="2"].active{background:#3a2a1a;color:var(--orange);border-color:var(--orange);}
+.level-btns button[data-lv="3"].active{background:#3a1a1a;color:var(--red);border-color:var(--red);}
+.level-row .level-hint{font-size:10px;color:var(--text3);flex:1;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+
+/* ── 敘事階段 ── */
+.phase-item{display:flex;align-items:center;gap:6px;margin-bottom:6px;padding:6px 8px;background:var(--surface);border:1px solid var(--border);border-radius:4px;font-size:11px;}
+.phase-item .phase-num{width:18px;font-weight:700;color:var(--text3);}
+.phase-item input[type=text]{flex:1;min-width:50px;background:var(--bg);border:1px solid var(--border);border-radius:3px;color:var(--text);font-family:var(--mono);font-size:11px;padding:3px 5px;}
+.phase-item input[type=number]{width:40px;background:var(--bg);border:1px solid var(--border);border-radius:3px;color:var(--text);font-family:var(--mono);font-size:11px;padding:3px;text-align:center;}
+.phase-item .unit-sm{color:var(--text3);font-size:10px;}
+.phase-item .del-btn{background:none;border:none;color:var(--text3);cursor:pointer;font-size:14px;padding:0 2px;}
+.phase-item .del-btn:hover{color:var(--red);}
+.add-phase-btn{width:100%;padding:5px;background:var(--bg);border:1px dashed var(--border);border-radius:4px;color:var(--text3);font-family:var(--mono);font-size:11px;cursor:pointer;text-align:center;}
+.add-phase-btn:hover{border-color:var(--text2);color:var(--text2);}
+
+/* ── 時間軸設定 ── */
+.setting-row{display:flex;align-items:center;gap:8px;margin-bottom:5px;font-size:11px;color:var(--text2);}
+.setting-row label{width:100px;flex-shrink:0;}
+.setting-row input[type=range]{flex:1;height:4px;-webkit-appearance:none;appearance:none;background:var(--border);border-radius:2px;}
+.setting-row input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:12px;height:12px;border-radius:50%;background:var(--green);cursor:pointer;}
+.setting-row .val{width:32px;text-align:right;color:var(--text);}
+
+/* ── 右側：圖表 + 時間軸 ── */
+/* ── Tab 切換 ── */
+#chart-tabs{display:flex;gap:0;flex-shrink:0;padding:0 4px;background:var(--bg);}
+.chart-tab{flex:1;padding:4px 0;text-align:center;font-size:10px;font-weight:600;color:var(--text3);
+  border:1px solid var(--border);background:var(--surface);cursor:pointer;font-family:var(--mono);}
+.chart-tab:first-child{border-radius:4px 0 0 0;}
+.chart-tab:last-child{border-radius:0 4px 0 0;}
+.chart-tab.active{background:var(--green);color:#fff;border-color:var(--green);}
+#charts-area{height:300px;min-height:220px;border-bottom:1px solid var(--border);display:flex;flex-direction:column;gap:4px;padding:4px;background:var(--bg);position:relative;z-index:1;flex-shrink:0;}
+.chart-group{display:none;flex-direction:column;gap:4px;flex:1;min-height:0;}
+.chart-group.active{display:flex;}
+.chart-box{position:relative;overflow:hidden;flex:1;min-height:0;display:flex;flex-direction:column;
+  background:var(--surface);border:1px solid var(--border);border-radius:5px;transition:background .3s,border-color .3s;}
+.chart-box.sev-green{border-color:var(--border);background:var(--surface);}
+.chart-box.sev-yellow{border-color:rgba(212,144,0,.5);background:rgba(212,144,0,.06);}
+.chart-box.sev-red{border-color:rgba(204,42,42,.5);background:rgba(204,42,42,.08);}
+.chart-box .chart-header{display:flex;align-items:center;justify-content:space-between;padding:3px 6px;flex-shrink:0;position:relative;z-index:1;}
+.chart-box .chart-label{font-size:9px;font-weight:600;color:var(--text3);}
+.chart-box .chart-value{font-size:10px;font-weight:700;color:var(--text);}
+.chart-box .status-dot{width:7px;height:7px;border-radius:50%;background:var(--green);flex-shrink:0;margin-left:4px;transition:background .3s;}
+.chart-box canvas{display:block;width:100%!important;height:100%!important;}
+.chart-box .chart-body{flex:1;min-height:0;padding:0 2px 1px;}
+
+#timeline-area{flex:1;overflow-y:auto;padding:8px 16px;}
+#timeline-area::-webkit-scrollbar{width:5px;}
+#timeline-area::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px;}
+
+/* ── 控制列 ── */
+#control-bar{min-height:56px;border-top:1px solid var(--border);padding:10px 16px;background:var(--surface);display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+.ctrl-btn{padding:5px 12px;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text);font-family:var(--mono);font-size:12px;font-weight:600;cursor:pointer;}
+.ctrl-btn:hover{background:var(--surface2);}
+.ctrl-btn.primary{background:var(--green);border-color:var(--green);color:#fff;}
+.ctrl-btn.warn{background:var(--orange);border-color:var(--orange);color:#fff;}
+.ctrl-btn.danger{background:var(--red);border-color:var(--red);color:#fff;}
+.ctrl-btn:disabled{opacity:.4;cursor:not-allowed;}
+#progress-wrap{flex:1;min-width:100px;max-width:260px;}
+#progress-bar{height:5px;background:var(--border);border-radius:3px;overflow:hidden;}
+#progress-fill{height:100%;width:0;background:var(--green);transition:width .3s;}
+#status-text{font-size:11px;color:var(--text2);margin-top:2px;}
+
+/* ── inject 卡片 ── */
+.inject-card{display:flex;gap:8px;padding:6px 8px;margin-bottom:4px;background:var(--surface);border:1px solid var(--border);border-radius:4px;font-size:11px;cursor:pointer;}
+.inject-card:hover{border-color:var(--text3);}
+.inject-card.event-card{border-left:3px solid var(--orange);}
+.inject-card.decision-card{border-left:3px solid var(--red);}
+.inject-card.injected{opacity:.45;}
+.inject-card .time-col{width:46px;flex-shrink:0;color:var(--text3);font-weight:600;}
+.inject-card .info-col{flex:1;min-width:0;}
+.inject-card .title-row{display:flex;gap:5px;align-items:center;}
+.inject-card .title-text{font-weight:600;color:var(--text);}
+.badge{padding:1px 5px;border-radius:3px;font-size:10px;font-weight:600;}
+.badge-shelter{background:#1a3a2a;color:var(--green);}
+.badge-medical{background:#3a2020;color:var(--red);}
+.badge-forward{background:#2a2a1a;color:var(--yellow);}
+.badge-security{background:#1a2a3a;color:#5599cc;}
+.inject-card .payload-preview{color:var(--text3);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.inject-card .payload-full{display:none;margin-top:4px;padding:4px;background:var(--bg);border-radius:3px;white-space:pre-wrap;word-break:break-all;font-size:10px;color:var(--text2);max-height:160px;overflow-y:auto;}
+.inject-card.expanded .payload-full{display:block;}
+.empty-state{text-align:center;color:var(--text3);padding:40px 20px;font-size:12px;}
+</style>
+</head>
+<body>
+
+<div id="login-screen">
+  <div class="login-box">
+    <h2>ICS-DMAS 情境設計器</h2>
+    <input id="login-user" placeholder="帳號" autocomplete="off">
+    <input id="login-pin" type="password" placeholder="PIN" maxlength="6" autocomplete="off">
+    <button onclick="doLogin()">登入</button>
+    <div class="err" id="login-err"></div>
+  </div>
+</div>
+
+<div id="top-bar">
+  <span class="title">情境設計器</span>
+  <span class="version" id="ver-label"></span>
+  <span class="spacer"></span>
+  <span class="user-info" id="user-info"></span>
+  <button onclick="doLogout()">登出</button>
+</div>
+
+<div id="main">
+  <div id="left-panel">
+    <div id="resize-handle"></div>
+    <!-- 1. Preset -->
+    <div class="sec">
+      <div class="sec-title" onclick="toggleSec(this)">敘事主軸 <span class="arrow">&#9660;</span></div>
+      <div class="sec-body" id="preset-grid"></div>
+    </div>
+    <!-- 2. 壓力等級 -->
+    <div class="sec">
+      <div class="sec-title" onclick="toggleSec(this)">各組壓力等級 <span class="arrow">&#9660;</span></div>
+      <div class="sec-body" id="levels-body"></div>
+    </div>
+    <!-- 3. 敘事階段 -->
+    <div class="sec">
+      <div class="sec-title" onclick="toggleSec(this)">敘事階段 <span class="arrow">&#9660;</span></div>
+      <div class="sec-body" id="phases-body"></div>
+    </div>
+    <!-- 4. 時間軸設定 -->
+    <div class="sec">
+      <div class="sec-title" onclick="toggleSec(this)">時間軸設定 <span class="arrow">&#9660;</span></div>
+      <div class="sec-body" id="timeline-settings"></div>
+    </div>
+  </div>
+
+  <div id="right-panel">
+    <div id="chart-tabs">
+      <button class="chart-tab active" onclick="switchChartTab('situational')">態勢</button>
+      <button class="chart-tab" onclick="switchChartTab('resource')">資源</button>
+    </div>
+    <div id="charts-area">
+      <div class="chart-group active" id="cg-situational">
+        <div class="chart-box">
+          <div class="chart-header"><span class="chart-label">量能</span><span class="chart-value" id="cv-cap"></span><span class="status-dot"></span></div>
+          <div class="chart-body"><canvas id="ch-cap"></canvas></div>
+        </div>
+        <div class="chart-box">
+          <div class="chart-header"><span class="chart-label">傷患流向</span><span class="chart-value" id="cv-flow"></span><span class="status-dot"></span></div>
+          <div class="chart-body"><canvas id="ch-flow"></canvas></div>
+        </div>
+        <div class="chart-box">
+          <div class="chart-header"><span class="chart-label">事件</span><span class="chart-value" id="cv-evt"></span><span class="status-dot"></span></div>
+          <div class="chart-body"><canvas id="ch-evt"></canvas></div>
+        </div>
+      </div>
+      <div class="chart-group" id="cg-resource">
+        <div class="chart-box">
+          <div class="chart-header"><span class="chart-label">物資</span><span class="chart-value" id="cv-res"></span><span class="status-dot"></span></div>
+          <div class="chart-body"><canvas id="ch-res"></canvas></div>
+        </div>
+        <div class="chart-box">
+          <div class="chart-header"><span class="chart-label">人力</span><span class="chart-value" id="cv-staff"></span><span class="status-dot"></span></div>
+          <div class="chart-body"><canvas id="ch-staff"></canvas></div>
+        </div>
+      </div>
+    </div>
+    <div id="timeline-area"><div class="empty-state">選擇 Preset 後按「預覽」</div></div>
+    <div id="control-bar">
+      <button class="ctrl-btn primary" id="btn-preview" onclick="doPreview()">預覽</button>
+      <button class="ctrl-btn warn" id="btn-inject" onclick="doInject()" disabled>注入</button>
+      <button class="ctrl-btn" id="btn-pause" onclick="doPause()" disabled>暫停</button>
+      <button class="ctrl-btn danger" id="btn-end" onclick="doEnd()" disabled>結束</button>
+      <button class="ctrl-btn" id="btn-reset" onclick="doResetExercise()" style="margin-left:auto;border-color:var(--red);color:var(--red)">清除演練</button>
+      <div id="progress-wrap">
+        <div id="progress-bar"><div id="progress-fill"></div></div>
+        <div id="status-text">就緒</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="chart_utils.js"></script>
+<script>
+/* ===================================================================
+   ICS-DMAS 情境設計器 v0.9.9
+   壓力等級 + 敘事階段 + 預覽圖表 + TTX API live 注入
+   =================================================================== */
+const API_BASE = location.origin;
+const DESIGNER_VERSION = 'v0.9.9';
+const el = id => document.getElementById(id);
+function clamp(v,lo,hi){return Math.max(lo,Math.min(hi,v));}
+function lerp(a,b,t){return a+(b-a)*t;}
+function noise(m){return (Math.random()-.5)*2*m;}
+
+// ── 拖曳調整面板寬度 ──
+(function(){
+  const handle = document.getElementById('resize-handle');
+  const panel = document.getElementById('left-panel');
+  if (!handle || !panel) return;
+  let dragging = false;
+  handle.addEventListener('mousedown', e => { dragging = true; handle.classList.add('dragging'); e.preventDefault(); });
+  document.addEventListener('mousemove', e => {
+    if (!dragging) return;
+    const w = clamp(e.clientX, 240, 600);
+    panel.style.width = w + 'px';
+  });
+  document.addEventListener('mouseup', () => {
+    if (!dragging) return;
+    dragging = false; handle.classList.remove('dragging');
+    // 重繪圖表以適應新寬度
+    if (_chartData.shelter_bed?.length) renderCharts();
+  });
+})();
+
+// ── 認證 ──
+async function authFetch(url,opts={}){
+  const t=sessionStorage.getItem('sd_session_id');
+  if(t) opts.headers=Object.assign({},opts.headers||{},{'X-Session-Token':t});
+  const r=await fetch(url,opts);
+  if(r.status===401){sessionStorage.removeItem('sd_session_id');el('login-screen').style.display='';} return r;
+}
+async function doLogin(){
+  const u=el('login-user').value.trim(), p=el('login-pin').value.trim();
+  el('login-err').textContent='';
+  if(!u||!p){el('login-err').textContent='請輸入帳號和 PIN';return;}
+  try{
+    const r=await fetch(API_BASE+'/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u,pin:p})});
+    if(!r.ok){el('login-err').textContent='登入失敗';return;}
+    const d=await r.json();
+    sessionStorage.setItem('sd_session_id',d.session_id);
+    sessionStorage.setItem('sd_username',d.display_name||d.username);
+    el('login-screen').style.display='none';
+    el('user-info').textContent=sessionStorage.getItem('sd_username');
+  }catch(e){el('login-err').textContent='連線失敗';}
+}
+async function doLogout(){
+  try{await authFetch(API_BASE+'/api/auth/logout',{method:'POST'});}catch(e){}
+  sessionStorage.removeItem('sd_session_id');sessionStorage.removeItem('sd_username');
+  el('login-screen').style.display='';
+}
+
+// ===================================================================
+// 壓力等級定義（對齊 Dashboard 告警門檻 + AAR 數據）
+// ===================================================================
+// 門檻來源：ESC-CAP 80%、IV 警戒 20%、staff_ratio 10
+// AAR 數據：第一場 bed 30→46/50、第三場 IV 40%→12%
+const LEVEL_NAMES = ['低','中','高','極端'];
+const LEVEL_COLORS = ['var(--green)','var(--yellow)','var(--orange)','var(--red)'];
+
+const PRESSURE = {
+  shelter: [
+    {bed:[20,38], srt_red:0, pending:0, staff:8, blanket_pct:90, water_pct:90, hint:'穩定運作'},
+    {bed:[38,60], srt_red:3, pending:2, staff:6, blanket_pct:70, water_pct:70, hint:'人員開始緊繃'},
+    {bed:[60,82], srt_red:6, pending:4, staff:5, blanket_pct:45, water_pct:45, hint:'接近 ESC-CAP 80%'},
+    {bed:[82,98], srt_red:12,pending:8, staff:3, blanket_pct:15, water_pct:12, hint:'超載 + 物資耗盡'},
+  ],
+  medical: [
+    {red:[0,1],  iv_pct:92, o2_pct:90, evac:0, staff:4, hint:'日常量能'},
+    {red:[1,3],  iv_pct:65, o2_pct:70, evac:1, staff:4, hint:'黃傷增加'},
+    {red:[3,6],  iv_pct:35, o2_pct:40, evac:2, staff:3, hint:'IV 接近警戒 20%'},
+    {red:[6,12], iv_pct:10, o2_pct:15, evac:3, staff:3, hint:'大量傷患 + 物資耗盡'},
+  ],
+  forward: [
+    {cas:0, hazard:'none',       vehicle:0, hint:'無威脅'},
+    {cas:2, hazard:'none',       vehicle:0, hint:'零星傷亡'},
+    {cas:4, hazard:'structural', vehicle:1, hint:'結構危險'},
+    {cas:8, hazard:'chemical',   vehicle:2, hint:'化學/火災 + 大量傷亡'},
+  ],
+  security: [
+    {anomaly:0, isolation:0, qrf:3, hint:'正常警戒'},
+    {anomaly:1, isolation:1, qrf:2, hint:'零星異常'},
+    {anomaly:2, isolation:3, qrf:1, hint:'多哨異常'},
+    {anomaly:4, isolation:6, qrf:0, hint:'全面警戒'},
+  ],
+};
+const UNIT_LABELS = {shelter:'收容',medical:'醫療',forward:'前進',security:'安全'};
+
+// ===================================================================
+// Preset 定義（用壓力等級 + 敘事階段）
+// ===================================================================
+const PRESETS = {
+  shelter_pressure: {
+    name:'收容壓力', icon:'\u{1F3E0}', desc:'床位逼近滿載，其他穩定',
+    phases:[{name:'建立',min:10,levels:{shelter:0,medical:0,forward:0,security:0}},
+            {name:'湧入',min:15,levels:{shelter:2,medical:0,forward:0,security:0}},
+            {name:'滿載',min:15,levels:{shelter:3,medical:1,forward:0,security:0}}]
+  },
+  medical_emergency: {
+    name:'醫療緊急', icon:'\u{1F3E5}', desc:'紅傷湧入 + IV 耗盡',
+    phases:[{name:'建立',min:8,levels:{shelter:0,medical:0,forward:0,security:0}},
+            {name:'傷患湧入',min:12,levels:{shelter:1,medical:2,forward:1,security:0}},
+            {name:'物資危機',min:15,levels:{shelter:1,medical:3,forward:2,security:0}}]
+  },
+  comm_gap: {
+    name:'通訊中斷', icon:'\u{1F4E1}', desc:'前進組斷線，收容壓力微升',
+    phases:[{name:'正常',min:10,levels:{shelter:0,medical:0,forward:0,security:0}},
+            {name:'斷線',min:10,levels:{shelter:1,medical:0,forward:0,security:1}},
+            {name:'恢復',min:10,levels:{shelter:1,medical:0,forward:0,security:0}}]
+  },
+  compound: {
+    name:'複合壓力', icon:'\u{26A0}\u{FE0F}', desc:'多組同時受壓',
+    phases:[{name:'建立',min:8,levels:{shelter:0,medical:0,forward:0,security:0}},
+            {name:'同時受壓',min:15,levels:{shelter:2,medical:2,forward:2,security:1}},
+            {name:'全面告警',min:17,levels:{shelter:3,medical:3,forward:3,security:2}}]
+  },
+  pressure_relief: {
+    name:'壓力緩解', icon:'\u{1F4C9}', desc:'從高峰逐步下降',
+    phases:[{name:'高峰',min:5,levels:{shelter:3,medical:3,forward:2,security:2}},
+            {name:'緩解',min:15,levels:{shelter:2,medical:1,forward:1,security:1}},
+            {name:'穩定',min:15,levels:{shelter:0,medical:0,forward:0,security:0}}]
+  },
+  multi_infiltration: {
+    name:'五縱多點滲透', icon:'\u{1F3AF}', desc:'多地點事件（AAR 第一場）',
+    phases:[{name:'部署',min:10,levels:{shelter:1,medical:0,forward:0,security:0}},
+            {name:'多點觸發',min:15,levels:{shelter:2,medical:1,forward:1,security:2}},
+            {name:'追蹤處置',min:15,levels:{shelter:2,medical:1,forward:0,security:3}}]
+  },
+  command_disruption: {
+    name:'指揮中斷', icon:'\u{1F52B}', desc:'指揮官倒底 + 接場（AAR 第二場）',
+    phases:[{name:'正常',min:5,levels:{shelter:0,medical:0,forward:0,security:0}},
+            {name:'指揮中斷',min:10,levels:{shelter:1,medical:1,forward:1,security:1}},
+            {name:'接場恢復',min:15,levels:{shelter:1,medical:1,forward:0,security:0}}]
+  },
+  narrative_arc: {
+    name:'主線敘事弧', icon:'\u{1F3F4}', desc:'VIP 被俘→救回（AAR 第三場）',
+    phases:[{name:'初期傷患',min:10,levels:{shelter:0,medical:1,forward:1,security:0}},
+            {name:'VIP 被俘',min:15,levels:{shelter:1,medical:2,forward:2,security:2}},
+            {name:'救援交戰',min:15,levels:{shelter:2,medical:3,forward:3,security:3}},
+            {name:'撤離收尾',min:10,levels:{shelter:1,medical:1,forward:0,security:1}}]
+  },
+  medical_delay: {
+    name:'P1 醫療延遲', icon:'\u{1F4CB}', desc:'傷患事件不推播，驗證提醒機制',
+    phases:[{name:'穩定',min:10,levels:{shelter:0,medical:0,forward:0,security:0}},
+            {name:'傷患產生',min:10,levels:{shelter:0,medical:2,forward:1,security:0}},
+            {name:'延遲惡化',min:10,levels:{shelter:0,medical:3,forward:1,security:0}}]
+  },
+  custom: {
+    name:'自訂', icon:'\u{1F527}', desc:'全手動',
+    phases:[{name:'階段一',min:15,levels:{shelter:0,medical:0,forward:0,security:0}},
+            {name:'階段二',min:15,levels:{shelter:1,medical:1,forward:0,security:0}}]
+  },
+};
+
+// ===================================================================
+// 狀態
+// ===================================================================
+let _activePreset = null;
+let _phases = [];          // [{name, min, levels:{shelter:0-3,...}}]
+let _unitLevels = {shelter:0,medical:0,forward:0,security:0}; // 全域壓力等級
+let _timeSettings = {inject_interval_min:5, realtime_compress_sec:5};
+let _generatedInjects = [];
+let _chartData = {};       // {shelter_bed:[], med_bed:[], src_a:[], src_b:[], src_c:[], incOpen:[], incHigh:[], incMed:[], incLow:[], ivPct:[], o2Pct:[], tqPct:[], opsS:[], opsM:[]}
+let _ttxSessionId = null;
+let _injectTimer = null;
+let _injectIndex = 0;
+let _injectedIds = [];
+
+// ===================================================================
+// UI 初始化
+// ===================================================================
+function initUI() {
+  // Preset 按鈕
+  const grid = el('preset-grid');
+  grid.classList.add('preset-grid');
+  for (const [key,p] of Object.entries(PRESETS)) {
+    const b = document.createElement('button');
+    b.className = 'preset-btn'; b.dataset.key = key;
+    b.innerHTML = `${p.icon} ${p.name}`;
+    b.title = p.desc;
+    b.onclick = () => selectPreset(key);
+    grid.appendChild(b);
+  }
+
+  // 壓力等級選擇器
+  const lb = el('levels-body');
+  for (const unit of ['shelter','medical','forward','security']) {
+    const row = document.createElement('div');
+    row.className = 'level-row';
+    row.innerHTML = `<span class="unit-label">${UNIT_LABELS[unit]}</span>
+      <div class="level-btns" id="lb-${unit}">
+        ${LEVEL_NAMES.map((n,i) => `<button data-lv="${i}" data-unit="${unit}" onclick="setLevel('${unit}',${i})">${n}</button>`).join('')}
+      </div>
+      <span class="level-hint" id="lh-${unit}"></span>`;
+    lb.appendChild(row);
+  }
+
+  // 時間軸設定
+  const ts = el('timeline-settings');
+  ts.innerHTML = `
+    <div class="setting-row"><label>注入間隔</label>
+      <input type="range" min="1" max="10" value="5" oninput="_timeSettings.inject_interval_min=+this.value;el('tv-interval').textContent=this.value">
+      <span class="val" id="tv-interval">5</span><span style="color:var(--text3);font-size:10px">min</span></div>
+    <div class="setting-row"><label>即時壓縮</label>
+      <input type="range" min="1" max="30" value="5" oninput="_timeSettings.realtime_compress_sec=+this.value;el('tv-compress').textContent=this.value">
+      <span class="val" id="tv-compress">5</span><span style="color:var(--text3);font-size:10px">sec</span></div>`;
+
+  selectPreset('shelter_pressure');
+}
+
+function toggleSec(titleEl) {
+  const body = titleEl.nextElementSibling;
+  const arrow = titleEl.querySelector('.arrow');
+  if (body) body.classList.toggle('collapsed');
+  if (arrow) arrow.classList.toggle('collapsed');
+}
+
+// ── Preset ──
+function selectPreset(key) {
+  _activePreset = key;
+  document.querySelectorAll('.preset-btn').forEach(b => b.classList.toggle('active', b.dataset.key===key));
+  const p = PRESETS[key];
+  if (!p) return;
+  _phases = p.phases.map(ph => ({...ph, levels:{...ph.levels}}));
+  // 全域壓力等級取最後階段的值
+  const last = _phases[_phases.length-1];
+  for (const u of ['shelter','medical','forward','security']) setLevel(u, last.levels[u], true);
+  renderPhases();
+  autoPreview();
+}
+
+// ── 壓力等級 ──
+function setLevel(unit, lv, silent) {
+  _unitLevels[unit] = lv;
+  const btns = el('lb-'+unit)?.querySelectorAll('button');
+  btns?.forEach(b => b.classList.toggle('active', +b.dataset.lv === lv));
+  const hint = PRESSURE[unit][lv]?.hint || '';
+  const hintEl = el('lh-'+unit);
+  if (hintEl) hintEl.textContent = hint;
+  if (!silent) autoPreview();
+}
+
+// ── 敘事階段 ──
+function renderPhases() {
+  const body = el('phases-body');
+  body.innerHTML = '';
+  _phases.forEach((ph, i) => {
+    const div = document.createElement('div');
+    div.className = 'phase-item';
+    // 壓力等級指示條
+    const dots = ['shelter','medical','forward','security'].map(u => {
+      const lv = ph.levels[u];
+      return `<span style="color:${LEVEL_COLORS[lv]}" title="${UNIT_LABELS[u]}:${LEVEL_NAMES[lv]}">\u25CF</span>`;
+    }).join('');
+    div.innerHTML = `<span class="phase-num">${i+1}</span>
+      <input type="text" value="${ph.name}" onchange="_phases[${i}].name=this.value">
+      <input type="number" value="${ph.min}" min="1" max="60" onchange="_phases[${i}].min=+this.value;autoPreview()">
+      <span class="unit-sm">min</span>
+      <span style="display:flex;gap:2px;font-size:12px">${dots}</span>
+      ${_phases.length > 1 ? `<button class="del-btn" onclick="delPhase(${i})">x</button>` : ''}`;
+    body.appendChild(div);
+  });
+  // 新增按鈕
+  const addBtn = document.createElement('button');
+  addBtn.className = 'add-phase-btn';
+  addBtn.textContent = '+ 新增階段';
+  addBtn.onclick = addPhase;
+  body.appendChild(addBtn);
+}
+
+function addPhase() {
+  _phases.push({name:`階段${_phases.length+1}`, min:10, levels:{..._unitLevels}});
+  renderPhases();
+  autoPreview();
+}
+
+function delPhase(i) {
+  if (_phases.length <= 1) return;
+  _phases.splice(i, 1);
+  renderPhases();
+  autoPreview();
+}
+
+function autoPreview() {
+  // 自動預覽（選 preset 或改壓力等級後即時更新圖表）
+  _generatedInjects = generateInjects();
+  renderCharts();
+  renderTimeline(_generatedInjects);
+  el('btn-inject').disabled = false;
+  setStatus(`已生成 ${_generatedInjects.length} 筆`);
+}
+
+// ===================================================================
+// 生成 Injects（基於壓力等級 + 敘事階段）
+// ===================================================================
+function generateInjects() {
+  const interval = _timeSettings.inject_interval_min || 5;
+  const totalMin = _phases.reduce((s,p) => s + p.min, 0);
+  const steps = Math.floor(totalMin / interval) + 1;
+  const baseTime = new Date('2026-04-15T08:00:00Z');
+  const bedTotal = 50, medBedTotal = 30;
+  const injects = [];
+  let seq = 0;
+  const firedTh = {};
+
+  // 預計算每步的壓力等級（根據階段插值）
+  _chartData = {shelter_bed:[], med_bed:[], src_a:[], src_b:[], src_c:[], incOpen:[], incHigh:[], incMed:[], incLow:[], ivPct:[], o2Pct:[], tqPct:[], opsS:[], opsM:[]};
+
+  for (let step = 0; step < steps; step++) {
+    const t_min = step * interval;
+    const tISO = new Date(baseTime.getTime() + t_min * 60000).toISOString().replace(/\.\d{3}Z$/,'Z');
+
+    // 找當前所在階段和階段內進度
+    let elapsed = 0, phaseIdx = 0, phaseProgress = 0;
+    for (let p = 0; p < _phases.length; p++) {
+      if (t_min < elapsed + _phases[p].min) {
+        phaseIdx = p;
+        phaseProgress = (t_min - elapsed) / _phases[p].min;
+        break;
+      }
+      elapsed += _phases[p].min;
+      if (p === _phases.length - 1) { phaseIdx = p; phaseProgress = 1; }
+    }
+
+    // 當前和目標壓力（在當前階段和下一階段間插值）
+    const curPhase = _phases[phaseIdx];
+    const nextPhase = _phases[Math.min(phaseIdx + 1, _phases.length - 1)];
+
+    // ── 收容組 ──
+    const sLv = curPhase.levels.shelter;
+    const sNext = nextPhase.levels.shelter;
+    const sP = PRESSURE.shelter[sLv], sPN = PRESSURE.shelter[sNext];
+    const bedPct = lerp(lerp(sP.bed[0],sP.bed[1],phaseProgress), lerp(sPN.bed[0],sPN.bed[1],0), phaseIdx < _phases.length-1 ? phaseProgress * 0.3 : 0) + noise(1.5);
+    const bedUsed = clamp(Math.round(bedPct/100*bedTotal), 0, bedTotal);
+    const staffNow = Math.max(1, Math.round(lerp(sP.staff, sPN.staff, phaseIdx<_phases.length-1?phaseProgress*0.3:0)));
+    const srtRed = clamp(Math.round(bedUsed * lerp(sP.srt_red,sPN.srt_red,phaseProgress*0.3)/100), 0, bedUsed);
+    const srtYellow = clamp(Math.round(bedUsed * 0.15 + noise(0.5)), 0, bedUsed-srtRed);
+    const srtGreen = Math.max(0, bedUsed - srtRed - srtYellow);
+    const blanketPct = lerp(sP.blanket_pct, sPN.blanket_pct, phaseProgress*0.3);
+    const blanketNow = clamp(Math.round(200 * blanketPct/100 + noise(2)), 0, 200);
+    const waterPct = lerp(sP.water_pct, sPN.water_pct, phaseProgress*0.3);
+    const waterNow = clamp(Math.round(500 * waterPct/100 + noise(3)), 0, 500);
+    const pendingNow = clamp(Math.round(lerp(sP.pending,sPN.pending,phaseProgress*0.3) + noise(0.5)), 0, 30);
+    const staffRatio = staffNow > 0 ? +(bedUsed/staffNow).toFixed(1) : 99;
+
+    // ── 收容 payload（單一來源）──
+    const shelterPayload = {
+      v:3, type:'shelter', snapshot_id:`ttx-gen-s-${String(seq+1).padStart(4,'0')}`,
+      t:tISO, src:'scenario-designer', source:'auto',
+      bed_used:bedUsed, bed_total:bedTotal, staff_on_duty:staffNow,
+      srt:{red:srtRed,yellow:srtYellow,green:srtGreen}, pending_intake:pendingNow,
+      extra:{staff_ratio:staffRatio, exited_total:0,
+        supplies:{blanket:blanketNow,water_bottle:waterNow},
+        supplies_max:{blanket:200,water_bottle:500},
+        incident_pressure:{high:srtRed>0?1:0,medium:srtYellow>1?1:0,low:0,open_total:srtRed+(srtYellow>1?1:0),resolved_30min:0}}
+    };
+    seq++;
+    injects.push({seq, offset_min:t_min, target_unit:'shelter', type:'snapshot',
+      title:`收容站 T+${t_min} — ${bedUsed}/${bedTotal}`, payload:shelterPayload});
+    // 圖表從 payload 提取
+    _chartData.shelter_bed.push(Math.round(shelterPayload.bed_used / shelterPayload.bed_total * 100));
+
+    // ── 醫療組 ──
+    const mLv = curPhase.levels.medical;
+    const mNext = nextPhase.levels.medical;
+    const mP = PRESSURE.medical[mLv], mPN = PRESSURE.medical[mNext];
+    const redNow = clamp(Math.round(lerp(lerp(mP.red[0],mP.red[1],phaseProgress), lerp(mPN.red[0],mPN.red[1],0), phaseIdx<_phases.length-1?phaseProgress*0.3:0) + noise(0.3)), 0, 15);
+    const yellowNow = clamp(Math.round(redNow * 1.2 + noise(0.5)), 0, 20);
+    const greenNow = clamp(Math.round(redNow * 0.8 + noise(0.5)), 0, 30);
+    const blackNow = mLv >= 3 ? clamp(Math.round(redNow * 0.15), 0, 5) : 0;
+    const medBedUsed = clamp(redNow+yellowNow+greenNow, 0, medBedTotal);
+    const ivNow = clamp(Math.round(lerp(mP.iv_pct, mPN.iv_pct, phaseProgress*0.3) + noise(1)), 0, 100);
+    const o2Now = clamp(Math.round(lerp(mP.o2_pct, mPN.o2_pct, phaseProgress*0.3) + noise(1)), 0, 100);
+    const tqNow = clamp(Math.round(100 - mLv * 15 + noise(1)), 0, 100);
+    const evacRate = Math.round(lerp(mP.evac, mPN.evac, phaseProgress*0.3));
+    const pendEvac = clamp(evacRate + Math.round(noise(0.5)), 0, 10);
+    const medStaff = Math.max(1, Math.round(lerp(mP.staff, mPN.staff, phaseProgress*0.3)));
+    // 傷患來源：算一次，payload 和圖表共用
+    // 傷患來源：從 bed_used 按比例分配，確保 srcA+srcB+srcC = medBedUsed
+    const srcA = Math.round(medBedUsed * 0.40);   // 前進→醫 40%
+    const srcB = Math.round(medBedUsed * 0.35);   // 收容→醫 35%
+    const srcC = medBedUsed - srcA - srcB;         // 自行抵達 = 剩餘（確保總和一致）
+    const medStaffRatio = medStaff>0 ? +((redNow+yellowNow+greenNow)/medStaff).toFixed(1) : 99;
+    const medIncPressure = {high:redNow>2?1:0, medium:yellowNow>3?1:0, low:0, open_total:(redNow>2?1:0)+(yellowNow>3?1:0), resolved_30min:0};
+
+    // ── 醫療 payload（單一來源）──
+    const medPayload = {
+      v:3, type:'medical', snapshot_id:`ttx-gen-m-${String(seq+1).padStart(4,'0')}`,
+      t:tISO, src:'scenario-designer', source:'auto',
+      bed_used:medBedUsed, bed_total:medBedTotal, staff_on_duty:medStaff,
+      casualties:{red:redNow,yellow:yellowNow,green:greenNow,black:blackNow},
+      pending_evac:pendEvac, evacuated_total:clamp(evacRate*step,0,50),
+      extra:{src_a:srcA, src_b:srcB, src_c:srcC, staff_ratio:medStaffRatio,
+        supplies:{iv:ivNow,oxygen:o2Now,tourniquet:tqNow}, supplies_max:{iv:100,oxygen:100,tourniquet:100},
+        incident_pressure:medIncPressure}
+    };
+    seq++;
+    injects.push({seq, offset_min:t_min, target_unit:'medical', type:'snapshot',
+      title:`醫療站 T+${t_min} — R${redNow} Y${yellowNow} G${greenNow}`, payload:medPayload});
+    // 圖表從 payload 提取
+    _chartData.med_bed.push(Math.round(medPayload.bed_used / medPayload.bed_total * 100));
+    _chartData.src_a.push(medPayload.extra.src_a);
+    _chartData.src_b.push(medPayload.extra.src_b);
+    _chartData.src_c.push(medPayload.extra.src_c);
+    // 資源 tab 數據（從 payload 提取）
+    _chartData.ivPct.push(medPayload.extra.supplies.iv);
+    _chartData.o2Pct.push(medPayload.extra.supplies.oxygen);
+    _chartData.tqPct.push(medPayload.extra.supplies.tourniquet);
+    _chartData.opsS.push(shelterPayload.extra.staff_ratio);
+    _chartData.opsM.push(medPayload.extra.staff_ratio);
+
+    // ── 前進組 ──
+    const fLv = curPhase.levels.forward;
+    const fP = PRESSURE.forward[fLv];
+    const fCas = clamp(Math.round(fP.cas * phaseProgress + noise(0.3)), 0, 15);
+    seq++;
+    injects.push({
+      seq, offset_min: t_min, target_unit: 'forward', type: 'snapshot',
+      title: `前進組 T+${t_min}`,
+      payload: {
+        v:3, type:'forward', snapshot_id:`ttx-gen-f-${String(seq).padStart(4,'0')}`,
+        t:tISO, src:'scenario-designer', source:'auto',
+        extra:{units:[
+          {unit:'Alpha',casualties:{red:clamp(Math.round(fCas*0.4),0,10),yellow:clamp(Math.round(fCas*0.3),0,5),green:clamp(Math.round(fCas*0.3),0,5),black:0},ccp_status:'active',vehicle_needed:fP.vehicle,hazard:fP.hazard,last_update:tISO},
+          {unit:'Bravo',casualties:{red:clamp(Math.round(fCas*0.2),0,5),yellow:clamp(Math.round(fCas*0.2),0,3),green:clamp(Math.round(fCas*0.1),0,3),black:0},ccp_status:'active',vehicle_needed:0,hazard:'none',last_update:tISO}
+        ]}
+      }
+    });
+
+    // ── 安全組 ──
+    const xLv = curPhase.levels.security;
+    const xP = PRESSURE.security[xLv];
+    const isoNow = clamp(Math.round(xP.isolation + noise(0.5)), 0, 20);
+    // 事件：從 payload 的 incident_pressure 提取（與 Dashboard getSeries 一致）
+    const sIP = shelterPayload.extra.incident_pressure;
+    const mIP = medPayload.extra.incident_pressure;
+    const incH = (sIP.high||0) + (mIP.high||0);
+    const incM = (sIP.medium||0) + (mIP.medium||0);
+    const incL = (sIP.low||0) + (mIP.low||0);
+    const incOpen = (sIP.open_total||0) + (mIP.open_total||0);
+    _chartData.incHigh.push(incH);
+    _chartData.incMed.push(incM);
+    _chartData.incLow.push(incL);
+    _chartData.incOpen.push(incOpen);
+    seq++;
+    injects.push({
+      seq, offset_min: t_min, target_unit: 'security', type: 'snapshot',
+      title: `安全組 T+${t_min}`,
+      payload: {
+        v:3, type:'security', snapshot_id:`ttx-gen-x-${String(seq).padStart(4,'0')}`,
+        t:tISO, src:'scenario-designer', source:'auto',
+        post_total:4, qrf_available:xP.qrf, isolation_count:isoNow,
+        extra:{post_total:4,post_anomaly:xP.anomaly>0?`${xP.anomaly} 哨異常`:'',qrf_available:xP.qrf,isolation_count:isoNow}
+      }
+    });
+
+    // ── 門檻事件 ──
+    const bedPctNow = bedUsed/bedTotal*100;
+    if (!firedTh.cap && bedPctNow >= 80) {
+      firedTh.cap = true; seq++;
+      injects.push({seq,offset_min:t_min,target_unit:'shelter',type:'event',
+        title:`容量警告 — ${bedUsed}/${bedTotal}（${Math.round(bedPctNow)}%）`,
+        payload:{reported_by_unit:'shelter',event_type:'容量警告',severity:'warning',description:`床位使用率 ${Math.round(bedPctNow)}%`,operator_name:'scenario-designer',occurred_at:tISO}});
+    }
+    if (!firedTh.iv && ivNow < 20) {
+      firedTh.iv = true; seq++;
+      injects.push({seq,offset_min:t_min,target_unit:'medical',type:'event',
+        title:`IV 危急 — ${ivNow}%`,
+        payload:{reported_by_unit:'medical',event_type:'物資危急',severity:'critical',description:`IV 輸液 ${ivNow}%`,operator_name:'scenario-designer',needs_commander_decision:true,occurred_at:tISO}});
+    }
+    if (!firedTh.staff && staffRatio >= 10) {
+      firedTh.staff = true; seq++;
+      injects.push({seq,offset_min:t_min,target_unit:'shelter',type:'event',
+        title:`人員不足 — ${staffRatio}:1`,
+        payload:{reported_by_unit:'shelter',event_type:'人員不足',severity:'warning',description:`收容比 ${staffRatio}:1`,operator_name:'scenario-designer',occurred_at:tISO}});
+    }
+    if (!firedTh.dec && (ivNow < 25 || bedPctNow > 88)) {
+      firedTh.dec = true; seq++;
+      const isIV = ivNow < 25;
+      injects.push({seq,offset_min:t_min,target_unit:'command',type:'decision',
+        title:isIV?'待裁示：IV 補給':'待裁示：備用收容點',
+        payload:{decision_type:'initial',severity:'critical',
+          decision_title:isIV?'IV 輸液補給方案':'啟動備用收容點',
+          impact_description:isIV?`IV ${ivNow}%`:`床位 ${Math.round(bedPctNow)}%`,
+          suggested_action_a:isIV?'緊急調撥 IV':'啟動 B 站',
+          suggested_action_b:isIV?'減少非急迫使用':'疏散至外部',
+          created_by:'scenario-designer'}});
+    }
+  }
+  return injects;
+}
+
+// ===================================================================
+// 預覽圖表（Canvas sparkline）
+// ===================================================================
+function renderCharts() {
+  const d = _chartData;
+  const N = d.shelter_bed.length;
+  if (!N) return;
+
+  // ① 量能（與 Dashboard sc1 完全相同參數）
+  const sLast = d.shelter_bed[N-1] || 0;
+  const mLast = d.med_bed[N-1] || 0;
+  el('cv-cap').innerHTML = `<span style="color:#E67E22">收${sLast}%</span> <span style="color:#C0392B">醫${mLast}%</span>`;
+  drawSparkline('ch-cap', [
+    {data:d.shelter_bed, color:'#E67E22', w:1.5, fill:true, fillColor:'rgba(230,126,34,.15)', unit:'%'},
+    {data:d.med_bed,     color:'#C0392B', w:1.5, fill:true, fillColor:'rgba(192,57,43,.12)', unit:'%'},
+  ], {yMin:0, yMax:100, thresholds:[
+    {value:70, color:'rgba(212,144,0,.4)', label:'70%'},
+    {value:90, color:'rgba(204,42,42,.4)', label:'90%'}
+  ]}, N, false);
+
+  // ② 傷患流向（與 Dashboard sc2 完全相同參數）
+  const sa=d.src_a[N-1]||0, sb=d.src_b[N-1]||0, sc=d.src_c[N-1]||0;
+  const srcTotal = sa+sb+sc;
+  const flowText = srcTotal > 0
+    ? `${srcTotal}人` + (sa?` <span style="color:#E74C3C">前${sa}</span>`:'')
+                      + (sb?` <span style="color:#F0883E">收${sb}</span>`:'')
+                      + (sc?` <span style="color:#2E7D32">自${sc}</span>`:'')
+    : '無傷患流入';
+  el('cv-flow').innerHTML = flowText;
+  const srcMax = Math.max(...d.src_a.map((a,i)=>a+(d.src_b[i]||0)+(d.src_c[i]||0)), 5);
+  drawSparkline('ch-flow', [
+    {data:d.src_a, color:'#E74C3C', w:1.5, unit:'人'},
+    {data:d.src_b, color:'#F0883E', w:1.5, unit:'人'},
+    {data:d.src_c, color:'#2E7D32', w:1.5, unit:'人'},
+  ], {yMin:0, yMax:srcMax+2}, N, false);
+
+  // ③ 事件（與 Dashboard sc3 完全相同參數 + ipiCalc）
+  const totalIPI = ipiCalc(d.incHigh[N-1]||0, d.incMed[N-1]||0);
+  const incOpenLast = d.incOpen[N-1] || 0;
+  el('cv-evt').innerHTML = `未結${incOpenLast} IPI:${totalIPI}`;
+  const incMax = Math.max(...d.incOpen, ...d.incHigh.map((h,i)=>h+(d.incMed[i]||0)+(d.incLow[i]||0)), 3);
+  drawSparkline('ch-evt', [
+    {data:d.incOpen, color:'#e6edf3', w:1.5},
+  ], {yMin:0, yMax:incMax+1,
+    stackedArea:[
+      {data:d.incLow,  fillColor:'rgba(26,158,82,.2)'},
+      {data:d.incMed,  fillColor:'rgba(212,144,0,.25)'},
+      {data:d.incHigh, fillColor:'rgba(204,42,42,.3)'},
+    ]
+  }, N, false);
+
+  // 動態嚴重度（與 Dashboard setRag 邏輯相同）
+  const maxBed = Math.max(sLast, mLast);
+  setSev('ch-cap', maxBed >= 90 ? 'red' : maxBed >= 70 ? 'yellow' : 'green');
+  const flowLvl = srcTotal >= 10 ? 'red' : srcTotal >= 5 ? 'yellow' : 'green';
+  setSev('ch-flow', flowLvl);
+  const incLvl = totalIPI >= 6 ? 'red' : totalIPI >= 3 ? 'yellow' : 'green';
+  setSev('ch-evt', incLvl);
+
+  // 資源 tab（若可見則同步渲染）
+  if (el('cg-resource')?.classList.contains('active')) renderResourceCharts();
+}
+
+function renderResourceCharts() {
+  const d = _chartData;
+  const N = d.ivPct.length;
+  if (!N) return;
+
+  // ④ 物資（與 Dashboard sc4 完全相同參數）
+  const ivLast = d.ivPct[N-1]||0, oxLast = d.o2Pct[N-1]||0, toL = d.tqPct[N-1]||0;
+  el('cv-res').innerHTML = `IV:${ivLast}% O₂:${oxLast}%`;
+  const minSupply = Math.min(ivLast, oxLast, toL);
+  drawSparkline('ch-res', [
+    {data:d.ivPct, color:'#D32F2F', w:1.5, dash:[3,2], unit:'%'},
+    {data:d.o2Pct, color:'#F57F17', w:1.5, dash:[3,2], unit:'%'},
+    {data:d.tqPct, color:'#388E3C', w:1.5, dash:[3,2], unit:'%'},
+  ], {yMin:0, yMax:100, thresholds:[{value:20,color:'rgba(204,42,42,.4)',label:'20%'}]}, N, false);
+  setSev('ch-res', minSupply <= 20 ? 'red' : minSupply <= 40 ? 'yellow' : 'green');
+
+  // ⑤ 人力（與 Dashboard sc5 完全相同參數）
+  const sR = d.opsS[N-1]||0, mR = d.opsM[N-1]||0;
+  el('cv-staff').innerHTML = `收${sR} 醫${mR}`;
+  drawSparkline('ch-staff', [
+    {data:d.opsS, color:'#1976D2', w:1.5, unit:''},
+    {data:d.opsM, color:'#7B1FA2', w:1.5, unit:''},
+  ], {yMin:0, yMax:Math.max(...d.opsS, ...d.opsM, 8)+2, thresholds:[{value:8,color:'rgba(204,42,42,.4)',label:'8'}]}, N, false);
+  setSev('ch-staff', Math.max(sR, mR) > 8 ? 'red' : Math.max(sR, mR) > 5 ? 'yellow' : 'green');
+}
+
+function switchChartTab(tab) {
+  document.querySelectorAll('.chart-tab').forEach(b => b.classList.toggle('active', b.textContent === (tab==='situational'?'態勢':'資源')));
+  document.querySelectorAll('.chart-group').forEach(g => g.classList.toggle('active', g.id === 'cg-'+tab));
+  // 切到資源 tab 時重繪（canvas resize）
+  if (tab === 'resource') setTimeout(renderResourceCharts, 50);
+}
+
+function setSev(canvasId, level) {
+  const box = el(canvasId)?.closest('.chart-box');
+  if (!box) return;
+  box.classList.remove('sev-green','sev-yellow','sev-red');
+  box.classList.add('sev-' + level);
+  const dot = box.querySelector('.status-dot');
+  if (dot) dot.style.background = `var(--${level === 'yellow' ? 'yellow' : level})`;
+}
+
+// ===================================================================
+// 時間軸卡片
+// ===================================================================
+function doPreview() { autoPreview(); }
+
+function renderTimeline(injects) {
+  const area = el('timeline-area');
+  area.innerHTML = '';
+  if (!injects.length) { area.innerHTML = '<div class="empty-state">無 inject</div>'; return; }
+  let lastOff = -1;
+  for (const inj of injects) {
+    const isEv = inj.type==='event', isDec = inj.type==='decision';
+    const card = document.createElement('div');
+    card.className = 'inject-card' + (isEv?' event-card':'') + (isDec?' decision-card':'');
+    card.dataset.seq = inj.seq;
+    const tl = inj.offset_min !== lastOff ? `T+${inj.offset_min}m` : '';
+    lastOff = inj.offset_min;
+    const unit = inj.target_unit || 'command';
+    const bc = `badge badge-${unit==='command'?'security':unit}`;
+    const icon = isEv?'\u26A0':isDec?'\u2757':'\u25CF';
+    const prev = isEv||isDec ? (inj.payload.description||inj.payload.impact_description||'').substring(0,50) : `bed:${inj.payload.bed_used||'-'}`;
+    card.innerHTML = `<div class="time-col">${tl}</div><div class="info-col">
+      <div class="title-row"><span>${icon}</span><span class="title-text">${inj.title}</span><span class="${bc}">${unit}</span></div>
+      <div class="payload-preview">${prev}</div>
+      <div class="payload-full">${JSON.stringify(inj.payload,null,2)}</div></div>`;
+    card.onclick = () => card.classList.toggle('expanded');
+    area.appendChild(card);
+  }
+}
+
+// ===================================================================
+// 注入控制（與前版相同邏輯）
+// ===================================================================
+async function doInject() {
+  if (!_generatedInjects.length) return;
+  setStatus('建立 TTX Session...');
+  setBtns('injecting');
+  try {
+    const pName = _activePreset ? (PRESETS[_activePreset]?.name||_activePreset) : '自訂';
+    const r1 = await authFetch(API_BASE+'/api/ttx/sessions',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({session_name:`設計器-${pName}-${new Date().toLocaleTimeString('zh-TW')}`,facilitator:sessionStorage.getItem('sd_username')||'designer'})});
+    if (!r1.ok) throw new Error('建立 session 失敗');
+    _ttxSessionId = (await r1.json()).id;
+
+    const payloads = _generatedInjects.map(inj => ({seq:inj.seq,offset_min:inj.offset_min,target_unit:inj.target_unit,type:inj.type,title:inj.title,payload:inj.payload}));
+    const r2 = await authFetch(API_BASE+`/api/ttx/sessions/${_ttxSessionId}/injects`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({injects:payloads})});
+    if (!r2.ok) throw new Error('匯入失敗');
+
+    const r3 = await authFetch(API_BASE+`/api/ttx/sessions/${_ttxSessionId}/injects`);
+    _injectedIds = await r3.json();
+    await authFetch(API_BASE+`/api/ttx/sessions/${_ttxSessionId}/start`,{method:'POST'});
+
+    _injectIndex = 0;
+    updateProgress(0, _injectedIds.length);
+    setStatus(`注入中 · 0/${_injectedIds.length}`);
+    _injectTimer = setInterval(() => pushNext(), (_timeSettings.realtime_compress_sec||5)*1000);
+    pushNext();
+  } catch(e) { setStatus('錯誤：'+e.message); setBtns('ready'); }
+}
+
+async function pushNext() {
+  if (_injectIndex >= _injectedIds.length) {
+    clearInterval(_injectTimer); _injectTimer = null;
+    await authFetch(API_BASE+`/api/ttx/sessions/${_ttxSessionId}/end`,{method:'POST'});
+    setStatus(`完成 · ${_injectedIds.length}/${_injectedIds.length}`);
+    updateProgress(_injectedIds.length, _injectedIds.length);
+    setBtns('done'); return;
+  }
+  const curOff = _injectedIds[_injectIndex].scheduled_offset_min;
+  while (_injectIndex < _injectedIds.length && _injectedIds[_injectIndex].scheduled_offset_min === curOff) {
+    const inj = _injectedIds[_injectIndex];
+    try {
+      await authFetch(API_BASE+`/api/ttx/sessions/${_ttxSessionId}/inject/${inj.id}/push?live=true`,{method:'POST'});
+      const card = document.querySelector(`.inject-card[data-seq="${inj.inject_seq}"]`);
+      if (card) card.classList.add('injected');
+    } catch(e) {}
+    _injectIndex++;
+  }
+  setStatus(`注入中 · ${_injectIndex}/${_injectedIds.length}`);
+  updateProgress(_injectIndex, _injectedIds.length);
+}
+
+async function doPause() {
+  if (_injectTimer) {
+    clearInterval(_injectTimer); _injectTimer = null;
+    await authFetch(API_BASE+`/api/ttx/sessions/${_ttxSessionId}/pause`,{method:'POST'});
+    setStatus(`已暫停 · ${_injectIndex}/${_injectedIds.length}`); setBtns('paused');
+  } else {
+    await authFetch(API_BASE+`/api/ttx/sessions/${_ttxSessionId}/start`,{method:'POST'});
+    _injectTimer = setInterval(() => pushNext(), (_timeSettings.realtime_compress_sec||5)*1000);
+    pushNext(); setBtns('injecting');
+  }
+}
+
+async function doEnd() {
+  if (_injectTimer) { clearInterval(_injectTimer); _injectTimer = null; }
+  if (_ttxSessionId) await authFetch(API_BASE+`/api/ttx/sessions/${_ttxSessionId}/end`,{method:'POST'});
+  setStatus('已結束'); setBtns('done'); _ttxSessionId = null;
+}
+
+async function doResetExercise() {
+  if (!confirm('確定清除所有演練資料？（實戰資料不受影響）')) return;
+  setStatus('清除中...');
+  try {
+    const r = await authFetch(API_BASE+'/api/admin/reset-exercise',{method:'POST'});
+    if (!r.ok) throw new Error('清除失敗');
+    const d = await r.json();
+    const total = Object.values(d.cleared).reduce((a,b)=>a+b,0);
+    setStatus(`已清除 ${total} 筆`);
+    _generatedInjects=[]; _ttxSessionId=null; _injectedIds=[]; _injectIndex=0;
+    _chartData={shelter_bed:[],med_bed:[],src_a:[],src_b:[],src_c:[],events:[]}; renderCharts();
+    el('timeline-area').innerHTML='<div class="empty-state">已清除</div>';
+    updateProgress(0,1); setBtns('ready'); el('btn-inject').disabled=true;
+  } catch(e) { setStatus('錯誤：'+e.message); }
+}
+
+function setStatus(m) { el('status-text').textContent = m; }
+function updateProgress(c,t) { el('progress-fill').style.width = (t>0?Math.round(c/t*100):0)+'%'; }
+function setBtns(s) {
+  const p=el('btn-preview'),i=el('btn-inject'),pa=el('btn-pause'),e=el('btn-end');
+  switch(s) {
+    case 'ready':    p.disabled=false;i.disabled=false;pa.disabled=true;e.disabled=true;pa.textContent='暫停';break;
+    case 'injecting':p.disabled=true;i.disabled=true;pa.disabled=false;e.disabled=false;pa.textContent='暫停';break;
+    case 'paused':   p.disabled=true;i.disabled=true;pa.disabled=false;e.disabled=false;pa.textContent='繼續';break;
+    case 'done':     p.disabled=false;i.disabled=true;pa.disabled=true;e.disabled=true;pa.textContent='暫停';break;
+  }
+}
+
+// ===================================================================
+// 初始化
+// ===================================================================
+(async function init() {
+  el('ver-label').textContent = DESIGNER_VERSION;
+  const token = sessionStorage.getItem('sd_session_id');
+  if (token) {
+    try {
+      const r = await fetch(API_BASE+'/api/auth/heartbeat',{headers:{'X-Session-Token':token}});
+      if (r.ok) { el('login-screen').style.display='none'; el('user-info').textContent=sessionStorage.getItem('sd_username')||''; }
+    } catch(e) {}
+  }
+  initUI();
+})();
+</script>
+</body>
+</html>

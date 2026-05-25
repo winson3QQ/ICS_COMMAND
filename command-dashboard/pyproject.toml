@@ -1,0 +1,34 @@
+[tool.ruff]
+target-version = "py313"
+line-length = 120
+
+exclude = [
+    "venv",
+    "__pycache__",
+]
+
+[tool.ruff.lint]
+# E：pycodestyle；F：pyflakes；I：isort；UP：pyupgrade；B：bugbear
+select = ["E", "F", "I", "UP", "B"]
+
+ignore = [
+    # repositories/__init__.py 是 re-export 集散地，F401 為設計決策
+    # （改用 noqa 標記個別行，此處不全域忽略）
+
+    # B008：FastAPI 的 Depends() 在函式預設值是慣用寫法
+    "B008",
+
+    # E501：行長已由 line-length=120 控制，超過的留給 formatter 處理
+    # （不 ignore，讓 ruff format 負責）
+]
+
+[tool.ruff.lint.per-file-ignores]
+# __init__.py re-export：F401 全部豁免
+"src/repositories/__init__.py" = ["F401"]
+# 測試檔案：允許 assert、星號 import 等慣例
+"tests/*" = ["B", "F811"]
+
+[tool.ruff.format]
+# 與 black 相容：雙引號、trailing comma
+quote-style = "double"
+indent-style = "space"

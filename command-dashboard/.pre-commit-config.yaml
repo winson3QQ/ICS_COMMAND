@@ -1,0 +1,26 @@
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.11.7
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+      - id: detect-secrets
+        # path 相對 repo root (pre-commit 跑 hook 時 cwd=git rev-parse --show-toplevel)
+        args: [--baseline, command-dashboard/.secrets.baseline]
+        # docs/backups/: gh 匯出的 issue/PR JSON (公開內容, 無真實 secret)
+        exclude: 'package-lock\.json|^docs/backups/'
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-json
+      - id: check-merge-conflict
+      - id: debug-statements

@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<title>Icon Preview — 全部事件符號</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&display=swap');
+body{background:#0d1117;color:#e6edf3;font-family:'IBM Plex Mono',monospace;padding:28px;margin:0;}
+h1{font-size:13px;color:#8b949e;letter-spacing:.12em;margin:0 0 24px;text-transform:uppercase;}
+h2{font-size:10px;font-weight:600;letter-spacing:.1em;margin:24px 0 10px;padding:4px 8px;border-radius:4px;display:inline-block;}
+.h-forward {background:#8b5e1a;color:#ffcc88;}
+.h-security {background:#2b4a8c;color:#aac0ff;}
+.h-shelter  {background:#7a6a10;color:#ffe080;}
+.h-medical  {background:#7a1a1a;color:#ffaaaa;}
+.h-command  {background:#1a5c30;color:#88ffb0;}
+.grid{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:4px;}
+.item{display:flex;flex-direction:column;align-items:center;gap:5px;
+  background:#161b22;border:1px solid #30363d;border-radius:6px;padding:12px 10px;width:88px;}
+.icon{width:28px;height:28px;display:flex;align-items:center;justify-content:center;}
+.icon svg{width:24px;height:24px;}
+.label{font-size:9px;color:#e6edf3;text-align:center;line-height:1.3;}
+.key{font-size:7px;color:#6e7681;text-align:center;}
+/* icon 顏色 */
+.c-warn{color:#d49000;}
+.c-red {color:#cc3333;}
+.c-gray{color:#8b949e;}
+.c-green{color:#1a9e52;}
+/* 共用 SVG paths 以 JS 渲染 */
+</style>
+</head><body>
+<h1>地圖事件符號總覽 — Phosphor Icons Fill (MIT)</h1>
+
+<!-- ── SVG 定義區 ── -->
+<svg style="display:none">
+  <defs>
+    <!-- 雙筒望遠鏡＋十字（傷患發現） -->
+    <symbol id="i-casualty" viewBox="0 0 256 256">
+      <path d="M237.22,151.9l0-.1a1.42,1.42,0,0,0-.07-.22,48.46,48.46,0,0,0-2.31-5.3L193.27,51.8a8,8,0,0,0-1.67-2.44,32,32,0,0,0-45.26,0,8,8,0,0,0-2.34,5.66V80H112V55a8,8,0,0,0-2.34-5.66,32,32,0,0,0-45.26,0,8,8,0,0,0-1.67,2.44L21.2,146.28a48.46,48.46,0,0,0-2.31,5.3,1.72,1.72,0,0,0-.07.21s0,.08,0,.11a48,48,0,0,0,90.32,32.51,47.49,47.49,0,0,0,2.9-16.59V96h32v71.83a47.49,47.49,0,0,0,2.9,16.59,48,48,0,0,0,90.32-32.51Zm-143.15,27a32,32,0,0,1-60.2-21.71l1.81-4.13A32,32,0,0,1,96,167.88V168h0A32,32,0,0,1,94.07,178.94ZM203,198.07A32,32,0,0,1,160,168h0v-.11a32,32,0,0,1,60.32-14.78l1.81,4.13A32,32,0,0,1,203,198.07Z"/>
+      <rect x="188" y="18" width="58" height="16" rx="4"/>
+      <rect x="209" y="0"  width="16" height="52" rx="4"/>
+    </symbol>
+    <!-- 警告三角（hazard / other） -->
+    <symbol id="i-warning" viewBox="0 0 256 256">
+      <path d="M236.8,188.09,149.35,36.22h0a24.76,24.76,0,0,0-42.7,0L19.2,188.09a23.51,23.51,0,0,0,0,23.72A24.35,24.35,0,0,0,40.55,224h174.9a24.35,24.35,0,0,0,21.33-12.19A23.51,23.51,0,0,0,236.8,188.09ZM120,104a8,8,0,0,1,16,0v40a8,8,0,0,1-16,0Zm8,88a12,12,0,1,1,12-12A12,12,0,0,1,128,192Z"/>
+    </symbol>
+    <!-- 救生圈（rescue） -->
+    <symbol id="i-rescue" viewBox="0 0 256 256">
+      <path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24ZM96,128a32,32,0,1,1,32,32A32,32,0,0,1,96,128Zm88.28-67.6L155.79,88.9a47.84,47.84,0,0,0-55.58,0L71.72,60.4a87.83,87.83,0,0,1,112.56,0ZM71.72,195.6l28.49-28.5a47.84,47.84,0,0,0,55.58,0l28.49,28.5a87.83,87.83,0,0,1-112.56,0Z"/>
+    </symbol>
+    <!-- 炸彈（explosive） -->
+    <symbol id="i-explosive" viewBox="0 0 256 256">
+      <path d="M248,32h0a8,8,0,0,0-8,8,52.66,52.66,0,0,1-3.57,17.39C232.38,67.22,225.7,72,216,72c-11.06,0-18.85-9.76-29.49-24.65C176,32.66,164.12,16,144,16c-16.39,0-29,8.89-35.43,25a66.07,66.07,0,0,0-3.9,15H88A16,16,0,0,0,72,72v9.59A88,88,0,0,0,112,248h1.59A88,88,0,0,0,152,81.59V72a16,16,0,0,0-16-16H120.88a46.76,46.76,0,0,1,2.69-9.37C127.62,36.78,134.3,32,144,32c11.06,0,18.85,9.76,29.49,24.65C184,71.34,195.88,88,216,88c16.39,0,29-8.89,35.43-25A68.69,68.69,0,0,0,256,40,8,8,0,0,0,248,32ZM111.89,209.32A8,8,0,0,1,104,216a8.52,8.52,0,0,1-1.33-.11,57.5,57.5,0,0,1-46.57-46.57,8,8,0,1,1,15.78-2.64,41.29,41.29,0,0,0,33.43,33.43A8,8,0,0,1,111.89,209.32Z"/>
+    </symbol>
+    <!-- 無人機（drone） -->
+    <symbol id="i-drone" viewBox="0 0 256 256">
+      <path d="M189.66,77.66,160,107.31v41.38l29.66,29.65a8,8,0,0,1-11.32,11.32L148.69,160H107.31L77.66,189.66a8,8,0,0,1-11.32-11.32L96,148.69V107.31L66.34,77.66A8,8,0,0,1,77.66,66.34L107.31,96h41.38l29.65-29.66a8,8,0,0,1,11.32,11.32Zm-46.28-6.12a8,8,0,0,0,10.21-4.87,28,28,0,1,1,35.74,35.74A8,8,0,0,0,192,118a7.86,7.86,0,0,0,2.67-.46,44,44,0,1,0-56.16-56.16A8,8,0,0,0,143.38,71.54Zm51.29,67a8,8,0,0,0-5.34,15.08,28,28,0,1,1-35.74,35.74,8,8,0,0,0-15.08,5.34,44,44,0,1,0,56.16-56.16Zm-82,46a8,8,0,0,0-10.21,4.87,28,28,0,1,1-35.74-35.74,8,8,0,0,0-5.34-15.08,44,44,0,1,0,56.16,56.16A8,8,0,0,0,112.62,184.46Zm-51.29-67A7.86,7.86,0,0,0,64,118a8,8,0,0,0,2.67-15.54,28,28,0,1,1,35.74-35.74,8,8,0,1,0,15.08-5.34,44,44,0,1,0-56.16,56.16Z"/>
+    </symbol>
+    <!-- 人形（unknown / person） -->
+    <symbol id="i-user" viewBox="0 0 256 256">
+      <path d="M230.93,220a8,8,0,0,1-6.93,4H32a8,8,0,0,1-6.92-12c15.23-26.33,38.7-45.21,66.09-54.16a72,72,0,1,1,73.66,0c27.39,8.95,50.86,27.83,66.09,54.16A8,8,0,0,1,230.93,220Z"/>
+    </symbol>
+    <!-- 眼睛（suspect） -->
+    <symbol id="i-eye" viewBox="0 0 256 256">
+      <path d="M247.31,124.76c-.35-.79-8.82-19.58-27.65-38.41C194.57,61.26,162.88,48,128,48S61.43,61.26,36.34,86.35C17.51,105.18,9,124,8.69,124.76a8,8,0,0,0,0,6.5c.35.79,8.82,19.57,27.65,38.4C61.43,194.74,93.12,208,128,208s66.57-13.26,91.66-38.34c18.83-18.83,27.3-37.61,27.65-38.4A8,8,0,0,0,247.31,124.76ZM128,168a40,40,0,1,1,40-40A40,40,0,0,1,128,168Z"/>
+    </symbol>
+    <!-- 盾牌警告（perimeter / isolation / security） -->
+    <symbol id="i-shield" viewBox="0 0 256 256">
+      <path d="M208,40H48A16,16,0,0,0,32,56v56c0,52.72,25.52,84.67,46.93,102.19,23.06,18.86,46,25.27,47,25.53a8,8,0,0,0,4.2,0c1-.26,23.91-6.67,47-25.53C198.48,196.67,224,164.72,224,112V56A16,16,0,0,0,208,40ZM120,96a8,8,0,0,1,16,0v40a8,8,0,0,1-16,0Zm8,88a12,12,0,1,1,12-12A12,12,0,0,1,128,184Z"/>
+    </symbol>
+    <!-- 奔跑人形（QRF） -->
+    <symbol id="i-run" viewBox="0 0 256 256">
+      <path d="M120,56a32,32,0,1,1,32,32A32,32,0,0,1,120,56Zm103.28,74.08a8,8,0,0,0-10.6-4c-.25.12-26.71,10.72-72.18-20.19-52.29-35.54-88-7.77-89.51-6.57a8,8,0,1,0,10,12.48c.26-.21,25.12-19.5,64.07,3.27-4.25,13.35-12.76,31.82-25.25,47-18.56,22.48-41.11,32.56-67,30A8,8,0,0,0,31.2,208a92.29,92.29,0,0,0,9.34.47c27.38,0,52-12.38,71.63-36.18.57-.69,1.14-1.4,1.69-2.1C133.31,175.29,168,190.3,168,232a8,8,0,0,0,16,0c0-24.65-10.08-45.35-29.15-59.86a104.29,104.29,0,0,0-31.31-15.81A169.31,169.31,0,0,0,139,124c26.14,16.09,46.84,20,60.69,20,12.18,0,19.06-3,19.67-3.28A8,8,0,0,0,223.28,130.08Z"/>
+    </symbol>
+    <!-- 三人群（crowd） -->
+    <symbol id="i-crowd" viewBox="0 0 256 256">
+      <path d="M64.12,147.8a4,4,0,0,1-4,4.2H16a8,8,0,0,1-7.8-6.17,8.35,8.35,0,0,1,1.62-6.93A67.79,67.79,0,0,1,37,117.51a40,40,0,1,1,66.46-35.8,3.94,3.94,0,0,1-2.27,4.18A64.08,64.08,0,0,0,64,144C64,145.28,64,146.54,64.12,147.8Zm182-8.91A67.76,67.76,0,0,0,219,117.51a40,40,0,1,0-66.46-35.8,3.94,3.94,0,0,0,2.27,4.18A64.08,64.08,0,0,1,192,144c0,1.28,0,2.54-.12,3.8a4,4,0,0,0,4,4.2H240a8,8,0,0,0,7.8-6.17A8.33,8.33,0,0,0,246.17,138.89Zm-89,43.18a48,48,0,1,0-58.37,0A72.13,72.13,0,0,0,65.07,212,8,8,0,0,0,72,224H184a8,8,0,0,0,6.93-12A72.15,72.15,0,0,0,157.19,182.07Z"/>
+    </symbol>
+    <!-- 病毒（infectious） -->
+    <symbol id="i-virus" viewBox="0 0 256 256">
+      <path d="M240,120H223.66a95.52,95.52,0,0,0-22.39-53.95l12.39-12.39a8,8,0,0,0-11.32-11.32L190,54.73A95.52,95.52,0,0,0,136,32.34V16a8,8,0,0,0-16,0V32.34A95.52,95.52,0,0,0,66.05,54.73L53.66,42.34A8,8,0,0,0,42.34,53.66L54.73,66.05a95.52,95.52,0,0,0-22.39,54H16a8,8,0,0,0,0,16H32.34A95.52,95.52,0,0,0,54.73,190L42.34,202.34a8,8,0,0,0,11.32,11.32l12.39-12.39a95.52,95.52,0,0,0,54,22.39V240a8,8,0,0,0,16,0V223.66A95.52,95.52,0,0,0,190,201.27l12.39,12.39a8,8,0,0,0,11.32-11.32L201.27,190A95.52,95.52,0,0,0,223.66,136H240a8,8,0,0,0,0-16ZM80,108a28,28,0,1,1,28,28A28,28,0,0,1,80,108Zm48,84a16,16,0,1,1,16-16A16,16,0,0,1,128,192Zm48-48a16,16,0,1,1,16-16A16,16,0,0,1,176,144Z"/>
+    </symbol>
+    <!-- 堆疊層（capacity） -->
+    <symbol id="i-stack" viewBox="0 0 256 256">
+      <path d="M220,169.09l-92,53.65L36,169.09A8,8,0,0,0,28,182.91l96,56a8,8,0,0,0,8.06,0l96-56A8,8,0,1,0,220,169.09Z"/><path d="M220,121.09l-92,53.65L36,121.09A8,8,0,0,0,28,134.91l96,56a8,8,0,0,0,8.06,0l96-56A8,8,0,1,0,220,121.09Z"/><path d="M28,86.91l96,56a8,8,0,0,0,8.06,0l96-56a8,8,0,0,0,0-13.82l-96-56a8,8,0,0,0-8.06,0l-96,56a8,8,0,0,0,0,13.82Z"/>
+    </symbol>
+    <!-- 建築（facility） -->
+    <symbol id="i-building" viewBox="0 0 256 256">
+      <path d="M239.73,208H224V96a16,16,0,0,0-16-16H164a4,4,0,0,0-4,4V208H144V32.41a16.43,16.43,0,0,0-6.16-13,16,16,0,0,0-18.72-.69L39.12,72A16,16,0,0,0,32,85.34V208H16.27A8.18,8.18,0,0,0,8,215.47,8,8,0,0,0,16,224H240a8,8,0,0,0,8-8.53A8.18,8.18,0,0,0,239.73,208ZM76,184a8,8,0,0,1-8.53,8A8.18,8.18,0,0,1,60,183.72V168.27A8.19,8.19,0,0,1,67.47,160,8,8,0,0,1,76,168Zm0-56a8,8,0,0,1-8.53,8A8.19,8.19,0,0,1,60,127.72V112.27A8.19,8.19,0,0,1,67.47,104,8,8,0,0,1,76,112Zm40,56a8,8,0,0,1-8.53,8,8.18,8.18,0,0,1-7.47-8.26V168.27a8.19,8.19,0,0,1,7.47-8.26,8,8,0,0,1,8.53,8Zm0-56a8,8,0,0,1-8.53,8,8.19,8.19,0,0,1-7.47-8.26V112.27a8.19,8.19,0,0,1,7.47-8.26,8,8,0,0,1,8.53,8Z"/>
+    </symbol>
+    <!-- 骷髏（violent / mci） -->
+    <symbol id="i-skull" viewBox="0 0 256 256">
+      <path d="M128,16C70.65,16,24,60.86,24,116c0,34.1,18.27,66,48,84.28V216a16,16,0,0,0,16,16h8a4,4,0,0,0,4-4V200.27a8.17,8.17,0,0,1,7.47-8.25,8,8,0,0,1,8.53,8v28a4,4,0,0,0,4,4h16a4,4,0,0,0,4-4V200.27a8.17,8.17,0,0,1,7.47-8.25,8,8,0,0,1,8.53,8v28a4,4,0,0,0,4,4h8a16,16,0,0,0,16-16V200.28C213.73,182,232,150.1,232,116,232,60.86,185.35,16,128,16ZM92,152a20,20,0,1,1,20-20A20,20,0,0,1,92,152Zm72,0a20,20,0,1,1,20-20A20,20,0,0,1,164,152Z"/>
+    </symbol>
+    <!-- 心跳線（emergency） -->
+    <symbol id="i-heartbeat" viewBox="0 0 256 256">
+      <path d="M240,102c0,70-103.79,126.66-108.21,129a8,8,0,0,1-7.58,0c-3.35-1.8-63.55-34.69-92.68-80.89A4,4,0,0,1,34.92,144H72a8,8,0,0,0,6.66-3.56l9.34-14,25.34,38a8,8,0,0,0,9.16,3.16,8.23,8.23,0,0,0,4.28-3.34L140.28,144H160a8,8,0,0,0,8-8.53,8.18,8.18,0,0,0-8.25-7.47H136a8,8,0,0,0-6.66,3.56l-9.34,14-25.34-38a8,8,0,0,0-9.17-3.16,8.25,8.25,0,0,0-4.27,3.34L67.72,128H23.53a4,4,0,0,1-3.83-2.81A76.93,76.93,0,0,1,16,102,62.07,62.07,0,0,1,78,40c20.65,0,38.73,8.88,50,23.89C139.27,48.88,157.35,40,178,40A62.07,62.07,0,0,1,240,102Z"/>
+    </symbol>
+    <!-- 扳手（equipment） -->
+    <symbol id="i-wrench" viewBox="0 0 256 256">
+      <path d="M232,96a72,72,0,0,1-100.94,66L79,222.22c-.12.14-.26.29-.39.42a32,32,0,0,1-45.26-45.26c.14-.13.28-.27.43-.39L94,124.94a72.07,72.07,0,0,1,83.54-98.78,8,8,0,0,1,3.93,13.19L144,80l5.66,26.35L176,112l40.65-37.52a8,8,0,0,1,13.19,3.93A72.6,72.6,0,0,1,232,96Z"/>
+    </symbol>
+    <!-- 四向箭頭（evacuation / 撤退撤離） -->
+    <symbol id="i-evac" viewBox="0 0 256 256">
+      <path d="M109.66,146.34a8,8,0,0,1,0,11.32L83.31,184l18.35,18.34A8,8,0,0,1,96,216H48a8,8,0,0,1-8-8V160a8,8,0,0,1,13.66-5.66L72,172.69l26.34-26.35A8,8,0,0,1,109.66,146.34ZM83.31,72l18.35-18.34A8,8,0,0,0,96,40H48a8,8,0,0,0-8,8V96a8,8,0,0,0,13.66,5.66L72,83.31l26.34,26.35a8,8,0,0,0,11.32-11.32ZM208,40H160a8,8,0,0,0-5.66,13.66L172.69,72,146.34,98.34a8,8,0,0,0,11.32,11.32L184,83.31l18.34,18.35A8,8,0,0,0,216,96V48A8,8,0,0,0,208,40Zm3.06,112.61a8,8,0,0,0-8.72,1.73L184,172.69l-26.34-26.35a8,8,0,0,0-11.32,11.32L172.69,184l-18.35,18.34A8,8,0,0,0,160,216h48a8,8,0,0,0,8-8V160A8,8,0,0,0,211.06,152.61Z"/>
+    </symbol>
+    <!-- wifi-x（comm_fail） -->
+    <symbol id="i-commfail" viewBox="0 0 256 256">
+      <path d="M229.66,98.34a8,8,0,0,1-11.32,11.32L200,91.31l-18.34,18.35a8,8,0,0,1-11.32-11.32L188.69,80,170.34,61.66a8,8,0,0,1,11.32-11.32L200,68.69l18.34-18.35a8,8,0,0,1,11.32,11.32L211.31,80ZM206.85,131a32.75,32.75,0,0,1-4.15-3.14,4,4,0,0,0-5.37,0,32,32,0,0,1-45.18-45.18,4,4,0,0,0,0-5.34A32,32,0,0,1,149,38.91a4,4,0,0,0-3.11-6.08Q137,32,128,32A186.67,186.67,0,0,0,14.28,70.1,15.93,15.93,0,0,0,8.11,80.91,15.65,15.65,0,0,0,11.65,92.8l104,125.43A15.93,15.93,0,0,0,128,224h0a15.93,15.93,0,0,0,12.31-5.77l67.45-81.31A4,4,0,0,0,206.85,131Z"/>
+    </symbol>
+    <!-- 握手（handover） -->
+    <symbol id="i-handshake" viewBox="0 0 256 256">
+      <path d="M254.3,107.91,228.78,56.85a16,16,0,0,0-21.47-7.15L182.44,62.13,130.05,48.27a8.14,8.14,0,0,0-4.1,0L73.56,62.13,48.69,49.7a16,16,0,0,0-21.47,7.15L1.7,107.9a16,16,0,0,0,7.15,21.47l27,13.51,55.49,39.63a8.06,8.06,0,0,0,2.71,1.25l64,16a8,8,0,0,0,7.6-2.1l40-40,15.08-15.08,26.42-13.21a16,16,0,0,0,7.15-21.46Zm-54.89,33.37L165,113.72a8,8,0,0,0-10.68.61C136.51,132.27,116.66,130,104,122L147.24,80h31.81l27.21,54.41Zm-41.87,41.86L99.42,168.61l-49.2-35.14,28-56L128,64.28l9.8,2.59-45,43.68-.08.09a16,16,0,0,0,2.72,24.81c20.56,13.13,45.37,11,64.91-5L188,152.66Zm-25.72,34.8a8,8,0,0,1-7.75,6.06,8.13,8.13,0,0,1-1.95-.24L80.41,213.33a7.89,7.89,0,0,1-2.71-1.25L51.35,193.26a8,8,0,0,1,9.3-13l25.11,17.94L126,208.24A8,8,0,0,1,131.82,217.94Z"/>
+    </symbol>
+    <!-- 天平（resource） -->
+    <symbol id="i-scales" viewBox="0 0 256 256">
+      <path d="M239.43,133l-32-80A8,8,0,0,0,200,48a8.27,8.27,0,0,0-1.73.21L136,62V40a8,8,0,0,0-16,0V65.58L54.27,80.21A8,8,0,0,0,48.57,85l-32,80a7.92,7.92,0,0,0-.57,3c0,23.31,24.54,32,40,32s40-8.69,40-32a7.92,7.92,0,0,0-.57-3L66.92,93.77,120,82V208H104a8,8,0,0,0,0,16h48a8,8,0,0,0,0-16H136V78.42L187,67.1,160.57,133a7.92,7.92,0,0,0-.57,3c0,23.31,24.54,32,40,32s40-8.69,40-32A7.92,7.92,0,0,0,239.43,133Zm-160,35H32.62L56,109.54Zm97.24-32L200,77.54,223.38,136Z"/>
+    </symbol>
+    <!-- 折線圖（escalation / situation） -->
+    <symbol id="i-chart" viewBox="0 0 256 256">
+      <path d="M216,40H40A16,16,0,0,0,24,56V200a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A16,16,0,0,0,216,40ZM200,192H56a8,8,0,0,1-8-8V72a8,8,0,0,1,16,0v76.69l34.34-34.35a8,8,0,0,1,11.32,0L128,132.69,172.69,88H144a8,8,0,0,1,0-16h48a8,8,0,0,1,8,8v48a8,8,0,0,1-16,0V99.31l-50.34,50.35a8,8,0,0,1-11.32,0L104,131.31l-40,40V176H200a8,8,0,0,1,0,16Z"/>
+    </symbol>
+  </defs>
+</svg>
+
+<!-- ══ 前進組 ══ -->
+<h2 class="h-forward">▸ 前進組 forward</h2>
+<div class="grid">
+  <div class="item"><div class="icon c-warn"><svg viewBox="0 0 256 256"><use href="#i-casualty"/></svg></div><div class="label">傷患發現</div><div class="key">casualty</div></div>
+  <div class="item"><div class="icon c-warn"><svg viewBox="0 0 256 256"><use href="#i-warning"/></svg></div><div class="label">危害回報</div><div class="key">hazard</div></div>
+  <div class="item"><div class="icon c-green"><svg viewBox="0 0 256 256"><use href="#i-rescue"/></svg></div><div class="label">受困救援</div><div class="key">rescue</div></div>
+  <div class="item"><div class="icon c-red"><svg viewBox="0 0 256 256"><use href="#i-explosive"/></svg></div><div class="label">爆裂物</div><div class="key">explosive</div></div>
+  <div class="item"><div class="icon c-warn"><svg viewBox="0 0 256 256"><use href="#i-drone"/></svg></div><div class="label">無人機威脅</div><div class="key">drone</div></div>
+  <div class="item"><div class="icon c-gray"><svg viewBox="0 0 256 256"><use href="#i-user"/></svg></div><div class="label">不明人士</div><div class="key">unknown</div></div>
+  <div class="item"><div class="icon c-gray"><svg viewBox="0 0 256 256"><use href="#i-chart"/></svg></div><div class="label">現場變化</div><div class="key">situation</div></div>
+</div>
+
+<!-- ══ 安全組 ══ -->
+<h2 class="h-security">▸ 安全組 security</h2>
+<div class="grid">
+  <div class="item"><div class="icon c-red"><svg viewBox="0 0 256 256"><use href="#i-eye"/></svg></div><div class="label">可疑人員</div><div class="key">suspect</div></div>
+  <div class="item"><div class="icon c-red"><svg viewBox="0 0 256 256"><use href="#i-explosive"/></svg></div><div class="label">爆裂物</div><div class="key">explosive</div></div>
+  <div class="item"><div class="icon c-warn"><svg viewBox="0 0 256 256"><use href="#i-drone"/></svg></div><div class="label">無人機</div><div class="key">drone</div></div>
+  <div class="item"><div class="icon c-warn"><svg viewBox="0 0 256 256"><use href="#i-shield"/></svg></div><div class="label">管制區異常</div><div class="key">perimeter</div></div>
+  <div class="item"><div class="icon c-green"><svg viewBox="0 0 256 256"><use href="#i-run"/></svg></div><div class="label">QRF 出動</div><div class="key">qrf</div></div>
+  <div class="item"><div class="icon c-warn"><svg viewBox="0 0 256 256"><use href="#i-crowd"/></svg></div><div class="label">秩序問題</div><div class="key">crowd</div></div>
+  <div class="item"><div class="icon c-warn"><svg viewBox="0 0 256 256"><use href="#i-shield"/></svg></div><div class="label">隔離事件</div><div class="key">isolation</div></div>
+</div>
+
+<!-- ══ 收容組 ══ -->
+<h2 class="h-shelter">▸ 收容組 shelter</h2>
+<div class="grid">
+  <div class="item"><div class="icon c-gray"><svg viewBox="0 0 256 256"><use href="#i-user"/></svg></div><div class="label">不明人士</div><div class="key">unknown</div></div>
+  <div class="item"><div class="icon c-red"><svg viewBox="0 0 256 256"><use href="#i-explosive"/></svg></div><div class="label">爆裂物</div><div class="key">explosive</div></div>
+  <div class="item"><div class="icon c-warn"><svg viewBox="0 0 256 256"><use href="#i-drone"/></svg></div><div class="label">無人機</div><div class="key">drone</div></div>
+  <div class="item"><div class="icon c-warn"><svg viewBox="0 0 256 256"><use href="#i-virus"/></svg></div><div class="label">傳染疑慮</div><div class="key">infectious</div></div>
+  <div class="item"><div class="icon c-warn"><svg viewBox="0 0 256 256"><use href="#i-stack"/></svg></div><div class="label">量能超載</div><div class="key">capacity</div></div>
+  <div class="item"><div class="icon c-red"><svg viewBox="0 0 256 256"><use href="#i-shield"/></svg></div><div class="label">安全威脅</div><div class="key">security</div></div>
+  <div class="item"><div class="icon c-gray"><svg viewBox="0 0 256 256"><use href="#i-building"/></svg></div><div class="label">設施異常</div><div class="key">facility</div></div>
+  <div class="item"><div class="icon c-gray"><svg viewBox="0 0 256 256"><use href="#i-user"/></svg></div><div class="label">人員狀況</div><div class="key">person</div></div>
+  <div class="item"><div class="icon c-gray"><svg viewBox="0 0 256 256"><use href="#i-warning"/></svg></div><div class="label">其他</div><div class="key">other</div></div>
+</div>
+
+<!-- ══ 醫療組 ══ -->
+<h2 class="h-medical">▸ 醫療組 medical</h2>
+<div class="grid">
+  <div class="item"><div class="icon c-gray"><svg viewBox="0 0 256 256"><use href="#i-user"/></svg></div><div class="label">不明人士</div><div class="key">unknown</div></div>
+  <div class="item"><div class="icon c-red"><svg viewBox="0 0 256 256"><use href="#i-explosive"/></svg></div><div class="label">爆裂物</div><div class="key">explosive</div></div>
+  <div class="item"><div class="icon c-warn"><svg viewBox="0 0 256 256"><use href="#i-drone"/></svg></div><div class="label">無人機</div><div class="key">drone</div></div>
+  <div class="item"><div class="icon c-warn"><svg viewBox="0 0 256 256"><use href="#i-virus"/></svg></div><div class="label">傳染疑慮</div><div class="key">infectious</div></div>
+  <div class="item"><div class="icon c-red"><svg viewBox="0 0 256 256"><use href="#i-skull"/></svg></div><div class="label">暴力傷患</div><div class="key">violent</div></div>
+  <div class="item"><div class="icon c-warn"><svg viewBox="0 0 256 256"><use href="#i-heartbeat"/></svg></div><div class="label">緊急病症</div><div class="key">emergency</div></div>
+  <div class="item"><div class="icon c-red"><svg viewBox="0 0 256 256"><use href="#i-skull"/></svg></div><div class="label">大量傷亡</div><div class="key">mci</div></div>
+  <div class="item"><div class="icon c-gray"><svg viewBox="0 0 256 256"><use href="#i-wrench"/></svg></div><div class="label">設備故障</div><div class="key">equipment</div></div>
+  <div class="item"><div class="icon c-warn"><svg viewBox="0 0 256 256"><use href="#i-evac"/></svg></div><div class="label">撤退</div><div class="key">evacuation</div></div>
+</div>
+
+<!-- ══ 指揮部 ══ -->
+<h2 class="h-command">▸ 指揮部 command</h2>
+<div class="grid">
+  <div class="item"><div class="icon c-gray"><svg viewBox="0 0 256 256"><use href="#i-user"/></svg></div><div class="label">不明人士</div><div class="key">unknown</div></div>
+  <div class="item"><div class="icon c-red"><svg viewBox="0 0 256 256"><use href="#i-explosive"/></svg></div><div class="label">爆裂物</div><div class="key">explosive</div></div>
+  <div class="item"><div class="icon c-warn"><svg viewBox="0 0 256 256"><use href="#i-drone"/></svg></div><div class="label">無人機</div><div class="key">drone</div></div>
+  <div class="item"><div class="icon c-warn"><svg viewBox="0 0 256 256"><use href="#i-commfail"/></svg></div><div class="label">通訊異常</div><div class="key">comm_fail</div></div>
+  <div class="item"><div class="icon c-green"><svg viewBox="0 0 256 256"><use href="#i-handshake"/></svg></div><div class="label">指揮交接</div><div class="key">handover</div></div>
+  <div class="item"><div class="icon c-gray"><svg viewBox="0 0 256 256"><use href="#i-scales"/></svg></div><div class="label">資源調度</div><div class="key">resource</div></div>
+  <div class="item"><div class="icon c-gray"><svg viewBox="0 0 256 256"><use href="#i-chart"/></svg></div><div class="label">升降級</div><div class="key">escalation</div></div>
+  <div class="item"><div class="icon c-warn"><svg viewBox="0 0 256 256"><use href="#i-evac"/></svg></div><div class="label">撤離</div><div class="key">evacuation</div></div>
+  <div class="item"><div class="icon c-gray"><svg viewBox="0 0 256 256"><use href="#i-warning"/></svg></div><div class="label">其他</div><div class="key">other</div></div>
+</div>
+
+<p style="font-size:9px;color:#6e7681;margin-top:24px;">Phosphor Icons Fill — MIT License — phosphoricons.com<br>全部 inline SVG，無外部依賴，離線可用</p>
+</body></html>

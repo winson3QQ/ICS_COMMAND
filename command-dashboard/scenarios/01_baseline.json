@@ -1,0 +1,364 @@
+{
+  "id": "01_baseline",
+  "name": "平穩運作基線",
+  "description": "所有單位穩定運作，無壓力。用於建立正常基線數據，驗證 Dashboard 在無異常情況下的顯示。",
+  "duration_min": 40,
+  "expected_dashboard": {
+    "overall_status": "green",
+    "dci": ">70",
+    "escalation": "normal",
+    "bed_trend": "stable",
+    "supply_status": "adequate",
+    "comm_health": "all_connected"
+  },
+  "injects": [
+    {
+      "seq": 1, "offset_min": 0, "target_unit": "shelter", "type": "snapshot",
+      "title": "收容站初始回報",
+      "payload": {
+        "v": 3, "type": "shelter", "snapshot_id": "ttx-01-s-0001",
+        "t": "2026-04-15T08:00:00Z", "src": "test-shelter-pi", "source": "auto",
+        "bed_used": 15, "bed_total": 50, "staff_on_duty": 5,
+        "srt": {"red": 0, "yellow": 1, "green": 6},
+        "pending_intake": 0,
+        "extra": {
+          "staff_ratio": 3.0, "exited_total": 0,
+          "supplies": {"blanket": 190, "water_bottle": 480},
+          "supplies_max": {"blanket": 200, "water_bottle": 500},
+          "incident_pressure": {"high": 0, "medium": 0, "low": 0, "open_total": 0, "resolved_30min": 0}
+        }
+      }
+    },
+    {
+      "seq": 2, "offset_min": 0, "target_unit": "medical", "type": "snapshot",
+      "title": "醫療站初始回報",
+      "payload": {
+        "v": 3, "type": "medical", "snapshot_id": "ttx-01-m-0001",
+        "t": "2026-04-15T08:00:00Z", "src": "test-medical-pi", "source": "auto",
+        "bed_used": 7, "bed_total": 30, "staff_on_duty": 4,
+        "casualties": {"red": 0, "yellow": 2, "green": 5, "black": 0},
+        "pending_evac": 0, "evacuated_total": 0,
+        "extra": {
+          "src_a": 2, "src_b": 1, "src_c": 2, "staff_ratio": 1.8,
+          "supplies": {"iv": 95, "oxygen": 92, "tourniquet": 98},
+          "supplies_max": {"iv": 100, "oxygen": 100, "tourniquet": 100},
+          "incident_pressure": {"high": 0, "medium": 0, "low": 0, "open_total": 0, "resolved_30min": 0}
+        }
+      }
+    },
+    {
+      "seq": 3, "offset_min": 0, "target_unit": "forward", "type": "snapshot",
+      "title": "前進組初始回報",
+      "payload": {
+        "v": 3, "type": "forward", "snapshot_id": "ttx-01-f-0001",
+        "t": "2026-04-15T08:00:00Z", "src": "test-forward", "source": "auto",
+        "extra": {
+          "units": [
+            {"unit": "Alpha", "casualties": {"red": 0, "yellow": 1, "green": 2, "black": 0}, "ccp_status": "active", "vehicle_needed": 0, "hazard": "none", "last_update": "2026-04-15T08:00:00Z"},
+            {"unit": "Bravo", "casualties": {"red": 0, "yellow": 0, "green": 1, "black": 0}, "ccp_status": "active", "vehicle_needed": 0, "hazard": "none", "last_update": "2026-04-15T08:00:00Z"}
+          ]
+        }
+      }
+    },
+    {
+      "seq": 4, "offset_min": 0, "target_unit": "security", "type": "snapshot",
+      "title": "安全組初始回報",
+      "payload": {
+        "v": 3, "type": "security", "snapshot_id": "ttx-01-x-0001",
+        "t": "2026-04-15T08:00:00Z", "src": "test-security", "source": "auto",
+        "post_total": 4, "qrf_available": 2, "isolation_count": 0,
+        "extra": {"post_total": 4, "post_anomaly": "", "qrf_available": 2, "isolation_count": 0}
+      }
+    },
+    {
+      "seq": 5, "offset_min": 2, "target_unit": "shelter", "type": "snapshot",
+      "title": "收容站 T+2",
+      "payload": {
+        "v": 3, "type": "shelter", "snapshot_id": "ttx-01-s-0002",
+        "t": "2026-04-15T08:02:00Z", "src": "test-shelter-pi", "source": "auto",
+        "bed_used": 16, "bed_total": 50, "staff_on_duty": 5,
+        "srt": {"red": 0, "yellow": 1, "green": 7},
+        "pending_intake": 1,
+        "extra": {
+          "staff_ratio": 3.2, "exited_total": 0,
+          "supplies": {"blanket": 188, "water_bottle": 475},
+          "supplies_max": {"blanket": 200, "water_bottle": 500},
+          "incident_pressure": {"high": 0, "medium": 0, "low": 0, "open_total": 0, "resolved_30min": 0}
+        }
+      }
+    },
+    {
+      "seq": 6, "offset_min": 2, "target_unit": "medical", "type": "snapshot",
+      "title": "醫療站 T+2",
+      "payload": {
+        "v": 3, "type": "medical", "snapshot_id": "ttx-01-m-0002",
+        "t": "2026-04-15T08:02:00Z", "src": "test-medical-pi", "source": "auto",
+        "bed_used": 7, "bed_total": 30, "staff_on_duty": 4,
+        "casualties": {"red": 0, "yellow": 2, "green": 5, "black": 0},
+        "pending_evac": 0, "evacuated_total": 1,
+        "extra": {
+          "src_a": 2, "src_b": 1, "src_c": 2, "staff_ratio": 1.8,
+          "supplies": {"iv": 93, "oxygen": 90, "tourniquet": 97},
+          "supplies_max": {"iv": 100, "oxygen": 100, "tourniquet": 100},
+          "incident_pressure": {"high": 0, "medium": 0, "low": 0, "open_total": 0, "resolved_30min": 0}
+        }
+      }
+    },
+    {
+      "seq": 7, "offset_min": 2, "target_unit": "forward", "type": "snapshot",
+      "title": "前進組 T+2",
+      "payload": {
+        "v": 3, "type": "forward", "snapshot_id": "ttx-01-f-0002",
+        "t": "2026-04-15T08:02:00Z", "src": "test-forward", "source": "auto",
+        "extra": {
+          "units": [
+            {"unit": "Alpha", "casualties": {"red": 0, "yellow": 1, "green": 2, "black": 0}, "ccp_status": "active", "vehicle_needed": 0, "hazard": "none", "last_update": "2026-04-15T08:02:00Z"},
+            {"unit": "Bravo", "casualties": {"red": 0, "yellow": 0, "green": 1, "black": 0}, "ccp_status": "active", "vehicle_needed": 0, "hazard": "none", "last_update": "2026-04-15T08:02:00Z"}
+          ]
+        }
+      }
+    },
+    {
+      "seq": 8, "offset_min": 2, "target_unit": "security", "type": "snapshot",
+      "title": "安全組 T+2",
+      "payload": {
+        "v": 3, "type": "security", "snapshot_id": "ttx-01-x-0002",
+        "t": "2026-04-15T08:02:00Z", "src": "test-security", "source": "auto",
+        "post_total": 4, "qrf_available": 2, "isolation_count": 0,
+        "extra": {"post_total": 4, "post_anomaly": "", "qrf_available": 2, "isolation_count": 0}
+      }
+    },
+    {
+      "seq": 9, "offset_min": 4, "target_unit": "shelter", "type": "snapshot",
+      "title": "收容站 T+4",
+      "payload": {
+        "v": 3, "type": "shelter", "snapshot_id": "ttx-01-s-0003",
+        "t": "2026-04-15T08:04:00Z", "src": "test-shelter-pi", "source": "auto",
+        "bed_used": 16, "bed_total": 50, "staff_on_duty": 5,
+        "srt": {"red": 0, "yellow": 1, "green": 7},
+        "pending_intake": 0,
+        "extra": {
+          "staff_ratio": 3.2, "exited_total": 1,
+          "supplies": {"blanket": 186, "water_bottle": 470},
+          "supplies_max": {"blanket": 200, "water_bottle": 500},
+          "incident_pressure": {"high": 0, "medium": 0, "low": 1, "open_total": 1, "resolved_30min": 0}
+        }
+      }
+    },
+    {
+      "seq": 10, "offset_min": 4, "target_unit": "medical", "type": "snapshot",
+      "title": "醫療站 T+4",
+      "payload": {
+        "v": 3, "type": "medical", "snapshot_id": "ttx-01-m-0003",
+        "t": "2026-04-15T08:04:00Z", "src": "test-medical-pi", "source": "auto",
+        "bed_used": 7, "bed_total": 30, "staff_on_duty": 4,
+        "casualties": {"red": 0, "yellow": 2, "green": 5, "black": 0},
+        "pending_evac": 0, "evacuated_total": 1,
+        "extra": {
+          "src_a": 3, "src_b": 1, "src_c": 2, "staff_ratio": 1.8,
+          "supplies": {"iv": 91, "oxygen": 89, "tourniquet": 96},
+          "supplies_max": {"iv": 100, "oxygen": 100, "tourniquet": 100},
+          "incident_pressure": {"high": 0, "medium": 0, "low": 0, "open_total": 0, "resolved_30min": 0}
+        }
+      }
+    },
+    {
+      "seq": 11, "offset_min": 4, "target_unit": "forward", "type": "snapshot",
+      "title": "前進組 T+4",
+      "payload": {
+        "v": 3, "type": "forward", "snapshot_id": "ttx-01-f-0003",
+        "t": "2026-04-15T08:04:00Z", "src": "test-forward", "source": "auto",
+        "extra": {
+          "units": [
+            {"unit": "Alpha", "casualties": {"red": 0, "yellow": 1, "green": 3, "black": 0}, "ccp_status": "active", "vehicle_needed": 0, "hazard": "none", "last_update": "2026-04-15T08:04:00Z"},
+            {"unit": "Bravo", "casualties": {"red": 0, "yellow": 0, "green": 2, "black": 0}, "ccp_status": "active", "vehicle_needed": 0, "hazard": "none", "last_update": "2026-04-15T08:04:00Z"}
+          ]
+        }
+      }
+    },
+    {
+      "seq": 12, "offset_min": 4, "target_unit": "security", "type": "snapshot",
+      "title": "安全組 T+4",
+      "payload": {
+        "v": 3, "type": "security", "snapshot_id": "ttx-01-x-0003",
+        "t": "2026-04-15T08:04:00Z", "src": "test-security", "source": "auto",
+        "post_total": 4, "qrf_available": 2, "isolation_count": 0,
+        "extra": {"post_total": 4, "post_anomaly": "", "qrf_available": 2, "isolation_count": 0}
+      }
+    },
+    {
+      "seq": 13, "offset_min": 6, "target_unit": "shelter", "type": "snapshot",
+      "title": "收容站 T+6",
+      "payload": {
+        "v": 3, "type": "shelter", "snapshot_id": "ttx-01-s-0004",
+        "t": "2026-04-15T08:06:00Z", "src": "test-shelter-pi", "source": "auto",
+        "bed_used": 17, "bed_total": 50, "staff_on_duty": 6,
+        "srt": {"red": 0, "yellow": 2, "green": 7},
+        "pending_intake": 1,
+        "extra": {
+          "staff_ratio": 2.8, "exited_total": 1,
+          "supplies": {"blanket": 184, "water_bottle": 465},
+          "supplies_max": {"blanket": 200, "water_bottle": 500},
+          "incident_pressure": {"high": 0, "medium": 0, "low": 1, "open_total": 1, "resolved_30min": 1}
+        }
+      }
+    },
+    {
+      "seq": 14, "offset_min": 6, "target_unit": "medical", "type": "snapshot",
+      "title": "醫療站 T+6",
+      "payload": {
+        "v": 3, "type": "medical", "snapshot_id": "ttx-01-m-0004",
+        "t": "2026-04-15T08:06:00Z", "src": "test-medical-pi", "source": "auto",
+        "bed_used": 8, "bed_total": 30, "staff_on_duty": 4,
+        "casualties": {"red": 0, "yellow": 2, "green": 6, "black": 0},
+        "pending_evac": 1, "evacuated_total": 1,
+        "extra": {
+          "src_a": 3, "src_b": 1, "src_c": 3, "staff_ratio": 2.0,
+          "supplies": {"iv": 89, "oxygen": 88, "tourniquet": 95},
+          "supplies_max": {"iv": 100, "oxygen": 100, "tourniquet": 100},
+          "incident_pressure": {"high": 0, "medium": 0, "low": 1, "open_total": 1, "resolved_30min": 0}
+        }
+      }
+    },
+    {
+      "seq": 15, "offset_min": 6, "target_unit": "forward", "type": "snapshot",
+      "title": "前進組 T+6",
+      "payload": {
+        "v": 3, "type": "forward", "snapshot_id": "ttx-01-f-0004",
+        "t": "2026-04-15T08:06:00Z", "src": "test-forward", "source": "auto",
+        "extra": {
+          "units": [
+            {"unit": "Alpha", "casualties": {"red": 0, "yellow": 1, "green": 3, "black": 0}, "ccp_status": "active", "vehicle_needed": 0, "hazard": "none", "last_update": "2026-04-15T08:06:00Z"},
+            {"unit": "Bravo", "casualties": {"red": 0, "yellow": 1, "green": 2, "black": 0}, "ccp_status": "active", "vehicle_needed": 0, "hazard": "none", "last_update": "2026-04-15T08:06:00Z"}
+          ]
+        }
+      }
+    },
+    {
+      "seq": 16, "offset_min": 6, "target_unit": "security", "type": "snapshot",
+      "title": "安全組 T+6",
+      "payload": {
+        "v": 3, "type": "security", "snapshot_id": "ttx-01-x-0004",
+        "t": "2026-04-15T08:06:00Z", "src": "test-security", "source": "auto",
+        "post_total": 4, "qrf_available": 2, "isolation_count": 0,
+        "extra": {"post_total": 4, "post_anomaly": "", "qrf_available": 2, "isolation_count": 0}
+      }
+    },
+    {
+      "seq": 17, "offset_min": 8, "target_unit": "shelter", "type": "snapshot",
+      "title": "收容站 T+8",
+      "payload": {
+        "v": 3, "type": "shelter", "snapshot_id": "ttx-01-s-0005",
+        "t": "2026-04-15T08:08:00Z", "src": "test-shelter-pi", "source": "auto",
+        "bed_used": 17, "bed_total": 50, "staff_on_duty": 5,
+        "srt": {"red": 0, "yellow": 1, "green": 8},
+        "pending_intake": 0,
+        "extra": {
+          "staff_ratio": 3.4, "exited_total": 2,
+          "supplies": {"blanket": 182, "water_bottle": 460},
+          "supplies_max": {"blanket": 200, "water_bottle": 500},
+          "incident_pressure": {"high": 0, "medium": 0, "low": 0, "open_total": 0, "resolved_30min": 1}
+        }
+      }
+    },
+    {
+      "seq": 18, "offset_min": 8, "target_unit": "medical", "type": "snapshot",
+      "title": "醫療站 T+8",
+      "payload": {
+        "v": 3, "type": "medical", "snapshot_id": "ttx-01-m-0005",
+        "t": "2026-04-15T08:08:00Z", "src": "test-medical-pi", "source": "auto",
+        "bed_used": 7, "bed_total": 30, "staff_on_duty": 5,
+        "casualties": {"red": 0, "yellow": 2, "green": 5, "black": 0},
+        "pending_evac": 0, "evacuated_total": 2,
+        "extra": {
+          "src_a": 3, "src_b": 1, "src_c": 2, "staff_ratio": 1.4,
+          "supplies": {"iv": 87, "oxygen": 86, "tourniquet": 94},
+          "supplies_max": {"iv": 100, "oxygen": 100, "tourniquet": 100},
+          "incident_pressure": {"high": 0, "medium": 1, "low": 0, "open_total": 1, "resolved_30min": 0}
+        }
+      }
+    },
+    {
+      "seq": 19, "offset_min": 8, "target_unit": "forward", "type": "snapshot",
+      "title": "前進組 T+8",
+      "payload": {
+        "v": 3, "type": "forward", "snapshot_id": "ttx-01-f-0005",
+        "t": "2026-04-15T08:08:00Z", "src": "test-forward", "source": "auto",
+        "extra": {
+          "units": [
+            {"unit": "Alpha", "casualties": {"red": 0, "yellow": 1, "green": 3, "black": 0}, "ccp_status": "active", "vehicle_needed": 0, "hazard": "none", "last_update": "2026-04-15T08:08:00Z"},
+            {"unit": "Bravo", "casualties": {"red": 0, "yellow": 0, "green": 2, "black": 0}, "ccp_status": "standby", "vehicle_needed": 0, "hazard": "none", "last_update": "2026-04-15T08:08:00Z"}
+          ]
+        }
+      }
+    },
+    {
+      "seq": 20, "offset_min": 8, "target_unit": "security", "type": "snapshot",
+      "title": "安全組 T+8",
+      "payload": {
+        "v": 3, "type": "security", "snapshot_id": "ttx-01-x-0005",
+        "t": "2026-04-15T08:08:00Z", "src": "test-security", "source": "auto",
+        "post_total": 4, "qrf_available": 2, "isolation_count": 0,
+        "extra": {"post_total": 4, "post_anomaly": "", "qrf_available": 2, "isolation_count": 0}
+      }
+    },
+    {
+      "seq": 21, "offset_min": 10, "target_unit": "shelter", "type": "snapshot",
+      "title": "收容站 T+10 — 持續穩定",
+      "payload": {
+        "v": 3, "type": "shelter", "snapshot_id": "ttx-01-s-0006",
+        "t": "2026-04-15T08:10:00Z", "src": "test-shelter-pi", "source": "auto",
+        "bed_used": 18, "bed_total": 50, "staff_on_duty": 5,
+        "srt": {"red": 0, "yellow": 2, "green": 8},
+        "pending_intake": 1,
+        "extra": {
+          "staff_ratio": 3.6, "exited_total": 2,
+          "supplies": {"blanket": 180, "water_bottle": 455},
+          "supplies_max": {"blanket": 200, "water_bottle": 500},
+          "incident_pressure": {"high": 0, "medium": 0, "low": 0, "open_total": 0, "resolved_30min": 0}
+        }
+      }
+    },
+    {
+      "seq": 22, "offset_min": 10, "target_unit": "medical", "type": "snapshot",
+      "title": "醫療站 T+10",
+      "payload": {
+        "v": 3, "type": "medical", "snapshot_id": "ttx-01-m-0006",
+        "t": "2026-04-15T08:10:00Z", "src": "test-medical-pi", "source": "auto",
+        "bed_used": 8, "bed_total": 30, "staff_on_duty": 4,
+        "casualties": {"red": 0, "yellow": 3, "green": 5, "black": 0},
+        "pending_evac": 0, "evacuated_total": 2,
+        "extra": {
+          "src_a": 4, "src_b": 1, "src_c": 2, "staff_ratio": 2.0,
+          "supplies": {"iv": 85, "oxygen": 85, "tourniquet": 93},
+          "supplies_max": {"iv": 100, "oxygen": 100, "tourniquet": 100},
+          "incident_pressure": {"high": 0, "medium": 0, "low": 1, "open_total": 1, "resolved_30min": 1}
+        }
+      }
+    },
+    {
+      "seq": 23, "offset_min": 10, "target_unit": "forward", "type": "snapshot",
+      "title": "前進組 T+10",
+      "payload": {
+        "v": 3, "type": "forward", "snapshot_id": "ttx-01-f-0006",
+        "t": "2026-04-15T08:10:00Z", "src": "test-forward", "source": "auto",
+        "extra": {
+          "units": [
+            {"unit": "Alpha", "casualties": {"red": 0, "yellow": 1, "green": 3, "black": 0}, "ccp_status": "active", "vehicle_needed": 0, "hazard": "none", "last_update": "2026-04-15T08:10:00Z"},
+            {"unit": "Bravo", "casualties": {"red": 0, "yellow": 1, "green": 2, "black": 0}, "ccp_status": "active", "vehicle_needed": 0, "hazard": "none", "last_update": "2026-04-15T08:10:00Z"}
+          ]
+        }
+      }
+    },
+    {
+      "seq": 24, "offset_min": 10, "target_unit": "security", "type": "snapshot",
+      "title": "安全組 T+10 — 結束基線",
+      "payload": {
+        "v": 3, "type": "security", "snapshot_id": "ttx-01-x-0006",
+        "t": "2026-04-15T08:10:00Z", "src": "test-security", "source": "auto",
+        "post_total": 4, "qrf_available": 2, "isolation_count": 0,
+        "extra": {"post_total": 4, "post_anomaly": "", "qrf_available": 2, "isolation_count": 0}
+      }
+    }
+  ]
+}

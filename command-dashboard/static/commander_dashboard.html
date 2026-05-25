@@ -1,0 +1,1175 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no">
+<title>ICS 指揮部</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&display=swap');
+:root {
+  --bg:#0d1117; --surface:#161b22; --surface2:#1c2333; --border:#30363d;
+  --green:#1a9e52; --yellow:#d49000; --red:#cc2a2a;
+  --text:#e6edf3; --text2:#8b949e; --text3:#6e7681;
+  --mono:'IBM Plex Mono',monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+/* 細捲軸 */
+::-webkit-scrollbar{width:4px;}
+::-webkit-scrollbar-track{background:transparent;}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
+::-webkit-scrollbar-thumb:hover{background:var(--text3);}
+html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(--text);font-family:var(--mono),-apple-system,sans-serif;}
+
+/* ═══ ZONE A ═══ */
+#zone-a{
+  height:64px;display:flex;align-items:center;padding:0 16px;gap:14px;
+  background:linear-gradient(180deg,#161b22,#0d1117);border-bottom:1px solid var(--border);
+}
+#status-lamp{
+  width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  font-size:13px;font-weight:700;color:#fff;flex-shrink:0;
+  transition:background .5s,box-shadow .5s;
+}
+#status-lamp.ok{background:var(--green);box-shadow:0 0 16px rgba(26,158,82,.5);}
+#status-lamp.warn{background:var(--yellow);box-shadow:0 0 16px rgba(212,144,0,.5);}
+#status-lamp.crit{background:var(--red);box-shadow:0 0 16px rgba(204,42,42,.6);animation:pulse 1.5s infinite;}
+@keyframes pulse{0%,100%{opacity:1;}50%{opacity:.6;}}
+
+#zone-a-mid{flex:1;min-width:0;}
+#zone-a-top{display:flex;align-items:baseline;justify-content:center;gap:24px;}
+.za-col{display:flex;flex-direction:column;}
+.za-col-l{align-items:flex-end;}
+.za-col-r{align-items:flex-start;}
+.za-clock{font-size:22px;font-weight:700;color:var(--text);}
+.za-counts{font-size:16px;font-weight:600;color:var(--text);}
+
+#zone-a-right{display:flex;align-items:center;gap:14px;flex-shrink:0;}
+#dci{text-align:center;}
+#dci-val{font-size:28px;font-weight:700;line-height:1;}
+#dci-label{font-size:8px;color:var(--text3);letter-spacing:.1em;}
+.conn-item{display:flex;align-items:center;gap:3px;}
+.conn-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
+.conn-dot.ok{background:#00d466;box-shadow:0 0 6px #00d466;}
+.conn-dot.warn{background:var(--yellow);box-shadow:0 0 6px var(--yellow);animation:blink 1s infinite;}
+.conn-dot.crit{background:var(--red);box-shadow:0 0 6px var(--red);animation:blink .6s infinite;}
+.conn-dot.lkp{background:#555;}
+.conn-label{font-size:9px;color:var(--text3);}
+.h-ver{font-size:9px;color:var(--text3);}
+
+/* ═══ ZONE B ═══ */
+#zone-b{
+  display:flex;height:calc(100vh - 64px - 52px);overflow:hidden;
+}
+
+/* 側欄面板 */
+.side-panel{
+  flex:0 0 20%;display:flex;flex-direction:column;padding:4px 5px;gap:3px;overflow:hidden;min-height:0;
+  border-right:1px solid var(--border);
+}
+.side-panel.right{border-right:none;border-left:1px solid var(--border);transition:flex-basis .25s;}
+.side-panel.right.expanded{flex-basis:30%;}
+.side-panel.collapsed{display:none !important;}
+
+/* 中：地圖 */
+#map-panel{
+  flex:1;position:relative;background:#111;overflow:hidden;
+}
+/* 工具列浮島（右側）*/
+#map-toolbar{right:8px;display:flex;align-items:center;gap:2px;padding:0;overflow:hidden;}
+#map-tabs{display:flex;gap:0;}
+.map-tab{
+  padding:3px 11px;font-size:10px;font-weight:600;cursor:pointer;
+  background:transparent;color:var(--text3);
+  border:1px solid transparent;border-radius:4px;
+  transition:all .2s;white-space:nowrap;
+}
+.map-tab:hover{color:var(--text);}
+.map-tab.active{background:rgba(26,158,82,.2);color:#fff;border-color:var(--green);}
+.toolbar-sep{width:1px;height:18px;background:rgba(255,255,255,.15);margin:0 2px;flex-shrink:0;}
+#map-img{width:100%;height:100%;object-fit:contain;display:block;}
+#map-overlay{position:absolute;inset:0;pointer-events:none;}
+.zone-marker{
+  position:absolute;transform:translate(-50%,-50%);pointer-events:auto;cursor:pointer;
+  display:flex;flex-direction:column;align-items:center;gap:0;
+  transition:transform .15s;
+}
+.zone-marker:hover{transform:translate(-50%,-50%) scale(1.1);}
+.zone-dot{
+  display:flex;align-items:center;justify-content:center;
+  font-size:14px;line-height:1;
+  filter:drop-shadow(0 1px 2px rgba(0,0,0,.6));
+  position:relative;
+}
+/* 預設隱藏標籤 */
+.zone-info{
+  display:none;flex-direction:column;align-items:center;gap:1px;margin-top:3px;
+}
+/* hover 或 pinned 時顯示 */
+.zone-marker:hover .zone-info,
+.zone-marker.pinned .zone-info{display:flex;}
+.zone-label{
+  font-size:9px;font-weight:700;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.9);
+  white-space:nowrap;background:rgba(0,0,0,.6);padding:1px 5px;border-radius:3px;
+}
+.zone-stats{
+  font-size:8px;font-weight:600;color:rgba(255,255,255,.85);text-shadow:0 1px 2px rgba(0,0,0,.7);
+  white-space:nowrap;background:rgba(0,0,0,.6);padding:1px 5px;border-radius:3px;
+}
+
+/* 工具按鈕（在 #map-hud 內） */
+#map-tools{display:flex;gap:2px;}
+.map-btn{
+  width:28px;height:28px;border-radius:4px;border:none;
+  background:transparent;color:var(--text2);font-size:13px;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;transition:all .15s;
+}
+.map-btn:hover{background:rgba(255,255,255,.1);color:#fff;}
+.map-btn.active{background:rgba(26,158,82,.3);color:#fff;}
+/* Phase 5: MGRS 格線標籤 */
+.mgrs-gl{font-size:9px;font-weight:700;color:rgba(30,80,180,.9);background:rgba(255,255,255,.78);padding:1px 3px;border-radius:2px;white-space:nowrap;pointer-events:none;line-height:1.3;}
+/* Phase 3: 繪製範圍 banner */
+#poly-draw-banner{display:none;position:absolute;top:50px;left:50%;transform:translateX(-50%);z-index:1001;
+  background:rgba(14,22,29,.92);border:1px solid var(--border);border-radius:20px;
+  padding:6px 14px;font-size:12px;align-items:center;gap:12px;white-space:nowrap;pointer-events:auto;}
+#poly-draw-banner button{background:transparent;border:1px solid var(--border);color:var(--text2);
+  padding:2px 10px;border-radius:10px;font-size:11px;cursor:pointer;}
+#poly-draw-banner button.ok{background:var(--green);color:#fff;border-color:var(--green);}
+/* 路線繪製 banner */
+#route-draw-banner{display:none;position:absolute;top:50px;left:50%;transform:translateX(-50%);z-index:1001;
+  background:rgba(14,22,29,.92);border:1px solid var(--border);border-radius:20px;
+  padding:6px 14px;font-size:12px;align-items:center;gap:12px;white-space:nowrap;pointer-events:auto;}
+#route-draw-banner button{background:transparent;border:1px solid var(--border);color:var(--text2);
+  padding:2px 10px;border-radius:10px;font-size:11px;cursor:pointer;}
+#route-draw-banner button.ok{background:var(--green);color:#fff;border-color:var(--green);}
+/* 圖層面板（Layer Panel）*/
+#layer-panel{
+  position:absolute;top:50px;right:8px;z-index:1010;
+  background:rgba(22,27,34,.96);border:1px solid var(--border);
+  border-radius:8px;padding:6px 0;min-width:148px;
+  font-family:var(--mono);
+  box-shadow:0 4px 16px rgba(0,0,0,.45);
+}
+#layer-panel h4{padding:3px 12px 6px;font-size:9px;color:var(--text3);letter-spacing:.1em;
+  border-bottom:1px solid var(--border);margin-bottom:2px;text-transform:uppercase;}
+.layer-row{display:flex;align-items:center;gap:8px;padding:5px 12px;cursor:pointer;transition:background .15s;}
+.layer-row:hover{background:rgba(255,255,255,.05);}
+.layer-check{width:13px;height:13px;border:1px solid var(--border);border-radius:3px;
+  display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:9px;}
+.layer-check.on{background:var(--green);border-color:var(--green);color:#fff;}
+/* MGRS 搜尋浮島（底部中央，站外才顯示）*/
+#mgrs-island{
+  position:absolute;top:auto;bottom:8px;left:50%;transform:translateX(-50%);
+  z-index:10;display:none;align-items:center;gap:4px;padding:4px 8px;
+}
+#mgrs-search-wrap{display:flex;align-items:center;gap:4px;}
+.place-grp{
+  padding:5px 12px;font-size:10px;font-weight:600;cursor:pointer;
+  color:#6e7681;border:1px solid #30363d;
+  font-family:var(--mono);transition:all .15s;
+}
+.place-grp:first-child{border-radius:4px 0 0 4px;}
+.place-grp:last-child{border-radius:0 4px 4px 0;}
+/* 未選：中等飽和度，可辨識組別 */
+.place-grp[data-grp="forward"]{background:#8b5e1a;color:#ccc;}
+.place-grp[data-grp="security"]{background:#2b4a8c;color:#ccc;}
+.place-grp[data-grp="shelter"]{background:#8b7a1a;color:#ccc;}
+.place-grp[data-grp="medical"]{background:#8b2020;color:#ccc;}
+.place-grp[data-grp="command"]{background:#1a6b38;color:#ccc;}
+/* 選取：全亮 */
+.place-grp[data-grp="forward"].active{background:#e68c1e;color:#fff;border-color:#e68c1e;}
+.place-grp[data-grp="security"].active{background:#3366e6;color:#fff;border-color:#3366e6;}
+.place-grp[data-grp="shelter"].active{background:#d4b200;color:#fff;border-color:#d4b200;}
+.place-grp[data-grp="medical"].active{background:#e03030;color:#fff;border-color:#e03030;}
+.place-grp[data-grp="command"].active{background:#22b05a;color:#fff;border-color:#22b05a;}
+/* MGRS 座標搜尋欄 */
+#mgrs-search-wrap{display:flex;align-items:center;gap:4px;}
+#mgrs-search-input{
+  width:200px;background:rgba(13,17,23,.9);border:1px solid rgba(255,255,255,.15);
+  color:#e6edf3;font-family:var(--mono);font-size:10px;padding:3px 8px;border-radius:4px;
+  outline:none;transition:border-color .15s,background .15s;
+}
+#mgrs-search-input::placeholder{color:#484f58;}
+#mgrs-search-input:focus{border-color:rgba(88,166,255,.5);background:rgba(13,17,23,1);}
+#mgrs-search-input.error{border-color:rgba(248,81,73,.6);background:rgba(248,81,73,.07);}
+#mgrs-search-btn{
+  padding:3px 8px;font-size:11px;border-radius:4px;cursor:pointer;
+  border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.05);
+  color:#8b949e;transition:all .12s;
+}
+#mgrs-search-btn:hover{background:rgba(88,166,255,.15);border-color:rgba(88,166,255,.4);color:#e6edf3;}
+/* 自訂事件類型下拉 */
+.csel-wrap{position:relative;margin-left:6px;}
+.csel-btn{
+  display:flex;align-items:center;justify-content:space-between;gap:6px;
+  background:var(--surface2);border:1px solid var(--border);color:var(--text);
+  padding:3px 8px;border-radius:4px;font-size:11px;font-family:var(--mono);
+  cursor:pointer;min-width:110px;user-select:none;white-space:nowrap;
+}
+.csel-btn.disabled{opacity:0.4;cursor:not-allowed;pointer-events:none;}
+.csel-btn::after{content:'▴';font-size:8px;color:var(--text3);flex-shrink:0;}
+.csel-panel{
+  display:none;position:absolute;bottom:calc(100% + 4px);right:0;
+  background:var(--surface2);border:1px solid var(--border);border-radius:4px;
+  z-index:200;overflow:hidden;
+  box-shadow:0 -4px 12px rgba(0,0,0,.55);
+}
+.csel-panel.open{display:block;}
+.csel-opt{
+  padding:4px 10px;font-size:11px;font-family:var(--mono);
+  color:var(--text);cursor:pointer;white-space:nowrap;
+}
+.csel-opt:hover{background:rgba(255,255,255,.07);}
+.csel-opt.active{color:var(--green);}
+.csel-opt.placeholder{color:var(--text3);}
+.csel-group-header{
+  padding:4px 10px 2px;font-size:9px;font-weight:700;color:var(--text3);
+  letter-spacing:.08em;text-transform:uppercase;border-top:1px solid var(--border);
+  margin-top:2px;pointer-events:none;
+}
+.csel-group-header:first-child{border-top:none;margin-top:0;}
+/* Wave 4：收容/醫療據點固定高亮 */
+.zone-marker.node-shelter .zone-dot{color:#f0883e;filter:drop-shadow(0 0 6px rgba(240,136,62,.6));}
+.zone-marker.node-shelter .zone-label{background:rgba(240,136,62,.85);font-weight:700;}
+.zone-marker.node-shelter .zone-info{display:flex;}
+.zone-marker.node-medical .zone-dot{color:#e05555;filter:drop-shadow(0 0 6px rgba(224,85,85,.6));}
+.zone-marker.node-medical .zone-label{background:rgba(224,85,85,.85);font-weight:700;}
+.zone-marker.node-medical .zone-info{display:flex;}
+.zone-marker.selected{z-index:20;outline:2px solid var(--green);outline-offset:2px;}
+.zone-marker.selected .zone-info{display:flex;}
+.zone-marker.dimmed{opacity:0.15;pointer-events:none;}
+.zone-marker.highlighted{z-index:20;outline:2px solid var(--green);outline-offset:2px;transform:translate(-50%,-50%) scale(1.2);}
+.zone-marker.highlighted .zone-info{display:flex;}
+.zone-marker.dragging{cursor:grabbing;z-index:25;}
+#edit-coords{
+  position:absolute;top:8px;left:50%;transform:translateX(-50%);z-index:10;
+  display:none;padding:3px 10px;border-radius:4px;
+  background:rgba(0,0,0,.75);color:var(--yellow);font-size:11px;font-weight:600;
+}
+#edit-coords.show{display:block;}
+
+/* sparkline 卡片 */
+.spark-card{
+  flex:1;min-height:0;background:var(--surface);border:1px solid var(--border);border-radius:5px;
+  display:flex;flex-direction:column;overflow:hidden;cursor:pointer;transition:background .3s;
+}
+.spark-card:hover{background:var(--surface2);}
+.spark-card.bg-warn{border-color:rgba(212,144,0,.5);background:rgba(212,144,0,.06);}
+.spark-card.bg-crit{border-color:rgba(204,42,42,.5);background:rgba(204,42,42,.08);}
+.spark-hdr{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:3px 6px;flex-shrink:0;
+}
+.spark-title{font-size:9px;font-weight:600;color:var(--text3);}
+.spark-val{font-size:10px;font-weight:700;color:var(--text);}
+.spark-rag{width:7px;height:7px;border-radius:50%;flex-shrink:0;margin-left:4px;}
+.spark-rag.ok{background:var(--green);}
+.spark-rag.warn{background:var(--yellow);}
+.spark-rag.crit{background:var(--red);}
+.spark-body{flex:1;min-height:0;padding:0 2px 1px;}
+.spark-body canvas{display:block;width:100%!important;height:100%!important;}
+
+/* sparkline 展開圖例 */
+.spark-detail{display:none;padding:2px 6px;}
+.spark-card.expanded .spark-detail{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
+.spark-detail .li{display:flex;align-items:center;gap:3px;font-size:8px;color:var(--text3);}
+.spark-detail .ld{width:14px;height:3px;border-radius:1px;flex-shrink:0;}
+.spark-detail .ld.dash{background:transparent !important;border-top:2px dashed;}
+
+/* ═══ ZONE C ═══ */
+#zone-c{
+  height:52px;display:flex;align-items:stretch;padding:3px 8px;gap:5px;
+  background:var(--surface);border-top:1px solid var(--border);
+}
+.zc-pill{
+  flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:5px;
+  display:flex;align-items:center;justify-content:center;gap:6px;
+  padding:2px 8px;transition:all .3s;
+}
+.zc-pill.warn{border-color:rgba(212,144,0,.6);background:rgba(212,144,0,.1);}
+.zc-pill.crit{border-color:rgba(204,42,42,.6);background:rgba(204,42,42,.12);animation:pulse 1.5s infinite;}
+.zc-icon{font-size:14px;}
+.zc-label{font-size:8px;color:var(--text3);}
+.zc-time{font-size:18px;font-weight:700;line-height:1;}
+.zc-time.ok{color:var(--green);}
+.zc-time.warn{color:var(--yellow);}
+.zc-time.crit{color:var(--red);}
+
+/* 升降級區塊 */
+.zc-esc{
+  flex:1.5;background:var(--surface2);border:1px solid var(--border);border-radius:6px;
+  padding:6px 10px;overflow-y:auto;
+}
+.zc-esc-title{font-size:9px;color:var(--text3);letter-spacing:.08em;margin-bottom:4px;}
+.zc-esc-item{font-size:10px;color:var(--text2);margin-bottom:2px;}
+.zc-esc-item .tag{display:inline-block;padding:0 4px;border-radius:2px;font-size:8px;font-weight:700;margin-right:4px;}
+.zc-esc-item .tag.warn{background:rgba(212,144,0,.2);color:var(--yellow);}
+.zc-esc-item .tag.crit{background:rgba(204,42,42,.2);color:var(--red);}
+.zc-esc-item .tag.ok{background:rgba(26,158,82,.2);color:var(--green);}
+
+/* （已移至右側面板，保留 CSS 供相容） */
+
+/* ═══ OVERLAY MODAL ═══ */
+#overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:210;align-items:center;justify-content:center;}
+#overlay.show{display:flex;}
+#modal{background:var(--surface);border-radius:10px;border:1px solid var(--border);width:min(960px,94vw);max-height:90vh;overflow:hidden;display:flex;flex-direction:column;color:var(--text);}
+#modal-hdr{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;background:var(--surface2);border-bottom:1px solid var(--border);flex-shrink:0;}
+#modal-title{font-size:12px;font-weight:700;color:var(--text);}
+#modal-close{font-size:18px;cursor:pointer;color:var(--text3);background:none;border:none;padding:2px 6px;border-radius:3px;}
+#modal-close:hover{background:var(--bg);}
+#modal-body{flex:1;overflow-y:auto;padding:16px;}
+#modal-footer{display:flex;justify-content:flex-end;gap:8px;padding:10px 16px;border-top:1px solid var(--border);background:var(--surface2);flex-shrink:0;}
+#modal-footer:empty{display:none;}
+
+/* ═══ 事件表單 OVERLAY ═══ */
+#event-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:220;align-items:center;justify-content:center;}
+#event-overlay.show{display:flex;}
+#event-modal{background:var(--surface);border-radius:10px;border:1px solid var(--border);width:min(480px,94vw);max-height:90vh;overflow:hidden;display:flex;flex-direction:column;color:var(--text);}
+#event-modal input, #event-modal select, #event-modal textarea {
+  background:var(--surface2);border:1px solid var(--border);color:var(--text);
+  padding:6px 8px;border-radius:4px;font-size:11px;font-family:var(--mono);
+  width:100%;margin-top:3px;
+}
+#event-modal label {font-size:10px;color:var(--text3);display:block;margin-bottom:2px;}
+#event-modal textarea {resize:vertical;}
+
+/* ═══ 裁示 OVERLAY ═══ */
+#decision-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:220;align-items:center;justify-content:center;}
+#decision-overlay.show{display:flex;}
+#decision-modal{background:var(--surface);border-radius:10px;border:1px solid var(--border);width:min(560px,94vw);max-height:90vh;overflow:hidden;display:flex;flex-direction:column;color:var(--text);}
+
+/* 切面通用 */
+.slice-time{font-size:12px;font-weight:700;color:var(--text2);margin-bottom:14px;padding-bottom:8px;border-bottom:1px solid var(--border);}
+.slice-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;}
+.slice-card{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:10px 12px;margin-bottom:10px;}
+.slice-card-title{font-size:9px;color:var(--text3);letter-spacing:.08em;text-transform:uppercase;margin-bottom:6px;}
+.slice-row{display:flex;justify-content:space-between;align-items:center;font-size:12px;margin-bottom:3px;}
+.slice-row .sk{color:var(--text3);}
+.slice-row .sv{font-weight:700;}
+.slice-bar{height:5px;background:var(--border);border-radius:2px;overflow:hidden;margin-top:3px;}
+.slice-fill{height:100%;border-radius:2px;}
+.src-breakdown{display:flex;gap:5px;margin-top:6px;}
+.src-chip{flex:1;padding:5px 6px;border-radius:4px;text-align:center;border:1px solid;}
+.src-chip .sc-label{font-size:8px;margin-bottom:1px;}
+.src-chip .sc-val{font-size:18px;font-weight:700;line-height:1;}
+
+/* 全螢幕放大 */
+/* 展開全螢幕 — 放大字體和間距 */
+.spark-card.expanded{position:fixed;top:64px;left:0;right:0;bottom:80px;z-index:50;border-radius:0;border:none;background:var(--bg);}
+.spark-card.expanded .spark-hdr{padding:8px 16px;}
+.spark-card.expanded .spark-title{font-size:14px;}
+.spark-card.expanded .spark-val{font-size:16px;}
+.spark-card.expanded .spark-rag{width:10px;height:10px;}
+.spark-card.expanded .spark-detail{padding:4px 16px;gap:14px;}
+.spark-card.expanded .spark-detail .li{font-size:11px;gap:5px;}
+.spark-card.expanded .spark-detail .ld{width:20px;height:4px;}
+.spark-card.expanded .spark-body{padding:0 8px 6px;}
+
+/* 地圖新鮮度圓點 */
+.zone-fresh{
+  position:absolute;top:-2px;right:-2px;width:6px;height:6px;border-radius:50%;
+  border:1px solid rgba(0,0,0,.5);
+}
+.zone-fresh.ok{background:var(--green);}
+.zone-fresh.warn{background:var(--yellow);animation:blink 1s infinite;}
+.zone-fresh.crit{background:var(--red);animation:blink .6s infinite;}
+.zone-fresh.lkp{background:#555;}
+@keyframes blink{0%,100%{opacity:1;}50%{opacity:.3;}}
+
+
+/* 地圖流向箭頭動畫 */
+.flow-line{animation:flowDash 1.5s linear infinite;}
+@keyframes flowDash{to{stroke-dashoffset:-12;}}
+
+/* 裁示頁籤 */
+.dec-tab{cursor:pointer;font-size:9px;color:var(--text3);padding:1px 4px;border-radius:3px;}
+.dec-tab.active{color:var(--text);background:rgba(255,255,255,.1);}
+
+/* 左側面板切換頁籤 */
+#panel-left-tabs{margin-bottom:3px;}
+.panel-tab{
+  flex:1;padding:3px 0;text-align:center;font-size:9px;font-weight:600;
+  color:var(--text3);background:var(--surface);border:1px solid var(--border);
+  cursor:pointer;transition:all .2s;
+}
+.panel-tab:first-child{border-radius:4px 0 0 4px;}
+.panel-tab:last-child{border-radius:0 4px 4px 0;}
+.panel-tab.active{background:rgba(26,158,82,.2);color:#fff;border-color:var(--green);}
+.spark-group{display:flex;flex-direction:column;gap:3px;flex:1;min-height:0;}
+.spark-group[style*="display:none"]{display:none !important;}
+
+/* 事件地圖標記 */
+.event-marker{z-index:8;}
+.event-marker .zone-info{display:flex !important;}
+
+/* 逾時事件 marker 閃爍 */
+.zone-marker.overdue .zone-dot{animation:pulse 1s infinite;}
+.zone-marker.overdue .zone-label{background:rgba(204,42,42,.7);}
+
+/* 事件 marker 顏色（由外層 CSS color 控制 SVG currentColor） */
+.zone-dot.evt-new{color:var(--yellow);}
+.zone-dot.evt-warn{color:#e67e22;}
+.zone-dot.evt-overdue{color:var(--red);animation:pulse 1s infinite;}
+.zone-dot.evt-resolved{color:#555;opacity:.4;}
+
+/* 放置模式 cursor */
+#map-panel.placing{cursor:crosshair;}
+#map-panel.placing .zone-marker{cursor:crosshair;}
+
+/* ═══ 登入畫面 ═══ */
+#login-screen{
+  position:fixed;inset:0;z-index:9999;background:var(--bg);
+  display:flex;align-items:center;justify-content:center;
+}
+.login-wrap{display:flex;flex-direction:column;align-items:center;gap:16px;width:320px;}
+.login-icon-wrap{width:96px;height:96px;}
+.login-icon-wrap img{width:100%;height:100%;}
+.login-title{font-size:20px;font-weight:700;color:var(--text);}
+.login-sub{font-size:11px;color:var(--text3);}
+.login-card{
+  width:100%;background:var(--surface);border:1px solid var(--border);border-radius:8px;
+  padding:20px;display:flex;flex-direction:column;gap:12px;
+}
+.login-input{
+  width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:6px;
+  background:var(--bg);color:var(--text);font-family:var(--mono);font-size:14px;
+  outline:none;
+}
+.login-input:focus{border-color:var(--yellow);}
+.login-btn{
+  width:100%;padding:10px;border:none;border-radius:6px;cursor:pointer;
+  background:var(--yellow);color:#000;font-weight:700;font-size:14px;font-family:var(--mono);
+  transition:opacity .2s;
+}
+.login-btn:hover{opacity:.85;}
+.login-btn:disabled{opacity:.4;cursor:not-allowed;}
+#cmd-login-warn{font-size:11px;color:var(--red);min-height:16px;text-align:center;}
+.login-version{font-size:9px;color:var(--text3);margin-top:4px;}
+
+/* ═══ PinLock 鎖定 ═══ */
+#pin-lock-overlay{
+  position:fixed;inset:0;z-index:9998;background:var(--bg);
+  display:none;align-items:center;justify-content:center;flex-direction:column;gap:16px;
+}
+#pin-lock-overlay.show{display:flex;}
+.pinlock-card{
+  width:280px;background:var(--surface);border:1px solid var(--border);border-radius:8px;
+  padding:24px;display:flex;flex-direction:column;align-items:center;gap:12px;
+}
+.pinlock-title{font-size:16px;font-weight:700;color:var(--yellow);}
+.pinlock-sub{font-size:11px;color:var(--text2);text-align:center;}
+#pinlock-warn{font-size:11px;color:var(--red);min-height:16px;}
+#idle-countdown{font-size:10px;color:var(--yellow);margin-left:4px;display:none;}
+
+#session-warning-overlay{
+  position:fixed;inset:0;z-index:9997;background:rgba(0,0,0,.78);
+  display:none;align-items:center;justify-content:center;padding:18px;
+}
+#session-warning-overlay.show{display:flex;}
+.session-warning-card{
+  width:min(420px,94vw);background:var(--surface);border:1px solid var(--yellow);
+  border-radius:8px;padding:22px 20px;color:var(--text);text-align:center;
+  box-shadow:0 14px 36px rgba(0,0,0,.42);
+}
+.session-warning-title{font-size:18px;font-weight:800;color:var(--yellow);margin-bottom:8px;}
+.session-warning-copy{font-size:12px;color:var(--text2);line-height:1.55;margin-bottom:14px;}
+.session-warning-count{font-size:40px;font-weight:900;color:var(--red);font-family:var(--mono);line-height:1;margin-bottom:14px;}
+#session-warning-error{min-height:16px;font-size:11px;color:var(--red);margin-bottom:10px;}
+.session-warning-actions{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;}
+.session-warning-actions button{min-width:128px;padding:8px 14px;border-radius:5px;border:1px solid var(--border);font-size:12px;font-weight:800;cursor:pointer;font-family:var(--mono);}
+#session-warning-continue{background:var(--green);border-color:var(--green);color:#fff;}
+#session-warning-logout{background:transparent;border-color:var(--red);color:var(--red);}
+
+/* ═══ Settings 面板 ═══ */
+#settings-overlay{
+  position:fixed;inset:0;z-index:190;background:rgba(0,0,0,.5);display:none;
+}
+#settings-overlay.show{display:block;}
+#settings-panel{
+  position:fixed;top:0;right:-360px;bottom:0;width:340px;z-index:200;
+  background:var(--surface);border-left:1px solid var(--border);
+  display:flex;flex-direction:column;transition:right .25s;
+}
+#settings-panel.show{right:0;}
+.stg-header{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:14px 16px;border-bottom:1px solid var(--border);
+}
+.stg-header span{font-size:15px;font-weight:700;}
+.stg-close{background:none;border:none;color:var(--text2);font-size:18px;cursor:pointer;}
+.stg-body{flex:1;overflow-y:auto;padding:8px 0;}
+.stg-section{padding:4px 16px;}
+.stg-section-title{font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.1em;margin:8px 0 4px;}
+.stg-item{
+  display:flex;align-items:center;gap:10px;padding:10px 8px;cursor:pointer;
+  border-radius:6px;transition:background .15s;
+}
+.stg-item:hover{background:var(--surface2);}
+.si-icon{font-size:16px;flex-shrink:0;width:24px;text-align:center;}
+.si-text{flex:1;min-width:0;}
+.si-title{font-size:13px;font-weight:600;color:var(--text);}
+.si-sub{font-size:10px;color:var(--text3);margin-top:1px;}
+.si-arrow{color:var(--text3);font-size:14px;}
+.stg-footer{
+  padding:12px 16px;border-top:1px solid var(--border);
+  font-size:10px;color:var(--text3);display:flex;flex-direction:column;gap:6px;
+}
+.stg-logout-btn{
+  width:100%;padding:8px;border:1px solid var(--red);border-radius:6px;
+  background:transparent;color:var(--red);font-weight:600;font-size:12px;
+  cursor:pointer;font-family:var(--mono);transition:all .2s;
+}
+.stg-logout-btn:hover{background:var(--red);color:#fff;}
+
+/* ═══ Admin 底部面板 ═══ */
+#admin-overlay{position:fixed;inset:0;z-index:290;background:rgba(0,0,0,.55);display:none;}
+#admin-overlay.show{display:block;}
+#admin-panel{
+  position:fixed;left:0;right:0;bottom:-100%;max-height:85vh;z-index:300;
+  background:var(--surface);border-top:1px solid var(--border);border-radius:12px 12px 0 0;
+  display:flex;flex-direction:column;transition:bottom .3s;
+}
+#admin-panel.show{bottom:0;}
+.adm-header{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:12px 16px;border-bottom:1px solid var(--border);flex-shrink:0;
+}
+.adm-header span{font-size:14px;font-weight:700;}
+.adm-close{background:none;border:none;color:var(--text2);font-size:18px;cursor:pointer;}
+#adm-pin-screen{padding:24px;display:flex;flex-direction:column;align-items:center;gap:12px;}
+#adm-pin-screen .pinlock-title{font-size:14px;}
+#adm-main{display:none;flex:1;overflow:hidden;flex-direction:column;}
+.adm-tabs{display:flex;border-bottom:1px solid var(--border);flex-shrink:0;}
+.adm-tab{
+  flex:1;padding:8px;text-align:center;font-size:11px;font-weight:600;
+  cursor:pointer;color:var(--text2);border-bottom:2px solid transparent;transition:all .15s;
+}
+.adm-tab.active{color:var(--yellow);border-bottom-color:var(--yellow);}
+.adm-panel-body{flex:1;overflow-y:auto;padding:12px 16px;}
+.adm-account-card{
+  background:var(--surface2);border:1px solid var(--border);border-radius:6px;
+  padding:10px 12px;margin-bottom:8px;
+}
+.adm-account-row{display:flex;align-items:center;justify-content:space-between;gap:8px;}
+.adm-account-name{font-size:13px;font-weight:600;}
+.adm-badge{
+  font-size:9px;padding:2px 6px;border-radius:3px;font-weight:600;
+}
+.adm-badge.active{background:rgba(26,158,82,.2);color:var(--green);}
+.adm-badge.suspended{background:rgba(204,42,42,.2);color:var(--red);}
+.adm-badge.role{background:rgba(212,144,0,.15);color:var(--yellow);}
+.adm-btns{display:flex;gap:4px;margin-top:6px;}
+.adm-btn{
+  padding:4px 8px;font-size:10px;border:1px solid var(--border);border-radius:4px;
+  background:transparent;color:var(--text2);cursor:pointer;font-family:var(--mono);
+  transition:all .15s;
+}
+.adm-btn:hover{background:var(--border);color:var(--text);}
+.adm-btn.danger{border-color:var(--red);color:var(--red);}
+.adm-btn.danger:hover{background:var(--red);color:#fff;}
+.adm-edit-form{
+  margin-top:8px;padding-top:8px;border-top:1px solid var(--border);
+  display:flex;flex-direction:column;gap:8px;
+}
+.adm-edit-form label{font-size:10px;color:var(--text3);}
+.adm-edit-form input,.adm-edit-form select{
+  padding:6px 8px;border:1px solid var(--border);border-radius:4px;
+  background:var(--bg);color:var(--text);font-family:var(--mono);font-size:12px;
+}
+.adm-add-form{display:flex;flex-direction:column;gap:10px;}
+.adm-add-form label{font-size:11px;color:var(--text2);}
+.adm-add-form input,.adm-add-form select{
+  padding:8px;border:1px solid var(--border);border-radius:4px;
+  background:var(--bg);color:var(--text);font-family:var(--mono);font-size:13px;
+}
+.adm-add-btn{
+  padding:8px;border:none;border-radius:6px;background:var(--green);
+  color:#fff;font-weight:600;font-size:13px;cursor:pointer;font-family:var(--mono);
+}
+.adm-log-entry{
+  padding:6px 0;border-bottom:1px solid var(--border);font-size:11px;
+}
+.adm-log-time{color:var(--text3);font-size:10px;}
+.adm-log-action{color:var(--yellow);}
+/* 操作員 badge（Zone A） */
+#cmd-user-badge{
+  font-size:10px;color:var(--yellow);font-weight:600;
+  background:rgba(212,144,0,.12);padding:2px 6px;border-radius:3px;
+}
+</style>
+<link rel="stylesheet" href="/static/lib/leaflet.min.css">
+<style>
+#leaflet-map{position:absolute;inset:0;z-index:1;display:none;}
+#leaflet-map.active{display:block;}
+#leaflet-map.placing .leaflet-container,
+#leaflet-map.placing .leaflet-container .leaflet-pane,
+#leaflet-map.placing .leaflet-container .leaflet-tile-pane,
+#leaflet-map.placing .leaflet-container .leaflet-grab,
+#leaflet-map.placing .leaflet-container .leaflet-touch-drag{cursor:crosshair!important;}
+#leaflet-map.placing .leaflet-container .leaflet-marker-icon{cursor:crosshair!important;}
+.napsg-tooltip{background:rgba(13,17,23,.85);border:1px solid rgba(255,255,255,.15);color:#e6edf3;font-size:10px;padding:2px 7px;border-radius:3px;white-space:nowrap;}
+.napsg-highlighted{animation:napsg-pulse .9s ease-in-out infinite alternate;transform-origin:center;display:block;}
+@keyframes napsg-pulse{from{filter:drop-shadow(0 0 4px #3fb950);transform:scale(1);}to{filter:drop-shadow(0 0 14px #3fb950);transform:scale(1.35);}}
+/* Wave 5 動態 marker：RAG 壓力 + Pi 超時灰化 + 人數 badge */
+.napsg-wrap{position:relative;width:100%;height:100%;}
+.napsg-wrap svg{display:block;}
+.napsg-stale{filter:grayscale(.85) opacity(.55);}
+.napsg-stale::before{
+  content:'';position:absolute;inset:-5px;
+  border:2.5px dashed var(--red);border-radius:50%;
+  pointer-events:none;
+  box-shadow:0 0 10px rgba(204,42,42,.7);
+}
+/* Phase 3：Link warn（Pi 抖動 30-90s），黃虛線 + 光暈、不蓋過 stale */
+.napsg-wrap.link-warn:not(.napsg-stale)::before{
+  content:'';position:absolute;inset:-5px;
+  border:2.5px dashed var(--yellow);border-radius:50%;
+  pointer-events:none;
+  box-shadow:0 0 10px rgba(212,144,0,.7);
+  animation:blink 1s infinite;
+}
+.napsg-badge.off{background:rgba(204,42,42,.95);border-color:var(--red);color:#fff;letter-spacing:.05em;}
+/* RAG 閃爍（對齊 header .za-counts 的 70%/90% 門檻）；stale 時不閃，避免資訊衝突 */
+.napsg-wrap.warn:not(.napsg-stale) svg{animation:blink 1s infinite;}
+.napsg-wrap.crit:not(.napsg-stale) svg{animation:blink .6s infinite;}
+.napsg-badge{
+  position:absolute;top:-6px;right:-10px;
+  min-width:16px;height:14px;padding:0 4px;
+  background:#0d1117;border:1px solid #30363d;color:#fff;
+  border-radius:8px;font-size:9px;font-weight:700;line-height:1;
+  display:flex;align-items:center;justify-content:center;
+  font-family:var(--mono);pointer-events:none;
+  box-shadow:0 1px 3px rgba(0,0,0,.5);
+}
+.napsg-badge.warn{border-color:var(--yellow);color:var(--yellow);}
+.napsg-badge.crit{border-color:var(--red);color:#ff6b6b;}
+/* 底圖 layer control 已移除；Phase 3/5 加 operational overlays 後再恢復 */
+/* 座標顯示面板 */
+/* 浮島共用樣式（座標 + 工具列一致）*/
+.map-island{
+  position:absolute;top:8px;z-index:10;
+  background:rgba(13,17,23,.82);border:1px solid rgba(255,255,255,.1);
+  border-radius:6px;
+  backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
+  font-family:var(--mono);font-size:11px;
+}
+#map-coord-panel{
+  left:50%;transform:translateX(-50%);
+  z-index:1000;  /* 覆寫 .map-island 的 z-index:10，需高於 Leaflet tile pane(200+) */
+  color:#e6edf3;padding:5px 12px;
+  align-items:center;gap:2px;
+  white-space:nowrap;letter-spacing:.03em;
+  pointer-events:auto;display:none;
+  transition:border-color .15s;
+}
+#map-coord-panel.clickable{cursor:pointer;}
+#map-coord-panel.clickable:hover{border-color:rgba(88,166,255,.25);}
+#map-coord-panel span[onclick]:hover{color:var(--text);border-color:rgba(255,255,255,.3)!important;}
+/* 長按事件 popup ─────────────────────────────── */
+.ev-popup .leaflet-popup-content-wrapper{
+  background:#161b22;border:1px solid rgba(255,255,255,.18);
+  border-radius:8px;box-shadow:0 4px 20px rgba(0,0,0,.72);padding:0;
+}
+.ev-popup .leaflet-popup-tip{background:#161b22;}
+.ev-popup .leaflet-popup-content{margin:0;}
+.ev-popup .leaflet-popup-close-button{color:#8b949e!important;top:6px;right:8px;font-size:16px;line-height:1;}
+.ev-popup-inner{padding:8px 28px 8px 10px;min-width:200px;}/* 右側 28px 讓開 Leaflet × 按鈕 */
+/* header：回報單位（左）+ MGRS（右）合併為一行 */
+.ev-popup-header{
+  display:flex;align-items:center;justify-content:space-between;gap:8px;
+  margin-bottom:7px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,.08);
+}
+.ev-popup-reporter-wrap{display:flex;align-items:center;gap:4px;}
+.ev-popup-reporter-wrap label{font-size:9px;color:#8b949e;font-family:var(--mono);white-space:nowrap;}
+.ev-popup-reporter-wrap select{
+  background:#0d1117;border:1px solid rgba(255,255,255,.12);color:#c9d1d9;
+  font-size:10px;font-family:var(--mono);padding:2px 4px;border-radius:3px;
+}
+.ev-popup-mgrs{font-size:9px;color:#8b949e;font-family:var(--mono);white-space:nowrap;letter-spacing:.03em;}
+/* 群組按鈕 */
+.ev-popup-groups{display:grid;grid-template-columns:1fr 1fr;gap:4px;}
+.ev-popup-group-btn{
+  padding:6px 4px;border-radius:5px;border:1px solid rgba(255,255,255,.12);
+  background:rgba(255,255,255,.05);color:#c9d1d9;font-size:10px;font-family:var(--mono);
+  cursor:pointer;text-align:center;transition:background .12s,border-color .12s;
+}
+.ev-popup-group-btn:hover{background:rgba(88,166,255,.15);border-color:rgba(88,166,255,.4);}
+/* Level-2 類型列表 */
+.ev-popup-types{display:flex;flex-direction:column;gap:3px;}
+.ev-popup-type-btn{
+  padding:5px 10px;border-radius:4px;
+  border:1px solid transparent;border-left-width:3px;
+  background:rgba(255,255,255,.04);color:#e6edf3;font-size:11px;font-family:var(--mono);
+  cursor:pointer;text-align:left;transition:background .1s,border-color .1s;
+}
+.ev-popup-type-btn:hover{background:rgba(88,166,255,.12);}
+.ev-popup-type-btn.sev-critical{ border-left-color:#f85149; }
+.ev-popup-type-btn.sev-critical:hover{ background:rgba(248,81,73,.12); }
+.ev-popup-type-btn.sev-warning { border-left-color:#e3b341; }
+.ev-popup-type-btn.sev-warning:hover { background:rgba(227,179,65,.10); }
+.ev-popup-type-btn.sev-info    { border-left-color:#6e7681; }
+.ev-popup-type-btn.sev-info:hover    { background:rgba(110,118,129,.12); }
+.ev-popup-back{display:inline-block;margin-bottom:6px;font-size:10px;color:#58a6ff;cursor:pointer;padding:2px 0;}
+.ev-popup-back:hover{text-decoration:underline;}
+/* 舊 .ev-popup-reporter 保留，避免其他地方引用報錯 */
+.ev-popup-reporter{display:none;}
+</style>
+</head>
+<body>
+
+<!-- ═══════ 登入畫面 ═══════ -->
+<div id="login-screen">
+  <div class="login-wrap">
+    <div class="login-icon-wrap"><img src="/static/臂章後製版.png" alt="台灣曙豐防災自訓團"></div>
+    <div class="login-title">ICS 指揮部</div>
+    <div class="login-sub" id="login-sub">command dashboard</div>
+    <div class="login-card">
+      <input class="login-input" id="cmd-username" type="text" placeholder="帳號" autocomplete="username" autofocus>
+      <input class="login-input" id="cmd-pin" type="password" inputmode="numeric" maxlength="6" placeholder="PIN（4-6 位數字）" autocomplete="current-password">
+      <button class="login-btn" id="cmd-login-btn" data-action="cmdLogin">登入</button>
+      <div id="cmd-login-warn"></div>
+    </div>
+    <div class="login-version"><span class="h-ver">cmd-—</span></div>
+  </div>
+</div>
+
+<!-- ═══════ PinLock 鎖定畫面 ═══════ -->
+<div id="pin-lock-overlay">
+  <div class="pinlock-card">
+    <div class="pinlock-title">已鎖定</div>
+    <div class="pinlock-sub" id="pinlock-user"></div>
+    <input class="login-input" id="pinlock-pin" type="password" inputmode="numeric" maxlength="6" placeholder="輸入 PIN 解鎖">
+    <button class="login-btn" data-action="unlockPinLock">解鎖</button>
+    <div id="pinlock-warn"></div>
+  </div>
+</div>
+
+<!-- ═══════ Settings 面板 ═══════ -->
+<div id="session-warning-overlay" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="session-warning-title">
+  <div class="session-warning-card">
+    <div id="session-warning-title" class="session-warning-title">Session 即將過期</div>
+    <div class="session-warning-copy">系統偵測到閒置時間即將到達上限，請選擇是否繼續使用。</div>
+    <div class="session-warning-count"><span id="session-warning-countdown">0</span>s</div>
+    <div id="session-warning-error" aria-live="polite"></div>
+    <div class="session-warning-actions">
+      <button id="session-warning-continue" data-action="sessionContinue">繼續使用</button>
+      <button id="session-warning-logout" data-action="sessionLogout">立即登出</button>
+    </div>
+  </div>
+</div>
+
+<div id="settings-overlay" data-action="closeSettings"></div>
+<div id="settings-panel">
+  <div class="stg-header"><span>設定</span><button class="stg-close" data-action="closeSettings">&times;</button></div>
+  <div class="stg-body">
+    <div class="stg-section">
+      <div class="stg-section-title">指揮部</div>
+      <div class="stg-item" data-action="openConfigModal">
+        <span class="si-icon">&#9881;</span>
+        <div class="si-text"><div class="si-title">指揮部設定</div><div class="si-sub">名稱、位置</div></div>
+        <span class="si-arrow">&#x203A;</span>
+      </div>
+      <div class="stg-item" data-action="openMapConfigPanel">
+        <span class="si-icon">&#128506;</span>
+        <div class="si-text"><div class="si-title">地圖設定</div><div class="si-sub">載入站內平面圖</div></div>
+        <span class="si-arrow">&#x203A;</span>
+      </div>
+    </div>
+    <div class="stg-section">
+      <div class="stg-section-title">資料</div>
+      <div class="stg-item" data-action="exportJSON">
+        <span class="si-icon">&#128196;</span>
+        <div class="si-text"><div class="si-title">資料匯出</div><div class="si-sub">匯出儀表板 JSON 快照</div></div>
+        <span class="si-arrow">&#x203A;</span>
+      </div>
+      <div class="stg-item" data-action="showAuditLog">
+        <span class="si-icon">&#128203;</span>
+        <div class="si-text"><div class="si-title">稽核日誌</div><div class="si-sub">查看操作紀錄</div></div>
+        <span class="si-arrow">&#x203A;</span>
+      </div>
+    </div>
+    <div class="stg-section" id="stg-admin-section">
+      <div class="stg-section-title">帳號管理</div>
+      <div class="stg-item" data-action="openAdminPanel">
+        <span class="si-icon">&#128100;</span>
+        <div class="si-text"><div class="si-title">管理員後台</div><div class="si-sub">帳號 ／ Pi 節點 ／ 稽核 ／ 系統</div></div>
+        <span class="si-arrow">&#x203A;</span>
+      </div>
+    </div>
+  </div>
+  <div class="stg-footer">
+    <div id="stg-user-info"></div>
+  </div>
+</div>
+
+<!-- ═══════ Admin 底部面板 ═══════ -->
+<div id="admin-overlay" data-action="closeAdminPanel"></div>
+<div id="admin-panel">
+  <div class="adm-header"><span>帳號管理</span><button class="adm-close" data-action="closeAdminPanel">&times;</button></div>
+  <div id="adm-pin-screen">
+    <div class="pinlock-title">管理員驗證</div>
+    <div class="pinlock-sub">需要系統管理員 session 權限</div>
+    <input class="login-input" id="adm-pin-input" type="password" inputmode="numeric" maxlength="6" placeholder="Admin PIN">
+    <button class="login-btn" data-action="adminLogin">驗證</button>
+    <div id="adm-pin-warn" style="font-size:11px;color:var(--red);min-height:16px;"></div>
+  </div>
+  <div id="adm-main">
+    <div class="adm-tabs">
+      <div class="adm-tab active" data-action="admShowTab" data-tab="list">帳號列表</div>
+      <div class="adm-tab" data-action="admShowTab" data-tab="add">新增</div>
+      <div class="adm-tab" data-action="admShowTab" data-tab="pi">Pi 節點</div>
+      <div class="adm-tab" data-action="admShowTab" data-tab="log">日誌</div>
+      <div class="adm-tab" data-action="admShowTab" data-tab="sys">系統</div>
+    </div>
+    <div class="adm-panel-body" id="adm-panel-list"></div>
+    <div class="adm-panel-body" id="adm-panel-add" style="display:none;"></div>
+    <div class="adm-panel-body" id="adm-panel-pi" style="display:none;"></div>
+    <div class="adm-panel-body" id="adm-panel-log" style="display:none;"></div>
+    <div class="adm-panel-body" id="adm-panel-sys" style="display:none;"></div>
+    <div id="adm-sysinfo" style="padding:6px 16px;border-top:1px solid var(--border);font-size:10px;color:var(--text3);display:flex;gap:12px;"></div>
+  </div>
+</div>
+
+<!-- ═══════ 地圖設定面板 ═══════ -->
+<div id="map-config-overlay" data-action="closeMapConfigPanel" style="position:fixed;inset:0;z-index:290;background:rgba(0,0,0,.55);display:none;"></div>
+<div id="map-config-panel" style="position:fixed;bottom:-100%;left:0;right:0;z-index:291;background:var(--surface);border-top:1px solid var(--border);border-radius:12px 12px 0 0;padding:16px;transition:bottom .3s;max-height:60vh;overflow-y:auto;">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+    <span style="font-size:13px;font-weight:600;">地圖設定</span>
+    <button data-action="closeMapConfigPanel" style="background:none;border:none;color:var(--text2);font-size:18px;cursor:pointer;line-height:1;">&times;</button>
+  </div>
+  <div id="map-config-body"></div>
+</div>
+
+<!-- ═══════ ZONE A — 態勢速讀 ═══════ -->
+<div id="zone-a">
+  <!-- 左：badge + 狀態燈 + DCI -->
+  <div style="display:flex;align-items:center;gap:10px;flex-shrink:0;">
+    <img src="/static/臂章後製版.png" alt="台灣曙豐防災自訓團" style="height:52px;width:52px;">
+    <div id="status-lamp" class="ok">正常</div>
+    <div id="dci"><div id="dci-val" style="color:var(--text3)">—</div><div id="dci-label">DCI</div></div>
+  </div>
+  <!-- 中：左半時鐘 / 右半人數+摘要 -->
+  <div id="zone-a-mid">
+    <div id="zone-a-top">
+      <div class="za-col" style="align-items:center;">
+        <span class="za-clock" id="clock">--:--:--</span>
+        <span id="date-label" style="font-size:12px;color:var(--text3);"></span>
+      </div>
+      <div class="za-col za-col-r">
+        <span class="za-counts" id="counts-shelter"></span>
+        <span class="za-counts" id="counts-medical"></span>
+      </div>
+    </div>
+  </div>
+  <!-- 右：連線燈號 + 齒輪/版號 -->
+  <div id="zone-a-right">
+    <div style="display:flex;flex-direction:column;align-items:center;gap:3px;">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <div class="conn-item"><span class="conn-dot lkp" id="cd-shelter"></span><span class="conn-label" id="cl-shelter">收容</span></div>
+        <div class="conn-item"><span class="conn-dot lkp" id="cd-medical"></span><span class="conn-label" id="cl-medical">醫療</span></div>
+        <div class="conn-item"><span class="conn-dot lkp" id="cd-server"></span><span class="conn-label" id="cl-server">指揮部</span></div>
+      </div>
+      <div style="display:flex;align-items:center;gap:4px;">
+        <span id="cmd-user-badge"></span>
+        <span id="idle-countdown"></span>
+        <span data-action="openSettings" style="font-size:14px;cursor:pointer;color:var(--text3);" title="設定">&#9881;</span>
+        <span class="h-ver" id="h-ver"></span>
+        <button id="ttx-toggle" data-action="toggleTTXMode" style="padding:2px 8px;border:1px solid var(--text3);border-radius:4px;background:transparent;color:var(--text3);font-size:10px;font-weight:600;cursor:pointer;font-family:var(--mono);transition:all .2s;" title="切換實戰/演練模式">實戰</button>
+        <button data-action="cmdLogout" style="padding:2px 8px;border:1px solid var(--red);border-radius:4px;background:transparent;color:var(--red);font-size:10px;font-weight:600;cursor:pointer;font-family:var(--mono);transition:all .2s;"  >登出</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════ ZONE B — 態勢 + 地圖 + 資源 ═══════ -->
+<div id="zone-b">
+  <!-- 左：態勢 + 資源（3+2 切換） -->
+  <div class="side-panel" id="panel-left">
+    <div id="panel-left-tabs" style="display:flex;gap:0;flex-shrink:0;">
+      <div class="panel-tab active" data-group="situation" data-action="switchLeftPanel" data-group="situation">態勢</div>
+      <div class="panel-tab" data-group="resource" data-action="switchLeftPanel" data-group="resource">資源</div>
+    </div>
+    <!-- 態勢組（3格） -->
+    <div class="spark-group" id="sg-situation">
+      <div class="spark-card" id="sp-cap" data-action="expandSpark" data-id="sp-cap">
+        <div class="spark-hdr">
+          <span class="spark-title">量能</span>
+          <span style="display:flex;align-items:center;"><span class="spark-val" id="sp-cap-v">—</span><span class="spark-rag ok" id="sp-cap-rag"></span></span>
+        </div>
+        <div class="spark-detail" id="sp-cap-detail">
+          <div class="li"><div class="ld" style="background:#E67E22"></div>收容量能</div>
+          <div class="li"><div class="ld" style="background:#C0392B"></div>醫療量能</div>
+          <div class="li"><div class="ld dash" style="border-color:rgba(212,144,0,.6)"></div>警戒70%</div>
+          <div class="li"><div class="ld dash" style="border-color:rgba(204,42,42,.6)"></div>危急90%</div>
+        </div>
+        <div class="spark-body"><canvas id="sc1"></canvas></div>
+      </div>
+      <div class="spark-card" id="sp-flow" data-action="expandSpark" data-id="sp-flow">
+        <div class="spark-hdr">
+          <span class="spark-title">傷患入站</span>
+          <span style="display:flex;align-items:center;"><span class="spark-val" id="sp-flow-v">—</span><span class="spark-rag ok" id="sp-flow-rag"></span></span>
+        </div>
+        <div class="spark-detail" id="sp-flow-detail">
+          <div class="li"><div class="ld" style="background:#E74C3C"></div>前進→醫</div>
+          <div class="li"><div class="ld" style="background:#F0883E"></div>收容→醫</div>
+          <div class="li"><div class="ld" style="background:#2E7D32"></div>自行抵達</div>
+        </div>
+        <div class="spark-body"><canvas id="sc2"></canvas></div>
+      </div>
+      <div class="spark-card" id="sp-inc" data-action="expandSpark" data-id="sp-inc">
+        <div class="spark-hdr">
+          <span class="spark-title">事件</span>
+          <span style="display:flex;align-items:center;"><span class="spark-val" id="sp-inc-v">—</span><span class="spark-rag ok" id="sp-inc-rag"></span></span>
+        </div>
+        <div class="spark-detail" id="sp-inc-detail">
+          <div class="li"><div class="ld" style="background:#e6edf3;height:4px"></div>未結累計</div>
+          <div class="li"><div class="ld" style="background:var(--red)"></div>高</div>
+          <div class="li"><div class="ld" style="background:var(--yellow)"></div>中</div>
+          <div class="li"><div class="ld" style="background:var(--green)"></div>低</div>
+        </div>
+        <div class="spark-body"><canvas id="sc3"></canvas></div>
+      </div>
+    </div>
+    <!-- 資源組（2格，從右側移入） -->
+    <div class="spark-group" id="sg-resource" style="display:none;">
+      <div class="spark-card" id="sp-res" data-action="expandSpark" data-id="sp-res">
+        <div class="spark-hdr">
+          <span class="spark-title">物資</span>
+          <span style="display:flex;align-items:center;"><span class="spark-val" id="sp-res-v">—</span><span class="spark-rag ok" id="sp-res-rag"></span></span>
+        </div>
+        <div class="spark-detail" id="sp-res-detail">
+          <div class="li"><div class="ld dash" style="border-color:#D32F2F"></div>IV</div>
+          <div class="li"><div class="ld dash" style="border-color:#F57F17"></div>氧氣</div>
+          <div class="li"><div class="ld dash" style="border-color:#388E3C"></div>止血帶</div>
+          <div class="li"><div class="ld dash" style="border-color:rgba(204,42,42,.6)"></div>警戒20%</div>
+        </div>
+        <div class="spark-body"><canvas id="sc4"></canvas></div>
+      </div>
+      <div class="spark-card" id="sp-staff" data-action="expandSpark" data-id="sp-staff">
+        <div class="spark-hdr">
+          <span class="spark-title">人力</span>
+          <span style="display:flex;align-items:center;"><span class="spark-val" id="sp-staff-v">—</span><span class="spark-rag ok" id="sp-staff-rag"></span></span>
+        </div>
+        <div class="spark-detail" id="sp-staff-detail">
+          <div class="li"><div class="ld" style="background:#1976D2"></div>收容人均</div>
+          <div class="li"><div class="ld" style="background:#7B1FA2"></div>醫療人均</div>
+          <div class="li"><div class="ld dash" style="border-color:rgba(204,42,42,.6)"></div>超載 8</div>
+        </div>
+        <div class="spark-body"><canvas id="sc5"></canvas></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 中：互動地圖 -->
+  <div id="map-panel">
+    <!-- 右側浮島：tab 切換 + 地圖工具 -->
+    <div id="map-toolbar" class="map-island">
+      <!-- 據點調整按鈕：站內才顯示 -->
+      <button id="pin-edit-btn" data-action="togglePinEditMode"
+        title="調整永久據點位置"
+        style="display:none;padding:0 10px;height:28px;font-size:10px;border-radius:4px;cursor:pointer;
+               border:none;background:transparent;color:var(--text2);font-family:var(--mono);
+               transition:all .15s;">✏ 調整據點</button>
+      <div id="map-tabs">
+        <div class="map-tab active" data-map="indoor" data-action="switchMap" data-map="indoor">站內</div>
+        <div class="map-tab" data-map="outdoor" data-action="switchMap" data-map="outdoor">站外</div>
+      </div>
+      <div class="toolbar-sep"></div>
+      <div id="map-tools"></div>
+    </div>
+    <div id="edit-coords"></div>
+    <img id="map-img" src="" alt="地圖載入中">
+    <div id="map-overlay"></div>
+    <div id="leaflet-map">
+      <!-- 中央浮島：座標顯示 -->
+      <div id="map-coord-panel" class="map-island" data-action="panToCoordTarget"></div>
+      <!-- 據點定位提示 banner（點地圖設定單位位置時顯示） -->
+      <div id="node-place-banner" style="display:none;position:absolute;top:8px;left:50%;transform:translateX(-50%);
+        z-index:1001;background:rgba(210,144,0,.92);color:#fff;font-family:var(--mono);font-size:11px;
+        padding:5px 14px;border-radius:5px;white-space:nowrap;display:none;align-items:center;gap:10px;">
+        <span>📍 點擊地圖設定「<b id="node-place-label"></b>」駐守位置</span>
+        <span data-action="cancelNodePlace" style="cursor:pointer;opacity:.8;font-size:13px;" title="取消">✕</span>
+      </div>
+      <!-- 事件地圖標記提示 banner（從表單送出後，詢問是否標記位置） -->
+      <div id="event-pin-banner" style="display:none;position:absolute;top:8px;left:50%;transform:translateX(-50%);
+        z-index:1001;background:rgba(13,17,23,.95);border:1px solid rgba(255,255,255,.18);color:#e6edf3;font-family:var(--mono);font-size:11px;
+        padding:6px 14px;border-radius:6px;white-space:nowrap;align-items:center;gap:10px;">
+        <span>📋 <b id="event-pin-code"></b> 已建立　點擊地圖標記位置</span>
+        <span data-action="cancelEventPin" style="cursor:pointer;color:#8b949e;font-size:13px;" title="略過">略過 ✕</span>
+      </div>
+      <!-- Phase 3：繪製範圍模式 banner -->
+      <div id="poly-draw-banner">
+        <span>✏ 繪製範圍　點擊新增頂點</span>
+        <button id="poly-finish-btn" class="ok" data-action="finishPolyDraw" disabled>完成</button>
+        <button data-action="cancelPolyDraw">取消</button>
+      </div>
+      <!-- 路線繪製 banner -->
+      <div id="route-draw-banner">
+        <span>↗ 繪製路線　點擊新增節點</span>
+        <button id="route-finish-btn" class="ok" data-action="finishRouteDraw" disabled>完成</button>
+        <button data-action="cancelRouteDraw">取消</button>
+      </div>
+      <!-- 圖層面板 -->
+      <div id="layer-panel" style="display:none;"></div>
+    </div>
+    <!-- 站內地圖：NAPSG 危害類型選擇器（放置模式用，左下浮島）-->
+    <div id="place-type-wrap" class="csel-wrap" style="display:none;position:absolute;bottom:8px;left:8px;z-index:100;">
+      <button id="place-type-label" class="csel-btn" data-action="toggleCsel">— 選危害類型 —</button>
+      <div id="place-type-panel" class="csel-panel"></div>
+    </div>
+    <!-- MGRS 搜尋浮島（底部中央，站外才顯示）-->
+    <div id="mgrs-island" class="map-island">
+      <!-- 回報單位 metadata（隱藏）-->
+      <select id="place-report-unit" style="display:none;">
+        <option value="command">指揮部</option>
+        <option value="forward">前進組</option>
+        <option value="security">安全組</option>
+        <option value="shelter">收容組</option>
+        <option value="medical">醫療組</option>
+      </select>
+      <div id="mgrs-search-wrap">
+        <input id="mgrs-search-input" type="text"
+          placeholder="MGRS 或 lat, lng"
+          data-key-action="mgrsSearch"
+          title="輸入 MGRS 或 WGS84（lat, lng），按 Enter 跳至位置">
+        <button id="mgrs-search-btn" data-action="mgrsSearch" title="跳至座標">🔍</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 右：事件追蹤 + 待裁示 -->
+  <div class="side-panel right" id="panel-right">
+    <!-- 上：事件追蹤 60% -->
+    <div id="right-events" style="flex:6;display:flex;flex-direction:column;overflow:hidden;min-height:0;">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 8px;flex-shrink:0;border-bottom:1px solid var(--border);">
+        <span style="display:flex;align-items:center;gap:4px;">
+          <span id="evt-expand-arrow" style="font-size:8px;color:var(--text3);cursor:pointer;padding:2px;" data-action="toggleRightExpand" data-section="events">▶</span>
+          <span style="font-size:10px;font-weight:600;color:var(--text3);">事件追蹤 <span id="evt-open-total" style="font-size:9px;color:var(--yellow);"></span> <span id="evt-overdue" style="font-size:9px;"></span></span>
+          <!-- 分組模式：回報 / 處理，互斥，可點擊取消 -->
+          <span id="evt-grp-reported" data-action="toggleEvtGroupMode" data-mode="reported"
+            style="font-size:9px;padding:1px 5px;border-radius:3px;border:1px solid var(--border);color:var(--text3);cursor:pointer;transition:all .15s;">回報</span>
+          <span id="evt-grp-assigned" data-action="toggleEvtGroupMode" data-mode="assigned"
+            style="font-size:9px;padding:1px 5px;border-radius:3px;border:1px solid var(--border);color:var(--text3);cursor:pointer;transition:all .15s;">處理</span>
+        </span>
+        <span id="evt-stats" style="font-size:9px;color:var(--text3);"></span>
+      </div>
+      <div id="evt-filter-bar" style="display:none;padding:3px 8px;background:var(--surface2);border-bottom:1px solid var(--border);font-size:9px;color:var(--text2);flex-shrink:0;"></div>
+      <div id="right-evt-list" style="flex:1;overflow-y:auto;padding:0 4px;font-size:10px;min-height:0;">
+        <div style="color:var(--green);font-size:11px;">無開放事件</div>
+      </div>
+    </div>
+    <!-- 分隔線 -->
+    <div style="height:1px;background:var(--border);flex-shrink:0;margin:2px 0;"></div>
+    <!-- 下：待裁示 40% -->
+    <div id="right-decisions" style="flex:4;display:flex;flex-direction:column;overflow:hidden;">
+      <div style="display:flex;align-items:center;gap:6px;padding:6px 8px;flex-shrink:0;cursor:pointer;border-bottom:1px solid var(--border);" data-action="toggleRightExpand" data-section="decisions">
+        <span id="dec-tab-pending" class="dec-tab active" data-action="switchDecTab" data-tab="pending" style="font-size:10px;font-weight:600;">⚖ 待裁示 <span id="dec-count" style="color:var(--yellow)">0</span></span>
+        <span id="dec-tab-decided" class="dec-tab" data-action="switchDecTab" data-tab="decided" style="font-size:10px;">已裁示</span>
+      </div>
+      <div id="right-dec-list" style="flex:1;overflow-y:auto;padding:0 4px;font-size:10px;">
+        無待裁示事項
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════ ZONE C — 決策倒數 + 升降級 ═══════ -->
+<div id="zone-c">
+  <div class="zc-pill" id="zc-supply">
+    <div class="zc-icon">💉</div>
+    <div class="zc-time ok" id="zc-supply-t">—</div>
+    <div class="zc-label">物資見底</div>
+  </div>
+  <div class="zc-pill" id="zc-cap">
+    <div class="zc-icon">🛏</div>
+    <div class="zc-time ok" id="zc-cap-t">—</div>
+    <div class="zc-label">容量飽和</div>
+  </div>
+  <div class="zc-pill" id="zc-staff">
+    <div class="zc-icon">👤</div>
+    <div class="zc-time ok" id="zc-staff-t">—</div>
+    <div class="zc-label">人力超載</div>
+  </div>
+  <div class="zc-esc" id="zc-esc">
+    <div class="zc-esc-title">📋 升降級觸發</div>
+    <div id="zc-esc-list" style="font-size:11px;color:var(--text3);">等待資料⋯</div>
+  </div>
+</div>
+
+<!-- ═══════ 確認 OVERLAY ═══════ -->
+<div id="confirm-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:220;align-items:center;justify-content:center;">
+  <div style="background:var(--surface);border-radius:10px;border:1px solid var(--border);width:min(340px,90vw);overflow:hidden;">
+    <div style="padding:10px 16px;background:var(--surface2);border-bottom:1px solid var(--border);font-size:12px;font-weight:700;" id="confirm-title"></div>
+    <div style="padding:20px 16px;font-size:12px;color:var(--text);" id="confirm-msg"></div>
+    <div style="display:flex;gap:8px;padding:0 16px 16px;justify-content:flex-end;">
+      <button data-action="confirmCancel" style="background:var(--surface2);color:var(--text2);border:1px solid var(--border);padding:6px 16px;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;font-family:var(--mono);">取消</button>
+      <button id="confirm-ok" data-action="confirmOk" style="background:var(--red);color:#fff;border:none;padding:6px 16px;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;font-family:var(--mono);">確定</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════ OVERLAY（切面 + 裁示共用） ═══════ -->
+<div id="overlay">
+  <div id="modal">
+    <div id="modal-hdr">
+      <div id="modal-title">切面</div>
+      <button id="modal-close" data-action="closeModal">✕</button>
+    </div>
+    <div id="modal-body"></div>
+    <div id="modal-footer"></div>
+  </div>
+</div>
+
+<!-- ═══════ 事件表單 OVERLAY ═══════ -->
+<div id="event-overlay">
+  <div id="event-modal">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 16px;background:var(--surface2);border-bottom:1px solid var(--border);flex-shrink:0;">
+      <div style="font-size:12px;font-weight:700;">📝 新增事件</div>
+      <button data-action="closeEventForm" style="font-size:18px;cursor:pointer;color:var(--text3);background:none;border:none;padding:2px 6px;border-radius:3px;">✕</button>
+    </div>
+    <div style="padding:16px;overflow-y:auto;">
+      <div style="margin-bottom:10px;">
+        <label>回報單位（誰在回報）</label>
+        <select id="ev-unit">
+          <option value="command">指揮部</option>
+          <option value="forward">前進組</option>
+          <option value="security">安全組</option>
+          <option value="shelter">收容組</option>
+          <option value="medical">醫療組</option>
+        </select>
+      </div>
+      <div style="margin-bottom:10px;">
+        <label>危害類型（NAPSG）</label>
+        <select id="ev-type" data-change-action="syncEvSeverity"></select>
+      </div>
+      <div style="margin-bottom:10px;">
+        <label>嚴重度</label>
+        <div style="display:flex;gap:8px;">
+          <label style="display:inline;"><input type="radio" name="ev-sev" value="info" checked> 一般</label>
+          <label style="display:inline;"><input type="radio" name="ev-sev" value="warning"> 注意</label>
+          <label style="display:inline;"><input type="radio" name="ev-sev" value="critical"> 緊急</label>
+        </div>
+      </div>
+      <div style="margin-bottom:10px;">
+        <label>位置描述</label>
+        <input id="ev-location" placeholder="例：A區入口">
+      </div>
+      <div style="margin-bottom:10px;">
+        <label>描述</label>
+        <textarea id="ev-desc" rows="3" placeholder="事件描述..."></textarea>
+      </div>
+      <div style="margin-bottom:10px;">
+        <label>操作員</label>
+        <input id="ev-operator" placeholder="姓名">
+      </div>
+      <div style="margin-bottom:10px;">
+        <label style="display:inline;"><input type="checkbox" id="ev-decision"> 需要指揮官裁示</label>
+      </div>
+      <input type="hidden" id="ev-zone-id" value="">
+      <button data-action="submitEvent" style="width:100%;padding:8px;background:var(--green);color:#fff;border:none;border-radius:5px;font-size:12px;font-weight:700;cursor:pointer;font-family:var(--mono);">送出事件</button>
+    </div>
+  </div>
+</div>
+
+<script type="module" src="/static/js/main.js"></script>
+</body>
+</html>

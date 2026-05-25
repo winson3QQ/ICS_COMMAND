@@ -1,0 +1,80 @@
+name: Issue / PR Snapshot
+
+# 將 GitHub issue/PR 結構化匯出為 JSON 並推到 Codeberg（C 方案 SoT disaster fallback）
+# 設計見 scripts/snapshot_issues.sh header 與 docs/backups/README.md
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/snapshot_issues.sh'
+      - '.github/workflows/issue-snapshot.yml'
+  issues:
+    types: [opened, edited, closed, reopened, labeled, unlabeled, assigned, unassigned]
+  issue_comment:
+    types: [created, edited, deleted]
+  pull_request:
+    types: [opened, edited, closed, reopened, labeled, unlabeled]
+  pull_request_review_comment:
+    types: [created, edited, deleted]
+  schedule:
+    - cron: '0 0 * * *'   # 兜底：每日 00:00 UTC
+  workflow_dispatch: {}    # 手動觸發按鈕
+
+# 同時只跑一份，避免 race；不取消舊的（保證每個事件都有機會 catch up）
+concurrency:
+  group: issue-snapshot
+  cancel-in-progress: false
+
+permissions:
+  contents: write   # 需要 commit + push 回 repo
+  issues: read
+  pull-requests: read
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # 推 Codeberg 需要完整歷史
+
+      - name: 跑 snapshot script
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash scripts/snapshot_issues.sh
+
+      - name: Commit if changed
+        id: commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/backups/
+          if git diff --staged --quiet; then
+            echo "No changes; skipping commit"
+            echo "committed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git commit -m "chore(backup): issue/PR snapshot $(date -u +%Y-%m-%dT%H:%MZ)
+
+          Trigger: ${{ github.event_name }}
+          Co-Authored-By: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>"
+          echo "committed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Push to GitHub (origin)
+        if: steps.commit.outputs.committed == 'true'
+        run: git push origin HEAD:main
+
+      - name: Push to Codeberg
+        if: steps.commit.outputs.committed == 'true'
+        env:
+          CODEBERG_TOKEN: ${{ secrets.CODEBERG_TOKEN }}
+        run: |
+          if [ -z "${CODEBERG_TOKEN}" ]; then
+            echo "::warning::CODEBERG_TOKEN 未設定，跳過 Codeberg push（snapshot 仍已推到 GitHub）"
+            exit 0
+          fi
+          git remote add codeberg \
+            "https://winson3QQ:${CODEBERG_TOKEN}@codeberg.org/winson3QQ/ICS_DMAS.git"
+          git push codeberg HEAD:main

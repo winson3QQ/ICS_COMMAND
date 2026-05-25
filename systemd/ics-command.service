@@ -1,0 +1,25 @@
+[Unit]
+Description=ICS_DMAS 指揮部後端 (FastAPI :8000)
+After=network-online.target
+Wants=network-online.target
+# systemd 240+ 起，StartLimitIntervalSec / StartLimitBurst 屬 [Unit] 區段
+# 放在 [Service] 會產生 deprecation warning（journalctl 可見）
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=ics
+Group=ics
+WorkingDirectory=/home/ics/ics-dmas/command-dashboard
+ExecStart=/home/ics/ics-dmas/command-dashboard/.venv/bin/uvicorn main:app --app-dir src --host 0.0.0.0 --port 8000
+Environment=COMMAND_URL=
+Environment=ICS_DB_PATH=/var/lib/ics/ics.db
+Environment=ICS_LOG_DIR=/var/log/ics
+StandardOutput=append:/var/log/ics/command.log
+StandardError=append:/var/log/ics/command.log
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

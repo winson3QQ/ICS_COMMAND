@@ -1,0 +1,15 @@
+[Unit]
+Description=ICS_DMAS 指揮部 SQLite 每日 03:00 備份排程
+Requires=ics-backup.service
+
+[Timer]
+# 每日 03:00（UTC+8 半夜離峰；換成系統 timezone）
+OnCalendar=*-*-* 03:00:00
+# 開機後若錯過上次排程時間，立即補跑一次
+Persistent=true
+# 隨機延遲 5 分鐘避免多 Pi 同時 IO 尖峰
+RandomizedDelaySec=300
+Unit=ics-backup.service
+
+[Install]
+WantedBy=timers.target

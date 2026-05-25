@@ -1,0 +1,897 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>ICS 指揮部　QR 掃描器</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&family=Noto+Sans+TC:wght@400;500;700&display=swap');
+
+:root {
+  --bg: #0f1923;
+  --surface: #1a2535;
+  --surface2: #232f42;
+  --border: #2a3f5a;
+  --green: #00d466;   --green-bg: #0d2e1a;  --green-b: #1a5a30;
+  --yellow: #ffc600;  --yellow-bg: #3a2e00; --yellow-b: #5a4400;
+  --red: #ff4444;     --red-bg: #3a0f0f;    --red-b: #5a1a1a;
+  --blue: #4d9fff;    --blue-bg: #0d2040;
+  --text: #e8f0fc;    --text-dim: #4a6080;  --text-mid: #7a9bbf;
+  --mono: 'IBM Plex Mono', monospace;
+  --sans: 'Noto Sans TC', sans-serif;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body {
+  width: 100%; height: 100%;
+  background: var(--bg); color: var(--text);
+  font-family: var(--sans);
+  overflow: hidden;
+}
+
+/* ── TOPBAR ── */
+.topbar {
+  height: 44px; background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; padding: 0 16px; gap: 12px;
+}
+.tb-title { font-family: var(--mono); font-size: 13px; font-weight: 700; color: var(--text); letter-spacing: .1em; }
+.tb-tag { font-family: var(--mono); font-size: 9px; padding: 2px 7px; border-radius: 2px; background: var(--blue-bg); color: var(--blue); border: 1px solid #1a4a80; }
+.tb-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+.tb-server {
+  font-family: var(--mono); font-size: 10px; color: var(--text-dim);
+  display: flex; align-items: center; gap: 6px;
+}
+.tb-server .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-dim); }
+.tb-server.ok .dot { background: var(--green); box-shadow: 0 0 5px var(--green); }
+.tb-server.err .dot { background: var(--red); }
+.tb-server-url {
+  font-family: var(--mono); font-size: 10px; color: var(--text-dim);
+  border: 1px solid var(--border); border-radius: 3px;
+  padding: 2px 8px; background: var(--surface2);
+  cursor: pointer;
+}
+
+/* ── LAYOUT ── */
+.layout {
+  height: calc(100vh - 44px);
+  display: grid;
+  grid-template-columns: 1fr 360px;
+}
+
+/* ── SCANNER SIDE ── */
+.scanner-side {
+  display: flex; flex-direction: column;
+  position: relative; overflow: hidden;
+}
+
+.viewfinder-wrap {
+  flex: 1; position: relative;
+  background: #000;
+  display: flex; align-items: center; justify-content: center;
+  overflow: hidden;
+}
+
+#video {
+  width: 100%; height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* Canvas hidden, used for jsQR processing */
+#canvas { display: none; }
+
+/* Scanning frame overlay */
+.scan-frame {
+  position: absolute;
+  width: 260px; height: 260px;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+.scan-frame::before, .scan-frame::after,
+.scan-corner-br, .scan-corner-bl {
+  content: '';
+  position: absolute;
+  width: 36px; height: 36px;
+  border-color: var(--blue);
+  border-style: solid;
+}
+.scan-frame::before  { top: 0;    left: 0;   border-width: 3px 0 0 3px; }
+.scan-frame::after   { top: 0;    right: 0;  border-width: 3px 3px 0 0; }
+.scan-corner-br      { bottom: 0; right: 0;  border-width: 0 3px 3px 0; }
+.scan-corner-bl      { bottom: 0; left: 0;   border-width: 0 0 3px 3px; }
+
+/* Scanning line animation */
+.scan-line {
+  position: absolute;
+  left: 0; right: 0; height: 2px;
+  background: linear-gradient(90deg, transparent, var(--blue), transparent);
+  top: 50%; transform: translateY(-50%);
+  animation: scan 2s linear infinite;
+  box-shadow: 0 0 8px var(--blue);
+}
+@keyframes scan {
+  0%   { top: 0%; }
+  100% { top: 100%; }
+}
+
+.scan-frame.found {
+  border-color: var(--green);
+}
+.scan-frame.found::before, .scan-frame.found::after,
+.scan-frame.found .scan-corner-br, .scan-frame.found .scan-corner-bl {
+  border-color: var(--green);
+}
+
+/* Status overlay */
+.scan-status {
+  position: absolute;
+  bottom: 16px; left: 50%; transform: translateX(-50%);
+  background: rgba(15, 25, 35, .85);
+  border: 1px solid var(--border);
+  border-radius: 6px; padding: 8px 18px;
+  font-family: var(--mono); font-size: 12px; color: var(--text-mid);
+  white-space: nowrap; pointer-events: none;
+  backdrop-filter: blur(4px);
+}
+.scan-status.scanning { color: var(--blue); }
+.scan-status.found    { color: var(--green); border-color: var(--green-b); }
+.scan-status.error    { color: var(--red);   border-color: var(--red-b); }
+
+/* Scanner controls */
+.scanner-ctrl {
+  background: var(--surface); border-top: 1px solid var(--border);
+  padding: 10px 16px;
+  display: flex; align-items: center; gap: 10px;
+  flex-shrink: 0;
+}
+.btn {
+  font-family: var(--mono); font-size: 11px; font-weight: 700;
+  padding: 8px 16px; border-radius: 5px; border: 1px solid;
+  cursor: pointer; transition: all .12s; letter-spacing: .05em;
+  white-space: nowrap;
+}
+.btn-primary { background: var(--blue-bg); color: var(--blue); border-color: #1a4a80; }
+.btn-primary:hover, .btn-primary.active { background: var(--blue); color: #fff; border-color: var(--blue); }
+.btn-success { background: var(--green-bg); color: var(--green); border-color: var(--green-b); }
+.btn-success:hover { background: var(--green); color: #000; }
+.btn-danger  { background: var(--red-bg); color: var(--red); border-color: var(--red-b); }
+.btn-dim     { background: var(--surface2); color: var(--text-dim); border-color: var(--border); }
+.btn-dim:hover { color: var(--text); border-color: var(--text-mid); }
+.btn:disabled { opacity: .4; cursor: not-allowed; }
+
+/* Source selector */
+.source-sel {
+  display: flex; gap: 4px;
+}
+.source-btn {
+  font-family: var(--mono); font-size: 10px;
+  padding: 5px 10px; border-radius: 4px; border: 1px solid var(--border);
+  background: var(--surface2); color: var(--text-dim); cursor: pointer;
+  transition: all .1s;
+}
+.source-btn.on { background: #1a2d42; color: var(--blue); border-color: #1a4a80; }
+
+/* ── RIGHT PANEL ── */
+.result-panel {
+  background: var(--surface);
+  border-left: 1px solid var(--border);
+  display: flex; flex-direction: column;
+  overflow: hidden;
+}
+
+.rp-head {
+  background: var(--surface2); border-bottom: 1px solid var(--border);
+  padding: 8px 14px;
+  display: flex; align-items: center; justify-content: space-between;
+  flex-shrink: 0;
+}
+.rp-title { font-family: var(--mono); font-size: 10px; font-weight: 700; color: var(--text-mid); letter-spacing: .1em; text-transform: uppercase; }
+.rp-count { font-family: var(--mono); font-size: 11px; color: var(--green); }
+
+.rp-body { flex: 1; overflow-y: auto; padding: 12px 14px; }
+.rp-body::-webkit-scrollbar { width: 3px; }
+.rp-body::-webkit-scrollbar-thumb { background: var(--border); }
+
+/* Decoded preview */
+.preview-card {
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 7px; margin-bottom: 10px; overflow: hidden;
+}
+.preview-card.valid   { border-color: var(--green-b); }
+.preview-card.invalid { border-color: var(--red-b); }
+.preview-card.sent    { border-color: var(--green-b); opacity: .6; }
+
+.pc-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 12px; gap: 8px;
+  background: rgba(255,255,255,.03);
+  border-bottom: 1px solid var(--border);
+}
+.pc-type { font-family: var(--mono); font-size: 11px; font-weight: 700; }
+.pc-type.ok   { color: var(--green); }
+.pc-type.err  { color: var(--red); }
+.pc-type.sent { color: var(--text-dim); }
+.pc-time { font-family: var(--mono); font-size: 9px; color: var(--text-dim); }
+
+.pc-body { padding: 8px 12px; }
+.pc-field { display: grid; grid-template-columns: 90px 1fr; gap: 4px; padding: 3px 0; border-bottom: 1px solid rgba(255,255,255,.04); font-size: 11px; }
+.pc-field:last-child { border-bottom: none; }
+.pc-key   { color: var(--text-dim); font-family: var(--mono); font-size: 10px; }
+.pc-val   { color: var(--text); word-break: break-all; }
+.pc-val.warn { color: var(--yellow); }
+.pc-val.err  { color: var(--red); }
+.pc-val.ok   { color: var(--green); }
+
+.pc-actions { padding: 8px 12px; display: flex; gap: 6px; }
+
+/* Error message */
+.err-card {
+  background: var(--red-bg); border: 1px solid var(--red-b);
+  border-radius: 6px; padding: 10px 12px;
+  font-size: 11px; color: var(--red); line-height: 1.6;
+  margin-bottom: 10px;
+}
+.err-card .err-title { font-family: var(--mono); font-weight: 700; margin-bottom: 4px; }
+
+/* Log list */
+.log-item {
+  display: flex; align-items: flex-start; gap: 8px;
+  padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,.04);
+  font-size: 10px;
+}
+.log-item:last-child { border-bottom: none; }
+.log-time { font-family: var(--mono); color: var(--text-dim); white-space: nowrap; flex-shrink: 0; }
+.log-msg  { color: var(--text-mid); flex: 1; line-height: 1.5; }
+.log-ok   .log-msg { color: var(--green); }
+.log-err  .log-msg { color: var(--red); }
+.log-warn .log-msg { color: var(--yellow); }
+
+/* Empty state */
+.empty {
+  display: flex; flex-direction: column; align-items: center;
+  justify-content: center; height: 200px; gap: 10px;
+  color: var(--text-dim); text-align: center;
+}
+.empty-icon { font-size: 36px; opacity: .4; }
+.empty p { font-size: 11px; line-height: 1.8; }
+
+/* Modal for server URL */
+.modal-bg {
+  display: none; position: fixed; inset: 0;
+  background: rgba(0,0,0,.6); z-index: 999;
+  align-items: center; justify-content: center;
+}
+.modal-bg.open { display: flex; }
+.modal {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 10px; width: 380px; padding: 20px;
+  box-shadow: 0 20px 60px rgba(0,0,0,.5);
+}
+.modal h3 { font-family: var(--mono); font-size: 13px; margin-bottom: 14px; color: var(--text); }
+.modal input {
+  width: 100%; padding: 9px 12px;
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 5px; color: var(--text); font-family: var(--mono); font-size: 13px;
+  margin-bottom: 10px;
+}
+.modal input:focus { outline: none; border-color: var(--blue); }
+.modal .hint { font-size: 10px; color: var(--text-dim); margin-bottom: 14px; line-height: 1.6; }
+.modal-btns { display: flex; gap: 8px; justify-content: flex-end; }
+
+/* Tabs */
+.tabs { display: flex; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.tab {
+  font-family: var(--mono); font-size: 10px; padding: 7px 14px;
+  cursor: pointer; color: var(--text-dim); border-bottom: 2px solid transparent;
+  transition: all .1s; white-space: nowrap;
+}
+.tab.on { color: var(--blue); border-bottom-color: var(--blue); }
+</style>
+</head>
+<body>
+
+<!-- TOPBAR -->
+<div class="topbar">
+  <div class="tb-title">ICS 指揮部</div>
+  <div class="tb-tag">QR 掃描器</div>
+  <div class="tb-right">
+    <div class="tb-server" id="server-status">
+      <div class="dot"></div>
+      <span id="server-label">連線中...</span>
+    </div>
+    <div class="tb-server-url" id="server-url-btn" onclick="openServerModal()">
+      <span id="server-url-display">設定伺服器</span>
+    </div>
+  </div>
+</div>
+
+<!-- LAYOUT -->
+<div class="layout">
+
+  <!-- SCANNER -->
+  <div class="scanner-side">
+    <div class="viewfinder-wrap">
+      <video id="video" playsinline autoplay muted></video>
+      <canvas id="canvas"></canvas>
+
+      <div class="scan-frame" id="scan-frame">
+        <div class="scan-corner-br"></div>
+        <div class="scan-corner-bl"></div>
+        <div class="scan-line" id="scan-line"></div>
+      </div>
+
+      <div class="scan-status scanning" id="scan-status">等待相機啟動...</div>
+    </div>
+
+    <div class="scanner-ctrl">
+      <button class="btn btn-primary" id="btn-start" onclick="startCamera()">▶ 開啟相機</button>
+      <button class="btn btn-dim" id="btn-stop" onclick="stopCamera()" disabled>■ 停止</button>
+      <div style="flex:1"></div>
+      <div style="font-size:10px;color:var(--text-dim)">來源標記：</div>
+      <div class="source-sel">
+        <div class="source-btn on" id="src-qr"     onclick="setSource('qr_scan',this)">QR 掃描</div>
+        <div class="source-btn"   id="src-manual"  onclick="setSource('manual',this)">手動補登</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- RESULT PANEL -->
+  <div class="result-panel">
+    <div class="tabs">
+      <div class="tab on" id="tab-queue" onclick="switchTab('queue')">待送佇列 <span id="queue-count" style="color:var(--yellow)"></span></div>
+      <div class="tab"    id="tab-log"   onclick="switchTab('log')">送出記錄</div>
+    </div>
+
+    <!-- QUEUE TAB -->
+    <div id="panel-queue" style="display:flex;flex-direction:column;flex:1;overflow:hidden">
+      <div class="rp-head">
+        <div class="rp-title">解碼預覽</div>
+        <button class="btn btn-success" id="btn-send-all" onclick="sendAll()" disabled
+          style="font-size:10px;padding:4px 12px">↑ 全部送出</button>
+      </div>
+      <div class="rp-body" id="queue-list">
+        <div class="empty">
+          <div class="empty-icon">📷</div>
+          <p>對準 QR code 後<br>系統自動解碼並顯示預覽<br>確認後送出至後端</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- LOG TAB -->
+    <div id="panel-log" style="display:none;flex-direction:column;flex:1;overflow:hidden">
+      <div class="rp-head">
+        <div class="rp-title">送出記錄</div>
+        <button class="btn btn-dim" onclick="clearLog()" style="font-size:10px;padding:4px 10px">清除</button>
+      </div>
+      <div class="rp-body" id="log-list">
+        <div class="empty"><div class="empty-icon">📋</div><p>尚無記錄</p></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- SERVER URL MODAL -->
+<div class="modal-bg" id="server-modal">
+  <div class="modal">
+    <h3>設定後端伺服器位址</h3>
+    <input type="text" id="server-url-input" placeholder="http://192.168.1.100:8000">
+    <div class="hint">
+      輸入指揮部 Pi 的 IP 位址。<br>
+      可在 Pi 上執行 <code>hostname -I</code> 取得。<br>
+      範例：<code>http://192.168.1.100:8000</code>
+    </div>
+    <div class="modal-btns">
+      <button class="btn btn-dim" onclick="closeServerModal()">取消</button>
+      <button class="btn btn-primary" onclick="saveServerUrl()">儲存並測試</button>
+    </div>
+  </div>
+</div>
+
+<!-- jsQR local -->
+<script src="lib/jsQR.min.js"></script>
+
+<script>
+// ──────────────────────────────────────────
+// 設定
+// ──────────────────────────────────────────
+
+let SERVER_URL = localStorage.getItem('ics_server_url') || window.location.origin;
+let scanSource = 'qr_scan';  // qr_scan / manual
+let cameraActive = false;
+let animFrameId = null;
+let lastScannedId = null;    // 防止同一個 QR 連續觸發
+let lastScannedAt = 0;
+const RESCAN_COOLDOWN_MS = 3000;
+
+// 佇列（待送出）
+let queue = [];
+// 送出記錄
+let sendLog = [];
+
+// ──────────────────────────────────────────
+// 伺服器設定
+// ──────────────────────────────────────────
+
+function openServerModal() {
+  document.getElementById('server-url-input').value = SERVER_URL;
+  document.getElementById('server-modal').classList.add('open');
+}
+function closeServerModal() {
+  document.getElementById('server-modal').classList.remove('open');
+}
+async function saveServerUrl() {
+  const url = document.getElementById('server-url-input').value.trim().replace(/\/$/, '');
+  if (!url) return;
+  SERVER_URL = url;
+  localStorage.setItem('ics_server_url', url);
+  document.getElementById('server-url-display').textContent = url.replace('http://','');
+  closeServerModal();
+  await checkServer();
+}
+
+async function checkServer() {
+  const el = document.getElementById('server-status');
+  const label = document.getElementById('server-label');
+  try {
+    const r = await fetch(`${SERVER_URL}/api/health`, { signal: AbortSignal.timeout(3000) });
+    if (r.ok) {
+      el.className = 'tb-server ok';
+      label.textContent = '後端已連線';
+      addLog('ok', `後端連線成功：${SERVER_URL}`);
+    } else {
+      throw new Error(`HTTP ${r.status}`);
+    }
+  } catch(e) {
+    el.className = 'tb-server err';
+    label.textContent = '後端未連線';
+    addLog('err', `後端連線失敗：${e.message}　請檢查 IP 與 Port`);
+  }
+}
+
+// ──────────────────────────────────────────
+// 相機 + 掃描
+// ──────────────────────────────────────────
+
+async function startCamera() {
+  const btn = document.getElementById('btn-start');
+  const statusEl = document.getElementById('scan-status');
+  btn.disabled = true;
+  statusEl.textContent = '正在開啟相機...';
+  statusEl.className = 'scan-status scanning';
+
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
+    });
+    const video = document.getElementById('video');
+    video.srcObject = stream;
+    await video.play();
+    cameraActive = true;
+    document.getElementById('btn-stop').disabled = false;
+    statusEl.textContent = '掃描中...';
+    addLog('ok', '相機啟動成功');
+    scanLoop();
+  } catch(e) {
+    btn.disabled = false;
+    statusEl.textContent = '相機啟動失敗：' + e.message;
+    statusEl.className = 'scan-status error';
+    addLog('err', '相機啟動失敗：' + e.message);
+  }
+}
+
+function stopCamera() {
+  cameraActive = false;
+  if (animFrameId) cancelAnimationFrame(animFrameId);
+  const video = document.getElementById('video');
+  if (video.srcObject) {
+    video.srcObject.getTracks().forEach(t => t.stop());
+    video.srcObject = null;
+  }
+  document.getElementById('btn-start').disabled = false;
+  document.getElementById('btn-stop').disabled = true;
+  document.getElementById('scan-status').textContent = '相機已停止';
+  document.getElementById('scan-status').className = 'scan-status';
+  document.getElementById('scan-frame').classList.remove('found');
+  addLog('ok', '相機已停止');
+}
+
+function scanLoop() {
+  if (!cameraActive) return;
+  const video  = document.getElementById('video');
+  const canvas = document.getElementById('canvas');
+  const ctx    = canvas.getContext('2d', { willReadFrequently: true });
+
+  if (video.readyState === video.HAVE_ENOUGH_DATA) {
+    canvas.width  = video.videoWidth;
+    canvas.height = video.videoHeight;
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const code = jsQR(imageData.data, imageData.width, imageData.height, {
+      inversionAttempts: 'dontInvert'
+    });
+
+    if (code) {
+      const now = Date.now();
+      // 防重複：同一個 QR 3秒內不重複觸發
+      if (code.data !== lastScannedId || now - lastScannedAt > RESCAN_COOLDOWN_MS) {
+        lastScannedId = code.data;
+        lastScannedAt = now;
+        onQRFound(code.data);
+      }
+    }
+  }
+
+  animFrameId = requestAnimationFrame(scanLoop);
+}
+
+// ──────────────────────────────────────────
+// QR 解碼與驗證（規格 13.2）
+// ──────────────────────────────────────────
+
+const REQUIRED_FIELDS = ['v', 'type', 'snapshot_id', 't', 'src'];
+const NODE_TYPE_MAP = {
+  'snapshot_shelter':  'shelter',
+  'snapshot_medical':  'medical',
+  'snapshot_forward':  'forward',
+  'snapshot_security': 'security',
+  'snapshot_ccp':      'ccp',
+  'snapshot_evac':     'evac',
+};
+const NODE_LABELS = {
+  shelter: '收容組', medical: '醫療組',
+  forward: '前進組', security: '安全組',
+  ccp: 'CCP', evac: '後送'
+};
+
+function onQRFound(raw) {
+  // 嘗試解析 JSON
+  let data;
+  try {
+    data = JSON.parse(raw);
+  } catch(e) {
+    showScanStatus('error', '非 JSON 格式，忽略');
+    flashFrame('error');
+    addLog('warn', '掃到非 JSON 內容，忽略');
+    return;
+  }
+
+  // 驗證必填欄位（規格 13.2）
+  const missing = REQUIRED_FIELDS.filter(f => data[f] === undefined || data[f] === null || data[f] === '');
+  if (missing.length > 0) {
+    showScanStatus('error', `欄位缺失：${missing.join(', ')}`);
+    flashFrame('error');
+    addErrCard(`QR 驗證失敗：缺少必填欄位 ${missing.join(', ')}`, raw);
+    addLog('err', `QR 驗證失敗：${missing.join(', ')}`);
+    return;
+  }
+
+  // 驗證 type
+  const nodeType = NODE_TYPE_MAP[data.type];
+  if (!nodeType) {
+    showScanStatus('error', `未知 type：${data.type}`);
+    addErrCard(`未知的 type：${data.type}`, raw);
+    addLog('err', `未知 type：${data.type}`);
+    return;
+  }
+
+  // 檢查是否已在佇列中
+  const alreadyQueued = queue.some(q => q.data.snapshot_id === data.snapshot_id);
+  if (alreadyQueued) {
+    showScanStatus('found', `已在佇列中（${data.snapshot_id.slice(0,8)}…）`);
+    addLog('warn', `重複 snapshot_id，略過：${data.snapshot_id.slice(0,8)}`);
+    return;
+  }
+
+  // 加入佇列
+  const entry = {
+    id: Date.now(),
+    data: { ...data, source: scanSource },
+    nodeType,
+    scannedAt: new Date().toLocaleTimeString('zh-TW'),
+    status: 'pending',   // pending / sending / sent / error
+  };
+  queue.unshift(entry);
+
+  showScanStatus('found', `✓ ${NODE_LABELS[nodeType]} 快照解碼成功`);
+  flashFrame('found');
+  addLog('ok', `掃到 ${NODE_LABELS[nodeType]} 快照（${data.snapshot_id.slice(0,8)}…）`);
+  renderQueue();
+}
+
+// ──────────────────────────────────────────
+// 送出至後端
+// ──────────────────────────────────────────
+
+async function sendEntry(id) {
+  const entry = queue.find(q => q.id === id);
+  if (!entry || entry.status === 'sending') return;
+  entry.status = 'sending';
+  renderQueue();
+
+  try {
+    const r = await fetch(`${SERVER_URL}/api/snapshots`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(entry.data),
+      signal: AbortSignal.timeout(8000),
+    });
+    const body = await r.json();
+    if (!r.ok) throw new Error(body.detail || `HTTP ${r.status}`);
+
+    entry.status = body.inserted ? 'sent_new' : 'sent_dup';
+    const label = body.inserted ? '新寫入' : '重複（已忽略）';
+    addLog('ok', `POST 成功 ${NODE_LABELS[entry.nodeType]}（${label}）snapshot_id: ${entry.data.snapshot_id.slice(0,8)}`);
+    sendLog.unshift({ ...entry, sentAt: new Date().toLocaleTimeString('zh-TW'), label });
+  } catch(e) {
+    entry.status = 'error';
+    entry.errorMsg = e.message;
+    addLog('err', `POST 失敗：${e.message}`);
+  }
+
+  // 成功或重複都移出佇列
+  if (entry.status.startsWith('sent')) {
+    setTimeout(() => {
+      queue = queue.filter(q => q.id !== id);
+      renderQueue();
+      renderLog();
+    }, 1200);
+  } else {
+    renderQueue();
+  }
+  renderLog();
+}
+
+async function sendAll() {
+  const pending = queue.filter(q => q.status === 'pending');
+  for (const entry of pending) {
+    await sendEntry(entry.id);
+    await sleep(200);
+  }
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// ──────────────────────────────────────────
+// 渲染
+// ──────────────────────────────────────────
+
+function renderQueue() {
+  const list = document.getElementById('queue-list');
+  const btn  = document.getElementById('btn-send-all');
+  const count = document.getElementById('queue-count');
+
+  const pending = queue.filter(q => q.status === 'pending').length;
+  count.textContent = queue.length > 0 ? `(${queue.length})` : '';
+  btn.disabled = pending === 0;
+
+  if (queue.length === 0) {
+    list.innerHTML = `<div class="empty"><div class="empty-icon">✓</div><p>佇列清空<br>可繼續掃描</p></div>`;
+    return;
+  }
+
+  list.innerHTML = queue.map(entry => {
+    const d = entry.data;
+    const nodeLabel = NODE_LABELS[entry.nodeType] || entry.nodeType;
+    const statusLabel = {
+      pending:  '待送出',
+      sending:  '送出中...',
+      sent_new: '✓ 已寫入',
+      sent_dup: '⊘ 重複',
+      error:    '✗ 失敗',
+    }[entry.status] || entry.status;
+
+    const statusClass = {
+      pending: 'ok', sending: 'warn',
+      sent_new: 'ok', sent_dup: 'warn', error: 'err'
+    }[entry.status] || '';
+
+    // 計算快照新鮮度
+    let freshnessHint = '';
+    if (d.t) {
+      const mins = (Date.now() - new Date(d.t).getTime()) / 60000;
+      freshnessHint = mins > 10 ? `⚠ 快照時間 ${Math.round(mins)} 分前（LKP 範圍）` :
+                      mins > 5  ? `注意：快照 ${Math.round(mins)} 分前` :
+                      `快照時間：${Math.round(mins)} 分前`;
+    }
+
+    // 關鍵欄位摘要
+    const fields = buildFieldSummary(entry);
+
+    return `
+      <div class="preview-card ${entry.status.startsWith('sent') ? 'sent' : entry.status === 'error' ? 'invalid' : 'valid'}"
+           id="pc-${entry.id}">
+        <div class="pc-head">
+          <div class="pc-type ${statusClass}">${nodeLabel}　${statusLabel}</div>
+          <div class="pc-time">${entry.scannedAt}</div>
+        </div>
+        <div class="pc-body">
+          <div class="pc-field"><span class="pc-key">snapshot_id</span><span class="pc-val">${d.snapshot_id.slice(0,16)}…</span></div>
+          <div class="pc-field"><span class="pc-key">時間戳</span><span class="pc-val ${mins_class(d.t)}">${d.t} ${freshnessHint ? '⚠' : ''}</span></div>
+          ${fields}
+          <div class="pc-field"><span class="pc-key">來源標記</span><span class="pc-val">${d.source || 'qr_scan'}</span></div>
+          ${entry.errorMsg ? `<div class="pc-field"><span class="pc-key">錯誤</span><span class="pc-val err">${entry.errorMsg}</span></div>` : ''}
+          ${freshnessHint ? `<div style="font-size:9px;color:var(--yellow);padding-top:4px">${freshnessHint}</div>` : ''}
+        </div>
+        ${entry.status === 'pending' ? `
+        <div class="pc-actions">
+          <button class="btn btn-success" onclick="sendEntry(${entry.id})" style="font-size:10px;padding:5px 12px">↑ 送出</button>
+          <button class="btn btn-dim"     onclick="removeEntry(${entry.id})" style="font-size:10px;padding:5px 10px">✕ 移除</button>
+        </div>` : ''}
+        ${entry.status === 'error' ? `
+        <div class="pc-actions">
+          <button class="btn btn-danger" onclick="retryEntry(${entry.id})" style="font-size:10px;padding:5px 12px">↺ 重試</button>
+          <button class="btn btn-dim"    onclick="removeEntry(${entry.id})" style="font-size:10px;padding:5px 10px">✕ 移除</button>
+        </div>` : ''}
+      </div>
+    `;
+  }).join('');
+}
+
+function mins_class(tStr) {
+  if (!tStr) return '';
+  const mins = (Date.now() - new Date(tStr).getTime()) / 60000;
+  return mins > 10 ? 'err' : mins > 5 ? 'warn' : '';
+}
+
+function buildFieldSummary(entry) {
+  const d = entry.data;
+  const rows = [];
+
+  if (entry.nodeType === 'medical') {
+    const c = d.casualties || {};
+    rows.push(`<div class="pc-field"><span class="pc-key">傷患</span><span class="pc-val">🔴${c.red||0} 🟡${c.yellow||0} 🟢${c.green||0} ⬛${c.black||0}</span></div>`);
+    rows.push(`<div class="pc-field"><span class="pc-key">床位</span><span class="pc-val">${d.bed_used||'—'}/${d.bed_total||'—'}</span></div>`);
+    rows.push(`<div class="pc-field"><span class="pc-key">等待/後送</span><span class="pc-val">${d.waiting_count||0} / ${d.pending_evac||0}</span></div>`);
+    if (d.supplies) {
+      const iv = d.supplies.iv ?? d.supplies.saline ?? '—';
+      rows.push(`<div class="pc-field"><span class="pc-key">輸液(IV)</span><span class="pc-val ${iv < 3 ? 'err' : iv < 5 ? 'warn' : ''}">${iv}</span></div>`);
+    }
+  } else if (entry.nodeType === 'shelter') {
+    const srt = d.srt || {};
+    rows.push(`<div class="pc-field"><span class="pc-key">床位</span><span class="pc-val">${d.bed_used||'—'}/${d.bed_total||'—'}</span></div>`);
+    rows.push(`<div class="pc-field"><span class="pc-key">SRT</span><span class="pc-val">🔴${srt.red||0} 🟡${srt.yellow||0} 🟢${srt.green||0}</span></div>`);
+    rows.push(`<div class="pc-field"><span class="pc-key">待入站</span><span class="pc-val">${d.pending_intake||0}</span></div>`);
+  } else if (entry.nodeType === 'forward') {
+    const units = d.units || [];
+    units.forEach(u => {
+      const c = u.casualties || {};
+      rows.push(`<div class="pc-field"><span class="pc-key">前進${u.unit}</span><span class="pc-val">🔴${c.red||0} 🟡${c.yellow||0} 🟢${c.green||0} ⬛${c.black||0} ${u.hazard&&u.hazard!=='none'?'⚠'+u.hazard:''}</span></div>`);
+    });
+    if (!units.length) {
+      const c = d.casualties || {};
+      rows.push(`<div class="pc-field"><span class="pc-key">傷患</span><span class="pc-val">🔴${c.red||0} 🟡${c.yellow||0} 🟢${c.green||0} ⬛${c.black||0}</span></div>`);
+    }
+  } else if (entry.nodeType === 'security') {
+    rows.push(`<div class="pc-field"><span class="pc-key">哨位/QRF</span><span class="pc-val">${d.post_total||0}個 / QRF ${d.qrf_available||0}人</span></div>`);
+    rows.push(`<div class="pc-field"><span class="pc-key">隔離</span><span class="pc-val">${d.isolation_count||0}人 ${d.post_anomaly?'異常:'+d.post_anomaly:''}</span></div>`);
+  }
+
+  return rows.join('');
+}
+
+function renderLog() {
+  const list = document.getElementById('log-list');
+  if (sendLog.length === 0) {
+    list.innerHTML = `<div class="empty"><div class="empty-icon">📋</div><p>尚無送出記錄</p></div>`;
+    return;
+  }
+  list.innerHTML = sendLog.slice(0, 50).map(entry => `
+    <div class="log-item">
+      <div class="log-time">${entry.sentAt}</div>
+      <div class="log-msg">
+        ${NODE_LABELS[entry.nodeType]}　${entry.label}
+        <br><span style="color:var(--text-dim)">${entry.data.snapshot_id.slice(0,16)}…</span>
+      </div>
+    </div>
+  `).join('');
+}
+
+function addErrCard(msg, raw) {
+  // 在佇列頂端加入錯誤卡片
+  const err = document.createElement('div');
+  err.className = 'err-card';
+  err.innerHTML = `<div class="err-title">✗ ${msg}</div>
+    <div style="font-family:var(--mono);font-size:9px;color:var(--text-dim);margin-top:4px;word-break:break-all">${raw.slice(0,100)}…</div>`;
+  const list = document.getElementById('queue-list');
+  if (list.querySelector('.empty')) list.innerHTML = '';
+  list.insertBefore(err, list.firstChild);
+  setTimeout(() => err.remove(), 8000);
+}
+
+// ──────────────────────────────────────────
+// Log
+// ──────────────────────────────────────────
+
+const LOG_MAX = 100;
+let logItems = [];
+
+function addLog(type, msg) {
+  const time = new Date().toLocaleTimeString('zh-TW', { hour12: false });
+  logItems.unshift({ type, msg, time });
+  if (logItems.length > LOG_MAX) logItems.pop();
+  renderLogPanel();
+}
+
+function renderLogPanel() {
+  const list = document.getElementById('log-list');
+  if (document.getElementById('tab-log').classList.contains('on')) {
+    if (logItems.length === 0) {
+      list.innerHTML = `<div class="empty"><div class="empty-icon">📋</div><p>尚無記錄</p></div>`;
+      return;
+    }
+    list.innerHTML = logItems.map(l => `
+      <div class="log-item log-${l.type}">
+        <div class="log-time">${l.time}</div>
+        <div class="log-msg">${l.msg}</div>
+      </div>
+    `).join('');
+  }
+}
+
+function clearLog() {
+  logItems = [];
+  sendLog = [];
+  renderLogPanel();
+}
+
+// ──────────────────────────────────────────
+// 狀態與工具
+// ──────────────────────────────────────────
+
+function showScanStatus(type, msg) {
+  const el = document.getElementById('scan-status');
+  el.textContent = msg;
+  el.className = `scan-status ${type}`;
+  if (type !== 'error') setTimeout(() => {
+    if (cameraActive) { el.textContent = '掃描中...'; el.className = 'scan-status scanning'; }
+  }, 2500);
+}
+
+function flashFrame(type) {
+  const frame = document.getElementById('scan-frame');
+  frame.classList.add(type === 'found' ? 'found' : '');
+  setTimeout(() => frame.classList.remove('found'), 1200);
+}
+
+function setSource(src, btn) {
+  scanSource = src;
+  document.querySelectorAll('.source-btn').forEach(b => b.classList.remove('on'));
+  btn.classList.add('on');
+}
+
+function removeEntry(id) {
+  queue = queue.filter(q => q.id !== id);
+  renderQueue();
+}
+
+async function retryEntry(id) {
+  const entry = queue.find(q => q.id === id);
+  if (entry) { entry.status = 'pending'; await sendEntry(id); }
+}
+
+function switchTab(tab) {
+  document.getElementById('tab-queue').classList.toggle('on', tab === 'queue');
+  document.getElementById('tab-log').classList.toggle('on',   tab === 'log');
+  document.getElementById('panel-queue').style.display = tab === 'queue' ? 'flex' : 'none';
+  document.getElementById('panel-log').style.display   = tab === 'log'   ? 'flex' : 'none';
+  if (tab === 'log') renderLogPanel();
+}
+
+// ──────────────────────────────────────────
+// 初始化
+// ──────────────────────────────────────────
+
+document.getElementById('server-url-display').textContent =
+  SERVER_URL.replace('http://','');
+
+// 初始化時確認後端連線
+checkServer();
+
+// 每 30 秒重新確認一次
+setInterval(checkServer, 30000);
+</script>
+</body>
+</html>

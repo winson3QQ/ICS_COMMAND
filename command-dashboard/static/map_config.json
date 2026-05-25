@@ -1,0 +1,84 @@
+{
+  "maps": {
+    "indoor": {
+      "image": null,
+      "label": "站內",
+      "zones": [
+        {
+          "id": "zone_shelter",
+          "label": "收容組",
+          "sub": "B 棟",
+          "x_pct": 94.7,
+          "y_pct": 85.5,
+          "node_type": "shelter",
+          "icon": "pin"
+        },
+        {
+          "id": "zone_medical",
+          "label": "醫療組",
+          "sub": "A 棟",
+          "x_pct": 94.9,
+          "y_pct": 73.9,
+          "node_type": "medical",
+          "icon": "pin"
+        }
+      ],
+      "flows": []
+    },
+    "outdoor": {
+      "image": "Satellite_map.png",
+      "label": "站外",
+      "zones": [
+        {
+          "id": "node_shelter",
+          "label": "收容組",
+          "sub": "",
+          "node_type": "shelter",
+          "icon": "pin",
+          "lat": 24.82048,
+          "lng": 121.017741
+        },
+        {
+          "id": "node_medical",
+          "label": "醫療組",
+          "sub": "",
+          "node_type": "medical",
+          "icon": "pin",
+          "lat": 24.821133,
+          "lng": 121.017494
+        },
+        {
+          "id": "node_command",
+          "label": "指揮部",
+          "sub": "",
+          "node_type": "command",
+          "icon": "pin",
+          "lat": 24.820636,
+          "lng": 121.019683
+        },
+        {
+          "id": "node_forward",
+          "label": "前進組",
+          "sub": "",
+          "node_type": "forward",
+          "icon": "pin",
+          "lat": 24.820627,
+          "lng": 121.018782
+        },
+        {
+          "id": "node_security",
+          "label": "安全組",
+          "sub": "",
+          "node_type": "security",
+          "icon": "pin",
+          "lat": 24.820636,
+          "lng": 121.018395
+        }
+      ],
+      "flows": [],
+      "polygons": [],
+      "routes": [],
+      "infrastructure": []
+    }
+  }
+}

@@ -1,0 +1,58 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+venv/
+.venv/
+.env
+
+# Database
+*.db
+*.db-shm
+*.db-wal
+*.db.gz
+data/backups/
+
+# Node
+node_modules/
+dist/
+.cache/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+.claude/settings.json
+.claude/settings.local.json
+.claude/todos/
+.claude/projects/
+
+# Wireshark captures
+wireshark/
+
+# TLS 憑證（含私鑰，不可提交）
+certs/
+*.pem
+
+# Token / secret 防誤提交
+*.token
+.codeberg-token
+.github-token
+*-token
+.netrc
+
+# 臨時指令檔
+claude_code_instructions.md
+
+# pytest 產生的暫存與報告
+command-dashboard/.coverage
+command-dashboard/.pytest_cache/
+command-dashboard/tests/reports/
+
+# 截圖（badge 資產除外）
+command-dashboard/static/*.png
+!command-dashboard/static/badge.png
+command-dashboard/static/tiles/

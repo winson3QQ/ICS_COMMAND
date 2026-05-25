@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ICS 指揮部 — Backup 管理</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: 'IBM Plex Mono', 'Microsoft JhengHei', monospace;
+    background: #0a0e1a;
+    color: #9ab0c8;
+    margin: 0;
+    padding: 24px;
+    min-height: 100vh;
+  }
+  h1 {
+    color: #fff;
+    font-size: 18px;
+    margin: 0 0 4px;
+  }
+  .subtitle { font-size: 12px; opacity: 0.7; margin-bottom: 16px; }
+  .panel {
+    background: #131825;
+    border: 1px solid #2a3344;
+    border-radius: 6px;
+    padding: 16px;
+    margin-bottom: 16px;
+  }
+  .panel h2 { color: #fff; font-size: 14px; margin: 0 0 12px; }
+  label { display: block; font-size: 12px; margin: 8px 0 4px; }
+  input[type="password"] {
+    background: #0a0e1a;
+    border: 1px solid #2a3344;
+    color: #fff;
+    padding: 8px 10px;
+    border-radius: 4px;
+    width: 200px;
+    font-family: inherit;
+    font-size: 14px;
+  }
+  button {
+    background: #f0883e;
+    color: #fff;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 13px;
+    margin-right: 4px;
+    margin-top: 4px;
+  }
+  button:hover { background: #ffa056; }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+  button.secondary { background: #2a3344; color: #9ab0c8; }
+  button.secondary:hover { background: #3a4458; }
+  button.danger { background: #c93f3f; }
+  button.danger:hover { background: #e54f4f; }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+  }
+  th, td {
+    text-align: left;
+    padding: 8px 12px;
+    border-bottom: 1px solid #1f2735;
+  }
+  th { color: #fff; background: #1a1f2c; }
+  tr:hover { background: #161b27; }
+  .status-ok { color: #5dd55d; }
+  .status-warn { color: #f0883e; }
+  .status-err { color: #ff6464; }
+  pre {
+    background: #050810;
+    border: 1px solid #2a3344;
+    padding: 12px;
+    border-radius: 4px;
+    font-size: 11px;
+    overflow-x: auto;
+    color: #cad9eb;
+    line-height: 1.5;
+  }
+  .toast {
+    position: fixed;
+    top: 24px;
+    right: 24px;
+    background: #1f2735;
+    border: 1px solid #2a3344;
+    color: #fff;
+    padding: 12px 16px;
+    border-radius: 4px;
+    font-size: 13px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+    max-width: 320px;
+  }
+  .toast.error { border-color: #c93f3f; }
+  .toast.success { border-color: #5dd55d; }
+  .meta { font-size: 11px; opacity: 0.7; }
+  .actions { white-space: nowrap; }
+</style>
+</head>
+<body>
+
+<h1>ICS 指揮部 — Backup 管理</h1>
+<div class="subtitle">對應 NIST 800-53 CP-9 / CP-10、個資法 §27、附表十 §3 營運持續計畫</div>
+
+<div class="panel">
+  <h2>1. 認證</h2>
+  <label>Admin PIN</label>
+  <input type="password" id="adminPin" maxlength="6" placeholder="6 位數字">
+  <button onclick="loadBackups()">登入並載入</button>
+  <span class="meta" id="authStatus" style="margin-left:12px"></span>
+</div>
+
+<div class="panel" id="opsPanel" style="display:none">
+  <h2>2. 系統狀態</h2>
+  <div id="systemInfo" class="meta"></div>
+  <div style="margin-top:12px">
+    <button onclick="triggerBackup()">立即備份</button>
+    <button class="secondary" onclick="loadBackups()">重新整理</button>
+  </div>
+</div>
+
+<div class="panel" id="listPanel" style="display:none">
+  <h2>3. Backup 清單（最新在前）</h2>
+  <table id="backupTable">
+    <thead>
+      <tr><th>時間（UTC）</th><th>加密</th><th>大小</th><th>狀態</th><th class="actions">操作</th></tr>
+    </thead>
+    <tbody id="backupRows"></tbody>
+  </table>
+</div>
+
+<div class="panel" id="detailPanel" style="display:none">
+  <h2>4. 詳細資訊：<span id="detailName"></span></h2>
+  <div id="detailContent"></div>
+</div>
+
+<script>
+let pin = "";
+
+function toast(msg, type = "info") {
+  document.querySelectorAll(".toast").forEach(t => t.remove());
+  const t = document.createElement("div");
+  t.className = "toast " + type;
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 4000);
+}
+
+async function api(path, opts = {}) {
+  opts.headers = Object.assign({"X-Admin-PIN": pin, "Content-Type": "application/json"}, opts.headers || {});
+  const r = await fetch(path, opts);
+  if (r.status === 403) { toast("Admin PIN 錯誤或未設定", "error"); throw new Error("403"); }
+  if (r.status === 423) { toast("Admin PIN 已鎖定，請稍後再試", "error"); throw new Error("423"); }
+  if (!r.ok) {
+    const body = await r.json().catch(() => ({detail: "未知錯誤"}));
+    toast(body.detail || ("HTTP " + r.status), "error");
+    throw new Error(r.status);
+  }
+  return r.json();
+}
+
+function fmtBytes(n) {
+  if (n < 1024) return n + " B";
+  if (n < 1024 * 1024) return (n / 1024).toFixed(1) + " KB";
+  return (n / 1024 / 1024).toFixed(1) + " MB";
+}
+
+async function loadBackups() {
+  pin = document.getElementById("adminPin").value;
+  if (!pin) { toast("請輸入 Admin PIN", "error"); return; }
+  try {
+    const data = await api("/api/admin/backups");
+    document.getElementById("authStatus").textContent = "✅ 已登入";
+    document.getElementById("authStatus").className = "status-ok meta";
+    document.getElementById("opsPanel").style.display = "block";
+    document.getElementById("listPanel").style.display = "block";
+
+    document.getElementById("systemInfo").innerHTML =
+      `共 <b>${data.total}</b> 個 backup（保留 ${data.retain_days} 天 rolling）<br>` +
+      `DB：<code>${data.db_path}</code><br>` +
+      `備份目錄：<code>${data.backup_dir}</code>`;
+
+    const rows = document.getElementById("backupRows");
+    rows.innerHTML = "";
+    if (data.backups.length === 0) {
+      rows.innerHTML = '<tr><td colspan="5" style="text-align:center;opacity:0.5">（尚無 backup — 按「立即備份」建第一個）</td></tr>';
+      return;
+    }
+    for (const b of data.backups) {
+      const tr = document.createElement("tr");
+      // #41 Backup DR Drill: encryption indicator
+      const encBadge = b.encrypted
+        ? '<span class="meta" style="color:#0a0;font-weight:600" title="Fernet AES-128-CBC">🔒 已加密</span>'
+        : '<span class="meta" style="color:#a60;font-weight:600" title="未加密 — production 不建議">⚠️ 未加密</span>';
+      tr.innerHTML = `
+        <td>${b.timestamp}</td>
+        <td>${encBadge}</td>
+        <td>${fmtBytes(b.size_bytes)}</td>
+        <td><span class="meta">未驗證</span></td>
+        <td class="actions">
+          <button class="secondary" onclick="verifyBackup('${b.name}', this)">驗證</button>
+          <button class="secondary" onclick="previewBackup('${b.name}')">預覽</button>
+          <button class="danger" onclick="getRestoreCmd('${b.name}')">還原指令</button>
+        </td>`;
+      rows.appendChild(tr);
+    }
+  } catch (e) { /* error already toasted */ }
+}
+
+async function triggerBackup() {
+  if (!confirm("立即執行 backup？（不影響 systemd 每日 03:00 排程）")) return;
+  try {
+    const r = await api("/api/admin/backups", {method: "POST"});
+    toast(`✅ 備份完成：${fmtBytes(r.size_bytes)}（${r.duration_ms} ms）`, "success");
+    loadBackups();
+  } catch (e) {}
+}
+
+async function verifyBackup(name, btn) {
+  btn.disabled = true; btn.textContent = "驗證中...";
+  try {
+    const r = await api(`/api/admin/backups/${encodeURIComponent(name)}/verify`, {method: "POST"});
+    const td = btn.closest("tr").querySelector("td:nth-child(3) span");
+    if (r.ok) {
+      td.textContent = "✅ verified";
+      td.className = "status-ok";
+      toast("驗證通過", "success");
+    } else {
+      td.textContent = "❌ failed";
+      td.className = "status-err";
+      toast("驗證失敗 — backup 可能損毀", "error");
+    }
+  } catch (e) {} finally {
+    btn.disabled = false; btn.textContent = "驗證";
+  }
+}
+
+async function previewBackup(name) {
+  try {
+    const r = await api(`/api/admin/backups/${encodeURIComponent(name)}/preview`);
+    const panel = document.getElementById("detailPanel");
+    document.getElementById("detailName").textContent = name + "（預覽）";
+
+    let html = `<p class="meta">總計 ${r.total_rows.toLocaleString()} 筆資料，${Object.keys(r.table_counts).length} 張表</p>`;
+
+    html += '<h3 style="color:#fff;font-size:13px;margin:16px 0 8px">Schema Migrations</h3>';
+    html += '<table><thead><tr><th>Version</th><th>Name</th><th>Applied At</th></tr></thead><tbody>';
+    for (const m of r.schema_migrations) {
+      html += `<tr><td>M${String(m.version).padStart(3, "0")}</td><td>${m.name}</td><td class="meta">${m.applied_at}</td></tr>`;
+    }
+    html += '</tbody></table>';
+
+    html += '<h3 style="color:#fff;font-size:13px;margin:16px 0 8px">表筆數</h3>';
+    html += '<table><thead><tr><th>Table</th><th>Rows</th></tr></thead><tbody>';
+    const sorted = Object.entries(r.table_counts).sort((a,b) => b[1] - a[1]);
+    for (const [t, c] of sorted) {
+      const cls = c > 0 ? "" : "meta";
+      html += `<tr class="${cls}"><td>${t}</td><td>${c.toLocaleString()}</td></tr>`;
+    }
+    html += '</tbody></table>';
+
+    document.getElementById("detailContent").innerHTML = html;
+    panel.style.display = "block";
+    panel.scrollIntoView({behavior: "smooth"});
+  } catch (e) {}
+}
+
+async function getRestoreCmd(name) {
+  try {
+    const r = await api(`/api/admin/backups/${encodeURIComponent(name)}/restore-cmd`);
+    const panel = document.getElementById("detailPanel");
+    document.getElementById("detailName").textContent = name + "（還原指令）";
+    document.getElementById("detailContent").innerHTML = `
+      <p class="status-warn">⚠️ 還原必須 SSH 進 Pi 執行；不可從 web 觸發。</p>
+      <p class="meta">完整流程見 <code>${r.playbook_ref}</code></p>
+      <pre>${r.cli_command.replace(/</g, "&lt;")}</pre>
+      <button class="secondary" onclick="navigator.clipboard.writeText(\`${r.cli_command.replace(/`/g, '\\`')}\`).then(() => toast('已複製到剪貼簿', 'success'))">📋 複製全部</button>
+    `;
+    panel.style.display = "block";
+    panel.scrollIntoView({behavior: "smooth"});
+  } catch (e) {}
+}
+
+document.getElementById("adminPin").addEventListener("keypress", e => {
+  if (e.key === "Enter") loadBackups();
+});
+</script>
+
+</body>
+</html>
