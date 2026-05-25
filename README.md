@@ -4,6 +4,23 @@
 
 從 [ICS_DMAS](https://github.com/winson3QQ/ICS_DMAS) 多組件平台拆分出來的單體交付版本，聚焦指揮部後端與儀表板。
 
+## 🚀 Onboarding（新機器 / 新接手者）
+
+```bash
+git clone git@github.com:winson3QQ/ICS_COMMAND.git
+cd ICS_COMMAND
+git config core.hooksPath .githooks   # 啟用 memory sync hook（一次性）
+./status.sh                            # 看當前 commit + ROADMAP 進度全景
+```
+
+然後依序看：
+
+1. [`CLAUDE.md`](CLAUDE.md) — 專案規則（紅線、語言、git、版號）
+2. [`docs/PROCESS.md`](docs/PROCESS.md) — 工作流（task lifecycle + slash command 對應）
+3. [`docs/ROADMAP.md`](docs/ROADMAP.md) — 路線圖（38 items，含 ✅/⏳/🚧 marker）
+
+新 Claude session 開啟時，`CLAUDE.md` 與 `.claude/memory/` 會自動載入；只需要再跑 `./status.sh` 就能完整定位。
+
 ## 元件
 
 | 路徑 | 說明 |

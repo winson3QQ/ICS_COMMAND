@@ -2,6 +2,19 @@
 
 由 [ICS_DMAS](https://github.com/winson3QQ/ICS_DMAS) 拆分而來的指揮部單體版本。原 PWA 組件（shelter / medical）不在本 repo 範圍內。
 
+## 🚀 新 session START HERE
+
+```bash
+./status.sh                       # 1. 看當前 commit + ROADMAP 進度全景
+```
+
+然後依序看（自動載入的不再點名）：
+1. **工作流**：[`docs/PROCESS.md`](docs/PROCESS.md) — 一個 task 怎麼走（10 步 lifecycle、要打哪個 slash command）
+2. **路線圖**：[`docs/ROADMAP.md`](docs/ROADMAP.md) — 做什麼（38 items，✅/⏳/🚧 marker）
+3. **架構決策**：[`.claude/memory/`](.claude/memory/)（已自動載入 index）— 為何這樣做
+
+本檔（CLAUDE.md）是 **policy SoT**（紅線、語言、git 規則、版號規則）。`docs/PROCESS.md` 是 **process SoT**（怎麼做）。`docs/ROADMAP.md` 是 **work SoT**（做什麼）。三者各司其職。
+
 ## 安全與供應鏈規則
 
 **禁止使用任何與中國相關的軟體、函式庫、或服務。**
