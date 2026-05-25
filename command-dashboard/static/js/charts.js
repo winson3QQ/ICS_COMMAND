@@ -386,59 +386,10 @@ export function renderSparklines(d, sessionType, openZoneByType, showIpiBreakdow
   const isExp = id => _expandedSpark === id;
   const t = d.times; // X 軸時間陣列
 
-  // ① 量能
-  const sp = d.sPct[N-1], mp = d.mPct[N-1];
-  const capMax = Math.max(sp, mp);
-  const capLvl = capMax >= 90 ? 'crit' : capMax >= 70 ? 'warn' : 'ok';
-  const capEl = document.getElementById('sp-cap-v');
-  if (capEl) {
-    capEl.textContent = '收' + sp + '% 醫' + mp + '%';
-    if (sessionType === 'real') {
-      capEl.style.cursor = 'pointer';
-      capEl.dataset.action = 'openZone';
-      capEl.dataset.type = 'shelter';
-    } else {
-      capEl.style.cursor = 'default';
-      capEl.removeAttribute('data-action');
-    }
-  }
-  setRag('sp-cap', capLvl);
-  const sBt = d.sBt[N-1]||50, mBt = d.mBt[N-1]||30;
-  drawSparkline('sc1', [
-    {data:d.sPct, color:'#E67E22', w:1.5, fill:true, fillColor:'rgba(230,126,34,.15)', unit:'%', label:'收容', extraData:d.sBu, extraUnit:'人'},
-    {data:d.mPct, color:'#C0392B', w:1.5, fill:true, fillColor:'rgba(192,57,43,.12)', unit:'%', label:'醫療', extraData:d.mBu, extraUnit:'人'},
-  ], {yMin:0, yMax:100, yUnit:'%', noEndLabel:true, hover:true,
-    thresholds:[{value:70,color:'rgba(212,144,0,.4)',label:'70%'},{value:90,color:'rgba(204,42,42,.4)',label:'90%'}],
-    rightAxis:{max:Math.max(sBt,mBt), unit:'人', label:'人'}}, N, isExp('sp-cap'), t);
-
-  // ② 流向（傷患來源分布）
-  const sa=d.srcA[N-1], sb=d.srcB[N-1], sc=d.srcC[N-1];
-  const srcTotal = sa + sb + sc;
-  const flowLvl = srcTotal >= 10 ? 'crit' : srcTotal >= 5 ? 'warn' : 'ok';
-  const flowText = srcTotal > 0
-    ? `在站${srcTotal}人` + (sa?` 前${sa}`:'') + (sb?` 收${sb}`:'') + (sc?` 自${sc}`:'')
-    : '無在站傷患';
-  const flowEl = document.getElementById('sp-flow-v');
-  if (flowEl) {
-    flowEl.textContent = flowText;
-    if (sessionType === 'real') {
-      flowEl.style.cursor = 'pointer';
-      flowEl.dataset.action = 'openZone';
-      flowEl.dataset.type = 'medical';
-    } else {
-      flowEl.style.cursor = 'default';
-      flowEl.removeAttribute('data-action');
-    }
-  }
-  setRag('sp-flow', flowLvl);
-  const srcMax = Math.max(...d.srcA.map((a,i)=>a+(d.srcB[i]||0)+(d.srcC[i]||0)), 5);
-  drawSparkline('sc2', [
-    {data:d.srcA, color:'#E74C3C', w:1.5, unit:'人', label:'前進'},
-    {data:d.srcB, color:'#F0883E', w:1.5, unit:'人', label:'收容'},
-    {data:d.srcC, color:'#2E7D32', w:1.5, unit:'人', label:'自行'},
-  ], {yMin:0, yMax:srcMax+2, yUnit:'人', noEndLabel:true, hover:true}, N, isExp('sp-flow'), t);
-
-  // ③ 事件
+  // ① 量能 panel 已於 P1-11 整個移除（依 shelter/medical PWA 資料源）。
+  //    data prep (d.sPct/mPct/sBu/mBu/sBt/mBt) 暫保留於 cop.js 上游，後續 cleanup 再處理。
+  //    原 ② 傷患流向（sp-flow）已於 P1-11 Tier 1 移除。
+  // ② 事件
   const totalIPI = ipiCalc(d.incHigh[N-1], d.incMed[N-1]);
   const incLvl = totalIPI >= 6 ? 'crit' : totalIPI >= 3 ? 'warn' : 'ok';
   const incEl = document.getElementById('sp-inc-v');
