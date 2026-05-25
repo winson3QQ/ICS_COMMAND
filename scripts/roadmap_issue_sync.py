@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
-"""ICS_Command ROADMAP ↔ GitHub Issue 同步檢查
+"""ICS_Command ROADMAP ↔ GitHub Issue 同步檢查 + 狀態報告
 
-雙向比對：
-1. ROADMAP item 沒對應 GitHub issue → 建議 `gh issue create`
-2. GitHub issue 沒對應 ROADMAP item → 提示審閱
-3. 已關閉但 ROADMAP 未打勾 → 提示更新 ROADMAP
+兩段輸出：
+1. **Status Report**（Layer 3）：依 ROADMAP marker（✅⏳🚧）+ issue state，
+   報「P1: X/N done」+ 每 item 一行狀態。新 session / 新接手者一行指令拿全景。
+2. **Drift / Gap Report**：
+   - ROADMAP item 沒對應 GitHub issue → 建議 `gh issue create`
+   - GitHub issue 沒對應 ROADMAP item → 提示審閱
+   - ROADMAP ✅ 但 issue 沒 closed（或反過來）→ status drift
 
 預設不修改任何東西，純報告。加 --create-missing 才會 prompt 建立。
 """
@@ -21,6 +24,19 @@ ROADMAP = BASE / "docs" / "ROADMAP.md"
 
 # ROADMAP item ID pattern：P1-01, P1-10a, P2-05, P3-00 ...
 ITEM_RE = re.compile(r"\b(P[123]-\d+[a-z]?)\b")
+
+# 狀態 marker（對應 ROADMAP〈狀態 marker 約定〉段落）
+STATUS_MARKERS: dict[str, str] = {
+    "✅": "done",
+    "⏳": "in-progress",
+    "🚧": "blocked",
+}
+STATUS_ICON: dict[str, str] = {
+    "done":        "✅",
+    "in-progress": "⏳",
+    "blocked":     "🚧",
+    "pending":     "  ",
+}
 
 
 def parse_roadmap_items() -> dict[str, str]:
@@ -64,6 +80,82 @@ def gh_issues() -> list[dict]:
         return []
 
 
+def parse_roadmap_status() -> dict[str, str]:
+    """掃 ROADMAP 每 row 開頭 marker，回傳 {item_id: status}。
+    status ∈ {done, in-progress, blocked, pending}。
+    """
+    statuses: dict[str, str] = {}
+    if not ROADMAP.exists():
+        return statuses
+    text = ROADMAP.read_text(encoding="utf-8")
+    for line in text.splitlines():
+        m = ITEM_RE.search(line)
+        if not m:
+            continue
+        item_id = m.group(1)
+        if item_id in statuses:
+            continue
+        # 看 item ID 出現前的 prefix 有沒有 marker
+        prefix = line[:m.start()]
+        status = "pending"
+        for marker, label in STATUS_MARKERS.items():
+            if marker in prefix:
+                status = label
+                break
+        statuses[item_id] = status
+    return statuses
+
+
+def phase_of(item_id: str) -> str:
+    return item_id.split("-")[0]  # "P1-01" → "P1"
+
+
+def print_status_report(roadmap_items: dict[str, str],
+                        statuses: dict[str, str],
+                        issue_by_id: dict[str, dict]) -> int:
+    """印 status report，回傳 drift 數量（0 = 無 drift）"""
+    by_phase: dict[str, list[tuple[str, str, str]]] = {}
+    for item_id, title in sorted(roadmap_items.items()):
+        phase = phase_of(item_id)
+        status = statuses.get(item_id, "pending")
+        by_phase.setdefault(phase, []).append((item_id, status, title))
+
+    print("=== ROADMAP Status Report ===\n")
+    for phase in sorted(by_phase):
+        items = by_phase[phase]
+        counts = {k: sum(1 for _, s, _ in items if s == k)
+                  for k in ("done", "in-progress", "blocked", "pending")}
+        print(f"{phase}: {counts['done']}/{len(items)} done"
+              f"  ·  {counts['in-progress']} in-progress"
+              f"  ·  {counts['blocked']} blocked"
+              f"  ·  {counts['pending']} pending")
+        for item_id, status, title in items:
+            icon = STATUS_ICON[status]
+            iss = issue_by_id.get(item_id)
+            iss_str = (f"(#{iss['number']} {iss['state']})" if iss
+                       else "(no issue)")
+            print(f"  {icon} {item_id:<8} {title[:48]:<48} {iss_str}")
+        print()
+
+    # Drift detection
+    drift: list[str] = []
+    for item_id in sorted(roadmap_items):
+        st = statuses.get(item_id, "pending")
+        iss = issue_by_id.get(item_id)
+        if st == "done" and (not iss or iss.get("state") != "CLOSED"):
+            iss_state = iss["state"] if iss else "missing"
+            drift.append(f"  - {item_id}: ROADMAP ✅ 但 issue {iss_state}")
+        elif st != "done" and iss and iss.get("state") == "CLOSED":
+            drift.append(f"  - {item_id}: issue CLOSED 但 ROADMAP 未 ✅"
+                         f"（PROCESS step 8.5 漏勾）")
+    if drift:
+        print(f"⚠  狀態 drift（{len(drift)}）：")
+        for d in drift:
+            print(d)
+        print()
+    return len(drift)
+
+
 def issue_item_id(issue: dict) -> str | None:
     """從 issue title / labels 抽 item ID"""
     m = ITEM_RE.search(issue.get("title", ""))
@@ -97,6 +189,11 @@ def main() -> int:
         else:
             orphan_issues.append(iss)
 
+    statuses = parse_roadmap_status()
+
+    # Layer 3 — Status Report 放前面，先看全景再看細節
+    drift_count = print_status_report(roadmap_items, statuses, issue_by_id)
+
     missing: list[tuple[str, str]] = []
     closed_not_ticked: list[tuple[str, dict]] = []
 
@@ -105,13 +202,15 @@ def main() -> int:
             missing.append((item_id, title))
             continue
         iss = issue_by_id[item_id]
-        if iss.get("state") == "CLOSED":
+        if iss.get("state") == "CLOSED" and statuses.get(item_id) != "done":
+            # 與 print_status_report 的 drift 偵測互補：這裡只列「應補 tick」
             closed_not_ticked.append((item_id, iss))
 
-    # ── Report ──
-    print(f"=== ROADMAP items: {len(roadmap_items)} ===")
-    print(f"=== GitHub issues (mapped): {len(issue_by_id)} ===")
-    print(f"=== Orphan issues (no ROADMAP id): {len(orphan_issues)} ===")
+    # ── Gap / Drift Report ──
+    print("=== Gap Report ===")
+    print(f"  ROADMAP items: {len(roadmap_items)}")
+    print(f"  GitHub issues (mapped): {len(issue_by_id)}")
+    print(f"  Orphan issues (no ROADMAP id): {len(orphan_issues)}")
     print()
 
     if missing:
@@ -140,9 +239,9 @@ def main() -> int:
         print("互動建立模式尚未實作（避免一次誤建 N 個 issue）。")
         print("請複製上方 `gh issue create` 指令手動執行。")
 
-    issues_found = len(missing) + len(orphan_issues)
+    issues_found = len(missing) + len(orphan_issues) + drift_count
     if issues_found == 0:
-        print("✓ ROADMAP ↔ issue 完全同步")
+        print("✓ ROADMAP ↔ issue 完全同步，無 status drift")
         return 0
     return 1
 
