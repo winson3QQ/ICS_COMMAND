@@ -39,7 +39,8 @@ def test_setup_sh_creates_var_lib_ics():
 def test_setup_sh_unit_path_substitution():
     script = read_repo_file("deploy/setup.sh")
     # unit file 安裝時以 sed 替換 placeholder 路徑為實際 REPO_ROOT
-    assert 'sed "s|/home/ics/ics-dmas|${REPO_ROOT}|g"' in script
+    # (P1-09: ICS_DMAS → ICS_Command 拆分後，placeholder 從 ics-dmas → ics-command)
+    assert 'sed "s|/home/ics/ics-command|${REPO_ROOT}|g"' in script
     # 不應直接 install 原始 unit file（否則 hardcode 路徑不替換）
     assert 'install -m 0644 "${SERVICE_FILE}" "/etc/systemd/system' not in script
 
