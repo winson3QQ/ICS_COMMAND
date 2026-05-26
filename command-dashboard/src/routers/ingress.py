@@ -16,6 +16,15 @@ ROADMAP P1-02 完成：自 `pi_push.py` 改名而來，URL 命名空間統一為
   上游 Pi node client。POST + HMAC 場景無法用 308 redirect（會壞 signature），
   雙裝飾器是唯一乾淨解。
 - middleware (`auth/middleware.py`) 對兩條路徑都放行（authn 由 HMAC + Bearer 雙重把關）。
+
+⚠️ 移除別名前必須先遷移所有 client：
+- `server/sync.js`（本 repo internal relay；本 PR 未遷）
+- ICS_DMAS 上游 Pi node client（外部 repo）
+追蹤 issue 與遷移時序待 P2/P3 階段 client 升級時一併處理；別名為長期保留意圖。
+
+⚠️ 雙裝飾器陷阱：勿為 `receive_pi_node_ingress` 手動指定 `operation_id=`，
+否則 FastAPI 啟動會 ValueError（兩 route 共用 function name，operation_id 必須
+依賴 FastAPI 自動加 path 後綴消歧）。
 """
 import json
 

@@ -431,3 +431,79 @@ class TestPiPushHmacProtection:
         r2 = c.post("/api/pi-push/shelter", content=body, headers=h2)
         assert r2.status_code == 401
         assert r2.json().get("detail", {}).get("reason") == "replay"
+
+
+# ─── AC-15 鏡像：POST /api/ingress/pi-node/{unit_id} 同等保護（P1-02） ──────
+#
+# P1-02 新主路徑與舊別名 /api/pi-push/{unit_id} 共用同 handler / 同 verify_hmac
+# 依賴，但 HMAC canonical 含 path（簽章不可跨路徑互換）→ 主路徑必須獨立覆蓋
+# AC-15 三種 HMAC 失敗模式，避免「allowlist 漏列新路徑」類 regression（見
+# tests/unit/test_ingest_endpoint_allowlist.py）逃過 CI。
+
+_INGRESS_PI_NODE_PATH = "/api/ingress/pi-node/shelter"
+
+
+class TestIngressPiNodeHmacProtection:
+    """AC-15（P1-02 鏡像）：/api/ingress/pi-node/{unit_id} HMAC 保護驗證。"""
+
+    def test_ingress_pi_node_no_signature_returns_401(self, authed_client):
+        """AC-15a 鏡像：新主路徑無 X-ICS-Signature → 401 no_sig。"""
+        c, _, _ = authed_client
+        body = json.dumps(_VALID_PI_PUSH).encode()
+        r = c.post(
+            _INGRESS_PI_NODE_PATH,
+            content=body,
+            headers={"Content-Type": "application/json",
+                     "Authorization": "Bearer any-token"},
+        )
+        assert r.status_code == 401, f"期待 401，收到 {r.status_code}: {r.text}"
+        assert r.json().get("detail", {}).get("reason") == "no_sig"
+
+    def test_ingress_pi_node_unknown_key_returns_401(self, authed_client):
+        """AC-15b 鏡像：新主路徑未知 key_id → 401 unknown_key。"""
+        c, _, secret = authed_client
+        body = json.dumps(_VALID_PI_PUSH).encode()
+        headers = _make_hmac_headers("nonexistent-key-xyz", secret,
+                                     "POST", _INGRESS_PI_NODE_PATH, body)
+        headers["Content-Type"] = "application/json"
+        headers["Authorization"] = "Bearer any-token"
+        r = c.post(_INGRESS_PI_NODE_PATH, content=body, headers=headers)
+        assert r.status_code == 401
+        assert r.json().get("detail", {}).get("reason") == "unknown_key"
+
+    def test_ingress_pi_node_replay_returns_401(self, authed_client):
+        """AC-15c 鏡像：新主路徑相同 nonce 重送 → 401 replay。"""
+        c, key_id, secret = authed_client
+        body = json.dumps(_VALID_PI_PUSH).encode()
+        shared_nonce = str(uuid.uuid4())
+
+        h1 = _make_hmac_headers(key_id, secret, "POST", _INGRESS_PI_NODE_PATH, body,
+                                 nonce=shared_nonce)
+        h1["Content-Type"] = "application/json"
+        h1["Authorization"] = "Bearer any-token"
+        c.post(_INGRESS_PI_NODE_PATH, content=body, headers=h1)
+
+        h2 = _make_hmac_headers(key_id, secret, "POST", _INGRESS_PI_NODE_PATH, body,
+                                 nonce=shared_nonce)
+        h2["Content-Type"] = "application/json"
+        h2["Authorization"] = "Bearer any-token"
+        r2 = c.post(_INGRESS_PI_NODE_PATH, content=body, headers=h2)
+        assert r2.status_code == 401
+        assert r2.json().get("detail", {}).get("reason") == "replay"
+
+    def test_ingress_pi_node_signature_not_interchangeable_with_alias(self, authed_client):
+        """簽章綁路徑：用 /api/pi-push/ 路徑簽的請求送到 /api/ingress/pi-node/ → 401 bad_sig。
+
+        防護 cross-route signature confusion：HMAC canonical 含 path。
+        """
+        c, key_id, secret = authed_client
+        body = json.dumps(_VALID_PI_PUSH).encode()
+        # 用舊別名 path 簽
+        headers = _make_hmac_headers(key_id, secret, "POST",
+                                     "/api/pi-push/shelter", body)
+        headers["Content-Type"] = "application/json"
+        headers["Authorization"] = "Bearer any-token"
+        # 送到新主路徑 → HMAC layer 標 'tampered'（canonical 含 path，sig 不對）
+        r = c.post(_INGRESS_PI_NODE_PATH, content=body, headers=headers)
+        assert r.status_code == 401
+        assert r.json().get("detail", {}).get("reason") == "tampered"

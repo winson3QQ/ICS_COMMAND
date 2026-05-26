@@ -204,6 +204,12 @@ class TestIngressPiNodePath:
         assert len(data["records"]) == len(SHELTER_RECORDS)
 
     def test_no_bearer_returns_401_new_path(self, client, shelter_node):
+        """無 Bearer 且無 HMAC headers → 401（HMAC 層先攔截 no_sig；同 line 62 既有 alias 測試）。
+
+        注意：此 case 實際攔下的是 HMAC missing，不是 Bearer missing —— 同 status code
+        遮蔽差異。Bearer-missing 真實分支由 test_wrong_token_returns_403_new_path 配合
+        AC-15 HMAC negative tests 間接覆蓋。
+        """
         r = client.post("/api/ingress/pi-node/shelter", json={"records": []})
         assert r.status_code == 401
 

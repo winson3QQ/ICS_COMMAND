@@ -24,7 +24,8 @@ def test_all_ingest_endpoints_require_hmac():
     PROTECTED_INGEST = {
         ("POST", "/api/snapshots"),
         ("POST", "/api/sync/push"),
-        ("POST", "/api/pi-push/{unit_id}"),   # Option-A：主推送路徑補 HMAC（TI-01 scope 擴充）
+        ("POST", "/api/ingress/pi-node/{unit_id}"),   # P1-02：新主路徑（canonical）
+        ("POST", "/api/pi-push/{unit_id}"),           # P1-02：舊別名（向後相容，雙裝飾器同 handler）
     }
 
     # 建立 route map：(method, path) → route
