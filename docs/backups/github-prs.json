@@ -478,7 +478,7 @@
     },
     "baseRefName": "main",
     "body": "## ROADMAP item\n\n- Closes #17\n- P1-10a（Phase 1 地圖 UX baseline 升級，sub-item 1/8）\n\n## What changed\n\n落地 ICS_Command Design System v1 token SoT：vendor WaveInk DS（colors_and_type.css）+ 新增 4 個 MIL-STD-2525 affiliation token + JetBrains Mono 4 weights 離線打包。`commander_dashboard.html` 從 inline CSS vars 切換到 `<link>` 集中化，legacy aliases 確保 68 處 inline `style=` + js/ 126 處 `var()` 既有呼叫不破壞。\n\n順手帶 UX 收尾 option B：完全拿掉互斥 expand mode 觸發（commit message Part 2）。\n\n## DoD checklist\n\n- [x] `ds-tokens.css` 落地，含 4 個 mil token\n- [x] `fonts/` 含 4 woff2 + Apache 2.0 LICENSE + `@font-face` declare\n- [x] `commander_dashboard.html` inline CSS var 移除（無 visual regression，subtle 色調差異是 intended）\n- [x] `docs/design/POLICY.md` 含 vendor pin + 2 處 divergence 記錄\n- [x] 規格書 incremental update（Design System v1 段）\n- [x] `pytest` 443 passed（純前端，後端無 regression）\n- [x] `pyflakes` clean\n- [x] `doc_sync_check` exit 0\n- [ ] ROADMAP P1-10a row ✅（merge 後 step 8.5 補 PR# + hash）\n\n## §8 Human Verification Script\n\n```bash\n# Step 1: 啟動 server（若未啟）\n./start_mac.sh\n# 預期：印出 commander 版 URL\n\n# Step 2: 開瀏覽器 hard refresh 抓新 CSS\nopen http://127.0.0.1:8000/static/commander_dashboard.html\n# 按 Cmd+Shift+R\n\n# Step 3: DevTools Network 確認\n#   ds-tokens.css → 200 OK ~10 KB\n#   字型 filter → 看 woff2 (lazy-load，可能只 1-3 個)\n\n# Step 4: DevTools Console 確認 token 生效\ngetComputedStyle(document.documentElement).getPropertyValue('--green')\n# 預期 ' #3fb950'（新亮綠）；舊值是 '#1a9e52'\n\ngetComputedStyle(document.documentElement).getPropertyValue('--mil-friendly')\n# 預期 ' #00FFFF'（新 MIL token）\n\n# Step 5: 視覺確認時鐘字體\n# 時鐘元素 inspect → Computed → font-family 應列 \"JetBrains Mono\" 第一位\n```\n\n## Visual changes（subtle by design）\n\n| Token | Before | After | Hex 差距 |\n|---|---|---|---|\n| `--surface2` | `#1c2333` | `#1c2128` | 微（藍→灰調）|\n| `--green` | `#1a9e52` | `#3fb950` | 顯著（暗→亮）|\n| `--yellow` | `#d49000` | `#e3b341` | 顯著 |\n| `--red` | `#cc2a2a` | `#f85149` | 顯著 |\n| mono font | IBM Plex Mono (system fallback) | JetBrains Mono (離線) | 字體 disambiguation 改善 |\n\n**ROADMAP 寫的「視覺感受 +50%」是 P1-10a + b + c + d 全做完才有的效果**，本 PR 是 token foundation，視覺 delta 故意保守（避免一次破壞太多）。\n\n## Out of scope / known limitations\n\n- **js/ 126 處硬寫 hex color 遷移** → P1-10a-2 follow-up（量大且 risky）\n- **inline `style=` 68 處清整** → P1-10a-2 同 follow-up\n- **其他 4 HTML 檔對齊**（admin_backups / icon_preview / qr_scanner / scenario_designer）→ 各自小 PR\n- **MapLibre 切換** → P1-10b\n- **PMTiles 台灣底圖** → P1-10c\n- **SVG marker + severity** → P1-10d\n- **真正 milsymbol 渲染** → P2-05（讀本 PR 凍的 mil token）\n- **focus mode 恢復**（events.js `_applyRightExpand` 仍 dead code）→ 若未來需要，新 task 重新接 UI 觸發\n\n## Notes for reviewer\n\n- **`/code-review`**：（1）`<link>` 引入順序對 inline `<style>` 內 var 解析是否有 cascade 問題；（2）`@font-face` `font-display: swap` 是否合理（first paint 用 fallback，避免 FOIT）；（3）legacy aliases 與 vendor canonical name 是否完整對映\n- **`/security-review`**：純前端 CSS + fonts，無新後端 API / auth / SQL。woff2 是 binary asset，Apache 2.0，official JetBrains release，SHA256 已 pin 在 POLICY.md\n- **方法論補記**：本 PR 引用 ICS_DMAS pre-split docs/design/ 部分為 0（不繼承）；token 來源以 WaveInk 為主，divergence 明文化避免後續混淆",
-    "closedAt": null,
+    "closedAt": "2026-05-26T08:15:32Z",
     "comments": [
       {
         "author": {
@@ -526,11 +526,11 @@
     "createdAt": "2026-05-26T07:56:09Z",
     "headRefName": "feat/issue-17-ds-tokens-v1",
     "labels": [],
-    "mergedAt": null,
+    "mergedAt": "2026-05-26T08:15:32Z",
     "number": 18,
-    "state": "OPEN",
+    "state": "MERGED",
     "title": "P1-10a: Vendor WaveInk DS + MIL-STD-2525 token + JetBrains Mono 離線打包",
-    "updatedAt": "2026-05-26T08:13:35Z",
+    "updatedAt": "2026-05-26T08:22:20Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/18"
   }
 ]

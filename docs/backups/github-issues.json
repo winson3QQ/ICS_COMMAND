@@ -228,7 +228,7 @@
       "name": ""
     },
     "body": "## ROADMAP item\nP1-10a（Phase 1 — 地圖 UX baseline 升級，sub-item 1/8）\n\n## 範圍\n\n落地 ICS_Command 第一版 Design System：vendor WaveInk DS（colors_and_type.css）+ 新增 4 個 MIL-STD-2525 affiliation token + JetBrains Mono 離線打包，並把 `commander_dashboard.html` 既有 11 個 inline CSS var 全替換為集中化 DS。\n\n## 設計依據\n\n- ROADMAP P1-10a（行 78）：「採用 WaveInk Design System + MIL-STD-2525 token 體系 + 跨平台等寬字體」\n- WaveInk DS source: [WaveInk repo](https://codeberg.org/winson3QQ/WaveInk) commit `58226e4` 的 `docs/design/colors_and_type.css` + `docs/DESIGN.md`\n- MIL-STD-2525C 附錄 A（friend/hostile/neutral/unknown 標準色）\n\n## 5 個 deliverable\n\n### 1. `command-dashboard/static/css/ds-tokens.css`（新檔）\n- Vendor WaveInk `colors_and_type.css`（pin @58226e4）\n- 移除 WaveInk 用 `@import url(google fonts)`，改 reference 本地 fonts/\n- 新增 4 個 ICS_Command divergence token：\n  ```css\n  --mil-friendly: <2525C 標準青>\n  --mil-hostile:  <2525C 標準紅>\n  --mil-neutral:  <2525C 標準綠>\n  --mil-unknown:  <2525C 標準黃>\n  ```\n\n### 2. `command-dashboard/static/fonts/`（新目錄）\n- JetBrains Mono 4 weights (400/500/600/700) × 2 styles (normal/italic) ≈ 8 woff2\n- 對應 `@font-face` declarations\n- 來源：JetBrains 官方 GitHub release（Apache 2.0）\n\n### 3. `commander_dashboard.html` 改造\n- `<head>` 加 `<link rel=\"stylesheet\" href=\"/static/css/ds-tokens.css\">`\n- 移除 inline `<style>` 中的 11 個既有 CSS var 定義（已被 ds-tokens.css 覆蓋）\n- `--mono` → `--font-code`（global grep-replace）\n- `--bg/--surface/--surface2/--text/--text2/--text3` → 對應 WaveInk 命名（`--bg-primary/--bg-secondary/--bg-card/--text-primary/--text-secondary/--text-muted`）\n\n### 4. `command-dashboard/docs/design/POLICY.md`（新檔）\n- vendor source commit hash 釘版（`58226e4`）\n- **2 處 divergence 明文記**：\n  - MIL-STD-2525 4 個 token（WaveInk policy「No new accents」對 mil entity color 例外開放）\n  - JetBrains Mono webfont（WaveInk 是「no webfonts in production」，但指揮場景 callsign/座標/MGRS 跨平台一致性是 ops 規範）\n- 下次 WaveInk DS 升版時的 conflict 解決依據\n\n### 5. 規格書 incremental update\n- `command-dashboard/docs/指揮部儀表板設計規格.md` 加「Design System v1」段落（與 P1-03 COP schema v1 同 framework）\n- 列出新 token、ds-tokens.css 路徑、divergence 標註\n\n## Reality check 發現\n\nICS_Command 既有 11 個 CSS var 與 WaveInk 對照：\n- ✅ 7 個全同（bg/border/text 系，只需 rename）\n- ⚠️ 3 個 hex 差異（surface2/green/yellow/red），對齊 WaveInk\n- 🔄 1 個字體完全換（IBM Plex Mono → JetBrains Mono）\n\n詳細對照表見 reality check comment（即將 post）。\n\n## DoD\n\n- [ ] `ds-tokens.css` 落地，含 4 個 mil token\n- [ ] `fonts/` 含 8 woff2 + `@font-face` 在 ds-tokens.css 內 declare\n- [ ] `commander_dashboard.html` inline CSS var 移除，視覺無 regression（before/after 截圖）\n- [ ] `docs/design/POLICY.md` 含 divergence 記錄\n- [ ] 規格書 incremental update（Design System v1 段）\n- [ ] `pytest` green（pure CSS 改動，不該影響後端 test）\n- [ ] doc_sync_check exit 0\n- [ ] ROADMAP P1-10a row ✅ + (#PR, hash)\n\n## 明確不做（Out of scope，留 follow-up）\n\n- **js/ 126 處硬寫 hex color 遷移** → P1-10a-2（量大且 risky，token 凍好後逐 file 清）\n- **inline `style=` 68 處清整** → P1-10a-2 同一 follow-up\n- **其他 4 個 HTML 檔對齊**（admin_backups / icon_preview / qr_scanner / scenario_designer）→ 各自小 PR\n- **MapLibre / Leaflet 切換** → P1-10b\n- **PMTiles 台灣底圖** → P1-10c\n- **SVG marker 系統** → P1-10d\n- **真正 milsymbol 渲染** → P2-05（讀本 PR 凍的 mil token）\n\n## 工時估\n3-4 天（依 ROADMAP 行 78）",
-    "closedAt": null,
+    "closedAt": "2026-05-26T08:24:38Z",
     "comments": [
       {
         "author": {
@@ -243,15 +243,29 @@
         "minimizedReason": "",
         "reactionGroups": [],
         "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/17#issuecomment-4541644561"
+      },
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "本任務由 PR #18 (commit 1d46025) 完成並合入 main。\n\nGitHub auto-close 沒觸發是因為 PR 被 snapshot workflow 旁路 fast-forward 進 main，而非經 PR merge button — 已開 follow-up 修 workflow（避免再發生）。",
+        "createdAt": "2026-05-26T08:24:38Z",
+        "id": "IC_kwDOSnBjpc8AAAABDrrCVg",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/17#issuecomment-4542087766"
       }
     ],
     "createdAt": "2026-05-26T07:31:35Z",
     "labels": [],
     "milestone": null,
     "number": 17,
-    "state": "OPEN",
+    "state": "CLOSED",
     "title": "P1-10a: Vendor WaveInk DS + MIL-STD-2525 token + JetBrains Mono 離線打包",
-    "updatedAt": "2026-05-26T07:32:15Z",
+    "updatedAt": "2026-05-26T08:24:38Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/17"
   }
 ]
