@@ -1,17 +1,23 @@
 #!/bin/bash
-# ICS_Command 本機啟動腳本（Mac）
+# ICS_Command Pi / Linux 啟動腳本
 # 啟動：指揮部 FastAPI :8000
-# 用法：chmod +x start_mac.sh && ./start_mac.sh
+# 用法：chmod +x start_pi.sh && ./start_pi.sh
+#
+# 與 start_mac.sh 差異：
+# - 用 `hostname -I` 取 LAN IP（Mac 的 ipconfig getifaddr 沒有）
+# - 無 macOS `open` 開瀏覽器（Pi 通常 headless）
+# - bind 0.0.0.0 讓區網其他裝置（指揮平板）可連
+# - 跳 --reload（production 用 systemd 管，不需 hot reload）
 
 set -e
 REPO="$(cd "$(dirname "$0")" && pwd)"
 
-LAN_IP=$(ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null || echo "")
+LAN_IP=$(hostname -I 2>/dev/null | awk '{print $1}' || echo "")
 
 echo "======================================"
-echo " ICS_Command 本機啟動"
+echo " ICS_Command Pi/Linux 啟動"
 echo " 指揮部 → http://127.0.0.1:8000"
-[ -n "$LAN_IP" ] && echo " LAN IP → $LAN_IP"
+[ -n "$LAN_IP" ] && echo " LAN IP → http://$LAN_IP:8000"
 echo "======================================"
 
 # 終止舊服務
@@ -24,14 +30,12 @@ sleep 0.5
 
 cd "$REPO/command-dashboard"
 
-# 檢查 .venv 是否有效。
-# 邏輯：不只看目錄存在，還要驗 pip shebang 指向當前路徑——
-# cp -R 把整包 venv 帶過來的 case，目錄在但 binary 仍指向原 repo，跑會壞。
+# 檢查 .venv 是否有效（同 start_mac.sh 邏輯）
 need_venv=false
 if [ ! -d ".venv" ]; then
   need_venv=true
 elif ! head -1 .venv/bin/pip 2>/dev/null | grep -q "^#!$PWD/.venv/"; then
-  echo "[偵測] .venv shebang 指向其他路徑（可能 cp -R 帶入或 repo 搬家），重建..."
+  echo "[偵測] .venv shebang 指向其他路徑，重建..."
   rm -rf .venv
   need_venv=true
 fi
@@ -45,7 +49,6 @@ echo "[啟動] FastAPI :8000 ..."
 .venv/bin/uvicorn main:app --app-dir src \
   --host 0.0.0.0 \
   --port 8000 \
-  --reload \
   > /tmp/ics_command.log 2>&1 &
 COMMAND_PID=$!
 echo "[OK] PID $COMMAND_PID"
@@ -60,13 +63,14 @@ fi
 echo ""
 echo "======================================"
 echo " 指揮官版：http://127.0.0.1:8000/static/commander_dashboard.html"
-echo " 幕僚版：  http://127.0.0.1:8000/static/staff_dashboard.html"
+[ -n "$LAN_IP" ] && echo " 區網存取：http://$LAN_IP:8000/static/commander_dashboard.html"
 echo " API 文件：http://127.0.0.1:8000/docs"
 echo " 日誌：    tail -f /tmp/ics_command.log"
 echo " 停止：    kill $COMMAND_PID"
 echo "======================================"
-
-open "http://127.0.0.1:8000/static/commander_dashboard.html" 2>/dev/null || true
+echo " 注意：生產環境請用 systemd（見 systemd/ics-command.service）"
+echo "       本 script 適合 dev / quick test，不是 production runner"
+echo "======================================"
 
 trap "echo ''; echo '[停止]'; kill $COMMAND_PID 2>/dev/null; exit 0" INT
 echo "[按 Ctrl+C 停止]"
