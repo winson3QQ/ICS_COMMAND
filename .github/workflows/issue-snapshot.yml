@@ -13,10 +13,11 @@ on:
     types: [opened, edited, closed, reopened, labeled, unlabeled, assigned, unassigned]
   issue_comment:
     types: [created, edited, deleted]
-  pull_request:
-    types: [opened, edited, closed, reopened, labeled, unlabeled]
-  pull_request_review_comment:
-    types: [created, edited, deleted]
+  # SECURITY 2026-05-26：移除 pull_request / pull_request_review_comment triggers。
+  # 原設計讓 PR 事件觸發 snapshot，但配合 `git push origin HEAD:main` 會把 PR HEAD
+  # 強行 fast-forward 進 main，繞過 PR review/squash（PR #18 實際中招過一次）。
+  # snapshot 純為 metadata 備份，issues + cron + main push 已涵蓋；PR 的 metadata
+  # 由 PR merge 後 main push 自然帶到。
   schedule:
     - cron: '0 0 * * *'   # 兜底：每日 00:00 UTC
   workflow_dispatch: {}    # 手動觸發按鈕
@@ -35,10 +36,11 @@ jobs:
   snapshot:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout main
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0   # 推 Codeberg 需要完整歷史
+          ref: main          # SECURITY：強制 main，即使被 PR event 觸發也不取 PR HEAD
+          fetch-depth: 0     # Codeberg 同步需完整歷史
 
       - name: 跑 snapshot script
         env:
@@ -64,7 +66,10 @@ jobs:
 
       - name: Push to GitHub (origin)
         if: steps.commit.outputs.committed == 'true'
-        run: git push origin HEAD:main
+        # checkout step 已 ref:main，HEAD 必為 main + snapshot commit。
+        # 但仍 explicit 寫 main:main 雙重防禦：任何 future 改動意外讓 HEAD
+        # 變成 PR ref 都不會 fast-forward 進 main。
+        run: git push origin main:main
 
       - name: Push to Codeberg
         if: steps.commit.outputs.committed == 'true'
@@ -72,9 +77,9 @@ jobs:
           CODEBERG_TOKEN: ${{ secrets.CODEBERG_TOKEN }}
         run: |
           if [ -z "${CODEBERG_TOKEN}" ]; then
-            echo "::warning::CODEBERG_TOKEN 未設定，跳過 Codeberg push（snapshot 仍已推到 GitHub）"
+            echo "::warning::CODEBERG_TOKEN 未設定，跳過 Codeberg push（snapshot 已推到 GitHub）"
             exit 0
           fi
           git remote add codeberg \
             "https://winson3QQ:${CODEBERG_TOKEN}@codeberg.org/winson3QQ/ICS_COMMAND.git"
-          git push codeberg HEAD:main
+          git push codeberg main:main
