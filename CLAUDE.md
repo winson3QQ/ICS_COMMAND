@@ -105,6 +105,8 @@ Memory 檔案存放在 repo 的 `.claude/memory/`（本 repo 初始時無 memory
 git config core.hooksPath .githooks
 ```
 
+`.githooks/post-merge` 同時包含 **Codeberg branch 同步刪除**：在 main 上 pull 後，自動清掉 codeberg 有但 origin 沒有的 `feat/*` branch（補 `gh pr merge --delete-branch` 只刪 GitHub 不刪 Codeberg 的破口）。其他 prefix 不動。
+
 ## 開發環境
 
 - 主要開發機：Mac

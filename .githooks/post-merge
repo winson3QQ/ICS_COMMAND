@@ -7,3 +7,46 @@ DEST="$HOME/.claude/projects/$PROJECT_DIR/memory"
 mkdir -p "$DEST"
 cp "$REPO/.claude/memory/"* "$DEST/"
 echo "[memory sync] Claude memory 已同步 → $DEST"
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Codeberg branch 同步刪除（C 方案輔助）
+#
+# 場景：`gh pr merge --squash --delete-branch` 只刪 GitHub branch，
+#       Codeberg 那邊不會自動清，每次 PR merge 就累積一個 stale branch。
+# 本 hook 在 main 上 pull 後：
+#   1. fetch --prune 兩邊（同步遠端狀態）
+#   2. 找出存在 codeberg 但不在 origin 的 feat/* branch
+#   3. 從 codeberg 刪除（origin 是 SoT）
+# 只動 feat/* prefix，不碰 main / hotfix / 其他角色 branch。
+# ─────────────────────────────────────────────────────────────────────
+
+CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
+if [ "$CURRENT_BRANCH" != "main" ]; then
+    exit 0
+fi
+if ! git remote get-url codeberg >/dev/null 2>&1; then
+    exit 0  # 沒設 codeberg remote，跳過
+fi
+
+git fetch --prune origin   >/dev/null 2>&1
+git fetch --prune codeberg >/dev/null 2>&1
+
+origin_branches=$(git ls-remote --heads origin 2>/dev/null | awk '{print $2}' | sed 's|refs/heads/||' | sort -u)
+codeberg_branches=$(git ls-remote --heads codeberg 2>/dev/null | awk '{print $2}' | sed 's|refs/heads/||' | sort -u)
+
+# codeberg 有 + origin 沒有 + 名字符合 feat/*
+stale_branches=$(comm -23 \
+    <(echo "$codeberg_branches" | grep -E '^feat/' || true) \
+    <(echo "$origin_branches"   | grep -E '^feat/' || true))
+
+if [ -n "$stale_branches" ]; then
+    echo "[codeberg sync] 偵測到 stale branch（origin 已無此 branch）："
+    while IFS= read -r b; do
+        [ -z "$b" ] && continue
+        echo "  - $b"
+        git push codeberg --delete "$b" 2>&1 | tail -1 | sed 's/^/    /'
+    done <<< "$stale_branches"
+    git remote prune codeberg >/dev/null 2>&1
+    echo "[codeberg sync] ✓ 清理完成"
+fi
