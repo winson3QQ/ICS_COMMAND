@@ -967,7 +967,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(
     <div id="right-events" style="flex:6;display:flex;flex-direction:column;overflow:hidden;min-height:0;">
       <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 8px;flex-shrink:0;border-bottom:1px solid var(--border);">
         <span style="display:flex;align-items:center;gap:4px;">
-          <span id="evt-expand-arrow" style="font-size:8px;color:var(--text3);cursor:pointer;padding:2px;" data-action="toggleRightExpand" data-section="events">▶</span>
+          <!-- evt-expand-arrow 已移除（dashboard UX 互斥 expand mode 易誤觸；保留 events.js 的 toggleRightExpand handler 給 decisions header 用） -->
           <span style="font-size:10px;font-weight:600;color:var(--text3);">事件追蹤 <span id="evt-open-total" style="font-size:9px;color:var(--yellow);"></span> <span id="evt-overdue" style="font-size:9px;"></span></span>
           <!-- 分組模式：回報 / 處理，互斥，可點擊取消 -->
           <span id="evt-grp-reported" data-action="toggleEvtGroupMode" data-mode="reported"
