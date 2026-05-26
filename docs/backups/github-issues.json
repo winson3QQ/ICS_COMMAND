@@ -267,5 +267,25 @@
     "title": "P1-10a: Vendor WaveInk DS + MIL-STD-2525 token + JetBrains Mono 離線打包",
     "updatedAt": "2026-05-26T08:24:38Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/17"
+  },
+  {
+    "assignees": [],
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "body": "**Roadmap 對應**：[P1-10b](../blob/main/docs/ROADMAP.md) — MapLibre GL JS 全替換（移除 Leaflet），map.js 核心重寫；marker / popup / polygon / layer 統一改 MapLibre Symbol Layer API。借鏡 mini-taiwan 架構（entity layer 抽象、track 0–1 插值、collision detection），**不借 Three.js 3D 實作**。\n\n## 動工前 Reality Check（2026-05-26 session）\n\n| 項目 | 數字 / 狀態 |\n|---|---|\n| `command-dashboard/static/js/map.js` | **1972 行 / 126 Leaflet refs** — 核心重寫 |\n| `command-dashboard/static/js/main.js` | 4 refs（loader：`_loadClassicScript` leaflet + protomaps-leaflet + `L.Icon.Default` merge） |\n| `command-dashboard/static/js/cop.js` | **0 refs** — 已透過 map.js 抽象，乾淨 ✓ |\n| `command-dashboard/static/commander_dashboard.html` | ~15 處 `.leaflet-*` CSS + `#leaflet-map` DOM id（602–675、905）需重命名或保留 alias |\n| vendored libs | `static/lib/leaflet.min.{js,css}` + `protomaps-leaflet.js` + 3 marker PNG → 換 MapLibre GL JS + pmtiles.js plugin（離線 vendor，**不走 CDN**） |\n\n**無 blocker**：\n- ✓ Working tree clean，三邊同步\n- ✓ CSP 模組已備（`tests/unit/test_csp_path_classification.py` + `tests/integration/test_csp_report.py`），report-only mode 可用\n- ✓ 供應鏈紅線：MapLibre GL JS（社群 fork, non-Chinese 維護）+ protomaps/pmtiles（Brandon Liu, US）皆通過 CLAUDE.md「禁中國軟體」規則\n\n## 動工前待驗證點（在 `/plan` 步驟確認）\n\n1. **mini-taiwan 架構移植性**：reality check 未讀 mini-taiwan repo，`/plan` 須確認 entity layer 抽象 / track 0–1 插值 / collision detection 真的可移植到 ICS_Command 現行 entity model（COP service 已 freeze v1 schema, P1-03）。\n2. **CSP 邊界與 P1-10h 切分**：開發期一定要動 CSP（`worker-src blob:` / `script-src 'wasm-unsafe-eval'` / `child-src blob:`）。建議本 issue 內含 **report-only 階段的 CSP 調整**（不算 scope creep），enforce 與 integration test 留給 P1-10h。\n3. **測試策略**：MapLibre 在 jsdom 成本高 → 走 **visual verify via `/verify`** + 補小量 unit test（座標轉換 / clustering threshold 邏輯），不硬做 e2e。\n\n## 與相鄰 item 的關係\n\n- **P1-10a-2**（DS token migration follow-up）刻意 defer 到本 issue 之後 — map.js 49 hex 占 P1-10a-2 總量 39%，本次 MapLibre 重寫會自然消去約 53% scope。\n- **P1-10c / 10d–10g** 等本 issue done 之後接續。\n- **P1-10h**（CSP enforce + integration test）獨立 issue，繼承本 issue 的 report-only 改動。\n\n## DoD（繼承 P1-10 上層 + 本 item 專屬）\n\n- [ ] Leaflet 套件與 marker PNG 全數從 `static/lib/` 移除\n- [ ] `map.js` 對外 API（被 main.js / cop.js / commander_dashboard.html 呼叫的）保持相容或同 PR 改全部呼叫端\n- [ ] 1000 個 entity 同時渲染 FPS ≥ 30（待 P1-10 整體 DoD 收尾時驗收）\n- [ ] CSP report-only 下無新增 violation（enforce 留 P1-10h）\n- [ ] 視覺驗收：`/verify` 截圖 PR comment（marker / popup / polygon / hover / click）\n- [ ] ROADMAP 對應 row 勾 ✅ + 寫入 (#PR, commit hash)\n- [ ] Issue 關閉\n\n**預估**：4-5 天（單人）\n",
+    "closedAt": null,
+    "comments": [],
+    "createdAt": "2026-05-26T08:48:30Z",
+    "labels": [],
+    "milestone": null,
+    "number": 19,
+    "state": "OPEN",
+    "title": "P1-10b: MapLibre GL JS 全替換（移除 Leaflet）",
+    "updatedAt": "2026-05-26T08:48:30Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/19"
   }
 ]
