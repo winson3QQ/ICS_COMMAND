@@ -1,0 +1,274 @@
+/* ICS_Command Design System v1 — Token SoT
+ *
+ * 來源 (vendored)：WaveInk Design System
+ *   repo:      https://codeberg.org/winson3QQ/WaveInk
+ *   commit:    58226e4b5c75ac65ee383d09cfabdc0844e295e6
+ *   source:    docs/design/colors_and_type.css
+ *   policy:    docs/DESIGN.md
+ *
+ * ICS_Command 對 WaveInk DS 兩處明文 divergence（詳見 docs/design/POLICY.md）：
+ *   1. 新增 MIL-STD-2525 4 個 affiliation token（戰術圖示 SoT，WaveInk 沒這個需求）
+ *   2. JetBrains Mono 離線打包（WaveInk policy 是「no webfonts in production」，
+ *      但指揮場景 callsign / 座標 / MGRS / timestamp 需跨平台一致 disambiguation）
+ *
+ * 維護規則：
+ *   - 改 WaveInk 對應 token：先 sync 上游再 PR，POLICY.md 對應更新 commit hash
+ *   - 改 ICS_Command 自有 token (--mil-*, --font-*)：直接 PR，不必動 WaveInk
+ *   - 新增 token：必須符合「現有不夠用」原則，避免散布
+ */
+
+
+/* ═════════════════════════════════════════════════════════════════════════
+ * JetBrains Mono 離線 @font-face（ICS_Command divergence #2）
+ * 來源：JetBrains/JetBrainsMono v2.304 (Apache 2.0)
+ *   https://github.com/JetBrains/JetBrainsMono/releases/tag/v2.304
+ * 4 weights only（italic 不打包，指揮場景無使用情境）。SHA256 in POLICY.md。
+ * ═════════════════════════════════════════════════════════════════════════ */
+
+@font-face {
+  font-family: 'JetBrains Mono';
+  src: url('/static/fonts/JetBrainsMono-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  src: url('/static/fonts/JetBrainsMono-Medium.woff2') format('woff2');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  src: url('/static/fonts/JetBrainsMono-SemiBold.woff2') format('woff2');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  src: url('/static/fonts/JetBrainsMono-Bold.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+
+:root {
+  /* ─── Base color palette (GitHub Dark Dimmed lineage) — WaveInk vendor ───────── */
+
+  /* Surfaces */
+  --bg-primary:   #0d1117;
+  --bg-secondary: #161b22;
+  --bg-tertiary:  #21262d;
+  --bg-card:      #1c2128;
+
+  /* Lines & dividers */
+  --border:       #30363d;
+
+  /* Foreground / text */
+  --text-primary:   #e6edf3;
+  --text-secondary: #8b949e;
+  --text-muted:     #6e7681;
+
+  /* Accents — single brand voice */
+  --accent:        #58a6ff;
+  --accent-hover:  #79c0ff;
+  --accent-soft:   rgba(88, 166, 255, 0.10);
+  --accent-ring:   rgba(88, 166, 255, 0.30);
+
+  /* Semantic states */
+  --green:  #3fb950;
+  --orange: #d29922;
+  --yellow: #e3b341;
+  --red:    #f85149;
+  --purple: #bc8cff;
+
+  /* Translucent state fills */
+  --state-live-bg:   rgba(248,  81,  73, 0.15);
+  --state-review-bg: rgba(210, 153,  34, 0.15);
+  --state-done-bg:   rgba( 63, 185,  80, 0.15);
+  --state-draft-bg:  rgba(139, 148, 158, 0.15);
+
+
+  /* ─── MIL-STD-2525 affiliation token group（ICS_Command divergence #1）──────────
+   *
+   * Source: MIL-STD-2525C 附錄 A 標準 affiliation color。
+   * 用途：地圖 entity frame fill (P2-05 milsymbol) + 列表/卡片 affiliation 標記。
+   *
+   * 嚴守標準色，downstream 渲染（dark theme 太亮時）可在 marker 層套 opacity，
+   * 但 SoT token 值不調整 — 否則跟 ATAK / WinTAK 客戶端對不上 EOC 互通失敗。
+   *
+   * 約束：未來 ICS_Command 新增 entity affiliation 必須對齊 MIL-STD-2525，
+   * 不得自創色（POLICY.md 條款）。
+   */
+  --mil-friendly: #00FFFF;   /* Cyan       — friend / assumed-friend */
+  --mil-hostile:  #FF0000;   /* Red        — hostile / suspect */
+  --mil-neutral:  #00FF00;   /* Lime       — neutral */
+  --mil-unknown:  #FFFF00;   /* Yellow     — unknown / pending */
+
+
+  /* ─── Geometry ────────────────────────────────────────────────────────────── */
+  --radius:      8px;
+  --radius-sm:   4px;
+  --radius-pill: 12px;
+
+  --shadow:        0 2px 8px rgba(0, 0, 0, 0.30);
+  --shadow-panel:  0 -4px 16px rgba(0, 0, 0, 0.40);
+
+
+  /* ─── Spacing scale ───────────────────────────────────────────────────────── */
+  --space-1: 4px;
+  --space-2: 6px;
+  --space-3: 8px;
+  --space-4: 10px;
+  --space-5: 12px;
+  --space-6: 14px;
+  --space-7: 16px;
+  --space-8: 20px;
+  --space-9: 24px;
+
+
+  /* ─── Typography — base stack ─────────────────────────────────────────────── */
+
+  /* Production fallback (no webfont needed) */
+  --font-system: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  --font-mono-system: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+
+  /* ICS_Command production stack — JetBrains Mono primary, system fallback */
+  --font-body: var(--font-system);
+  --font-code: 'JetBrains Mono', var(--font-mono-system);
+
+  --leading-tight: 1.25;
+  --leading-body:  1.50;
+
+  /* Font size scale */
+  --fs-stat:   1.40rem;
+  --fs-h1:     1.20rem;
+  --fs-h2:     1.10rem;
+  --fs-h3:     1.00rem;
+  --fs-body:   0.90rem;
+  --fs-small:  0.85rem;
+  --fs-meta:   0.80rem;
+  --fs-micro:  0.75rem;
+  --fs-nano:   0.70rem;
+
+  --tracking-caps: 0.5px;
+
+
+  /* ═════════════════════════════════════════════════════════════════════════
+   * Legacy aliases — 既有 commander_dashboard.html 11 個 var 名稱對映新 SoT
+   *
+   * 目的：本 PR 不動 inline style= 與 js/ 既有 var() 呼叫（量大 risky），
+   * 用 alias 讓既有 code 繼續運作。下個 PR (P1-10a-2) 逐步 grep-replace
+   * 改用新名稱後，這段 alias 才會刪除。
+   *
+   * ⚠️ 部分 alias 連帶調整顏色值（reality check 已標）：
+   *   --surface2: #1c2333 → #1c2128 (對齊 WaveInk --bg-card)
+   *   --green:    #1a9e52 → #3fb950 (對齊 WaveInk，更亮)
+   *   --yellow:   #d49000 → #e3b341 (對齊 WaveInk，更亮)
+   *   --red:      #cc2a2a → #f85149 (對齊 WaveInk，更亮)
+   * ═════════════════════════════════════════════════════════════════════════ */
+  --bg:       var(--bg-primary);
+  --surface:  var(--bg-secondary);
+  --surface2: var(--bg-card);
+  --text:     var(--text-primary);
+  --text2:    var(--text-secondary);
+  --text3:    var(--text-muted);
+  --mono:     var(--font-code);
+  /* --border, --green, --yellow, --red 名稱沿用（WaveInk 命名相同） */
+}
+
+
+/* ═════════════════════════════════════════════════════════════════════════
+ * Semantic typography classes（WaveInk vendor）
+ * 用法：HTML 標記 class="ds-h1" / "ds-meta" / "ds-mono" 等
+ * 既有 inline font-size/font-family 不立即遷移（P1-10a-2 follow-up）
+ * ═════════════════════════════════════════════════════════════════════════ */
+
+.ds-body {
+  font-family: var(--font-body);
+  font-size:   var(--fs-body);
+  line-height: var(--leading-body);
+  color:       var(--text-primary);
+}
+
+.ds-h1 {
+  font-family: var(--font-body);
+  font-size:   var(--fs-h1);
+  font-weight: 600;
+  color:       var(--accent);
+  line-height: var(--leading-tight);
+}
+
+.ds-h2 {
+  font-family: var(--font-body);
+  font-size:   var(--fs-h2);
+  font-weight: 600;
+  color:       var(--text-primary);
+  line-height: var(--leading-tight);
+}
+
+.ds-h3 {
+  font-family: var(--font-body);
+  font-size:   var(--fs-h3);
+  font-weight: 600;
+  color:       var(--text-primary);
+}
+
+.ds-section-label {
+  font-family:    var(--font-body);
+  font-size:      var(--fs-small);
+  font-weight:    600;
+  color:          var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-caps);
+}
+.ds-section-label--accent { color: var(--accent); }
+
+.ds-meta {
+  font-family: var(--font-body);
+  font-size:   var(--fs-meta);
+  color:       var(--text-secondary);
+}
+
+.ds-muted {
+  font-family: var(--font-body);
+  font-size:   var(--fs-meta);
+  color:       var(--text-muted);
+}
+
+.ds-stat {
+  font-family: var(--font-body);
+  font-size:   var(--fs-stat);
+  font-weight: 700;
+  color:       var(--accent);
+}
+
+.ds-stat-label {
+  font-family:    var(--font-body);
+  font-size:      0.72rem;
+  color:          var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+/* Numerics: timestamps, frequencies, callsigns, MGRS, lat/lon */
+.ds-mono {
+  font-family:           var(--font-code);
+  font-variant-numeric:  tabular-nums;
+  font-size:             var(--fs-micro);
+  color:                 var(--text-secondary);
+}
+
+/* Hard-edged code/tooling text */
+.ds-code {
+  font-family:   var(--font-code);
+  font-size:     var(--fs-small);
+  color:         var(--text-primary);
+  background:    var(--bg-tertiary);
+  border:        1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding:       2px 6px;
+}
