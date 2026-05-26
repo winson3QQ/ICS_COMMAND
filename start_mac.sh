@@ -63,7 +63,6 @@ fi
 echo ""
 echo "======================================"
 echo " 指揮官版：http://127.0.0.1:8000/static/commander_dashboard.html"
-echo " 幕僚版：  http://127.0.0.1:8000/static/staff_dashboard.html"
 echo " API 文件：http://127.0.0.1:8000/docs"
 echo " 日誌：    tail -f /tmp/ics_command.log"
 echo " 停止：    kill $COMMAND_PID"
