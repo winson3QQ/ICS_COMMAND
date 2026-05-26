@@ -25,13 +25,16 @@ sleep 0.5
 cd "$REPO/command-dashboard"
 
 # 檢查 .venv 是否有效。
-# 邏輯：不只看目錄存在，還要驗 pip shebang 指向當前路徑——
-# cp -R 把整包 venv 帶過來的 case，目錄在但 binary 仍指向原 repo，跑會壞。
+# 邏輯：用 python sys.prefix 判定 venv 真實位置（avoid 兩個 pitfall）
+#   1. grep regex injection：原本 `grep "^#!$PWD/..."` 若 $PWD 含 [、+ 等 BRE
+#      metachar 會 misparse，造成 infinite rebuild
+#   2. symlink/realpath mismatch：$PWD 是 logical path，venv shebang 可能是
+#      resolved path，過 symlink 必 mismatch；用 os.path.realpath 兩邊對齊
 need_venv=false
-if [ ! -d ".venv" ]; then
+if [ ! -x ".venv/bin/python" ]; then
   need_venv=true
-elif ! head -1 .venv/bin/pip 2>/dev/null | grep -q "^#!$PWD/.venv/"; then
-  echo "[偵測] .venv shebang 指向其他路徑（可能 cp -R 帶入或 repo 搬家），重建..."
+elif ! .venv/bin/python -c "import sys, os; sys.exit(0 if os.path.realpath(sys.prefix) == os.path.realpath('$PWD/.venv') else 1)" 2>/dev/null; then
+  echo "[偵測] .venv 指向其他路徑（可能 cp -R 帶入、symlink 變動、或 repo 搬家），重建..."
   rm -rf .venv
   need_venv=true
 fi

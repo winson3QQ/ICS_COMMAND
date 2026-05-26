@@ -13,6 +13,15 @@ git config core.hooksPath .githooks   # 啟用 memory sync hook（一次性）
 ./status.sh                            # 看當前 commit + ROADMAP 進度全景
 ```
 
+啟動本機 dashboard（dev / quick test）：
+
+```bash
+./start_mac.sh   # macOS
+./start_pi.sh    # Linux / Pi
+```
+
+生產環境用 `systemd/ics-command.service`（site config 經 `EnvironmentFile=/etc/ics/command.env`，見 `systemd/ics-command.service.d/README.md`）。
+
 然後依序看：
 
 1. [`CLAUDE.md`](CLAUDE.md) — 專案規則（紅線、語言、git、版號）

@@ -30,12 +30,12 @@ sleep 0.5
 
 cd "$REPO/command-dashboard"
 
-# 檢查 .venv 是否有效（同 start_mac.sh 邏輯）
+# 檢查 .venv 是否有效（同 start_mac.sh 邏輯，用 sys.prefix 避 regex / symlink 雷）
 need_venv=false
-if [ ! -d ".venv" ]; then
+if [ ! -x ".venv/bin/python" ]; then
   need_venv=true
-elif ! head -1 .venv/bin/pip 2>/dev/null | grep -q "^#!$PWD/.venv/"; then
-  echo "[偵測] .venv shebang 指向其他路徑，重建..."
+elif ! .venv/bin/python -c "import sys, os; sys.exit(0 if os.path.realpath(sys.prefix) == os.path.realpath('$PWD/.venv') else 1)" 2>/dev/null; then
+  echo "[偵測] .venv 指向其他路徑，重建..."
   rm -rf .venv
   need_venv=true
 fi
@@ -63,7 +63,11 @@ fi
 echo ""
 echo "======================================"
 echo " 指揮官版：http://127.0.0.1:8000/static/commander_dashboard.html"
-[ -n "$LAN_IP" ] && echo " 區網存取：http://$LAN_IP:8000/static/commander_dashboard.html"
+echo " 幕僚版：  http://127.0.0.1:8000/static/staff_dashboard.html"
+[ -n "$LAN_IP" ] && {
+  echo " 區網指揮：http://$LAN_IP:8000/static/commander_dashboard.html"
+  echo " 區網幕僚：http://$LAN_IP:8000/static/staff_dashboard.html"
+}
 echo " API 文件：http://127.0.0.1:8000/docs"
 echo " 日誌：    tail -f /tmp/ics_command.log"
 echo " 停止：    kill $COMMAND_PID"
