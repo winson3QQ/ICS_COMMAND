@@ -147,10 +147,14 @@ ensure_app_accessible() {
   # app source 和 venv：ics 需要 read+execute 才能執行 Python
   chmod -R o+rX "${COMMAND_DASHBOARD_DIR}/src"   2>/dev/null || true
   chmod -R o+rX "${COMMAND_DASHBOARD_DIR}/.venv" 2>/dev/null || true
-  # map_config.json 由 app 在執行期寫入；保留原 owner（開發者）不動，
-  # 只加 o+w 讓 ics（others）也能寫入，git pull 不受影響
+  # map_config.json 由 app 在執行期寫入。
+  # P1-09 security-review fix: 不用 chmod o+w（world-writable 讓任何 local user 能繞過
+  # POST /api/map_config auth 直接改 tile URL → 指揮官瀏覽器抓 attacker 來源）。
+  # 改 chown 給 ${INSTALL_USER}，仍保留 developer 對 repo 的 ownership，但 map_config.json
+  # 由 ics 獨占。git pull 仍能更新（git 看 inode 不看 owner）。
   touch "${COMMAND_DASHBOARD_DIR}/static/map_config.json" 2>/dev/null || true
-  chmod o+w "${COMMAND_DASHBOARD_DIR}/static/map_config.json"
+  chown "${INSTALL_USER}:${INSTALL_GROUP}" "${COMMAND_DASHBOARD_DIR}/static/map_config.json"
+  chmod 0640 "${COMMAND_DASHBOARD_DIR}/static/map_config.json"
   echo "[setup] app path traversable by ${INSTALL_USER}: ${REPO_ROOT}"
 }
 
