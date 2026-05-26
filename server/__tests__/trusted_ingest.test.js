@@ -280,35 +280,111 @@ test('pi_push_retry_uses_new_nonce_after_401_replay', async (_t) => {
 // fallback，但本 client 不再使用。
 // ─────────────────────────────────────────────────────────────────────────────
 
-test('p1_02b_pi_push_uses_new_ingress_path', async (_t) => {
-  const { piPushOnce } = syncModule;
-  const { setCommandUrl } = configModule;
-  const { db } = require(path.join(REPO_ROOT, 'server', 'db.js'));
-
+/**
+ * P1-02b helper：跑一輪 piPushOnce 並回收所有 captured request URLs。
+ * 每個 sub-test 自己 setup DB 狀態（current_state / push_queue）以觸發不同路徑。
+ */
+async function _runPiPushAndCaptureUrls(db) {
   // 確保 pi_api_key 存在（piPushOnce 早退條件）
   db.prepare("INSERT OR REPLACE INTO config(key,value) VALUES('pi_api_key', ?)")
     .run('test-api-key-p1-02b');
 
-  let capturedUrl = null;
+  const { piPushOnce } = syncModule;
+  const { setCommandUrl } = configModule;
+
+  const captured = [];
   const mock = await createMockServer((req, _body) => {
-    capturedUrl = req.url;
+    captured.push(req.url);
     return { status: 200, body: { ok: true } };
   });
 
   setCommandUrl(`http://127.0.0.1:${mock.port}`);
-  await piPushOnce();
-  await mock.close();
-  setCommandUrl('');
+  try {
+    await piPushOnce();
+  } finally {
+    await mock.close();
+    setCommandUrl('');
+  }
+  return captured;
+}
 
-  assert.ok(capturedUrl !== null,
-    'mock server 未收到 piPushOnce 請求（檢查 pi_api_key 是否注入成功）');
+/**
+ * P1-02b helper：每個 sub-test 結束時還原 DB 與模組 mutable state，
+ * 避免污染後續 test（pi_api_key / current_state / push_queue / _lastPushHash）。
+ */
+function _resetP1_02bState(db) {
+  db.prepare("DELETE FROM config WHERE key='pi_api_key'").run();
+  db.prepare("DELETE FROM current_state").run();
+  db.prepare("DELETE FROM push_queue").run();
+}
 
-  // 主要斷言：新主路徑（注意 cfg.unitId='shelter'，於 before() 注入 --unit shelter）
-  assert.equal(capturedUrl, '/api/ingress/pi-node/shelter',
-    `P1-02b：應打到新主路徑 /api/ingress/pi-node/shelter，` +
-    `實際：${capturedUrl}（若是 /api/pi-push/shelter 表示遷移未完）`);
+test('p1_02b_heartbeat_uses_new_ingress_path', async (_t) => {
+  // current_state 空 → piPushOnce 走 heartbeat 分支（sync.js:222）
+  const { db } = require(path.join(REPO_ROOT, 'server', 'db.js'));
+  _resetP1_02bState(db);
 
-  // 防回歸：永遠不再用舊別名（pin 直到 ingress.py 別名移除）
-  assert.ok(!capturedUrl.startsWith('/api/pi-push/'),
-    `P1-02b regression：piPushOnce 不應再打 /api/pi-push/ 別名，實際：${capturedUrl}`);
+  const urls = await _runPiPushAndCaptureUrls(db);
+
+  assert.equal(urls.length, 1, `heartbeat 應發 1 個請求，實際 ${urls.length}`);
+  assert.equal(urls[0], '/api/ingress/pi-node/shelter',
+    `heartbeat 路徑應為 /api/ingress/pi-node/shelter，實際 ${urls[0]}`);
+  assert.ok(!urls[0].startsWith('/api/pi-push/'),
+    `heartbeat 不應再打舊別名 /api/pi-push/，實際 ${urls[0]}`);
+
+  _resetP1_02bState(db);
+});
+
+test('p1_02b_normal_push_uses_new_ingress_path', async (_t) => {
+  // 插一筆 current_state → piPushOnce 跳過 heartbeat 走 normal push（sync.js:253）
+  const { db } = require(path.join(REPO_ROOT, 'server', 'db.js'));
+  _resetP1_02bState(db);
+
+  db.prepare(
+    "INSERT INTO current_state(table_name, record_id, record_json, updated_at) VALUES(?,?,?,?)"
+  ).run('persons', 'P001', JSON.stringify({ id: 'P001', status: 'admitted' }),
+        new Date().toISOString());
+
+  const urls = await _runPiPushAndCaptureUrls(db);
+
+  assert.ok(urls.length >= 1, `normal push 應至少發 1 個請求，實際 ${urls.length}`);
+  // 所有發出的請求都必須走新路徑（normal push + 可能的 replay tail）
+  for (const u of urls) {
+    assert.equal(u, '/api/ingress/pi-node/shelter',
+      `normal push 路徑應為 /api/ingress/pi-node/shelter，實際 ${u}`);
+    assert.ok(!u.startsWith('/api/pi-push/'),
+      `normal push 不應再打舊別名，實際 ${u}`);
+  }
+
+  _resetP1_02bState(db);
+});
+
+test('p1_02b_replay_uses_new_ingress_path', async (_t) => {
+  // 塞 3 筆 unsent push_queue + 1 筆 current_state → piPushOnce 成功後
+  // 觸發 _replayUnsentQueue（sync.js:192），會 slice(0,-1) 補送 2 筆
+  const { db } = require(path.join(REPO_ROOT, 'server', 'db.js'));
+  _resetP1_02bState(db);
+
+  const now = new Date().toISOString();
+  for (let i = 1; i <= 3; i++) {
+    db.prepare("INSERT INTO push_queue(records_json, pushed_at, sent) VALUES(?,?,0)")
+      .run(JSON.stringify([{ table_name: 'persons', record_id: `P${i}`, record: { id: `P${i}` } }]),
+           now);
+  }
+  db.prepare(
+    "INSERT INTO current_state(table_name, record_id, record_json, updated_at) VALUES(?,?,?,?)"
+  ).run('persons', 'P_new', JSON.stringify({ id: 'P_new' }), now);
+
+  const urls = await _runPiPushAndCaptureUrls(db);
+
+  // 1 normal push + 2 replay（_replayUnsentQueue slice(0,-1)）= 3 個請求，全走新路徑
+  assert.equal(urls.length, 3,
+    `應發 3 個請求（1 normal + 2 replay），實際 ${urls.length}`);
+  for (const u of urls) {
+    assert.equal(u, '/api/ingress/pi-node/shelter',
+      `replay 路徑應為 /api/ingress/pi-node/shelter，實際 ${u}`);
+    assert.ok(!u.startsWith('/api/pi-push/'),
+      `replay 不應再打舊別名，實際 ${u}`);
+  }
+
+  _resetP1_02bState(db);
 });
