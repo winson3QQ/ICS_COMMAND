@@ -156,16 +156,24 @@ def print_status_report(roadmap_items: dict[str, str],
     return len(drift)
 
 
-def issue_item_id(issue: dict) -> str | None:
-    """從 issue title / labels 抽 item ID"""
-    m = ITEM_RE.search(issue.get("title", ""))
-    if m:
-        return m.group(1)
+def issue_item_ids(issue: dict) -> list[str]:
+    """從 issue title / labels 抽**所有** item ID（支援打包 issue：
+    e.g. title "P1-05 + P1-06 + P1-07: ..." → ['P1-05', 'P1-06', 'P1-07']）。
+
+    去重保序：title 先抽，再 labels；同 ID 不重複加入。
+    """
+    ids: list[str] = []
+    seen: set[str] = set()
+    for m in ITEM_RE.finditer(issue.get("title", "")):
+        if m.group(1) not in seen:
+            ids.append(m.group(1))
+            seen.add(m.group(1))
     for label in issue.get("labels", []):
-        m = ITEM_RE.search(label.get("name", ""))
-        if m:
-            return m.group(1)
-    return None
+        for m in ITEM_RE.finditer(label.get("name", "")):
+            if m.group(1) not in seen:
+                ids.append(m.group(1))
+                seen.add(m.group(1))
+    return ids
 
 
 def main() -> int:
@@ -183,9 +191,11 @@ def main() -> int:
     issue_by_id: dict[str, dict] = {}
     orphan_issues: list[dict] = []
     for iss in issues:
-        iid = issue_item_id(iss)
-        if iid:
-            issue_by_id[iid] = iss
+        iids = issue_item_ids(iss)
+        if iids:
+            # 同一 issue 可 map 到多個 item（e.g. 打包 PR：「P1-05 + P1-06 + P1-07」）
+            for iid in iids:
+                issue_by_id[iid] = iss
         else:
             orphan_issues.append(iss)
 
