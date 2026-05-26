@@ -1,0 +1,16 @@
+[Unit]
+Description=ICS_Command Daily Backup Timer (沿襲 ICS_DMAS #41 DR Drill 設計)
+Documentation=https://github.com/winson3QQ/ICS_DMAS/issues/41
+Requires=ics-backup.service
+
+[Timer]
+# B-1 frozen: 每日 02:00 觸發 (Sync v4 production: 必先 LUKS unlock; dev mode N/A)
+OnCalendar=*-*-* 02:00:00
+# 開機若曾錯過時間, 補跑一次
+Persistent=true
+# 隨機延遲 5 分鐘, 避免多 host 並發 (對齊 systemd best practice)
+RandomizedDelaySec=5min
+Unit=ics-backup.service
+
+[Install]
+WantedBy=timers.target

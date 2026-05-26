@@ -1,0 +1,12 @@
+/var/log/ics/command.log
+/var/log/ics/pi.log {
+    daily
+    rotate 7
+    compress
+    missingok
+    notifempty
+    create 0640 ics ics
+    postrotate
+        systemctl kill -s HUP ics-command.service 2>/dev/null || true
+    endscript
+}

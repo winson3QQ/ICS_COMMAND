@@ -1,0 +1,38 @@
+# tier3-mtls.conf.disabled — Phase 7 / Tier 3 mTLS（雙向憑證）
+#
+# 啟用條件：客戶授權含 `physical_security: true`（C4）
+# 啟用方法：rename 為 .conf 並 reload nginx；同時要求所有 client 安裝 step-ca 簽的 client cert
+#
+# 對應規格：commercialization §C4 旗艦版 + AI roadmap Phase 7 mTLS
+#
+# 此檔案在 C1-B 階段不啟用，僅作為架構預留。
+
+server {
+    listen 8443 ssl;
+    listen [::]:8443 ssl;
+    http2 on;
+    server_name command.ics.local;
+
+    ssl_certificate     CERT_PATH_PLACEHOLDER;
+    ssl_certificate_key KEY_PATH_PLACEHOLDER;
+
+    # mTLS 核心：要求 client 提供受信任憑證
+    ssl_client_certificate ROOT_CA_PATH_PLACEHOLDER;
+    ssl_verify_client on;
+    ssl_verify_depth 2;
+
+    include conf.d/ssl-common.conf;
+    include conf.d/security-headers.conf;
+
+    location / {
+        # 把 client cert 的 CN 傳給 FastAPI，用於 Tier 3 hardware-bound auth
+        proxy_set_header X-Client-Cert-CN $ssl_client_s_dn_cn;
+        proxy_set_header X-Client-Cert-Verify $ssl_client_verify;
+
+        proxy_pass http://command_backend;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}

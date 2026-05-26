@@ -1,0 +1,40 @@
+[Unit]
+Description=ICS_Command Encrypted Backup Service (沿襲 ICS_DMAS #41 DR Drill 設計)
+Documentation=https://github.com/winson3QQ/ICS_DMAS/issues/41
+After=ics-command.service
+Requires=ics-command.service
+
+[Service]
+Type=oneshot
+# WORKING_DIR / USER / ICS_DB_PATH / BACKUP_ENCRYPTION_KEY 由 deploy/setup.sh sed 替換
+WorkingDirectory=__REPO_ROOT__/command-dashboard
+User=__INSTALL_USER__
+Group=__INSTALL_USER__
+
+# E-3 frozen: BACKUP_ENCRYPTION_KEY env var 必須由 EnvironmentFile 提供
+# deploy/setup.sh 產生 /etc/ics-backup.env (chmod 0600, 含 BACKUP_ENCRYPTION_KEY=...)
+EnvironmentFile=/etc/ics-backup.env
+Environment=ICS_DB_PATH=__REPO_ROOT__/command-dashboard/data/ics.db
+
+# B-1: --encrypt default true (對齊 #41 production policy)
+# 7 day retention (B-5 Sync v2)
+ExecStart=/usr/bin/python3 __REPO_ROOT__/command-dashboard/scripts/backup_db.py \
+    --backup-dir __REPO_ROOT__/command-dashboard/data/backups \
+    --retain-days 7 \
+    --encrypt
+
+# Hardening (對齊 systemd security best practice)
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=__REPO_ROOT__/command-dashboard/data
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+LockPersonality=true
+RestrictRealtime=true
+
+[Install]
+WantedBy=multi-user.target
