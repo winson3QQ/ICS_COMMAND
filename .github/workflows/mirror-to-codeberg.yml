@@ -13,6 +13,7 @@ name: Mirror to Codeberg
 on:
   push:
     branches: [main]
+  workflow_dispatch: {}    # 手動觸發按鈕（debug / 救援 / token 設好後驗證用）
 
 concurrency:
   group: mirror-codeberg
