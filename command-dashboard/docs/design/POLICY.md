@@ -75,7 +75,10 @@ a9cb1cd82332b23a47e3a1239d25d13c86d16c4220695e34b243effa999f45f2  JetBrainsMono-
 ```
 be9633c4d870e26fb37f1cfe5c5a77181667114003ea16207ac7850d8da8add1  maplibre-gl.js
 576b085fdd9487a65a19215328c1e086c07ce5bf6da09b666b3806d3d008dae9  maplibre-gl.css
+ee5fc05a0677eaf69601d2c7db0d9ecd6cc27c3abc1d0733bc9ed34707cf8ef2  LICENSE-maplibre.txt
 ```
+
+**LICENSE 文字**：vendored at `static/lib/LICENSE-maplibre.txt`（BSD-3-Clause 散布義務 #1：散布時保留 copyright + license 全文）。
 
 **供應鏈紅線確認**（CLAUDE.md）：MapLibre 為 Mapbox GL JS v1 OSS fork，社群維護（主要貢獻者：Stadia Maps、MapTiler、Microsoft、各 OSS contributor），non-Chinese 實體。
 
@@ -92,7 +95,10 @@ be9633c4d870e26fb37f1cfe5c5a77181667114003ea16207ac7850d8da8add1  maplibre-gl.js
 **SHA256**：
 ```
 36bcbe1ba97cc07b3fc90cee9cba11729b04e25ec8790cf65a0787d5b38e091b  pmtiles.js
+0371c38f338835f7fc13ed71176f3d92144e22c8b736a31cced57adbbeb647b3  LICENSE-pmtiles.txt
 ```
+
+**LICENSE 文字**：vendored at `static/lib/LICENSE-pmtiles.txt`。JS 實作為 BSD-3-Clause；PMTiles spec 本身為 public domain / CC0。
 
 **供應鏈紅線確認**：Protomaps 由 Brandon Liu（US 籍）維護，non-Chinese 實體。
 
