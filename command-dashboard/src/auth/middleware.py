@@ -36,7 +36,8 @@ async def auth_middleware(request: Request, call_next):
         return await call_next(request)
     if path == "/":
         return await call_next(request)
-    if path.startswith("/api/pi-push/"):
+    # P1-02：ingress 主路徑 + 舊路徑別名（向後相容 ICS_DMAS Pi client）
+    if path.startswith("/api/ingress/pi-node/") or path.startswith("/api/pi-push/"):
         return await call_next(request)
     if method == "POST" and path == "/api/snapshots":
         return await call_next(request)

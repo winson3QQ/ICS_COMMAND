@@ -173,6 +173,49 @@ class TestMedicalPush:
 
 # ── 多節點同時推送 ────────────────────────────────────────────────────────────
 
+# ── P1-02：新 ingress 路徑回歸（/api/ingress/pi-node/{unit_id}） ─────────────
+#
+# 舊路徑 /api/pi-push/{unit_id} 用同 handler 雙裝飾器保留為別名（向後相容
+# ICS_DMAS Pi client），新主路徑 /api/ingress/pi-node/{unit_id} 必須行為一致。
+
+def _push_ingress(c, sign, unit_id: str, records: list, api_key: str):
+    """新路徑版 _push：走 /api/ingress/pi-node/{unit_id}。"""
+    path = f"/api/ingress/pi-node/{unit_id}"
+    body_bytes, hdrs = sign("POST", path, {"records": records})
+    hdrs["Authorization"] = f"Bearer {api_key}"
+    return c.post(path, content=body_bytes, headers=hdrs)
+
+
+class TestIngressPiNodePath:
+    def test_heartbeat_new_path(self, hmac_client, shelter_node):
+        c, sign = hmac_client
+        r = _push_ingress(c, sign, "shelter", [], shelter_node["api_key"])
+        assert r.status_code == 200
+        assert r.json().get("ok") is True
+
+    def test_push_records_new_path(self, hmac_client, shelter_node, auth):
+        c, sign = hmac_client
+        r = _push_ingress(c, sign, "shelter", SHELTER_RECORDS, shelter_node["api_key"])
+        assert r.status_code == 200
+        assert r.json()["records_count"] == len(SHELTER_RECORDS)
+        # 讀取端 endpoint 不變，仍能撈到新路徑寫入的 batch
+        data = c.get("/api/pi-data/shelter/list", headers=auth).json()
+        assert data["offline"] is False
+        assert len(data["records"]) == len(SHELTER_RECORDS)
+
+    def test_no_bearer_returns_401_new_path(self, client, shelter_node):
+        r = client.post("/api/ingress/pi-node/shelter", json={"records": []})
+        assert r.status_code == 401
+
+    def test_wrong_token_returns_403_new_path(self, hmac_client, shelter_node):
+        c, sign = hmac_client
+        path = "/api/ingress/pi-node/shelter"
+        body_bytes, hdrs = sign("POST", path, {"records": []})
+        hdrs["Authorization"] = "Bearer wrongtoken"
+        r = c.post(path, content=body_bytes, headers=hdrs)
+        assert r.status_code == 403
+
+
 class TestMultiNodePush:
     def test_two_nodes_push_independently(self, hmac_client, shelter_node, medical_node, auth):
         c, sign = hmac_client

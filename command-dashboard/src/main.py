@@ -36,9 +36,9 @@ from routers import (
     decisions,
     events,
     exercises,
+    ingress,
     manual,
     map,
-    pi_push,
     security,
     snapshots,
     sync,
@@ -88,7 +88,7 @@ if STATIC_DIR.exists():
 # ── 路由 ──────────────────────────────────────────────────────────────────────
 for router in (
     auth.router, auth.session_router, snapshots.router, events.router, decisions.router,
-    admin.router, backups.router, pi_push.router, sync.router, manual.router,
+    admin.router, backups.router, ingress.router, sync.router, manual.router,
     dashboard.router, config_router.router, map.router,
     exercises.router, ttx.router, ai.router, tak.router, security.router,
 ):
