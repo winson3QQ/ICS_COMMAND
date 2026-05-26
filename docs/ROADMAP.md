@@ -38,9 +38,9 @@
 | P1-02 | `routers/pi_push.py` → **改名 `ingress.py`** 並重構為通用 ingress 介面（為 P2 TAK、P3 WaveInk 共用；既有 Pi push 路徑保留為 `/api/ingress/pi-node`，介面相容） |
 | P1-03 | `services/cop_service.py` 正規化層 schema 凍結 v1（`source: enum[manual, pi-node, tak, waveink]` 必填欄位，預留 `pi-node` 不關門） |
 | P1-04 | **保留並重新定位** `pi_batch_repo`、`pi_node_repo`、`sync_repo`（三 Pass 對齊）為「**上游節點 federation 介面**」——架構上已是通用設計（`sync_repo._unit_to_node()` 已參數化 shelter/medical/forward/security）。命名不改，文件補充說明：未來 Medical / Shelter PWA 重新對接、或 ICS_Command 變成多 Pi 站台中樞時，這層直接用。**僅清理**真正死掉的測試與 import |
-| P1-05 | `routers/manual.py` 確認仍能手動建立 COP entity（最小可用 baseline） |
-| P1-06 | `tests/` 全綠：unit / integration / security / api / js — 補充 ingress 重構與 federation 介面 contract test；保留 `pi_*_repo` 測試 |
-| P1-07 | `docs/指揮部儀表板設計規格.md` 更新到 v3.0：(a) 移除 PWA-specific 描述但保留 federation 介面章節；(b) COP 章節對齊 Phase 1 凍結 schema |
+| ✅ P1-05 | `routers/manual.py` 確認仍能手動建立 COP entity（最小可用 baseline）— direct repo call 驗證 `create_manual_record` + `get_manual_records` 整鏈通 — 完成於 [#10](https://github.com/winson3QQ/ICS_COMMAND/pull/10) `f0555cf`（2026-05-26）|
+| ✅ P1-06 | `tests/` 全綠 + **CI workflow 落地**（`.github/workflows/test.yml` + `.forgejo/workflows/test.yml`，跑 pyflakes + pytest + doc_sync_check）— 完成於 [#10](https://github.com/winson3QQ/ICS_COMMAND/pull/10) `f0555cf`（2026-05-26）|
+| ✅ P1-07 | `docs/指揮部儀表板設計規格.md` v3.0 **framework header**（拆分 delta + incremental rewrite policy；v2.2 既有內容保留，後續隨 P1-03/P1-10/P2/P3 PR 配對段落重寫）— 完成於 [#10](https://github.com/winson3QQ/ICS_COMMAND/pull/10) `f0555cf`（2026-05-26）|
 | ✅ P1-08 | `start_mac.sh` 已純化（Stage 1 完成）；補 `start_pi.sh` 與 systemd unit drop-in。**順手修 venv shebang detection（P1-01 dogfood 發現）+ systemd EnvironmentFile pattern + ics-backup paths 同步** — 完成於 [#6](https://github.com/winson3QQ/ICS_COMMAND/pull/6) `918b675`（2026-05-26）|
 | ✅ P1-09 | `deploy/`（Stage 1 未帶）補回必要部分：nginx reverse proxy + TLS（去掉 PWA server block，保留 ingress 通用路由）。**順手修 7 個 code-review + 2 個 security-review findings**（DB path / ProtectHome / nginx install / Host injection / XFF spoofing / PII scrub gap / map_config world-writable…）；**ROADMAP P1-12 新增**（dogfood 衍生：統一 key management + at-rest 加密 + backup GUI）— 完成於 [#8](https://github.com/winson3QQ/ICS_COMMAND/pull/8) `a6ea334`（2026-05-26）|
 | P1-10 | **地圖 UX baseline 升級**：見下方〈P1-10 細項展開〉。改採 **MapLibre GL JS + PMTiles + dark ops theme + SVG marker + 等寬字體**，全替換 Leaflet（不走 `leaflet-maplibre-gl` 折衷路線，避免 P2 二次手術），預埋 P2 TAK + MIL-STD-2525 渲染接點 |
