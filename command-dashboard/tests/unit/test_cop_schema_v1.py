@@ -99,13 +99,25 @@ class TestCoPEntitySchema:
             CoPEntity(**_valid_entity_payload(lon=-181.0))
 
     def test_heading_deg_range_validation(self):
-        """heading_deg ∈ [0, 360)"""
+        """heading_deg ∈ [0, 360]，360.0 normalize 為 0.0（TAK CoT 相容）"""
         CoPEntity(**_valid_entity_payload(heading_deg=0.0))
         CoPEntity(**_valid_entity_payload(heading_deg=359.9))
+        # PR #16 /code-review finding 2：360.0 必須被接受（TAK 客戶端常送）
+        e = CoPEntity(**_valid_entity_payload(heading_deg=360.0))
+        assert e.heading_deg == 0.0, "360.0 應 normalize 為 0.0（同方向）"
         with pytest.raises(ValidationError):
-            CoPEntity(**_valid_entity_payload(heading_deg=360.0))
+            CoPEntity(**_valid_entity_payload(heading_deg=360.1))
         with pytest.raises(ValidationError):
             CoPEntity(**_valid_entity_payload(heading_deg=-1.0))
+
+    def test_speed_mps_upper_bound(self):
+        """PR #16 /code-review finding 3：speed_mps 上界 le=1000.0 防 km/h 誤代 m/s"""
+        CoPEntity(**_valid_entity_payload(speed_mps=0.0))
+        CoPEntity(**_valid_entity_payload(speed_mps=1000.0))
+        with pytest.raises(ValidationError):
+            CoPEntity(**_valid_entity_payload(speed_mps=1000.01))
+        with pytest.raises(ValidationError):
+            CoPEntity(**_valid_entity_payload(speed_mps=-0.01))
 
     def test_extra_fields_forbidden(self):
         """v1 凍結後，欄位定義以 schema 為準，未知欄位 reject（防 silent typo）"""
@@ -208,6 +220,26 @@ class TestCopEntityRepo:
         assert got["visible_to"] == ["all"]      # JSON decoded
         assert got["attributes"] == {}
 
+    def test_insert_returns_persisted_row(self, tmp_db):
+        """Regression for PR #16 /verify finding 1：insert_cop_entity 必須回傳
+        dict（含 DB DEFAULT 填值），不是 None。
+
+        Bug：原本在 with get_conn() 內呼叫 get_cop_entity，second connection
+        看不到 uncommitted row → 回傳 None。Contract test 鎖住 return type。
+        """
+        e = CoPEntity(**_valid_entity_payload(uid="ret-001"))
+        ret = insert_cop_entity(e)
+        assert ret is not None, "insert_cop_entity 必須回傳 dict 而非 None"
+        assert isinstance(ret, dict)
+        assert ret["uid"] == "ret-001"
+        assert ret["source"] == "tak"
+        # DB DEFAULT 必須在回傳值中已填好
+        assert ret["received_at"] is not None
+        assert ret["received_at"].endswith("Z")
+        # JSON 欄位必須 decode 後回傳（不是 raw 字串）
+        assert ret["visible_to"] == ["all"]
+        assert ret["attributes"] == {}
+
     def test_insert_with_attributes_and_visible_to(self, tmp_db):
         e = CoPEntity(**_valid_entity_payload(
             uid="rt-002",
@@ -246,6 +278,58 @@ class TestCopEntityRepo:
         # 標 stale 後預設 list 應該過濾掉
         assert "s1" not in {e["uid"] for e in list_cop_entities()}
 
+    def test_mark_stale_rejects_bad_iso_format(self, tmp_db):
+        """PR #16 /code-review finding 5：mark_stale 必須驗證 ISO 8601 格式，
+        否則錯格式（如 '2026/05/26'）會因 lexicographic compare 永遠 'live'
+        """
+        insert_cop_entity(CoPEntity(**_valid_entity_payload(uid="bad-fmt")))
+        with pytest.raises(ValueError, match="ISO 8601"):
+            mark_stale("bad-fmt", "2026/05/26 10:00:00")
+        with pytest.raises(ValueError, match="ISO 8601"):
+            mark_stale("bad-fmt", "not-a-date")
+        # 合法格式（Z / +00:00 / 純日期 / 微秒）都應通過
+        for ok in ("2026-01-01T00:00:00Z",
+                   "2026-01-01T00:00:00+00:00",
+                   "2026-01-01T00:00:00",
+                   "2026-01-01"):
+            assert mark_stale("bad-fmt", ok) is True
+
+    def test_visible_to_corrupt_json_fail_closed(self, tmp_db):
+        """PR #16 /code-review finding 1 [HIGH]：visible_to JSON 損毀
+        必須 fail-closed (= [])，絕不可預設成 ['all'] 變 ACL fail-open。
+        """
+        # 先正常 insert（visible_to=['team-medical']）
+        insert_cop_entity(CoPEntity(**_valid_entity_payload(
+            uid="acl-1", visible_to=["team-medical"]
+        )))
+        # 直接寫 raw 損毀 JSON 進 DB（模擬磁碟錯誤/手動誤改）
+        with get_conn() as c:
+            c.execute(
+                "UPDATE cop_entities SET visible_to = ? WHERE uid = ?",
+                ("{not valid json", "acl-1"),
+            )
+        got = get_cop_entity("acl-1")
+        assert got["visible_to"] == [], (
+            f"FAIL-OPEN REGRESSION: visible_to 損毀後應 fail-closed 成 []，"
+            f"實際 {got['visible_to']!r}（絕不能是 ['all']）"
+        )
+
+    def test_list_cop_entities_stable_order_by_uid_tiebreak(self, tmp_db):
+        """PR #16 /code-review finding 6：received_at DB DEFAULT 只到秒，
+        burst ingest 同秒會 tie；ORDER BY 加 uid 當 stable tiebreak。
+        """
+        # 用同 received_at 顯式插 3 筆
+        same_ts = "2026-05-26T10:00:00Z"
+        for u in ("zzz", "aaa", "mmm"):
+            insert_cop_entity(CoPEntity(**_valid_entity_payload(
+                uid=u, received_at=same_ts,
+            )))
+        # received_at DESC, uid DESC → uid 'zzz' > 'mmm' > 'aaa'
+        uids = [e["uid"] for e in list_cop_entities()]
+        assert uids == ["zzz", "mmm", "aaa"], (
+            f"Expected stable tiebreak by uid DESC，實際 {uids}"
+        )
+
 
 class TestCopTrackRepo:
     def test_track_insert_and_list_ordered(self, tmp_db):
@@ -279,6 +363,41 @@ class TestCopLinkRepo:
         in_b = list_cop_links(target_uid="B")
         assert len(in_b) == 1
         assert in_b[0]["src_uid"] == "A"
+
+    def test_list_cop_links_respects_limit(self, tmp_db):
+        """PR #16 /code-review finding 4：list_cop_links 必須有 limit 參數
+        防 federation 累積後 unbounded query OOM。
+        """
+        insert_cop_entity(CoPEntity(**_valid_entity_payload(uid="hub")))
+        for i in range(5):
+            insert_cop_entity(CoPEntity(**_valid_entity_payload(uid=f"t{i}")))
+            insert_cop_link(CoPEntityLink(
+                src_uid="hub", relation="watch",
+                target_uid=f"t{i}", target_type="a-f-G-U-C",
+            ))
+        # 預設 1000 → 全 5 筆
+        assert len(list_cop_links(src_uid="hub")) == 5
+        # 顯式 limit=2 → 截斷到 2 筆
+        assert len(list_cop_links(src_uid="hub", limit=2)) == 2
+
+
+# ── PR #16 /code-review finding 7：__init__.py 規約一致性 ───────────────────
+
+
+class TestInitExports:
+    """確認 P1-03 新模組已加進 __init__.py，與既有 schema/repo 規約一致。"""
+
+    def test_schemas_init_exports_cop(self):
+        from schemas import (
+            CoPEntity, CoPEntityLink, CoPEntityTrack,
+            CoPSeverity, CoPSource,
+        )
+        assert CoPEntity is not None
+
+    def test_repositories_init_includes_cop_entity_repo(self):
+        from repositories import cop_entity_repo
+        assert hasattr(cop_entity_repo, "insert_cop_entity")
+        assert hasattr(cop_entity_repo, "list_cop_entities")
 
 
 # ── 4. services/cop_service 4 個 normalize stub 存在且 raise NotImplementedError ──

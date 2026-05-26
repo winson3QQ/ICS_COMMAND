@@ -14,12 +14,28 @@ v1 凍結邊界：欄位名稱 / type / 必填性以本檔為準。後續 ALTER 
 """
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 # ── 共用型別 alias ────────────────────────────────────────────────────────────
 
 CoPSource    = Literal["manual", "pi-node", "tak", "waveink"]
 CoPSeverity  = Literal["info", "warning", "critical"]
+
+
+# ── 共用 validator：heading_deg 把 360→0（TAK CoT 正北常送 360.0）──────────
+
+
+def _wrap_heading(v: float | None) -> float | None:
+    """heading_deg ∈ [0, 360]，但 360.0 normalize 為 0.0（同方向）。
+
+    ATAK / WinTAK 等實際 CoT producer 把指北鍵正規化為 [0, 360] 閉區間。
+    schema 接受 360.0 但 normalize 為 0.0，存入 DB 是 0.0，下游一致。
+    """
+    if v is None:
+        return None
+    if v == 360.0:
+        return 0.0
+    return v
 
 
 # ── cop_entities ──────────────────────────────────────────────────────────────
@@ -54,8 +70,10 @@ class CoPEntity(BaseModel):
     le:  float = 9999999.0
 
     # ── 運動內插（mini-taiwan 借鏡）─────────────────────────────────────
-    heading_deg: float | None = Field(default=None, ge=0.0, lt=360.0)
-    speed_mps:   float | None = Field(default=None, ge=0.0)
+    # heading: [0, 360] 閉區間（TAK 相容）+ validator wrap 360→0
+    # speed:   [0, 1000 m/s] (~Mach 3) 防 km/h 混 m/s + sensor garbage
+    heading_deg: float | None = Field(default=None, ge=0.0, le=360.0)
+    speed_mps:   float | None = Field(default=None, ge=0.0, le=1000.0)
 
     # ── COP 內部 metadata ────────────────────────────────────────────────
     source:      CoPSource                              # ROADMAP P1-03 必填
@@ -79,6 +97,9 @@ class CoPEntity(BaseModel):
     # ── escape hatch ─────────────────────────────────────────────────────
     attributes: dict = Field(default_factory=dict)
 
+    # 360→0 normalize
+    _wrap_heading = field_validator("heading_deg")(_wrap_heading)
+
 
 # ── cop_entity_tracks ────────────────────────────────────────────────────────
 
@@ -93,8 +114,10 @@ class CoPEntityTrack(BaseModel):
     lat: float = Field(..., ge=-90.0, le=90.0)
     lon: float = Field(..., ge=-180.0, le=180.0)
     hae: float = 0.0
-    heading_deg: float | None = Field(default=None, ge=0.0, lt=360.0)
-    speed_mps:   float | None = Field(default=None, ge=0.0)
+    heading_deg: float | None = Field(default=None, ge=0.0, le=360.0)
+    speed_mps:   float | None = Field(default=None, ge=0.0, le=1000.0)
+
+    _wrap_heading = field_validator("heading_deg")(_wrap_heading)
 
 
 # ── cop_entity_links ─────────────────────────────────────────────────────────
