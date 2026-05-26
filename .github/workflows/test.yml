@@ -1,0 +1,50 @@
+name: Test
+
+# 每次 PR 跟 main push 跑 pytest + pyflakes + doc_sync gate
+# 在 ubuntu-latest 跑，與 Mac 開發機 OS 差異作為 regression 防線
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: 'pip'
+          cache-dependency-path: |
+            command-dashboard/requirements.txt
+            command-dashboard/requirements-test.txt
+
+      - name: Install dependencies
+        run: |
+          cd command-dashboard
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-test.txt pyflakes
+
+      - name: pyflakes (broken imports / unused vars)
+        run: |
+          cd command-dashboard
+          python -m pyflakes src/
+
+      - name: pytest
+        run: |
+          cd command-dashboard
+          python -m pytest --tb=short -q -o addopts=""
+
+      - name: doc_sync_check (ROADMAP / CLAUDE / PROCESS 引用對得上)
+        run: python3 scripts/doc_sync_check.py

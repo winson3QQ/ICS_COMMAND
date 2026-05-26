@@ -1,0 +1,34 @@
+name: Test
+
+# Codeberg Forgejo Actions mirror of .github/workflows/test.yml
+# 兩邊 CI 並存：GitHub 是 PR-driven，Codeberg 是 SoT mirror
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: docker
+    container:
+      image: python:3.13-slim
+    steps:
+      - name: Install git (slim image 沒 git)
+        run: apt-get update && apt-get install -y --no-install-recommends git
+
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          cd command-dashboard
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-test.txt pyflakes
+
+      - name: pyflakes
+        run: cd command-dashboard && python -m pyflakes src/
+
+      - name: pytest
+        run: cd command-dashboard && python -m pytest --tb=short -q -o addopts=""
+
+      - name: doc_sync_check
+        run: python3 scripts/doc_sync_check.py
