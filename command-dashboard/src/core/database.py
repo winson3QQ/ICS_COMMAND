@@ -549,6 +549,101 @@ def _m012_audit_hash_prev_down(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE audit_log DROP COLUMN hash_prev")
 
 
+def _m013_cop_v1_schema(conn: sqlite3.Connection) -> None:
+    """P1-03：COP（Common Operational Picture）正規化層 schema 凍結 v1。
+
+    對齊 TAK CoT 規格（不自創）+ mini-taiwan map architecture 借鏡。
+    支援 4 source: manual / pi-node / tak / waveink，以及 11 個 end-state scenarios
+    （詳見 issue #15）。
+
+    新增 3 張表：
+    - cop_entities：地理性 entity 主表（CoT 主力，4 source 共用）
+    - cop_entity_tracks：entity 軌跡時間序列（mini-taiwan 插值 + Wave 6 回放）
+    - cop_entity_links：entity 關係（對齊 CoT_link.xsd）
+
+    既有 events 表 ALTER：加 lat/lon 兩欄位（scenario 5：指揮部事件可地圖追蹤）。
+    """
+    # ── cop_entities ──────────────────────────────────────────────────────
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS cop_entities (
+            uid            TEXT PRIMARY KEY,
+            type           TEXT NOT NULL,
+            time           TEXT NOT NULL,
+            start          TEXT NOT NULL,
+            stale          TEXT NOT NULL,
+            how            TEXT NOT NULL,
+            version        TEXT NOT NULL DEFAULT '2.0',
+            lat            REAL NOT NULL,
+            lon            REAL NOT NULL,
+            hae            REAL NOT NULL DEFAULT 0,
+            ce             REAL NOT NULL DEFAULT 9999999,
+            le             REAL NOT NULL DEFAULT 9999999,
+            heading_deg    REAL,
+            speed_mps      REAL,
+            source         TEXT NOT NULL
+                CHECK(source IN ('manual','pi-node','tak','waveink')),
+            received_at    TEXT NOT NULL
+                DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+            exercise_id    INTEGER REFERENCES exercises(id),
+            access         TEXT,
+            visible_to     TEXT NOT NULL DEFAULT '["all"]',
+            origin_node_id TEXT,
+            last_synced_at TEXT,
+            version_clock  INTEGER NOT NULL DEFAULT 1,
+            callsign       TEXT,
+            remarks        TEXT,
+            severity       TEXT NOT NULL DEFAULT 'info'
+                CHECK(severity IN ('info','warning','critical')),
+            attributes     TEXT NOT NULL DEFAULT '{}'
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_cop_entities_stale    ON cop_entities(stale)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_cop_entities_source   ON cop_entities(source)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_cop_entities_type     ON cop_entities(type)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_cop_entities_exercise ON cop_entities(exercise_id)")
+
+    # ── cop_entity_tracks ─────────────────────────────────────────────────
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS cop_entity_tracks (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            uid          TEXT NOT NULL REFERENCES cop_entities(uid) ON DELETE CASCADE,
+            t            TEXT NOT NULL,
+            lat          REAL NOT NULL,
+            lon          REAL NOT NULL,
+            hae          REAL NOT NULL DEFAULT 0,
+            heading_deg  REAL,
+            speed_mps    REAL
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_cop_tracks_uid_t ON cop_entity_tracks(uid, t)")
+
+    # ── cop_entity_links ──────────────────────────────────────────────────
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS cop_entity_links (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            src_uid      TEXT NOT NULL REFERENCES cop_entities(uid) ON DELETE CASCADE,
+            relation     TEXT NOT NULL,
+            target_uid   TEXT NOT NULL,
+            target_type  TEXT NOT NULL,
+            url          TEXT,
+            remarks      TEXT,
+            mime         TEXT
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_cop_links_src ON cop_entity_links(src_uid)")
+
+    # ── events 表 ALTER：加 lat/lon（scenario 5 地圖追蹤）─────────────────
+    _add_column_if_missing(conn, "events", "lat", "REAL")
+    _add_column_if_missing(conn, "events", "lon", "REAL")
+
+
+def _m013_cop_v1_schema_down(conn: sqlite3.Connection) -> None:
+    """rollback：刪 3 表（events lat/lon 保留，反正 nullable）。"""
+    conn.execute("DROP TABLE IF EXISTS cop_entity_links")
+    conn.execute("DROP TABLE IF EXISTS cop_entity_tracks")
+    conn.execute("DROP TABLE IF EXISTS cop_entities")
+
+
 _MIGRATIONS: list[tuple[int, str, object]] = [
     (1, "events_columns", _m001_events_columns),
     (2, "decisions_columns", _m002_decisions_columns),
@@ -562,6 +657,7 @@ _MIGRATIONS: list[tuple[int, str, object]] = [
     (10, "role_detail_backfill", _m010_role_detail_backfill),
     (11, "audit_correlation_id", _m011_audit_correlation_id),
     (12, "audit_hash_prev", _m012_audit_hash_prev),
+    (13, "cop_v1_schema", _m013_cop_v1_schema),
 ]
 
 

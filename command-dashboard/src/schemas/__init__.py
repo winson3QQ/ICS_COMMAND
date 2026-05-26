@@ -5,6 +5,7 @@ schemas/ — 所有 Pydantic request/response 模型集中管理
 from .admin import AccountCreateIn, AccountStatusIn, AdminPinIn, ConfigIn, PiNodeCreateIn, PinResetIn, RoleUpdateIn
 from .ai import AIRecommendIn
 from .auth import LoginIn
+from .cop import CoPEntity, CoPEntityLink, CoPEntityTrack, CoPSeverity, CoPSource
 from .decision import DecideIn, DecisionIn
 from .event import DeadlinePatch, EventIn, EventNoteIn, EventPatch
 from .exercise import AAREntryIn, ExerciseCreateIn, ExerciseStatusIn
@@ -25,4 +26,7 @@ __all__ = [
     "ExerciseCreateIn", "ExerciseStatusIn", "AAREntryIn",
     "TTXInjectBulkIn",
     "AIRecommendIn",
+    # P1-03 COP schema v1
+    "CoPEntity", "CoPEntityTrack", "CoPEntityLink",
+    "CoPSource", "CoPSeverity",
 ]

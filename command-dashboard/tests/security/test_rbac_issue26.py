@@ -18,6 +18,8 @@ from core.database import (
     _m011_audit_correlation_id_down,
     _m012_audit_hash_prev,
     _m012_audit_hash_prev_down,
+    _m013_cop_v1_schema,
+    _m013_cop_v1_schema_down,
 )
 from repositories.account_repo import create_account
 
@@ -57,14 +59,16 @@ def _set_session(token: str, **values: str) -> None:
         conn.commit()
 
 
-def test_migrations_reach_m012_and_down_helpers_exist(client):
-    # bump 11 → 12 (Codeberg Issue #1 GAP-AUDIT-04 audit hash chain)
-    assert _MIGRATIONS[-1][0] == 12
+def test_migrations_reach_m013_and_down_helpers_exist(client):
+    # bump 12 → 13 (P1-03 #15 COP schema v1: cop_entities + tracks + links)
+    assert _MIGRATIONS[-1][0] == 13
     assert callable(_m010_role_detail_down)
     assert callable(_m011_audit_correlation_id)
     assert callable(_m011_audit_correlation_id_down)
     assert callable(_m012_audit_hash_prev)
     assert callable(_m012_audit_hash_prev_down)
+    assert callable(_m013_cop_v1_schema)
+    assert callable(_m013_cop_v1_schema_down)
 
 
 def test_m011_correlation_id_up_is_idempotent_and_down_removes_column(tmp_path):
