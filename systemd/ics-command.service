@@ -1,5 +1,5 @@
 [Unit]
-Description=ICS_DMAS 指揮部後端 (FastAPI :8000)
+Description=ICS_Command 指揮部後端 (FastAPI :8000)
 After=network-online.target
 Wants=network-online.target
 # systemd 240+ 起，StartLimitIntervalSec / StartLimitBurst 屬 [Unit] 區段
@@ -11,11 +11,16 @@ StartLimitBurst=5
 Type=simple
 User=ics
 Group=ics
-WorkingDirectory=/home/ics/ics-dmas/command-dashboard
-ExecStart=/home/ics/ics-dmas/command-dashboard/.venv/bin/uvicorn main:app --app-dir src --host 0.0.0.0 --port 8000
-Environment=COMMAND_URL=
+WorkingDirectory=/home/ics/ics-command/command-dashboard
+ExecStart=/home/ics/ics-command/command-dashboard/.venv/bin/uvicorn main:app --app-dir src --host 0.0.0.0 --port 8000
+
+# Defaults 先設，再讓 EnvironmentFile 覆寫（systemd: 後者覆寫前者）
+# Site-specific 設定走 EnvironmentFile（前綴 `-` 表示檔案不存在不 fail）
+# drop-in 進階覆寫見 ics-command.service.d/README.md
 Environment=ICS_DB_PATH=/var/lib/ics/ics.db
 Environment=ICS_LOG_DIR=/var/log/ics
+EnvironmentFile=-/etc/ics/command.env
+
 StandardOutput=append:/var/log/ics/command.log
 StandardError=append:/var/log/ics/command.log
 Restart=on-failure

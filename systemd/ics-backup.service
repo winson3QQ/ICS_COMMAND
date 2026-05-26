@@ -1,13 +1,13 @@
 [Unit]
-Description=ICS_DMAS 指揮部 SQLite 自動備份（每日 03:00 by ics-backup.timer）
+Description=ICS_Command 指揮部 SQLite 自動備份（每日 03:00 by ics-backup.timer）
 After=ics-command.service
-ConditionPathExists=/home/ics/ics-dmas/command-dashboard/data/ics.db
+ConditionPathExists=/home/ics/ics-command/command-dashboard/data/ics.db
 
 [Service]
 Type=oneshot
 User=ics
-WorkingDirectory=/home/ics/ics-dmas/command-dashboard
-ExecStart=/home/ics/ics-dmas/command-dashboard/.venv/bin/python /home/ics/ics-dmas/command-dashboard/scripts/backup_db.py
+WorkingDirectory=/home/ics/ics-command/command-dashboard
+ExecStart=/home/ics/ics-command/command-dashboard/.venv/bin/python /home/ics/ics-command/command-dashboard/scripts/backup_db.py
 Nice=10
 IOSchedulingClass=best-effort
 IOSchedulingPriority=7
