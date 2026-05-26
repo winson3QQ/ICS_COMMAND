@@ -241,6 +241,46 @@ print_first_run_pin() {
   fi
 }
 
+# 安裝 nginx config（含 cert path placeholder 替換）
+# P1-09 fix: 原 nginx command.conf 留 CERT_PATH_PLACEHOLDER 從不被替換，
+#            setup.sh 也完全沒處理 nginx。此函式補完。
+install_nginx_configs() {
+  local nginx_conf_dir="/etc/nginx/conf.d"
+  local cert_path="${ICS_CONFIG_DIR}/certs/command.ics.local.cert.pem"
+  local key_path="${ICS_CONFIG_DIR}/certs/command.ics.local.key.pem"
+
+  if ! command -v nginx >/dev/null 2>&1; then
+    echo "[setup] nginx 未安裝，跳過 nginx config 安裝"
+    echo "[setup]    （production HTTPS 部署需先 apt install nginx）"
+    return 0
+  fi
+
+  if [[ ! -d "$nginx_conf_dir" ]]; then
+    echo "[setup] WARN: $nginx_conf_dir 不存在，跳過 nginx config 安裝" >&2
+    return 0
+  fi
+
+  # 複製 ssl-common / security-headers 不需 placeholder 替換
+  install -m 0644 "$REPO_ROOT/deploy/nginx/conf.d/ssl-common.conf"        "$nginx_conf_dir/"
+  install -m 0644 "$REPO_ROOT/deploy/nginx/conf.d/security-headers.conf"  "$nginx_conf_dir/"
+
+  # command.conf 替換憑證路徑
+  sed -e "s|CERT_PATH_PLACEHOLDER|${cert_path}|g" \
+      -e "s|KEY_PATH_PLACEHOLDER|${key_path}|g" \
+      "$REPO_ROOT/deploy/nginx/conf.d/command.conf" > "$nginx_conf_dir/command.conf"
+  chmod 0644 "$nginx_conf_dir/command.conf"
+
+  echo "[setup] nginx config 安裝到 $nginx_conf_dir"
+  if [[ ! -f "$cert_path" ]]; then
+    echo "[setup] ⚠️  憑證 $cert_path 不存在 — production 必須提供" >&2
+    echo "[setup]    Dev 可從 deploy/step-ca/issue-cert.sh 產生" >&2
+    echo "[setup]    nginx 在憑證就位前無法 reload（systemctl reload nginx 會 fail）" >&2
+  else
+    nginx -t && systemctl reload nginx
+    echo "[setup] nginx reloaded"
+  fi
+}
+
 main() {
   require_root
   ensure_ics_user
@@ -252,6 +292,7 @@ main() {
   install_logrotate
   install_systemd_unit
   install_backup_timer   # ⭐ #41: ics-backup.timer 每日 02:00 加密 backup
+  install_nginx_configs  # P1-09: nginx HTTPS 反代 config（憑證需 operator 另提供）
   start_and_probe   # app 啟動時自動 init_db()，成功則 /api/health 回 200
   print_first_run_pin
   echo "[setup] Setup complete"

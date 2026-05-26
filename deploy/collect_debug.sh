@@ -190,8 +190,10 @@ scrub_pii() {
     sed -i 's/"ip"\s*:\s*"\(10\.[0-9]\+\.[0-9]\+\)\.[0-9]\+"/"ip":"\1.x"/g' "$file"
 }
 
-echo "[collect_debug] 執行 PII scrub（v1.1 §7.6）..."
-for f in "$OUTDIR"/*.log "$OUTDIR"/*.json; do
+echo "[collect_debug] 執行 PII scrub（v1.1 §7.6 + P1-09 fix: 含 .txt）..."
+# 原本只跑 *.log 跟 *.json，遺漏 service_status.txt / system_info.txt 等
+# README 宣稱 'scrubbed' 但實際漏 → 自相矛盾。改為涵蓋所有文字檔
+for f in "$OUTDIR"/*.log "$OUTDIR"/*.json "$OUTDIR"/*.txt; do
     [ -f "$f" ] || continue
     scrub_pii "$f"
 done
