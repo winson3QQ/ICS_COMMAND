@@ -554,9 +554,12 @@ function _configureLeafletAssets() {
   _populateNapsgCsel();
   _updateEvTypeFromCategories();
 
-  // 4. 恢復展開狀態
-  const savedSection = sessionStorage.getItem('_expandedSection');
-  if (savedSection) import('./events.js').then(m => m._applyRightExpand(savedSection));
+  // 4. P1-10a UX hotfix B：focus mode expand 已徹底拿掉（commander_dashboard.html
+  //    無 toggleRightExpand data-action）。restore 路徑同步移除；舊 session
+  //    殘留 _expandedSection 主動清空，避免用戶 reload 後卡在 expanded 無 UI 解。
+  //    events.js 的 _applyRightExpand / toggleRightExpand 函式為 dead code，
+  //    未來需要 focus mode 再重新接 UI（見 events.js TODO）。
+  sessionStorage.removeItem('_expandedSection');
 
   const savedLeftGroup = sessionStorage.getItem('_leftPanelGroup');
   if (savedLeftGroup) switchLeftPanel(savedLeftGroup);

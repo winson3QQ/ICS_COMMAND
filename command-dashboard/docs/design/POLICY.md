@@ -12,6 +12,19 @@
 | 字體 | `command-dashboard/static/fonts/JetBrainsMono-*.woff2` | 4 weights，離線打包 |
 | 本檔 | `docs/design/POLICY.md` | divergence 紀錄 + 維護規則 |
 
+### v1 涵蓋範圍（明示）
+
+**已套用 ds-tokens.css**（本 PR scope）：
+- `static/commander_dashboard.html`
+
+**未套用 ds-tokens.css**（P1-10a-2 follow-up 處理；目前仍各自 inline `:root` 或無 tokens）：
+- `static/scenario_designer.html`（含 own `:root` 用舊 palette + IBM Plex Mono — bypass SoT，遷移前不算 P1-10a 達標）
+- `static/admin_backups.html`
+- `static/icon_preview.html`
+- `static/qr_scanner.html`
+
+→ 本檔「ds-tokens.css 為唯一 SoT」**目前僅指 commander_dashboard.html scope**。其他 HTML 檔遷完才算全 repo SoT。
+
 ---
 
 ## Vendor pinning

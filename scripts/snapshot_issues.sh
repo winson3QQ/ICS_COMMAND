@@ -19,7 +19,7 @@
 
 set -euo pipefail
 
-REPO="${REPO:-winson3QQ/ICS_DMAS}"
+REPO="${REPO:-winson3QQ/ICS_COMMAND}"
 OUT_DIR="${OUT_DIR:-docs/backups}"
 LIMIT="${LIMIT:-500}"
 

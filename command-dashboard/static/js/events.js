@@ -686,7 +686,7 @@ export function _renderZoneModal() {
 
 function _zoneTabBtn(key, label) {
   const active = _zoneModalTab === key;
-  return `<button data-action="zoneTab" data-tab="${key}" style="padding:4px 12px;border-radius:4px;border:1px solid ${active ? 'var(--green)' : 'var(--border)'};background:${active ? 'rgba(26,158,82,.2)' : 'var(--surface2)'};color:${active ? '#fff' : 'var(--text3)'};font-size:11px;font-weight:600;cursor:pointer;font-family:var(--mono);">${label}</button>`;
+  return `<button data-action="zoneTab" data-tab="${key}" style="padding:4px 12px;border-radius:4px;border:1px solid ${active ? 'var(--green)' : 'var(--border)'};background:${active ? 'rgba(63,185,80,.2)' : 'var(--surface2)'};color:${active ? '#fff' : 'var(--text3)'};font-size:11px;font-weight:600;cursor:pointer;font-family:var(--mono);">${label}</button>`;
 }
 
 function _zoneDataTab(zone) {
@@ -971,7 +971,7 @@ export function renderZoneC(data, d) {
     }
   }
 
-  const _grpActive = 'background:rgba(26,158,82,.2);color:#fff;border-color:var(--green);';
+  const _grpActive = 'background:rgba(63,185,80,.2);color:#fff;border-color:var(--green);';
   const _grpInact  = 'background:transparent;color:var(--text3);border-color:var(--border);';
   const _grpR = document.getElementById('evt-grp-reported');
   const _grpA = document.getElementById('evt-grp-assigned');
@@ -1138,6 +1138,10 @@ export function _resizeEvtList() {
   list.style.maxHeight = Math.max(availH, 50) + 'px';
 }
 
+// TODO P1-10a-2: _applyRightExpand / toggleRightExpand 為 dead code（option B
+// 已拿掉 HTML 所有 data-action 觸發 + main.js sessionStorage restore）。
+// 留作未來 focus mode 恢復骨架；若不打算恢復，整段 + main.js:47 import +
+// main.js:182 dispatch case 一併刪。
 let _expandedSection = sessionStorage.getItem('_expandedSection') || null;
 
 export function toggleRightExpand(section = 'events') {

@@ -36,7 +36,7 @@ function _getTooltip() {
     _chartTooltip.style.cssText =
       'position:fixed;pointer-events:none;z-index:9999;display:none;' +
       'background:rgba(13,17,23,.96);border:1px solid rgba(48,54,61,.8);border-radius:6px;' +
-      'padding:7px 11px;font:11px IBM Plex Mono,monospace;color:#e6edf3;' +
+      'padding:7px 11px;font:11px JetBrains Mono,monospace;color:#e6edf3;' +
       'box-shadow:0 4px 16px rgba(0,0,0,.6);white-space:nowrap;line-height:1.8;';
     document.body.appendChild(_chartTooltip);
   }
@@ -83,7 +83,7 @@ export function drawSparkline(canvasId, datasets, opts, N, expanded, times) {
   if (expanded) {
     const steps = opts.gridSteps || _autoGridSteps(yMin, yMax);
     ctx.strokeStyle='rgba(110,118,129,.2)'; ctx.lineWidth=0.5;
-    ctx.fillStyle='#8b949e'; ctx.font=fs.axis+'px IBM Plex Mono,monospace'; ctx.textAlign='right';
+    ctx.fillStyle='#8b949e'; ctx.font=fs.axis+'px JetBrains Mono,monospace'; ctx.textAlign='right';
     steps.forEach(v => {
       if (v < yMin || v > yMax) return;
       const y = py(v);
@@ -98,14 +98,14 @@ export function drawSparkline(canvasId, datasets, opts, N, expanded, times) {
     const raMax = ra.max || 100;
     const raSteps = _autoGridSteps(0, raMax);
     const raX = pad.l + cW + 40;
-    ctx.fillStyle='#8b949e'; ctx.font=fs.axis+'px IBM Plex Mono,monospace'; ctx.textAlign='left';
+    ctx.fillStyle='#8b949e'; ctx.font=fs.axis+'px JetBrains Mono,monospace'; ctx.textAlign='left';
     raSteps.forEach(v => {
       const leftV = (v / raMax) * (yMax - yMin) + yMin;
       const y = py(leftV);
       ctx.fillText(v + (ra.unit||''), raX, y + 4);
     });
     if (ra.label) {
-      ctx.fillStyle='#6e7681'; ctx.font=(fs.axis-1)+'px IBM Plex Mono,monospace';
+      ctx.fillStyle='#6e7681'; ctx.font=(fs.axis-1)+'px JetBrains Mono,monospace';
       ctx.fillText(ra.label, raX, pad.t - 1);
     }
   }
@@ -117,7 +117,7 @@ export function drawSparkline(canvasId, datasets, opts, N, expanded, times) {
     ctx.beginPath(); ctx.moveTo(pad.l,y); ctx.lineTo(pad.l+cW,y); ctx.stroke();
     ctx.setLineDash([]);
     if (expanded) {
-      ctx.fillStyle=th.color; ctx.font=fs.threshold+'px IBM Plex Mono,monospace'; ctx.textAlign='left';
+      ctx.fillStyle=th.color; ctx.font=fs.threshold+'px JetBrains Mono,monospace'; ctx.textAlign='left';
       ctx.fillText(th.label||th.value, pad.l+cW+3, y+4);
     }
   });
@@ -159,7 +159,7 @@ export function drawSparkline(canvasId, datasets, opts, N, expanded, times) {
       if (!opts.noEndLabel) {
         const lv = ds.data[N-1];
         if (lv != null) {
-          ctx.fillStyle=ds.color; ctx.font='bold '+fs.value+'px IBM Plex Mono,monospace'; ctx.textAlign='left';
+          ctx.fillStyle=ds.color; ctx.font='bold '+fs.value+'px JetBrains Mono,monospace'; ctx.textAlign='left';
           ctx.fillText(lv+(ds.unit||''), px(N-1)+6, py(lv)+4);
         }
       }
@@ -168,7 +168,7 @@ export function drawSparkline(canvasId, datasets, opts, N, expanded, times) {
 
   // 展開：X 軸時間標籤
   if (expanded && times && times.length >= N) {
-    ctx.fillStyle='#8b949e'; ctx.font=fs.axis+'px IBM Plex Mono,monospace'; ctx.textAlign='center';
+    ctx.fillStyle='#8b949e'; ctx.font=fs.axis+'px JetBrains Mono,monospace'; ctx.textAlign='center';
     const step = N <= 15 ? 1 : N <= 30 ? 2 : 3;
     for (let i=0; i<N; i++) {
       if (i % step === 0 || i === N-1) ctx.fillText(times[i], px(i), H-3);
@@ -409,14 +409,14 @@ export function renderSparklines(d, sessionType, openZoneByType, showIpiBreakdow
     {data:d.incOpen, color:'#e6edf3', w:1.5, unit:'件', label:'未結'},
   ], {yMin:0, yMax:incMax+1, yUnit:'件', noEndLabel:true, hover:true,
     stackedArea:[
-      {data:d.incLow,  fillColor:'rgba(26,158,82,.2)'},
-      {data:d.incMed,  fillColor:'rgba(212,144,0,.25)'},
-      {data:d.incHigh, fillColor:'rgba(204,42,42,.3)'},
+      {data:d.incLow,  fillColor:'rgba(63,185,80,.2)'},
+      {data:d.incMed,  fillColor:'rgba(227,179,65,.25)'},
+      {data:d.incHigh, fillColor:'rgba(248,81,73,.3)'},
     ],
     hoverExtra:[
       {data:d.incHigh, color:'rgba(204,100,100,.9)', label:'高', unit:'件'},
       {data:d.incMed,  color:'rgba(212,170,0,.9)',   label:'中', unit:'件'},
-      {data:d.incLow,  color:'rgba(26,158,82,.9)',   label:'低', unit:'件'},
+      {data:d.incLow,  color:'rgba(63,185,80,.9)',   label:'低', unit:'件'},
     ]
   }, N, isExp('sp-inc'), t);
 
@@ -432,7 +432,7 @@ export function renderSparklines(d, sessionType, openZoneByType, showIpiBreakdow
     {data:d.oxPct,  color:'#F57F17', w:1.5, dash:[3,2], unit:'%', label:'O₂'},
     {data:d.toPct,  color:'#388E3C', w:1.5, dash:[3,2], unit:'%', label:'止血帶'},
   ], {yMin:0, yMax:100, yUnit:'%', noEndLabel:true, hover:true,
-    thresholds:[{value:20,color:'rgba(204,42,42,.4)',label:'20%'}]}, N, isExp('sp-res'), t);
+    thresholds:[{value:20,color:'rgba(248,81,73,.4)',label:'20%'}]}, N, isExp('sp-res'), t);
 
   // ⑤ 人力
   const sR = d.opsS[N-1], mR = d.opsM[N-1];
@@ -444,7 +444,7 @@ export function renderSparklines(d, sessionType, openZoneByType, showIpiBreakdow
     {data:d.opsS, color:'#1976D2', w:1.5, unit:'', label:'收容'},
     {data:d.opsM, color:'#7B1FA2', w:1.5, unit:'', label:'醫療'},
   ], {yMin:0, yMax:Math.max(...d.opsS, ...d.opsM, 8)+2, noEndLabel:true, hover:true,
-    thresholds:[{value:8,color:'rgba(204,42,42,.4)',label:'8'}]}, N, isExp('sp-staff'), t);
+    thresholds:[{value:8,color:'rgba(248,81,73,.4)',label:'8'}]}, N, isExp('sp-staff'), t);
 }
 
 // ══════════════════════════════════════════════════════════════

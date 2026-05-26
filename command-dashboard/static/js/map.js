@@ -84,7 +84,7 @@ const _NAPSG_GROUP_ABBR = { security: '安', rescue: '救', medical: '醫', care
 const _NODE_ABBR = { shelter: '收', medical: '醫', forward: '前', security: '安', command: '指' };
 const _NODE_COLORS = { shelter: '#f0883e', medical: '#e05555', forward: '#58a6ff', security: '#e3b341', command: '#8b949e' };
 const _SEV_COLORS = { critical: '#e05555', warning: '#e3b341', info: '#3a4149' };
-const _RAG_COLORS = { ok: '#1a9e52', warn: '#d49000', crit: '#cc2a2a' };
+const _RAG_COLORS = { ok: '#3fb950', warn: '#e3b341', crit: '#f85149' };
 
 const POLY_TYPES = {
   control:    { label: '管制區', color: '#e05555', dash: true },

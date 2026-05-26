@@ -66,8 +66,10 @@ def _build_csp(include_unsafe_inline: bool) -> str:
     directives = [
         "default-src 'self'",
         script_src,
-        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-        "font-src 'self' https://fonts.gstatic.com",
+        # P1-10a：移除 Google Fonts allowance（已改用本地 JetBrains Mono webfont，
+        # 見 static/css/ds-tokens.css）。dead allowance 不留，符合 CLAUDE.md 離線供應鏈規範。
+        "style-src 'self' 'unsafe-inline'",
+        "font-src 'self'",
         "img-src 'self' data: blob:",
         "connect-src 'self' wss: ws:",
         "object-src 'none'",
