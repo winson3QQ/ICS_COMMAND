@@ -78,23 +78,46 @@
 |---|---|---|
 | ✅ **P1-10a** | **採用 WaveInk Design System + MIL-STD-2525 token 體系 + 跨平台等寬字體**（**一次到位，不分階段**，TAK 整合就緒為優先設計約束）：<br>**(i) 基底**：vendor `colors_and_type.css` + `DESIGN.md` policy 自 WaveInk `docs/design/`（commit hash 釘版），落地為 `command-dashboard/static/css/ds-tokens.css` + `docs/design/POLICY.md`。直接繼承：GitHub Dark Dimmed 色階、`--space-1`~`--space-9`、`--radius` 三段、border-not-shadow 紀律、動畫節制（僅保留 keyframe，不引入 JS 動畫）、Unicode-as-iconography（禁 Material/Heroicons/Lucide/Phosphor/Font Awesome）、empty-state 文案語氣（terse / imperative / 無 marketing copy）。<br>**(ii) MIL-STD-2525 entity color token 作為一等公民**（**主要設計考量，非例外**）：新增 `--mil-friendly` / `--mil-hostile` / `--mil-neutral` / `--mil-unknown` token，標準色對齊 MIL-STD-2525C 附錄 A；frame 形狀（friendly 矩形 / hostile 菱形 / neutral 方形 / unknown 四葉草）由 P2-05 milsymbol 接管渲染，token 提供色彩 SoT。WaveInk policy 的「No new accents」原則於本 token group 例外開放，並反向標註：未來新增 entity affiliation 必須對齊 MIL-STD-2525，不得自創色。<br>**(iii) 字體 ops-grade upgrade**：**JetBrains Mono 離線打包進 `static/fonts/`** 取代 WaveInk 的 system mono 預設——指揮場景 callsign / 座標 / MGRS / 時間戳跨 Mac/Win/Linux 一致性是 ops 規範（system mono 在三平台分別是 Menlo / Consolas / DejaVu，視覺差異不可接受）；JetBrains Mono 對 0/O、1/l/I、5/S 有明確 disambiguation 設計。UI 文字維持 WaveInk system stack（Noto Sans TC fallback）。<br>**(iv) divergence 文件**：`docs/design/POLICY.md` 明文列出 ICS_Command 對 WaveInk DS 的兩處 fork 點（MIL-STD-2525 token、JetBrains Mono webfont）與 rationale，下次 WaveInk DS 升版時做為 conflict 解決依據 — 完成於 [#18](https://github.com/winson3QQ/ICS_COMMAND/pull/18) `1d46025`（2026-05-26；含 8 個 /code-review finding fixes + CI snapshot script 順手修；/security-review 0 vuln；後續 P1-10a-2 follow-up 處理 js/inline style hex 遷移 + 其他 4 HTML 檔 SoT 對齊）| 3-4 天 |
 | P1-10a-2 | **DS token migration follow-up**（P1-10a 收尾遺留）：js/ 126 處硬寫 hex + commander_dashboard.html 68 處 inline `style=` + 其他 4 HTML 檔（scenario_designer / admin_backups / icon_preview / qr_scanner）token 對齊。**動工前 reality check 已做**（[#18 comment](https://github.com/winson3QQ/ICS_COMMAND/pull/18) + 2026-05-26 session）：51 hex 屬 in-DS 可對映、其中 41 在 JS object/canvas context 不能直 `var()` 替換（要 `getComputedStyle` helper）、102 hex 屬 out-of-DS semantic shades 需 design decision（加進 DS / 留 inline + 註解 / color-mix）。**故意延後到 P1-10b 之後**：map.js 49 hex（佔總量 39%）會在 P1-10b MapLibre 重寫時大部分消失，現在動 = 白工 53%。P1-10b done 後重評殘餘 scope | 視 P1-10b 後殘量決定 |
-| **P1-10b** | **MapLibre GL JS 全替換** — 移除 Leaflet，map.js 核心重寫；marker / popup / polygon / layer 統一改 MapLibre Symbol Layer API。借鏡 mini-taiwan 的**架構**：entity layer 抽象、track 0–1 插值、collision detection 邏輯——**不借 Three.js 3D 實作**（COP 3D entity 價值低、Pi 500 GPU 會搶資源，3D 留作 P2 之後依需求評估） | 4-5 天 |
-| **P1-10c** | **PMTiles 台灣底圖** — 用 Protomaps 工具產出台灣全圖 PMTiles 單檔（約 200-400 MB），Pi 直接 serve，完全離線。提供 day / dusk / night / sat 四種 vector style | 1-2 天 |
+| **P1-10b** | **MapLibre GL JS 全替換 + entity layer 精緻化基底**（scope 已擴張，2026-05-26 /plan + mini-taiwan deep-dive 後修訂）— 移除 Leaflet，map.js 1972 行 / 126 Leaflet refs 核心重寫，內部拆 5 子檔（maplibre_core / entity_layer / coord_tools / draw_tools / event_popup），public API 門面保留；HTML `#leaflet-map` 與 CSS `.leaflet-*` 保留 alias。**借鏡 mini-taiwan 7 條**（[deep-dive 結論](https://github.com/winson3QQ/ICS_COMMAND/issues/19)）：(i) EntityLayer 抽象（1 GeoJSON source per entity-class + `update(featureCollection)` 批量替換，取代 marker 物件陣列）— 1000 entity FPS≥30 唯一可行路徑；(ii) 4-layer state stack（base / glow / selected / collision-or-halo）— T1→T2 視覺關鍵；(iii) **SDF icon + `icon-color` data-driven** — 單一灰階 PNG runtime 著色，**為 P2-05 MIL-STD-2525 4 affiliation × N symbol 鋪路**，不做 = P2-05 重工；(iv) `setFeatureState` hover/selected + paint case expression（**修正 mini-taiwan 未做之反例**）；(v) `symbol-sort-key` priority placement（修正反例 — 戰術場景 critical 不被擋）；(vi) `text-halo` + JetBrains Mono overlay 文字；(vii) LOD（minzoom/maxzoom 切換 entity 密度）。**Source × affiliation 雙維度註解寫進 `cop_entity_repo.py`** 修正 mini-taiwan 單維度反例 — **為 P2-04 鋪路**，不做 = schema 誤用。**不借**：track 0–1 插值（COP entity 靜態座標，移動 entity 是 P2 TAK 範圍）、collision detection（指揮場景量級不對，clustering 由 P1-10f 處理）、Three.js 3D（ROADMAP 排除）。應用 mini-taiwan `PERFORMANCE_OPTIMIZATION_PLAN.md` 6 條避雷 checklist。CSP report-only 不爆，enforce 留 P1-10h。**達成 T2 基底** | 6-8 天 |
+| **P1-10c** | **PMTiles 台灣底圖 + 戰術底圖 doctrine 落地**（scope 已縮減，2026-05-26 修訂）— 用 Protomaps 工具產出台灣全圖 PMTiles 單檔（約 200-400 MB），Pi 直接 serve，完全離線。**只做 2 套 vector style**：`dark`（夜間 ops / 室內預設）+ `muted-day`（白天演練，低飽和度）；**砍 dusk + sat**（dusk 花俏無 ops 價值；sat 違反戰術底圖 doctrine 不得作為 default）。**戰術底圖 doctrine 寫進 `docs/design/POLICY.md`**：底圖必須 desaturated；唯一 saturated 色 = MIL-STD-2525 affiliation + severity token；禁彩色底圖預設、禁 satellite default（特定情報需求才開）。接上 P1-10b 已建好的 MapLibre 殼，只是 style.json 換來源。**達成 T2 完成** | 1-2 天 |
 | **P1-10d** | **SVG marker 系統 + severity design token** — 每種 `node_type` × `event_severity` 一套 icon set；統一 stroke / corner radius / 陰影；severity 配色（critical / warning / info）以 CSS custom properties 集中管理，禁止散在 JS 寫死 hex；critical 事件用 `@keyframes` halo pulse（不用 JS 動畫，省 Pi CPU） | 2-3 天 |
 | **P1-10e** | **Polygon / route hover + selected 狀態** — hover: outline 加粗 + fill opacity 微升；selected: dashed animated border（純 CSS） | 1-2 天 |
 | **P1-10f** | **Symbol-layer-based clustering** — 用 MapLibre 內建 `cluster: true`（基於 supercluster），**不引入 leaflet.markercluster**；clustering 視覺與 design token 對齊 | 1 天 |
 | **P1-10g** | **圖層切換微動畫** — 200ms fade-in / opacity 過渡，避免「啪」一下 | 0.5 天 |
 | **P1-10h** | **CSP 對齊** — MapLibre + PMTiles 需要：`worker-src blob:` / `script-src 'wasm-unsafe-eval'` / `child-src blob:`；與 ICS_DMAS C1-B 階段 CSP 規劃對齊；補 CSP integration test | 1 天 |
 
-**總工時估**：13-18 天（單人）；演練前**至少 3 週**開工，留 buffer。
+**總工時估**：13-18 天（單人）；演練前**至少 3 週**開工，留 buffer。P1-10b 擴張 +2-3 天的成本被 P1-10c 縮 scope + P1-10d 因 SDF infra 已備而提速抵銷 + P2-04/05 各省 2-3 天，**淨持平或更省**。
 
-**實作順序建議**（CP 值由高到低，**TAK 就緒度為優先排序原則**）：
-1. P1-10a（WaveInk DS + MIL-STD-2525 token + JetBrains Mono）— 視覺感受立即 +50%，且 token 體系預埋 P2 直接吃 ✅
-2. P1-10b + P1-10c（MapLibre + PMTiles）— 地圖質感 +40%，P2 TAK Symbol Layer 直接套
-3. **P1-10a-2**（DS migration follow-up，cleanup tech debt）— **故意排在 P1-10b 之後**：map.js 49 hex 占 P1-10a-2 總量 39%，P1-10b 重寫會自然消去 53% scope，現在動 = 白工
-4. P1-10d（SVG marker + token）— 收斂業餘感；MIL-STD-2525 frame 等到 P2 milsymbol 接管
-5. P1-10e + P1-10f + P1-10g（hover / clustering / 微動畫）— 精緻度收尾
-6. P1-10h（CSP）— 與每步交叉驗證，最終整合測試
+**視覺等級 ladder（2D only，無 3D，全程 MapLibre）**：
+
+| 等級 | 對標 | 達成時點 |
+|---|---|---|
+| T0 | 現狀（Leaflet + grayscale + 預設 marker）| — |
+| T1 | dashboard chrome only（[Protomaps Dark](https://maps.protomaps.com/?theme=black) 裸用）| P1-10a 完成（地圖本身未動）|
+| **T2 基底** | 戰術 marker（4-layer state stack + SDF + hover state + LOD）| **P1-10b 完成** |
+| T2 完成 | + dark/muted-day 底圖 doctrine 落地 | P1-10c 完成 |
+| T2.5 | + critical halo pulse + severity icon 系統 | P1-10d 完成 |
+| **T3**（[ATAK Web](https://wiki.tak.gov/) / [Felt](https://felt.com) 級）| + polygon/route hover-selected + clustering + 切換動畫 | P1-10e + 10f + 10g 完成 |
+
+**實作順序**（**TAK 就緒度為優先排序原則**）：
+1. ✅ P1-10a（WaveInk DS + MIL-STD-2525 token + JetBrains Mono）— chrome T0→T1
+2. 🚧 **P1-10b**（擴張版：MapLibre + entity layer 精緻化基底）— 地圖 T0→T2 基底；**為 P2-04/05 鋪路**（SDF + EntityLayer + source×affiliation 雙維度）
+3. P1-10c（縮 scope：2 套 style + doctrine 文件）— 底圖 T2 完成
+4. P1-10a-2（DS migration follow-up）— map.js 49 hex 占 P1-10a-2 39%，P1-10b 後重評殘餘
+5. P1-10d（SDF icon set + severity halo pulse）— T2→T2.5；SDF infra 已備
+6. P1-10e + P1-10f + P1-10g（hover-selected polish / clustering / 微動畫）— T3
+7. P1-10h（CSP enforce + integration test）— T3 鎖緊（安全層）
+
+**為 P2 鋪路的明確成果**（P1-10b 不做這條 = P2 重工）：
+
+| 鋪路項 | 落在 | P2 受惠 | 不做的後果 |
+|---|---|---|---|
+| SDF icon + `icon-color` pipeline | P1-10b | P2-05 milsymbol 直接套 | P2-05 多 2-3 天 |
+| EntityLayer 抽象（多 source 合併 hook）| P1-10b | P2-04 TAK CoT push 直接套 | P2-04 多 2-3 天 |
+| Source × affiliation 雙維度註解 | P1-10b | P2-04 schema 不誤用 | 撞牆才改 schema |
+| 4-layer state stack | P1-10b | P2-04 affiliation × status 顯示 | P2 重寫 entity layer |
+| 戰術底圖 doctrine in POLICY.md | P1-10c | 拒絕「加 sat 預設」反 doctrine 要求 | 沒 SoT 可引用 |
+| CSP `wasm-unsafe-eval` enforce | P1-10h | 任何 wasm 工具（含 milsymbol wasm fallback）已備 | P2 補 CSP |
 
 **P1-10 DoD（補充上層 DoD）**：
 - [ ] Lighthouse Performance score ≥ 80（Pi 500 上）
@@ -102,10 +125,13 @@
 - [ ] 主題切換無 FOUC（flash of unstyled content）
 - [ ] CSP test green，無 `unsafe-inline` 例外
 - [ ] PMTiles 離線（網路全斷）下地圖完整可用
+- [ ] **戰術底圖 doctrine 寫入 `docs/design/POLICY.md`**：底圖必須 desaturated；唯一 saturated 色 = MIL-STD-2525 affiliation + severity token
+- [ ] mini-taiwan 7 條反例 — 6 條避雷 checklist 全套用、2 條視覺反例（hover state、symbol-sort-key）已修正
 
 **明確排除（移到 P2）**：
 - **MGRS grid** — 軍規 grid 屬 TAK / MIL-STD-2525 同一生態，自然該與 CoT 符號渲染一批做。P1 只實作基本經緯度 grid。
 - **3D entity layer** — 同上理由，等真實山地 / 空域需求出現再評估。
+- **Mapbox Standard 3D 建物 + lightPreset** — 需網路 + 商業 SDK，違反 P1-10 DoD「PMTiles 離線」紅線；2D MapLibre 在 desaturated 底圖 + entity layer 精緻化下可達 T3，視覺天花板對戰術場景夠用。
 
 ### P1-11 範圍（Dashboard UI PWA 清理）
 
