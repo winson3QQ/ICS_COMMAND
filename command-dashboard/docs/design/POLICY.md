@@ -61,6 +61,48 @@ a9cb1cd82332b23a47e3a1239d25d13c86d16c4220695e34b243effa999f45f2  JetBrainsMono-
 
 升版時驗 SHA256 確認沒被替換成 backdoor 版本。
 
+### MapLibre GL JS v4.7.1（地圖引擎，P1-10b 起）
+
+| 項目 | 值 |
+|---|---|
+| Release | https://github.com/maplibre/maplibre-gl-js/releases/tag/v4.7.1 |
+| License | BSD-3-Clause |
+| Source | https://unpkg.com/maplibre-gl@4.7.1/dist/ |
+| Vendored as | `static/lib/maplibre-gl.js` + `static/lib/maplibre-gl.css`（離線打包，不走 CDN）|
+| 版本選擇 rationale | v4.x 最後一個 release；v5 已出但 v4 路徑更穩、Pi 500 WebGL2 兼容驗證較多。升 v5 視 P2 需求評估 |
+
+**SHA256**：
+```
+be9633c4d870e26fb37f1cfe5c5a77181667114003ea16207ac7850d8da8add1  maplibre-gl.js
+576b085fdd9487a65a19215328c1e086c07ce5bf6da09b666b3806d3d008dae9  maplibre-gl.css
+```
+
+**供應鏈紅線確認**（CLAUDE.md）：MapLibre 為 Mapbox GL JS v1 OSS fork，社群維護（主要貢獻者：Stadia Maps、MapTiler、Microsoft、各 OSS contributor），non-Chinese 實體。
+
+### pmtiles v4.4.1（PMTiles MapLibre protocol，P1-10b 起）
+
+| 項目 | 值 |
+|---|---|
+| Release | https://github.com/protomaps/PMTiles/releases/tag/js-v4.4.1 |
+| License | BSD-3-Clause |
+| Source | https://unpkg.com/pmtiles@4.4.1/dist/pmtiles.js |
+| Vendored as | `static/lib/pmtiles.js` |
+| 用途 | 為 MapLibre 註冊 `pmtiles://` protocol，使 P1-10c 台灣 PMTiles 單檔可直接 serve |
+
+**SHA256**：
+```
+36bcbe1ba97cc07b3fc90cee9cba11729b04e25ec8790cf65a0787d5b38e091b  pmtiles.js
+```
+
+**供應鏈紅線確認**：Protomaps 由 Brandon Liu（US 籍）維護，non-Chinese 實體。
+
+### 將被移除（P1-10b 步驟 11）
+
+完成 MapLibre 替換後 `static/lib/` 內以下檔案刪除：
+- `leaflet.min.js`、`leaflet.min.css`
+- `protomaps-leaflet.js`
+- `marker-icon.png`、`marker-icon-2x.png`、`marker-shadow.png`
+
 ---
 
 ## Divergence — ICS_Command 對 WaveInk DS 兩處例外
@@ -104,6 +146,43 @@ a9cb1cd82332b23a47e3a1239d25d13c86d16c4220695e34b243effa999f45f2  JetBrainsMono-
 - 不採 IBM Plex Mono：disambiguation 沒 JetBrains Mono 明顯
 
 **反向約束**：UI 文字（非 mono）維持 WaveInk system stack（`--font-body: var(--font-system)`），不打包 Inter。
+
+---
+
+## 戰術底圖 doctrine（P1-10c 起 SoT，於 P1-10b vendor 時 stub）
+
+戰術 / 指揮 / COP 地圖底圖必須遵守：
+
+### Rule 1：底圖必須 desaturated
+
+**允許**：grayscale（黑白）、muted earth-tone（低飽和度，beige/khaki/dark green）。
+
+**禁止**：任何 vivid 飽和色作為 default basemap（含 Google Maps / OpenStreetMap 預設 style / Mapbox Streets / 任何 colorful raster tile）。
+
+### Rule 2：唯一 saturated 色 = MIL-STD-2525 affiliation token + severity token
+
+整個畫面 saturated 色只能來自：
+- `--mil-friendly` / `--mil-hostile` / `--mil-neutral` / `--mil-unknown`（entity affiliation）
+- `--severity-critical` / `--severity-warning` / `--severity-info`（event severity）
+- selection / hover 強調色（DS 內 `--accent-*`）
+
+理由：戰術地圖**符號是焦點，底圖是背景**。底圖若與 affiliation 搶飽和度，MIL-STD-2525 顏色就跳不出來，戰術判讀崩。
+
+### Rule 3：Satellite imagery 不得作為 default
+
+特定情報 / 地形評估需求可開 satellite layer 作為 **opt-in toggle**，但**預設關閉**。
+
+### Rule 4：底圖切換只走「光線/時段」軸，不走「主題/風格」軸
+
+P1-10c 提供 2 套：
+- `dark`：夜間 ops / 室內預設（depth 高、對比強的灰階）
+- `muted-day`：白天演練（低飽和度、提高 ambient 亮度）
+
+**禁止** dusk / sunset / vintage / hand-drawn 等任何「風格化」style 作為 ops 預設。
+
+### Rule 5：底圖 style.json 改動需走 PR + 視覺 regression 截圖
+
+底圖直接影響戰術判讀，style 改動視同 entity token 改動，需 review 截圖確認 affiliation 仍跳出來。
 
 ---
 
