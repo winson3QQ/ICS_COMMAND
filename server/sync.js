@@ -10,6 +10,11 @@ const { cfg, CA_CERT, PI_PUSH_INTERVAL_MS, MAX_QUEUE_AGE_MS, getCommandUrl, HMAC
 let _broadcast = () => {};
 function setBroadcast(fn) { _broadcast = fn; }
 
+// P1-02b：Pi push ingress 主路徑（command-dashboard P1-02 命名空間統一）。
+// 集中為 const 避免散播；舊路徑 /api/pi-push/ 在 command-dashboard ingress.py
+// 雙裝飾器仍保留為長期 fallback，本檔不再直接使用。
+const INGRESS_PI_NODE_PATH = '/api/ingress/pi-node/';
+
 let _lastPushHash  = '';
 let _commandStatus = { ok: false, lastOkAt: null, lastError: null };
 let _piPushStarted = false;
@@ -184,7 +189,7 @@ async function _replayUnsentQueue(target, apiKey) {
     try {
       const records = JSON.parse(row.records_json);
       const res = await _postWithHmac(
-        `${target}/api/pi-push/${cfg.unitId}`, { records, pushed_at: row.pushed_at }, apiKey
+        `${target}${INGRESS_PI_NODE_PATH}${cfg.unitId}`, { records, pushed_at: row.pushed_at }, apiKey
       );
       if (res.status >= 200 && res.status < 300) {
         db.prepare('UPDATE push_queue SET sent=1, sent_at=? WHERE id=?').run(nowISO(), row.id);
@@ -214,7 +219,7 @@ async function piPushOnce() {
   if (hash === _lastPushHash || rows.length === 0) {
     try {
       const hbRes = await _postWithHmac(
-        `${target}/api/pi-push/${cfg.unitId}`, { records: [], pushed_at: nowISO(), heartbeat: true }, apiKey
+        `${target}${INGRESS_PI_NODE_PATH}${cfg.unitId}`, { records: [], pushed_at: nowISO(), heartbeat: true }, apiKey
       );
       if (hbRes.status >= 200 && hbRes.status < 300) {
         log.debug('[PiPush] heartbeat OK');
@@ -245,7 +250,7 @@ async function piPushOnce() {
 
   try {
     const res = await _postWithHmac(
-      `${target}/api/pi-push/${cfg.unitId}`, { records, pushed_at: now }, apiKey
+      `${target}${INGRESS_PI_NODE_PATH}${cfg.unitId}`, { records, pushed_at: now }, apiKey
     );
     if (res.status >= 200 && res.status < 300) {
       db.prepare('UPDATE push_queue SET sent=1, sent_at=? WHERE id=?').run(nowISO(), qid);

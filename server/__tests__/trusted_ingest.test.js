@@ -272,3 +272,43 @@ test('pi_push_retry_uses_new_nonce_after_401_replay', async (_t) => {
   assert.notEqual(receivedNonces[0], receivedNonces[1],
     `AC-8b：重試時應產生新 nonce，兩次相同：${receivedNonces[0]}`);
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// P1-02b：piPushOnce 打到新 ingress 主路徑 /api/ingress/pi-node/{unit_id}
+// （非舊別名 /api/pi-push/{unit_id}）。command-dashboard P1-02 命名空間
+// 統一後本 repo client 同步遷移；別名仍在 ingress.py 雙裝飾器保留為長期
+// fallback，但本 client 不再使用。
+// ─────────────────────────────────────────────────────────────────────────────
+
+test('p1_02b_pi_push_uses_new_ingress_path', async (_t) => {
+  const { piPushOnce } = syncModule;
+  const { setCommandUrl } = configModule;
+  const { db } = require(path.join(REPO_ROOT, 'server', 'db.js'));
+
+  // 確保 pi_api_key 存在（piPushOnce 早退條件）
+  db.prepare("INSERT OR REPLACE INTO config(key,value) VALUES('pi_api_key', ?)")
+    .run('test-api-key-p1-02b');
+
+  let capturedUrl = null;
+  const mock = await createMockServer((req, _body) => {
+    capturedUrl = req.url;
+    return { status: 200, body: { ok: true } };
+  });
+
+  setCommandUrl(`http://127.0.0.1:${mock.port}`);
+  await piPushOnce();
+  await mock.close();
+  setCommandUrl('');
+
+  assert.ok(capturedUrl !== null,
+    'mock server 未收到 piPushOnce 請求（檢查 pi_api_key 是否注入成功）');
+
+  // 主要斷言：新主路徑（注意 cfg.unitId='shelter'，於 before() 注入 --unit shelter）
+  assert.equal(capturedUrl, '/api/ingress/pi-node/shelter',
+    `P1-02b：應打到新主路徑 /api/ingress/pi-node/shelter，` +
+    `實際：${capturedUrl}（若是 /api/pi-push/shelter 表示遷移未完）`);
+
+  // 防回歸：永遠不再用舊別名（pin 直到 ingress.py 別名移除）
+  assert.ok(!capturedUrl.startsWith('/api/pi-push/'),
+    `P1-02b regression：piPushOnce 不應再打 /api/pi-push/ 別名，實際：${capturedUrl}`);
+});
