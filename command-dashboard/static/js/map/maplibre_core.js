@@ -127,19 +127,12 @@ export function initMaplibre(containerId, callbacks = {}) {
     });
   });
 
-  // 防止覆蓋層點擊穿透到地圖（取代 Leaflet 的 DomEvent.disableClickPropagation）
-  [
-    'poly-draw-banner', 'route-draw-banner',
-    'node-place-banner', 'event-pin-banner',
-    'mgrs-island', 'layer-panel', 'map-coord-panel',
-  ].forEach((id) => {
-    const node = document.getElementById(id);
-    if (!node) return;
-    node.addEventListener('click', (e) => e.stopPropagation());
-    node.addEventListener('mousedown', (e) => e.stopPropagation());
-    node.addEventListener('dblclick', (e) => e.stopPropagation());
-    node.addEventListener('wheel', (e) => e.stopPropagation(), { passive: true });
-  });
+  // 覆蓋層點擊穿透：MapLibre 的 map.on('click') 只對 map render 區域內的 click 觸發；
+  // banners / islands / panels 是 DOM siblings（不在 #leaflet-map 內），click 不會洩漏到 MapLibre。
+  // 不需要像 Leaflet 那樣手動 stopPropagation。
+  // （Leaflet 的 L.DomEvent.disableClickPropagation 只擋 Leaflet 內部 event system，
+  //  我先前用 e.stopPropagation() 取代是錯的 — 會連 document-level data-action 委派一起擋掉，
+  //  導致 toggleCoordMode / toggleMgrsGrid 等 UI 按鈕全部失效。）
 
   // 容器尺寸變動補 resize（取代 Leaflet invalidateSize）
   setTimeout(() => _map.resize(), 0);

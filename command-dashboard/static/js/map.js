@@ -1130,8 +1130,11 @@ export function _panToCoordTarget(event) {
   if (event?.target?.closest?.('[data-action="toggleCoordMode"]')) return;
   event?.stopPropagation?.();
   event?.preventDefault?.();
-  if (!_leafletMap) return;
-  if (_coordPin) _leafletMap.panTo(_coordPin.getLatLng());
+  // P1-10b: _coordPin 現為 plain {lat, lng}（步驟 4 委派 maplibre_core 後改），
+  // 不再有 Leaflet marker.getLatLng()；用 core helper + MapLibre panTo([lng, lat])
+  const ll = _getCoordPinLatLng();
+  if (!_leafletMap || !ll) return;
+  _leafletMap.panTo([ll.lng, ll.lat]);
 }
 
 // P1-10b 步驟 6：MapLibre EntityLayer 實例化（一次建好，refreshLeafletMarkers 重複叫只 update data）
@@ -1146,7 +1149,8 @@ function _ensureEntityLayers() {
     return;
   }
 
-  // Polygons — fill + line stroke（同 source 兩 layer 共用）
+  // Polygons — fill + stroke（dash/solid 拆兩 layer + filter，因 MapLibre v4
+  // line-dasharray 不支援 data-driven expression）
   _polygonLayer = new EntityLayer(map, 'polygons', {
     layers: [
       {
@@ -1154,16 +1158,19 @@ function _ensureEntityLayers() {
         paint: { 'fill-color': ['get', 'color'], 'fill-opacity': 0.12 },
       },
       {
-        id: 'polygons-stroke', type: 'line',
-        paint: {
-          'line-color': ['get', 'color'], 'line-width': 2,
-          'line-dasharray': ['case', ['get', 'dash'], ['literal', [2, 1.5]], ['literal', [1]]],
-        },
+        id: 'polygons-stroke-solid', type: 'line',
+        filter: ['!', ['coalesce', ['get', 'dash'], false]],
+        paint: { 'line-color': ['get', 'color'], 'line-width': 2 },
+      },
+      {
+        id: 'polygons-stroke-dash', type: 'line',
+        filter: ['==', ['coalesce', ['get', 'dash'], false], true],
+        paint: { 'line-color': ['get', 'color'], 'line-width': 2, 'line-dasharray': [2, 1.5] },
       },
     ],
   });
 
-  // Infra — circle + text-field 縮寫（step 7 升級 SDF icon）
+  // Infra — circle only（text-field abbr 留 step 7 接 glyphs source 後加回）
   _infraLayer = new EntityLayer(map, 'infra', {
     layers: [
       {
@@ -1173,27 +1180,23 @@ function _ensureEntityLayers() {
           'circle-stroke-width': 2, 'circle-stroke-color': '#ffffff', 'circle-opacity': 0.92,
         },
       },
-      {
-        id: 'infra-label', type: 'symbol',
-        layout: {
-          'text-field': ['get', 'abbr'],
-          'text-size': 11, 'text-font': ['Noto Sans Regular'],
-          'text-anchor': 'center', 'text-allow-overlap': true,
-        },
-        paint: { 'text-color': '#ffffff' },
-      },
     ],
   });
 
-  // Routes — line（step 7 補 arrow symbol-on-line）
+  // Routes — 同 polygons 兩 layer 拆 dash/solid
   _routeLayer = new EntityLayer(map, 'routes', {
-    layers: [{
-      id: 'routes-line', type: 'line',
-      paint: {
-        'line-color': ['get', 'color'], 'line-width': 3, 'line-opacity': 0.9,
-        'line-dasharray': ['case', ['get', 'dash'], ['literal', [2, 1.5]], ['literal', [1]]],
+    layers: [
+      {
+        id: 'routes-line-solid', type: 'line',
+        filter: ['!', ['coalesce', ['get', 'dash'], false]],
+        paint: { 'line-color': ['get', 'color'], 'line-width': 3, 'line-opacity': 0.9 },
       },
-    }],
+      {
+        id: 'routes-line-dash', type: 'line',
+        filter: ['==', ['coalesce', ['get', 'dash'], false], true],
+        paint: { 'line-color': ['get', 'color'], 'line-width': 3, 'line-opacity': 0.9, 'line-dasharray': [2, 1.5] },
+      },
+    ],
   });
 
   // Flows — line（step 7 補 arrow symbol-on-line）
@@ -1205,13 +1208,18 @@ function _ensureEntityLayers() {
   });
 
   // Click handlers — 統一走 map.on('click', layerId, ...) 委派
+  // routes/polygons-stroke 拆兩 layer（solid/dash），各自掛
   map.on('click', 'polygons-fill', (e) => _onPolygonClick(e));
   map.on('click', 'infra-circle', (e) => _onInfraClick(e));
-  map.on('click', 'routes-line', (e) => _onRouteClick(e));
+  map.on('click', 'routes-line-solid', (e) => _onRouteClick(e));
+  map.on('click', 'routes-line-dash', (e) => _onRouteClick(e));
   map.on('click', 'flows-line', (e) => _onFlowClick(e));
 
   // Cursor 變 pointer 提示可點
-  ['polygons-fill', 'infra-circle', 'routes-line', 'flows-line'].forEach((id) => {
+  [
+    'polygons-fill', 'infra-circle',
+    'routes-line-solid', 'routes-line-dash', 'flows-line',
+  ].forEach((id) => {
     map.on('mouseenter', id, () => { map.getCanvas().style.cursor = 'pointer'; });
     map.on('mouseleave', id, () => { map.getCanvas().style.cursor = ''; });
   });
