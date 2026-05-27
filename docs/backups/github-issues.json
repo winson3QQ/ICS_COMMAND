@@ -376,6 +376,20 @@
         "minimizedReason": "",
         "reactionGroups": [],
         "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/19#issuecomment-4551461506"
+      },
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## Step 7 完整完成 — 階段 3b（glyphs vendor + text-field labels）\n\nCommit `4d6d7c8` push GitHub + Codeberg ✓。Branch 累積 12 commits。\n\n### Step 7 三階段 milestone\n\n| 階段 | 內容 | Commit |\n|---|---|---|\n| 1 | zone EntityLayer + circle marker | `ae972d8` |\n| 2+3a | NAPSG abbr SDF + chevron arrows | `fcf0f9f` |\n| **3b** | **vendor Noto Sans CJK pbf + text-field labels** | `4d6d7c8` |\n\n### Step 7 階段 3b 內容（261 files / +859 -10）\n\n**Vendor: Noto Sans Regular pbf glyphs**\n- 從 [Protomaps basemaps-assets](https://github.com/protomaps/basemaps-assets) `fonts/Noto Sans Regular/` 下載 256 個 pbf + OFL.txt\n- Vendored at `command-dashboard/static/fonts/glyphs/Noto Sans Regular/<range>.pbf` + `OFL.txt`\n- 6.8 MB 涵蓋 Basic Multilingual Plane (U+0000-U+FFFF)，含 ASCII + 拉丁 + 繁體中文 CJK Unified Ideographs (全字符)\n- License: **SIL Open Font License 1.1 (OFL)**\n- 選 B1 (full CJK) 而非 B2/B3 — 戰術 user-typed label 不可預期、與 TAK 對標、6.8MB vs P1-10c PMTiles 200-400MB 微不足道\n\n**Style: glyphs URL**\n- `maplibre_core.js` EMPTY_DARK_STYLE 加 `glyphs: '/static/fonts/glyphs/{fontstack}/{range}.pbf'`\n\n**5 個 text-field label layers**\n1. `infra-label` — text-field 'abbr' (H/P/S/F/U) 浮在 infra circle 內 (re-add)\n2. `polygons-label` — text-field 'label' (e.g. '管制區A')\n3. `routes-label` — text-field 'label' on `symbol-placement: 'line-center'` + `text-rotation-alignment: 'viewport'`\n4. `flows-label` — 同 routes-label\n5. `zones-label` — text-field 'label' 放 circle 下方\n\n**Tile boundary bug fix**（user dogfood 滾輪 zoom 撞到）\n\nBug：MapLibre 對 Polygon `symbol-placement: 'point'` 跨 tile 算多 centroid → zoom 拉大 polygon 跨多 tile → label 重複。\n\n修法：用 **Point geometry (centroid)** 不是 Polygon geometry 渲染 label：\n- 新 helper `polygonCentroid(poly)` → `[lng, lat]` 算術中心，支援 `label_anchor` override\n- 新 helper `polygonLabelToFeature(poly)` → GeoJSON Point Feature\n- `_renderPolygons` 同時 emit Polygon (for fill/stroke) + Point (for label) 兩 features\n- `polygons-label` filter `['==', ['geometry-type'], 'Point']` 確保只渲染 centroid Point\n\n### Debug 歷程\n\n1. 第一次測 user 觀察到「管制區A 兩個」→ 不能 reproduce 在單獨 inject。\n2. 用 「inject + 100ms 後 inspect」script 確認 1 feature / 1 polygons-label / 1 label visible → 以為是 race condition artifact。\n3. User 再測 — 用**滑鼠滾輪 zoom 大幅放大** polygon → reproducible！\n4. 找到 MapLibre 跨 tile 對 Polygon `symbol-placement: 'point'` 的已知行為（每 tile 算自己的 centroid）。\n5. 修法：centroid Point feature pattern（業界標準解）。\n\n### POLICY.md vendor block\n\n`command-dashboard/docs/design/POLICY.md` 加 Noto Sans Regular pbf glyphs 區段：\n- 來源、license、總大小、涵蓋範圍、style URL、OFL 散布義務、供應鏈紅線確認、B1 選擇 rationale、未來如要加 Bold/Italic weight 的擴充指引\n\n### Verification\n\n```\nhuman verify (real browser, real injected polygon + route + flow + infra):\n  - PASS all 5 labels render 正確 (管制區A / 主要疏散 / 傷患後送 / 醫院 / H / 5 個 zone 中文名)\n  - PASS halo readable on dark background\n  - PASS zoom 滑鼠滾輪放大 polygon → 仍只 1 個 「管制區A」 (centroid Point 修復生效)\n  - PASS Chinese CJK 字 (Noto Sans Regular pbf glyphs 載入正確)\nvitest:    55 passed\npytest:    443 passed\neslint:    clean\ndoc_sync:  ✓\n```\n\n### Step 7 全部完成 — 14 步驟進度更新\n\n| # | 步驟 | 狀態 |\n|---|---|---|\n| 1 | Vendor MapLibre + pmtiles + LICENSE | ✅ |\n| 2 | HTML 加 maplibre-gl.css link | ✅ |\n| 3 | main.js loader 載 maplibre + pmtiles | ✅ |\n| 4 | maplibre_core.js + map.js init 委派 | ✅ |\n| 5 | EntityLayer 抽象 + zoneToFeature helper | ✅ |\n| 6 | port _renderPolygons / _renderInfra / _renderRoutes / _renderFlows | ✅ |\n| **7** | **NAPSG SVG marker + glyphs source + 全 entity labels + chevron arrows + zone marker** | ✅ |\n| 8 | 建 draw_tools.js（含 polygon/route label 拖曳） | ⏳ next |\n| 9 | 建 event_popup.js | ⏳ |\n| 10 | 建 coord_tools.js（MGRS grid port） | ⏳ |\n| 11 | 清死碼 + Leaflet API sweep | ⏳ |\n| 12 | Unit tests（public API snapshot） | ⏳ |\n| 13 | CSP smoke test | ⏳ |\n| 14 | Verify 全流程 + Lighthouse + 1000 entity FPS | ⏳ |\n\n**進度：7 / 14 步驟 ✅**\n\n### 下一步建議\n\n**Step 8 — draw_tools.js port**：修 user 撞到的 `_addPolyVertex` / `_addRouteVertex` 仍是 Leaflet API 殘留（console 噴 error）。User 透過 draw_tools UI 持久新增 polygon/route 進 map_config 後，arrows / labels 等有真實資料可顯示，順道驗 step 6/7 持久行為。預估 1 天。\n",
+        "createdAt": "2026-05-27T05:44:28Z",
+        "id": "IC_kwDOSnBjpc8AAAABD02aMA",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/19#issuecomment-4551711280"
       }
     ],
     "createdAt": "2026-05-26T08:48:30Z",
@@ -384,7 +398,7 @@
     "number": 19,
     "state": "OPEN",
     "title": "P1-10b: MapLibre GL JS 全替換（移除 Leaflet）",
-    "updatedAt": "2026-05-27T05:04:01Z",
+    "updatedAt": "2026-05-27T05:44:28Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/19"
   },
   {
