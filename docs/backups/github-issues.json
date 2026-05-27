@@ -306,6 +306,20 @@
         "minimizedReason": "",
         "reactionGroups": [],
         "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/19#issuecomment-4550255529"
+      },
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## Progress — 步驟 5 完成（EntityLayer 抽象）\n\nBranch: `feat/issue-19-maplibre-replace` 已 push GitHub + Codeberg\n\n### 進度：5 / 14 步驟\n\n| # | 步驟 | 狀態 | Commit |\n|---|---|---|---|\n| 1 | Vendor MapLibre + pmtiles + LICENSE | ✅ | `6ddb3ff`, `ffc4ea5` |\n| 2 | HTML 加 maplibre-gl.css link | ✅ | `552cdf5` |\n| 3 | main.js loader 載 maplibre + pmtiles | ✅ | `552cdf5` |\n| 4 | maplibre_core.js + map.js init 委派 | ✅ | `552cdf5`, `13f0aa7` |\n| **5** | **EntityLayer 抽象 + zoneToFeature helper** | ✅ | `80a0dc0` |\n| 6 | port _renderPolygons / _renderInfra / _renderRoutes / _renderFlows 用 EntityLayer | ⏳ next |\n| 7 | NAPSG SVG marker → MapLibre addImage + Symbol Layer（SDF） | ⏳ |\n| 8 | 建 draw_tools.js | ⏳ |\n| 9 | 建 event_popup.js | ⏳ |\n| 10 | 建 coord_tools.js（MGRS grid port） | ⏳ |\n| 11 | 清死碼（leaflet.min.* + protomaps-leaflet + marker PNG） | ⏳ |\n| 12 | Unit tests（public API snapshot） | ⏳ |\n| 13 | CSP smoke test | ⏳ |\n| 14 | Verify 全流程 + Lighthouse + 1000 entity FPS | ⏳ |\n\n### 本 commit（`80a0dc0`）\n\n`feat(map): EntityLayer 抽象 + zoneToFeature helper (P1-10b 步驟 5)` — 2 檔 / +412 -0\n\n**新檔 `static/js/map/entity_layer.js`（200 行）**\n\n`EntityLayer` class — 1 GeoJSON source + N MapLibre Layer 共用 source：\n- 借鏡 mini-taiwan `TrainSymbolLayer.ts:107-270`\n- `update(features)` 一次 setData，套 `PERFORMANCE_OPTIMIZATION_PLAN.md` 反例 #6 避雷（不逐筆 add）\n- `promoteId: 'id'` 預埋 — 步驟 7 setFeatureState hover/selected 走 properties.id\n- Lifecycle: `install` / `update` / `clear` / `setVisible` / `setFeatureState` / `removeFeatureState` / `destroy` / `getFeatureCount` / `isInstalled`\n- 防呆：constructor 拒絕缺 `map` / `id` / `layers`；重複 source 自動跳過\n\n`zoneToFeature(zone)` helper — 標準化 zone-shaped object → GeoJSON Feature with 三維度 properties：\n- **source × affiliation × severity 拆 3 個 property**（修正 mini-taiwan 單維度反例）\n- 為 P2-04 TAK CoT push 鋪路 — 不做 = schema 誤用\n- `priority` property 預埋（步驟 7 `symbol-sort-key` 用）\n- 座標無效 → 回 null（caller `.filter(Boolean)` 過濾）\n\n**新測 `tests/js/entity_layer.test.js`（15 unit tests）**\n\n- EntityLayer: 9 tests（constructor 防呆 / install / update / clear / setVisible / setFeatureState / destroy / 重複 source 不重建）\n- zoneToFeature: 6 tests（合法 zone / 預設值 / label & id fallback / 座標無效 / priority 預設）\n- Mock map 模式（不跑真 MapLibre，jsdom + WebGL 不需要）\n\n### Verification 結果\n\n```\nvitest:       34 passed  (既有 19 + 新 15)\npytest:       443 passed (backend 無 regression)\neslint:       clean\ndoc_sync:     ✓ passed\npreview:      real MapLibre 環境 smoke test 全綠\n              (feature update / setFeatureState hover / setVisible / destroy lifecycle 正確)\n```\n\n### 設計重點對 P2 的鋪路\n\n| 點 | P2 受惠 |\n|---|---|\n| 三維度 schema 拆 source × affiliation × severity | P2-04 TAK CoT push 直接套，不撞牆改 schema |\n| `promoteId: 'id'` 預埋 | 步驟 7 hover/selected 不需重建 source |\n| `priority` property 預埋 | 步驟 7 `symbol-sort-key` 戰術 critical 不被擋 |\n| `zoneToFeature` 對齊 `cop_entities` 欄位 | P2-04 normalize_cot 輸出可直接餵 EntityLayer |\n\n### 下一步\n\n步驟 6 — port `_renderPolygons` / `_renderInfra` / `_renderRoutes` / `_renderFlows` 用新 EntityLayer。需要動 map.js 多區塊 + 真實視覺驗證（outdoor 模式下 zone marker / polygon / 設施 / 流向 / 路線重新顯示）。預估 1 天。\n",
+        "createdAt": "2026-05-27T00:56:51Z",
+        "id": "IC_kwDOSnBjpc8AAAABDzgykA",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/19#issuecomment-4550308496"
       }
     ],
     "createdAt": "2026-05-26T08:48:30Z",
@@ -314,7 +328,7 @@
     "number": 19,
     "state": "OPEN",
     "title": "P1-10b: MapLibre GL JS 全替換（移除 Leaflet）",
-    "updatedAt": "2026-05-27T00:44:49Z",
+    "updatedAt": "2026-05-27T00:56:51Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/19"
   }
 ]
