@@ -55,4 +55,5 @@ command-dashboard/tests/reports/
 # 截圖（badge 資產除外）
 command-dashboard/static/*.png
 !command-dashboard/static/badge.png
+!command-dashboard/static/臂章後製版.png
 command-dashboard/static/tiles/
