@@ -320,6 +320,20 @@
         "minimizedReason": "",
         "reactionGroups": [],
         "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/19#issuecomment-4550308496"
+      },
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## Progress — 步驟 6 完成（4 個 render 函式 port 到 EntityLayer）\n\nBranch: `feat/issue-19-maplibre-replace` 已 push GitHub + Codeberg\n\n### 進度：6 / 14 步驟\n\n| # | 步驟 | 狀態 | Commit |\n|---|---|---|---|\n| 1 | Vendor MapLibre + pmtiles + LICENSE | ✅ | `6ddb3ff`, `ffc4ea5` |\n| 2 | HTML 加 maplibre-gl.css link | ✅ | `552cdf5` |\n| 3 | main.js loader 載 maplibre + pmtiles | ✅ | `552cdf5` |\n| 4 | maplibre_core.js + map.js init 委派 | ✅ | `552cdf5`, `13f0aa7` |\n| 5 | EntityLayer 抽象 + zoneToFeature helper | ✅ | `80a0dc0` |\n| **6** | **port _renderPolygons / _renderInfra / _renderRoutes / _renderFlows 用 EntityLayer** | ✅ | 本 commit |\n| 7 | NAPSG SVG marker → MapLibre addImage + Symbol Layer（SDF）+ glyphs source（fonts.pbf）+ route/flow 箭頭 | ⏳ next |\n| 8 | 建 draw_tools.js（含 polygon/route label 拖曳重定位） | ⏳ |\n| 9 | 建 event_popup.js | ⏳ |\n| 10 | 建 coord_tools.js（MGRS grid port） | ⏳ |\n| 11 | 清死碼（leaflet.min.* + protomaps-leaflet + marker PNG + Leaflet legacy 分支） | ⏳ |\n| 12 | Unit tests（public API snapshot） | ⏳ |\n| 13 | CSP smoke test | ⏳ |\n| 14 | Verify 全流程 + Lighthouse + 1000 entity FPS | ⏳ |\n\n### 本 commit 內容\n\n`feat(map): port 4 個 render 函式用 EntityLayer (P1-10b 步驟 6)` — 3 檔 / +472 -96\n\n**map.js 改動**\n\n`_ensureEntityLayers()` lazy init 4 個 EntityLayer 實例（map style 載入後）：\n- **polygons** — fill (data-driven color + 0.12 opacity) + line stroke\n- **infra** — circle (data-driven color + white stroke) + symbol text-field abbr\n- **routes** — line (data-driven color + dash expression)\n- **flows** — line (data-driven color)\n\nClick handler 從逐筆 `marker.on('click', ...)` 改 `map.on('click', layerId, ...)` 委派 — `_onPolygonClick` / `_onInfraClick` / `_onRouteClick` / `_onFlowClick`。\n\n`refreshLeafletMarkers` 分流：maplibregl 存在 → 走新路徑（zones 部分仍 stubbed 等 step 7）；不存在 → Leaflet legacy fallback（step 11 清）。\n\n**entity_layer.js 新加 4 個 helper（+117 行）**\n\n- `polygonToFeature(poly)` — 自動閉合首尾，`< 3` 頂點 → null\n- `routeToFeature(route)` — `< 2` 頂點 → null\n- `infraToFeature(infra)` — caller 透過 INFRA_TYPES 餵 color/abbr（不耦合業務常數）\n- `flowToFeature(flow, resolveRef)` — caller 提供 zone/infra 解析 fn\n\n**新測 entity_layer.test.js +15 tests**\n\npolygon 5 / route 3 / infra 3 / flow 4，含閉合 / NaN 過濾 / 預設值 / 防呆 / from_ref 優先順序\n\n### Verification\n\n```\nvitest:       49 passed (既有 34 + 新 15)\npytest:       443 passed (backend 無 regression)\neslint:       clean\ndoc_sync:     ✓ passed\npreview:      ✅ polygon (fill+stroke) / 3 infra circle / route line / flow line\n              全部 render 正確（mock data 注入測試 div）\n              ✅ source feature count: polygons=1 / infra=2-3 / routes=1 / flows=1\n              ✅ 5 個 layer 全建（polygons-fill/polygons-stroke/infra-circle/\n                                    routes-line/flows-line）\n              ✅ getFeatureState hover 可寫 / setVisible toggle visibility 對\n```\n\n### 已知 gap → 步驟 7 / 8 處理\n\n| Gap | 留給 |\n|---|---|\n| Infra circle 內 H/P/S text-field 未顯示 | 步驟 7（vendor fonts.pbf glyphs source） |\n| Route/Flow 方向箭頭 marker | 步驟 7（symbol-on-line + 箭頭 SDF） |\n| Polygon/Route 標籤顯示 | 步驟 7（text-field + glyphs） |\n| Polygon/Route 標籤拖曳重定位 | 步驟 8（draw_tools.js 編輯能力） |\n| Zone NAPSG SVG marker 渲染 | 步驟 7 |\n\n### 下一步\n\n步驟 7 — NAPSG SVG marker SDF 系統 + glyphs source（離線 fonts.pbf vendor）+ route/flow 箭頭 + text-field 統一接上。預估 1.5 天（mini-taiwan SDF pattern + WaveInk DS 配色已備）。\n",
+        "createdAt": "2026-05-27T01:11:37Z",
+        "id": "IC_kwDOSnBjpc8AAAABDzkwbQ",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/19#issuecomment-4550373485"
       }
     ],
     "createdAt": "2026-05-26T08:48:30Z",
@@ -328,7 +342,7 @@
     "number": 19,
     "state": "OPEN",
     "title": "P1-10b: MapLibre GL JS 全替換（移除 Leaflet）",
-    "updatedAt": "2026-05-27T00:56:51Z",
+    "updatedAt": "2026-05-27T01:11:37Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/19"
   }
 ]
