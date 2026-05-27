@@ -421,7 +421,8 @@ describe('C1-F commander modules', () => {
     // canCreateEvents() 守門點在 callback 內（_lpMoved 已封裝進 core，map.js 不再見此變數）
     expect(mapSource).toMatch(/onLongPress: \(\{ lat, lng \}\) => \{\s+if \(canCreateEvents\(\)\) _openEventPopup\(lat, lng\);/);
     expect(mapSource).toMatch(/function _openEventPopup\(lat, lng\) {\s+if \(!canCreateEvents\(\)\) return;/);
-    expect(mapSource).toMatch(/async function _evPopupSubmit\(typeKey\) {\s+if \(!canCreateEvents\(\)\) return;/);
+    // P1-10b 步驟 9：_evPopupSubmit 簽名變 (typeKey, ctx) — ctx 由 EventPopup 帶來 {lat,lng,reporter}
+    expect(mapSource).toMatch(/async function _evPopupSubmit\(typeKey, ctx\) {\s+if \(!canCreateEvents\(\)\) return;/);
     expect(wsSource).toMatch(/canCreateEvents/);
     expect(wsSource).toMatch(/canUseRealModeControls/);
   });

@@ -44,6 +44,7 @@ import {
 } from './map/entity_layer.js';
 import { DrawPreview } from './map/draw_tools.js';
 import { LabelMarkerManager } from './map/label_markers.js';
+import { EventPopup } from './map/event_popup.js';
 
 const API_BASE = location.origin;
 const el = id => document.getElementById(id);
@@ -64,6 +65,7 @@ let _zoneLayer = null;      // EntityLayer (Point circle) — step 7 階段 1
 let _drawPreview = null;       // DrawPreview — step 8（polygon / route 繪製預覽）
 let _polyLabelMgr = null;      // LabelMarkerManager (polygons)
 let _routeLabelMgr = null;     // LabelMarkerManager (routes)
+let _eventPopup = null;        // EventPopup — step 9（長按 → 兩階段事件選單）
 let _entityLayersInstalled = false;
 let _mgrsGridLayer = null;
 let _coordPin = null;            // 雙擊放置的藍色十字 marker
@@ -770,125 +772,30 @@ function _drawMgrsGrid() {
 // 使用 L.DomUtil + L.DomEvent，避免 inline onclick 失效
 // ══════════════════════════════════════════════════════════════
 
-let _evPopup = null;
-let _evPopupLatLng = null;
-
-function _evPopupBuildGroups(mgrs, reportUnit) {
-  const wrap = L.DomUtil.create('div', 'ev-popup-inner');
-
-  const header = L.DomUtil.create('div', 'ev-popup-header', wrap);
-  const repWrap = L.DomUtil.create('div', 'ev-popup-reporter-wrap', header);
-  const lbl = L.DomUtil.create('label', '', repWrap);
-  lbl.textContent = '回報：';
-  const sel = L.DomUtil.create('select', '', repWrap);
-  sel.id = 'ev-popup-unit';
-  [['command', '指揮部'], ['forward', '前進組'], ['security', '安全組'],
-   ['shelter', '收容組'], ['medical', '醫療組']].forEach(([v, t]) => {
-    const opt = document.createElement('option');
-    opt.value = v; opt.textContent = t;
-    if (v === reportUnit) opt.selected = true;
-    sel.appendChild(opt);
-  });
-  L.DomEvent.on(sel, 'change', () => {
-    const bar = el('place-report-unit');
-    if (bar) bar.value = sel.value;
-  });
-
-  const mgrsSpan = L.DomUtil.create('span', 'ev-popup-mgrs', header);
-  mgrsSpan.textContent = `📍 ${mgrs}`;
-
-  const grid = L.DomUtil.create('div', 'ev-popup-groups', wrap);
-  Object.entries(_EVENT_GROUPS).forEach(([k, label]) => {
-    const btn = L.DomUtil.create('button', 'ev-popup-group-btn', grid);
-    btn.type = 'button';
-    btn.textContent = label;
-    L.DomEvent.on(btn, 'click', (e) => {
-      L.DomEvent.stopPropagation(e);
-      _evPopupGroup(k);
-    });
-  });
-  return wrap;
-}
-
-function _evPopupBuildTypes(groupKey) {
-  const wrap = L.DomUtil.create('div', 'ev-popup-inner');
-  const header = L.DomUtil.create('div', 'ev-popup-header', wrap);
-  const back = L.DomUtil.create('span', 'ev-popup-back', header);
-  back.style.marginBottom = '0';
-  back.textContent = '← 返回';
-  L.DomEvent.on(back, 'click', (e) => {
-    L.DomEvent.stopPropagation(e);
-    _evPopupBack();
-  });
-  const grpSpan = L.DomUtil.create('span', 'ev-popup-mgrs', header);
-  grpSpan.textContent = _EVENT_GROUPS[groupKey] || groupKey;
-
-  const list = L.DomUtil.create('div', 'ev-popup-types', wrap);
-  Object.entries(_EVENT_TYPES)
-    .filter(([, v]) => v.group === groupKey)
-    .forEach(([k, v]) => {
-      const sev = v.severity || 'info';
-      const btn = L.DomUtil.create('button', `ev-popup-type-btn sev-${sev}`, list);
-      btn.type = 'button';
-      btn.textContent = v.label;
-      L.DomEvent.on(btn, 'click', (e) => {
-        L.DomEvent.stopPropagation(e);
-        _evPopupSubmit(k);
-      });
-    });
-  return wrap;
-}
+// P1-10b 步驟 9：DOM 建構與 popup lifecycle 移至 EventPopup（map/event_popup.js），
+// 本檔僅保留 _openEventPopup（thin wrapper + 權限判定）+ _evPopupSubmit（資料層：
+// authFetch /api/events + 寫 map_config + 觸發 poll）。
+//
+// EventPopup instance 在 _ensureEntityLayers 末段 lazy 建立（與 DrawPreview / LabelMarkerManager 同層）。
 
 function _openEventPopup(lat, lng) {
   if (!canCreateEvents()) return;
-  if (!window.L || !_leafletMap) return;
-  // P1-10b 步驟 9 才 port event_popup.js（L.popup → maplibregl.Popup + DOM 建構保留）。
-  // 過渡期 long press 觸發但 popup 不開（silent，不阻塞 step 4 verify）。
-  // TODO(P1-10b#19 step 9): port 到 maplibregl.Popup + setLngLat + setDOMContent。
-  if (typeof window.maplibregl !== 'undefined') {
-    console.info('[map] _openEventPopup 暫停用，等 P1-10b 步驟 9 port');
+  if (typeof window.maplibregl === 'undefined') {
+    // Leaflet path 已退役；長按 long press 走 MapLibre core 觸發。
     return;
   }
-  if (_evPopup) { _leafletMap.closePopup(_evPopup); _evPopup = null; }
-  _evPopupLatLng = { lat, lng };
-  const mgrs = _latlngToMGRS(lat, lng, 5);
-  const reportUnit = el('place-report-unit')?.value || 'command';
-  _evPopup = L.popup({
-    className: 'ev-popup',
-    closeButton: true,
-    autoClose: false,
-    closeOnClick: false,
-    maxWidth: 280,
-    offset: [0, -6],
-  })
-    .setLatLng([lat, lng])
-    .setContent(_evPopupBuildGroups(mgrs, reportUnit))
-    .openOn(_leafletMap);
-  _evPopup.on('remove', () => { _evPopup = null; });
+  if (!_eventPopup) return;   // _ensureEntityLayers 尚未跑（style not loaded），略
+  _eventPopup.open(lat, lng);
 }
 
-function _evPopupGroup(groupKey) {
-  if (!_evPopup || !_evPopupLatLng) return;
-  _evPopup.setContent(_evPopupBuildTypes(groupKey));
-}
-
-function _evPopupBack() {
-  if (!_evPopupLatLng) return;
-  const { lat, lng } = _evPopupLatLng;
-  _openEventPopup(lat, lng);
-}
-
-async function _evPopupSubmit(typeKey) {
+async function _evPopupSubmit(typeKey, ctx) {
   if (!canCreateEvents()) return;
-  if (!_evPopupLatLng) return;
+  if (!ctx) return;
   const evDef = _EVENT_TYPES[typeKey];
   if (!evDef) return;
 
-  const popupSel = document.getElementById('ev-popup-unit');
-  const reportedBy = popupSel ? popupSel.value : (el('place-report-unit')?.value || 'command');
-  const { lat, lng } = _evPopupLatLng;
-  _evPopupLatLng = null;
-  if (_evPopup) { _leafletMap.closePopup(_evPopup); _evPopup = null; }
+  const reportedBy = ctx.reporter || el('place-report-unit')?.value || 'command';
+  const { lat, lng } = ctx;
 
   const id = 'evt_' + Date.now();
   const mgrs = _latlngToMGRS(lat, lng, 5);
@@ -1452,6 +1359,21 @@ function _ensureEntityLayers() {
   // 提供 polygon/route label 拖曳重定位能力（取代 Leaflet 原 L.marker draggable）。
   _polyLabelMgr = new LabelMarkerManager(map, window.maplibregl, 'polygons');
   _routeLabelMgr = new LabelMarkerManager(map, window.maplibregl, 'routes');
+
+  // Step 9：EventPopup — 長按事件回報 popup（取代 Leaflet 的 L.popup + L.DomUtil/DomEvent）。
+  // 兩階段選單：group 按鈕 → type 按鈕；submit 走 _evPopupSubmit 寫 /api/events。
+  _eventPopup = new EventPopup(map, window.maplibregl, {
+    groups: _EVENT_GROUPS,
+    types: _EVENT_TYPES,
+    reporterOptions: [
+      ['command', '指揮部'], ['forward', '前進組'], ['security', '安全組'],
+      ['shelter', '收容組'], ['medical', '醫療組'],
+    ],
+    getReporter: () => el('place-report-unit')?.value || 'command',
+    onReporterChange: (v) => { const bar = el('place-report-unit'); if (bar) bar.value = v; },
+    latlngToMgrs: (lat, lng) => _latlngToMGRS(lat, lng, 5),
+    onSubmit: (typeKey, ctx) => _evPopupSubmit(typeKey, ctx),
+  });
 
   _entityLayersInstalled = true;
 }
