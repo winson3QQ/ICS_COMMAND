@@ -3,7 +3,7 @@
   "configurations": [
     {
       "name": "dashboard",
-      "runtimeExecutable": "python3",
+      "runtimeExecutable": "command-dashboard/.venv/bin/python",
       "runtimeArgs": [
         "-m", "uvicorn",
         "main:app",
