@@ -557,6 +557,20 @@
         "minimizedReason": "",
         "reactionGroups": [],
         "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/22#issuecomment-4552955407"
+      },
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## EventDragManager + highlight + countdown 修正\n\n[6b0bbf1](https://github.com/winson3QQ/ICS_COMMAND/commit/6b0bbf1) — 補 step 7 zone marker 改 GPU symbol layer 後遺漏的事件拖曳能力，順手修兩個 dogfood UX 觀察。\n\n### 改動範圍\n\n| 檔案 | 新增 / 修改 |\n|---|---|\n| **新** `static/js/map/event_drag.js` | EventDragManager — 透明 HTML handle 蓋事件 SDF circle，drag + click forwarding |\n| **新** `tests/js/event_drag.test.js` | 14 unit tests |\n| `static/js/map.js` | wire EventDragManager；`_renderZones(opts)` 加 `skipHandleSync`；4 個 zones-* layer paint 加 `feature-state.dimmed` opacity case；zones-halo 加 `feature-state.highlighted` 綠光 (#3fb950, blur 0.6, radius 26, opacity 0.45)；`_highlightEvent` / `_unhighlightEvent` listener |\n| `static/js/map/maplibre_core.js` | 長按 mousedown listener 在 .maplibregl-marker target 內時短路（避免事件拖曳同時觸發長按 popup） |\n| `static/js/events.js` | `_countdownStr` ≥1h 轉 `H:MM:SS`；新加 `_tickCountdowns` setInterval(1000) 每秒走 DOM textContent；modal + card 兩處加 `data-countdown-deadline` / `data-countdown-prefix` attr |\n\n### Dogfood 結果（VERIFY-PASS）\n\n| 步驟 | 預期 | 結果 |\n|---|---|---|\n| Hover 事件 circle | 圓形淡藍虛線、貼 SDF circle 不偏 | ✅（border-radius:50% + box-sizing:border-box；個別 style property 設定不擦 transform） |\n| 拖事件 | circle 即時跟手 + 處置紀錄寫 'A → B' + events.location_desc 同步 | ✅ |\n| 拖完 click | 不誤開 modal（被 swallow） | ✅ |\n| 長按事件 circle | 不彈長按 event popup（mousedown short-circuit） | ✅ |\n| 結案事件 | circle + handle 一起消失 | ✅ |\n| 右側長按 600ms | target 周圍綠光 halo，其他 zone 暗化 0.15 | ✅ |\n| 逾時 409:42 | 顯示成 6:49:42 | ✅ |\n| countdown 走秒 | 每 1s tick（不再 5s 跳） | ✅ |\n\n### 自動測試\n\n```\nvitest:    95 passed（既有 81 + 14 新 event_drag tests）\npytest:    443 passed\neslint:    clean\ndoc_sync:  ✓\n```\n\n### 14-step 進度\n\n| # | 狀態 |\n|---|---|\n| 1-9 | ✅ |\n| **9.5** | ✅ EventDragManager + highlight + countdown 修正（補 step 7 / step 9 dogfood 漏網） |\n| 10 | ⏳ coord_tools.js (MGRS grid port) — next |\n| 11-14 | ⏳ |\n\nref #19\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+        "createdAt": "2026-05-27T10:14:24Z",
+        "id": "IC_kwDOSnBjpc8AAAABD2picg",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/22#issuecomment-4553597554"
       }
     ],
     "createdAt": "2026-05-27T08:47:37Z",
@@ -566,7 +580,7 @@
     "number": 22,
     "state": "OPEN",
     "title": "P1-10b: MapLibre GL JS 全替換 — 步驟 1-9（含 #20 #21 sub-fixes）",
-    "updatedAt": "2026-05-27T08:48:06Z",
+    "updatedAt": "2026-05-27T10:14:24Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/22"
   }
 ]
