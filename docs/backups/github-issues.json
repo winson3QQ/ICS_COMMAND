@@ -292,6 +292,20 @@
         "minimizedReason": "",
         "reactionGroups": [],
         "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/19#issuecomment-4542928424"
+      },
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## Progress — 步驟 2-4 完成（MapLibre core 取代 Leaflet init）\n\nBranch: `feat/issue-19-maplibre-replace` 已 push GitHub + Codeberg\n\n### 進度：4 / 14 步驟\n\n| # | 步驟 | 狀態 | Commit |\n|---|---|---|---|\n| 1 | Vendor MapLibre + pmtiles + LICENSE | ✅ | `6ddb3ff`, `ffc4ea5` |\n| **2** | **HTML 加 maplibre-gl.css link** | ✅ | `552cdf5` |\n| **3** | **main.js loader 載 maplibre + pmtiles，移除 _configureLeafletAssets** | ✅ | `552cdf5` |\n| **4** | **新檔 maplibre_core.js + map.js init 委派** | ✅ | `552cdf5` |\n| 5 | 建 entity_layer.js + GeoJSON source 抽象 | ⏳ next |\n| 6 | port _renderPolygons / _renderInfra / _renderRoutes / _renderFlows | ⏳ |\n| 7 | NAPSG SVG marker → MapLibre addImage + Symbol Layer（SDF） | ⏳ |\n| 8 | 建 draw_tools.js | ⏳ |\n| 9 | 建 event_popup.js | ⏳ |\n| 10 | 建 coord_tools.js（MGRS grid port） | ⏳ |\n| 11 | 清死碼（leaflet.min.* + protomaps-leaflet + marker PNG） | ⏳ |\n| 12 | Unit tests（EntityLayer / public API snapshot） | ⏳ |\n| 13 | CSP smoke test | ⏳ |\n| 14 | Verify 全流程 + Lighthouse + 1000 entity FPS | ⏳ |\n\n### 本 batch 兩個 commit\n\n**`552cdf5`** — `feat(map): MapLibre core 取代 Leaflet init` — 5 檔 / +298 -120\n- `static/commander_dashboard.html`：加 maplibre-gl.css link\n- `static/js/main.js`：loader 換 maplibre + pmtiles，移除 _configureLeafletAssets\n- `static/js/map.js`：_initLeaflet → _initMaplibre 委派，過渡期 stub entity rendering / MGRS / popup\n- `static/js/map/maplibre_core.js`：**新檔 220 行**，封裝 MapLibre lifecycle + 事件 wiring + coord pin\n- `.claude/launch.json`：preview runtimeExecutable 改 `python3 -m uvicorn`（不再硬 pin venv 路徑）\n\n**`13f0aa7`** — `test(map): 更新 commander_modules SoT contract test` — 1 檔 / +26 -8\n- 4 個 SoT contract test 對齊新架構（map.js 結構變，contract 必須跟改）\n\n### 過渡期已 stubbed（等步驟 5+ 接的）\n\n| 函式 | 停用機制 | port 到 |\n|---|---|---|\n| `refreshLeafletMarkers` / `_renderPolygons` / `_renderInfra` / `_renderRoutes` / `_renderFlows` | 入口 `if (typeof window.maplibregl !== 'undefined') return;` | 步驟 5–6 entity_layer.js |\n| `_drawMgrsGrid` | 同上 | 步驟 10 coord_tools.js |\n| `_openEventPopup` + `_evPopupBuildGroups` / `_evPopupBuildTypes` | 同上，加 console.info 提示 | 步驟 9 event_popup.js |\n\n過渡期行為：outdoor 模式可切、地圖可 pan/zoom、雙擊 coord pin OK、長按不開 popup（silent）、entity markers 不渲染。**這是預期的中間狀態**，步驟 5+ 才會回復完整功能。\n\n### Verification 結果\n\n```\nvitest:       19 passed  (4 SoT contract tests 更新對齊新架構)\npytest:       443 passed (backend 無 regression)\neslint:       clean\ndoc_sync:     ✓ passed\nconsole:      0 errors\npreview:      ✓ MapLibre instance dark canvas + NavigationControl + coord pin 渲染驗證\n              ✓ zoomIn 15 → 15.97 / panBy 後 center 位移 OK\n              ✓ maplibregl + pmtiles + L 三個 global 載入 OK\n              ✓ ES modules import 全綠（map.js 58 exports / maplibre_core.js 9 exports）\n```\n\n### 下一步\n\n進入步驟 5 — 建 `static/js/map/entity_layer.js`，借鏡 mini-taiwan `TrainSymbolLayer.ts:107-270` 的「1 GeoJSON source per entity-class + update(featureCollection) 批量替換」模式，為步驟 6 port entity rendering 鋪基礎。\n\n待 14 步驟全部完成後開 PR（套 PR template + §8 verification script），人 verify + /code-review + /security-review 三個 skill 跑過再 merge。\n",
+        "createdAt": "2026-05-27T00:44:49Z",
+        "id": "IC_kwDOSnBjpc8AAAABDzdjqQ",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/19#issuecomment-4550255529"
       }
     ],
     "createdAt": "2026-05-26T08:48:30Z",
@@ -300,7 +314,7 @@
     "number": 19,
     "state": "OPEN",
     "title": "P1-10b: MapLibre GL JS 全替換（移除 Leaflet）",
-    "updatedAt": "2026-05-26T09:38:02Z",
+    "updatedAt": "2026-05-27T00:44:49Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/19"
   }
 ]
