@@ -3,14 +3,31 @@
  *
  * 職責：
  *   - 載入 /static/map_config.json
- *   - 管理站內靜態圖與站外 Leaflet 地圖切換
+ *   - 管理站內靜態圖與站外 MapLibre 地圖切換（P1-10b 起，原 Leaflet）
  *   - 渲染基本節點 / 事件 marker
  *   - 提供 main.js 事件委派所需的地圖操作函式
  *
- * 可 import：ws.js。不得 import events.js / decisions.js / cop.js / charts.js。
+ * 可 import：ws.js + map/maplibre_core.js。不得 import events.js / decisions.js / cop.js / charts.js。
+ *
+ * P1-10b 進行中（issue #19）：
+ *   - 步驟 4 完成：map instance + dblclick coord pin + 長按 popup + view restore（本檔）
+ *   - 步驟 5–10 待做：entity layer / SDF icon / draw tools / popup / MGRS grid port
+ *   - 過渡期 entity rendering 函式（refreshLeafletMarkers / _renderPolygons / _drawMgrsGrid 等）
+ *     已 stub 為 early-return，TODO 標註待 port
  */
 
 import { authFetch, canAccessMapObjects, canCreateEvents } from './ws.js';
+import {
+  initMaplibre,
+  getMap as _getMap,
+  resizeMap as _resizeMap,
+  getCenter as _mapGetCenter,
+  getZoom as _mapGetZoom,
+  showCoordPin as _showCoordPinCore,
+  clearCoordPin as _clearCoordPinCore,
+  getCoordPinLatLng as _getCoordPinLatLng,
+  hasCoordPin as _hasCoordPin,
+} from './map/maplibre_core.js';
 
 const API_BASE = location.origin;
 const el = id => document.getElementById(id);
@@ -18,6 +35,8 @@ const el = id => document.getElementById(id);
 let _deps = {};
 let _mapConfig = null;
 let _currentMap = 'indoor';
+// _leafletMap：歷史命名，P1-10b 後實為 maplibregl.Map instance（透過 maplibre_core 取得）。
+// 為避免大爆炸 rename，過渡期保留變數名；mapInitialized 旗標更可靠。
 let _leafletMap = null;
 let _leafletMarkers = [];
 let _polygonLayer = null;
@@ -158,7 +177,7 @@ export function switchMap(key) {
   if (mgrsIsland) mgrsIsland.style.display = isOutdoor ? 'flex' : 'none';
 
   if (isOutdoor) {
-    _initLeaflet();
+    _initMaplibre();
     refreshLeafletMarkers();
     return;
   }
@@ -171,99 +190,45 @@ export function switchMap(key) {
   renderMapOverlay();
 }
 
-function _initLeaflet() {
-  if (!window.L || !el('leaflet-map')) return;
-  if (!_leafletMap) {
-    _leafletMap = L.map('leaflet-map', {
-      zoomControl: true,
-      attributionControl: true,
-      doubleClickZoom: false,
-    }).setView(_HSINCHU_CENTER, _HSINCHU_ZOOM);
+function _initMaplibre() {
+  if (_leafletMap) {
+    // 容器尺寸變動補 resize（取代 Leaflet invalidateSize）
+    setTimeout(() => _resizeMap(), 0);
+    return;
+  }
 
-    if (window.protomapsL?.leafletLayer) {
-      window.protomapsL.leafletLayer({
-        url: '/tiles/pmtiles/taiwan.pmtiles',
-        flavor: 'grayscale',
-      }).addTo(_leafletMap);
-    }
+  _leafletMap = initMaplibre('leaflet-map', {
+    shouldSuppressInteraction: () => !!(_polyDrawState || _routeDrawState),
 
     // 單擊：繪製模式時新增頂點
-    _leafletMap.on('click', (e) => {
-      if (_polyDrawState) { _addPolyVertex(e.latlng.lat, e.latlng.lng); return; }
-      if (_routeDrawState) { _addRouteVertex(e.latlng.lat, e.latlng.lng); return; }
-    });
+    onClick: ({ lat, lng }) => {
+      if (_polyDrawState) { _addPolyVertex(lat, lng); return; }
+      if (_routeDrawState) { _addRouteVertex(lat, lng); return; }
+    },
 
-    // 雙擊：放置藍色十字座標 pin（doubleClickZoom 已關閉，不會觸發縮放）
-    _leafletMap.on('dblclick', (e) => {
-      if (_polyDrawState || _routeDrawState) return;  // 繪製模式不放 coord pin
-      _showCoordPin(e.latlng.lat, e.latlng.lng);
+    // 雙擊：放置藍色十字座標 pin（doubleClickZoom 在 core 已關閉）
+    onDblclick: ({ lat, lng }) => {
+      _showCoordPin(lat, lng);
       _refreshCoordPanel();
-    });
+    },
 
     // 長按地圖（650ms）→ 開啟事件回報 popup（NAPSG 兩階段選單）
-    let _lpTimer = null, _lpMoved = false;
-    _leafletMap.on('mousedown', (e) => {
-      if (e.originalEvent && e.originalEvent.button !== 0) return;
-      if (_polyDrawState || _routeDrawState) return;  // 繪製模式不觸發 popup
-      _lpMoved = false;
-      if (_lpTimer) { clearTimeout(_lpTimer); _lpTimer = null; }
-      const latlng = { lat: e.latlng.lat, lng: e.latlng.lng };
-      _lpTimer = setTimeout(() => {
-        _lpTimer = null;
-        if (!_lpMoved && canCreateEvents()) _openEventPopup(latlng.lat, latlng.lng);
-      }, 650);
-    });
-    _leafletMap.on('mousemove', () => {
-      _lpMoved = true;
-      if (_lpTimer) { clearTimeout(_lpTimer); _lpTimer = null; }
-    });
-    _leafletMap.on('mouseup', () => {
-      if (_lpTimer) { clearTimeout(_lpTimer); _lpTimer = null; }
-    });
-    _leafletMap.on('dragstart', () => {
-      _lpMoved = true;
-      if (_lpTimer) { clearTimeout(_lpTimer); _lpTimer = null; }
-    });
+    onLongPress: ({ lat, lng }) => {
+      if (canCreateEvents()) _openEventPopup(lat, lng);
+    },
 
-    const savedView = sessionStorage.getItem('_mapView');
-    if (savedView) {
-      try {
-        const { lat, lng, zoom } = JSON.parse(savedView);
-        _leafletMap.setView([lat, lng], zoom);
-      } catch (e) {
-        _leafletMap.setView(_HSINCHU_CENTER, _HSINCHU_ZOOM);
-      }
-    }
-
-    _leafletMap.on('moveend zoomend', () => {
-      const c = _leafletMap.getCenter();
-      sessionStorage.setItem('_mapView', JSON.stringify({
-        lat: Math.round(c.lat * 100000) / 100000,
-        lng: Math.round(c.lng * 100000) / 100000,
-        zoom: _leafletMap.getZoom(),
-      }));
+    // moveend / zoomend → sessionStorage view save + MGRS placeholder 更新
+    onMoveEnd: ({ lat, lng, zoom }) => {
+      sessionStorage.setItem('_mapView', JSON.stringify({ lat, lng, zoom }));
       _updateMgrsPlaceholder();
       if (_mgrsGridVisible) _drawMgrsGrid();
-    });
+    },
+  });
 
-    _initMapTools();
-    _updateMgrsPlaceholder();
+  if (!_leafletMap) return;
 
-    // 防止 Leaflet 把覆蓋在地圖上的 banner / 浮島 / 工具列按鈕的點擊
-    // 誤判為地圖 click（會在繪製模式下產生幽靈頂點）
-    [
-      'poly-draw-banner', 'route-draw-banner',
-      'node-place-banner', 'event-pin-banner',
-      'mgrs-island', 'layer-panel', 'map-coord-panel',
-    ].forEach(id => {
-      const node = document.getElementById(id);
-      if (node) {
-        L.DomEvent.disableClickPropagation(node);
-        L.DomEvent.disableScrollPropagation(node);
-      }
-    });
-  }
-  setTimeout(() => _leafletMap.invalidateSize(), 0);
+  _initMapTools();
+  _updateMgrsPlaceholder();
 }
 
 // ── 站外地圖工具列（☰ 圖層 / ▱ 範圍 / ↗ 路線 / → 流向）──
@@ -326,6 +291,10 @@ export function renderMapOverlay() {
 
 export function refreshLeafletMarkers() {
   if (!_leafletMap || !_mapConfig) return;
+  // P1-10b 步驟 5+ port 到 MapLibre EntityLayer 之前先 stub。
+  // L global 仍存在但 L.marker.addTo(maplibreMap) 會炸。過渡期不渲染 entity。
+  // TODO(P1-10b#19 step 5): 改走 EntityLayer 抽象（GeoJSON source + Symbol Layer）。
+  if (typeof window.maplibregl !== 'undefined') return;
   _leafletMarkers.forEach(m => m.remove());
   _leafletMarkers = [];
   _renderPolygons();
@@ -573,8 +542,8 @@ function _parseWgs84(str) {
 }
 
 function _currentMgrsGzd() {
-  if (!_leafletMap) return null;
-  const c = _leafletMap.getCenter();
+  const c = _mapGetCenter();
+  if (!c) return null;
   const full = _latlngToMGRS(c.lat, c.lng, 5);
   const m = full.match(/^(\d+[A-Z])\s+([A-Z]{2})/);
   return m ? m[1] + m[2] : null;
@@ -592,31 +561,22 @@ function _updateMgrsPlaceholder() {
 // ══════════════════════════════════════════════════════════════
 
 function _showCoordPin(lat, lng) {
-  if (!_leafletMap || !window.L) return;
-  if (_coordPin) { _leafletMap.removeLayer(_coordPin); _coordPin = null; }
-  const svg =
-    `<svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">` +
-    `<line x1="12" y1="1" x2="12" y2="23" stroke="#58a6ff" stroke-width="1.5" opacity=".9"/>` +
-    `<line x1="1" y1="12" x2="23" y2="12" stroke="#58a6ff" stroke-width="1.5" opacity=".9"/>` +
-    `<circle cx="12" cy="12" r="3.5" stroke="#58a6ff" stroke-width="1.5" fill="rgba(88,166,255,.18)"/>` +
-    `</svg>`;
-  _coordPin = L.marker([lat, lng], {
-    icon: L.divIcon({ html: svg, className: '', iconSize: [24, 24], iconAnchor: [12, 12] }),
-    interactive: false,
-    zIndexOffset: -200,
-  }).addTo(_leafletMap);
+  // P1-10b: 委派 maplibre_core；本地 _coordPin 不再持有 marker 物件，僅記座標
+  _showCoordPinCore(lat, lng);
+  _coordPin = { lat, lng };  // 保留為 truthy flag，供 panel render 判斷
 }
 
 function _clearCoordPin() {
-  if (_coordPin && _leafletMap) { _leafletMap.removeLayer(_coordPin); _coordPin = null; }
+  _clearCoordPinCore();
+  _coordPin = null;
   _refreshCoordPanel();
 }
 
 function _refreshCoordPanel() {
   const panel = el('map-coord-panel');
   if (!panel) return;
-  if (_coordPin) {
-    const ll = _coordPin.getLatLng();
+  const ll = _getCoordPinLatLng();
+  if (ll) {
     panel.style.display = 'flex';
     panel.style.alignItems = 'center';
     panel.classList.add('clickable');
@@ -682,9 +642,10 @@ function _rebuildLayerPanel() {
 
 function _mgrsGridSpacing() {
   const MIN_PX = 60;
-  const zoom = _leafletMap.getZoom();
-  const lat = _leafletMap.getCenter().lat;
-  const metersPerPx = (40075016.686 / (256 * Math.pow(2, zoom))) / Math.cos(lat * Math.PI / 180);
+  const zoom = _mapGetZoom();
+  const c = _mapGetCenter();
+  if (zoom == null || !c) return 100000;
+  const metersPerPx = (40075016.686 / (256 * Math.pow(2, zoom))) / Math.cos(c.lat * Math.PI / 180);
   const minMeters = metersPerPx * MIN_PX;
   const levels = [1, 10, 100, 1000, 10000, 100000];
   return levels.find(s => s >= minMeters) || 100000;
@@ -704,6 +665,10 @@ function _mgrsLabelIconW(spacing) {
 }
 
 function _drawMgrsGrid() {
+  // P1-10b: MapLibre 啟用後 L.polyline + addTo(_leafletMap) 會炸；MGRS grid port 留到 P2-05
+  //（MIL-STD-2525 同 phase）或步驟 10 收尾。過渡期 toggle MGRS 圖層 no-op。
+  // TODO(P1-10b#19): port 到 MapLibre line layer（GeoJSON source + line layer）。
+  if (typeof window.maplibregl !== 'undefined') return;
   if (!_leafletMap || !window.L) return;
   if (!_mgrsGridLayer) _mgrsGridLayer = L.layerGroup();
   _mgrsGridLayer.clearLayers();
@@ -849,6 +814,13 @@ function _evPopupBuildTypes(groupKey) {
 function _openEventPopup(lat, lng) {
   if (!canCreateEvents()) return;
   if (!window.L || !_leafletMap) return;
+  // P1-10b 步驟 9 才 port event_popup.js（L.popup → maplibregl.Popup + DOM 建構保留）。
+  // 過渡期 long press 觸發但 popup 不開（silent，不阻塞 step 4 verify）。
+  // TODO(P1-10b#19 step 9): port 到 maplibregl.Popup + setLngLat + setDOMContent。
+  if (typeof window.maplibregl !== 'undefined') {
+    console.info('[map] _openEventPopup 暫停用，等 P1-10b 步驟 9 port');
+    return;
+  }
   if (_evPopup) { _leafletMap.closePopup(_evPopup); _evPopup = null; }
   _evPopupLatLng = { lat, lng };
   const mgrs = _latlngToMGRS(lat, lng, 5);
