@@ -1802,14 +1802,18 @@ function _renderZones(opts = {}) {
       if (linkLevel === 'crit' || linkLevel === 'lkp') stale = true;
     }
 
-    // NAPSG group abbr（事件 zone 走 event group；節點 zone 走 node abbr）
-    let abbr = '?';
-    if (isEvent) {
-      const evDef = _EVENT_TYPES[zone.event_code] || {};
-      abbr = _NAPSG_GROUP_ABBR[evDef.group] || _NODE_ABBR[zone.node_type] || '?';
-    } else {
-      abbr = _NODE_ABBR[zone.node_type] || '?';
-    }
+    // NAPSG abbr 對映：事件 zone + 節點 zone 都走 zone.node_type。
+    // 事件 zone 的 node_type 在 _evPopupSubmit 被設成 evDef.group（'rescue'/'security'/
+    // 'medical'/'care'/'infra'/'ops'），與 _NAPSG_GROUP_ABBR 的 key 直接對齊；節點 zone
+    // 的 node_type 是 'shelter'/'medical'/'command'/'forward'/'security'，與 _NODE_ABBR
+    // 的 key 對齊。先查 group abbr（事件），找不到再退到 node abbr（節點），與
+    // legacy _napsgIcon (line ~868) 行為一致。
+    //
+    // ⚠️ 修 step 7 port 引入的 regression：原本誤用 event_code（server-generated
+    // 形如 'EV-0527-001'）當 key 查 type-slug 字典 _EVENT_TYPES，永遠 undefined，
+    // 導致 rescue / care / infra / ops 事件都 fallthrough 到 '?'，MapLibre 找不到
+    // 'napsg-abbr-?' SDF 影像（commander_modules.test.js SoT 鎖住正解）。
+    const abbr = _NAPSG_GROUP_ABBR[zone.node_type] || _NODE_ABBR[zone.node_type] || '?';
 
     const feat = zoneToNodeFeature(zone, { color, abbr, severity, stale, is_orphan: isOrphan });
     if (feat) features.push(feat);
