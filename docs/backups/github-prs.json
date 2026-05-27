@@ -571,6 +571,20 @@
         "minimizedReason": "",
         "reactionGroups": [],
         "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/22#issuecomment-4553597554"
+      },
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## 三 review 結果 + 修一條 code-review finding\n\n### Reviews\n\n| Check | 結果 |\n|---|---|\n| `doc_sync_check.py` | ✅ pass |\n| `/security-review` | ✅ No HIGH/MEDIUM ≥8 confidence findings |\n| `/code-review` (high effort) | ⚠️ 1 CONFIRMED finding（已修 [97f9bdf](https://github.com/winson3QQ/ICS_COMMAND/commit/97f9bdf)）|\n\n### Security review summary\n\n新 endpoint 用 `authFetch` 走既有 session middleware；所有 user-controlled label 走 SDF symbol layer (WebGL，無 DOM sink) 或 `textContent`，無 DOM XSS；vendored libs (MapLibre 4.7.1 / pmtiles 4.4.1 / Noto Sans pbf) 都 OFL/BSD 非中國；CSP 沒鬆動。\n\n### Code-review finding（FIXED）\n\n**`map.js:1809` — 事件 zone NAPSG abbr 對映用錯 key**\n\n```js\n// Before (buggy)\nconst evDef = _EVENT_TYPES[zone.event_code] || {};\nabbr = _NAPSG_GROUP_ABBR[evDef.group] || _NODE_ABBR[zone.node_type] || '?';\n\n// After (fixed)\nconst abbr = _NAPSG_GROUP_ABBR[zone.node_type] || _NODE_ABBR[zone.node_type] || '?';\n```\n\nRoot cause：`zone.event_code` 是 server-generated `EV-MMDD-NNN`（[event_repo.py:24](command-dashboard/src/repositories/event_repo.py)），但 `_EVENT_TYPES` 是 keyed by event-type slug（'explosive'/'rescue'/...）。Lookup 永遠 undefined → `evDef.group` undefined → `_NAPSG_GROUP_ABBR[undefined]` undefined → fallback `_NODE_ABBR[zone.node_type]`。\n\n實際表現：\n| Event group | 結果 |\n|---|---|\n| security | fallback 到 `_NODE_ABBR['security']` = '安' → 巧合 work |\n| medical | fallback 到 `_NODE_ABBR['medical']` = '醫' → 巧合 work |\n| **rescue / care / infra / ops** | fallback 也 undefined → abbr='?'，MapLibre 找不到 'napsg-abbr-?' → console warn + 空白圓圈 |\n\nLegacy `_napsgIcon` ([map.js:868](command-dashboard/static/js/map.js)) 走的是正解 `_NAPSG_GROUP_ABBR[nodeType]` — step 7 port 時 line 1809 重寫成 event_code 查 \\_EVENT_TYPES 是 bug。\n\n### Regression lock\n\n`commander_modules.test.js` 新加兩條 SoT regex：\n- `_NAPSG_GROUP_ABBR[zone.node_type] || _NODE_ABBR[zone.node_type]` 必須在 map.js\n- `_EVENT_TYPES[zone.event_code]` 不能再出現\n\n### Tests\n\n```\nvitest:    95 passed\npytest:    443 passed\neslint:    clean\ndoc_sync:  ✓\n```\n\n### Ready for Step 10\n\nReviews clean，PR 可繼續往 step 10 推進。下一步 coord_tools.js (MGRS grid port)。\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+        "createdAt": "2026-05-27T10:28:38Z",
+        "id": "IC_kwDOSnBjpc8AAAABD2vf3g",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/22#issuecomment-4553695198"
       }
     ],
     "createdAt": "2026-05-27T08:47:37Z",
@@ -580,7 +594,7 @@
     "number": 22,
     "state": "OPEN",
     "title": "P1-10b: MapLibre GL JS 全替換 — 步驟 1-9（含 #20 #21 sub-fixes）",
-    "updatedAt": "2026-05-27T10:14:24Z",
+    "updatedAt": "2026-05-27T10:28:38Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/22"
   }
 ]
