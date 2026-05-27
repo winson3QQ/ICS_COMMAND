@@ -19,7 +19,10 @@ repos:
     rev: v5.0.0
     hooks:
       - id: trailing-whitespace
+        # vendored 3rd-party libs 不該被 formatter 動（SHA256 釘在 POLICY.md）
+        exclude: '^command-dashboard/static/(lib|fonts)/'
       - id: end-of-file-fixer
+        exclude: '^command-dashboard/static/(lib|fonts)/'
       - id: check-yaml
       - id: check-json
       - id: check-merge-conflict

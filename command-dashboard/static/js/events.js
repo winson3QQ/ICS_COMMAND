@@ -119,10 +119,40 @@ export function _countdownStr(deadline) {
   const ts = deadline.endsWith('Z') ? deadline : deadline + 'Z';
   const diff = new Date(ts).getTime() - Date.now();
   const absDiff = Math.abs(diff);
-  const min = Math.floor(absDiff / 60000);
+  const hour = Math.floor(absDiff / 3600000);
+  const min = Math.floor((absDiff % 3600000) / 60000);
   const sec = Math.floor((absDiff % 60000) / 1000);
-  const timeStr = min + ':' + String(sec).padStart(2, '0');
+  const pad = (n) => String(n).padStart(2, '0');
+  // ≥ 1 小時用 H:MM:SS；< 1 小時維持 M:SS 簡潔顯示
+  const timeStr = hour > 0
+    ? `${hour}:${pad(min)}:${pad(sec)}`
+    : `${min}:${pad(sec)}`;
   return diff < 0 ? '逾時 ' + timeStr : '剩餘 ' + timeStr;
+}
+
+/**
+ * 每秒 tick 一次，更新所有 `[data-countdown-deadline]` 元素的 textContent。
+ * 避免依賴 5s poll 才更新計時器顯示（user dogfood 反映「秒數 5s 才走一次」）。
+ *
+ * 顏色 / pulse animation / 排序順序仍由 5s poll 完整 re-render 處理；tick 只動文字
+ * 不動 style — 簡單可靠，避免每秒在 DOM 上做樣式 reflow。視覺上：
+ *   - 剩餘 / 逾時 文字每秒走 ✓
+ *   - 從「剩餘 0:01」跳「逾時 0:00」會等下次 poll 才換色（最多延遲 5s 可接受）
+ *
+ * 註冊一次（events.js 是 commander_dashboard.html 起動時就 import 的核心模組，
+ * 不會有 race）；tick 函式對「沒有任何 `[data-countdown-deadline]` 元素」是 no-op。
+ */
+let _countdownTickTimer = null;
+function _tickCountdowns() {
+  document.querySelectorAll('[data-countdown-deadline]').forEach((node) => {
+    const deadline = node.dataset.countdownDeadline;
+    if (!deadline) return;
+    const prefix = node.dataset.countdownPrefix || '';
+    node.textContent = prefix + _countdownStr(deadline);
+  });
+}
+if (typeof window !== 'undefined' && !_countdownTickTimer) {
+  _countdownTickTimer = setInterval(_tickCountdowns, 1000);
 }
 
 export function _evTypeLabel(ev) {
@@ -341,9 +371,9 @@ export function showEventProcessModal(zone) {
   html += `<span style="padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;background:${statusC}22;color:${statusC};">${statusLabel}</span>`;
   html += `</div>`;
   if (countdown && isOpen) {
-    html += `<div style="font-size:12px;font-weight:700;color:${countdownColor};cursor:pointer;" data-action="resetDeadlineMenu" data-id="${ev.id}" title="點擊重設時間">⏱ ${countdown}</div>`;
+    html += `<div style="font-size:12px;font-weight:700;color:${countdownColor};cursor:pointer;" data-action="resetDeadlineMenu" data-id="${ev.id}" title="點擊重設時間" data-countdown-deadline="${ev.response_deadline}" data-countdown-prefix="⏱ ">⏱ ${countdown}</div>`;
   } else if (countdown) {
-    html += `<div style="font-size:12px;font-weight:700;color:var(--text3);">⏱ ${countdown}</div>`;
+    html += `<div style="font-size:12px;font-weight:700;color:var(--text3);" data-countdown-deadline="${ev.response_deadline}" data-countdown-prefix="⏱ ">⏱ ${countdown}</div>`;
   }
   html += `</div>`;
 
@@ -1037,7 +1067,7 @@ export function renderZoneC(data, d) {
       h += `<div style="cursor:pointer;padding:5px 8px;margin-bottom:2px;background:var(--surface2);border-radius:5px;border-left:3px solid ${sevColor};" data-action="openEventByCode" data-id="${ev.id}" data-longpress-id="${ev.id}">`;
       h += `<div style="display:flex;justify-content:space-between;align-items:center;gap:4px;">`;
       h += `<span style="font-size:10px;font-weight:600;flex:1;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">${typeLabel}</span>`;
-      h += `<span style="font-size:9px;font-weight:700;color:${tagColor};flex-shrink:0;${overdueAnim}">${cd}</span>`;
+      h += `<span style="font-size:9px;font-weight:700;color:${tagColor};flex-shrink:0;${overdueAnim}" data-countdown-deadline="${ev.response_deadline || ''}">${cd}</span>`;
       h += `</div>`;
       if (extraDesc) h += `<div style="font-size:9px;color:var(--text3);overflow:hidden;white-space:nowrap;text-overflow:ellipsis;margin-top:1px;font-style:italic;">${extraDesc}</div>`;
       h += `<div style="display:flex;align-items:center;margin-top:2px;gap:0;">`;

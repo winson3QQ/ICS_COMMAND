@@ -522,26 +522,26 @@ function _loadClassicScript(src) {
   });
 }
 
-function _configureLeafletAssets() {
-  if (!window.L?.Icon?.Default) return;
-  // Leaflet 1.x otherwise prepends CSS-detected "images/" to absolute URLs.
-  delete window.L.Icon.Default.prototype._getIconUrl;
-  window.L.Icon.Default.mergeOptions({
-    iconUrl: '/static/lib/marker-icon.png',
-    iconRetinaUrl: '/static/lib/marker-icon-2x.png',
-    shadowUrl: '/static/lib/marker-shadow.png',
-  });
-}
+// P1-10b 步驟 3：移除 _configureLeafletAssets（Leaflet marker icon path 修正不再需要 —
+// MapLibre 不用 PNG marker、SVG marker 走 EntityLayer 步驟 5 處理）。
+// Leaflet 套件仍 load 因為 map.js 內 entity rendering 路徑尚未 port（步驟 5–10），
+// load 後 L global 存在但 markers 不會被渲染（refreshLeafletMarkers 已 stub）。
 
 // ══════════════════════════════════════════════════════════════
 // 啟動
 // ══════════════════════════════════════════════════════════════
 
 (async function _boot() {
+  // MapLibre + pmtiles（地圖核心，P1-10b 起）
+  await _loadClassicScript('/static/lib/maplibre-gl.js').catch(() => null);
+  await _loadClassicScript('/static/lib/pmtiles.js').catch(() => null);
+  await _waitForGlobal('maplibregl').catch(() => null);
+
+  // Leaflet（過渡期保留，步驟 11 與 leaflet.min.css / protomaps-leaflet.js / marker PNG
+  // 一併刪除。entity rendering 路徑 port 完之前 L global 仍被 map.js 部分 dead code 引用）
   await _loadClassicScript('/static/lib/leaflet.min.js').catch(() => null);
   await _loadClassicScript('/static/lib/protomaps-leaflet.js').catch(() => null);
   await _waitForGlobal('L').catch(() => null);
-  _configureLeafletAssets();
 
   // 1. 版號
   await _loadVersion();
