@@ -334,6 +334,47 @@ export function polygonToFeature(poly) {
 }
 
 /**
+ * 算 route 中點（label 預設位置）— 取中間 index 頂點，支援 label_anchor override。
+ * @returns {[number, number] | null} [lng, lat] 或 null
+ */
+export function routeMidLngLat(route) {
+  if (route == null) return null;
+  if (Array.isArray(route.label_anchor) && route.label_anchor.length === 2) {
+    const lat = Number(route.label_anchor[0]);
+    const lng = Number(route.label_anchor[1]);
+    if (Number.isFinite(lat) && Number.isFinite(lng)) return [lng, lat];
+  }
+  if (!Array.isArray(route.latlngs) || route.latlngs.length < 2) return null;
+  const valid = route.latlngs
+    .map((p) => (Array.isArray(p) && p.length >= 2 ? [Number(p[0]), Number(p[1])] : null))
+    .filter((p) => p && Number.isFinite(p[0]) && Number.isFinite(p[1]));
+  if (valid.length < 2) return null;
+  const mid = Math.floor(valid.length / 2);
+  const [lat, lng] = valid[mid];
+  return [lng, lat];
+}
+
+/**
+ * route 的 label 用 Point Feature 代替（解 symbol-placement:'line-center' 不認
+ * label_anchor 的問題）。同 source 加 Point feature，caller layer 用
+ * `['==', ['geometry-type'], 'Point']` filter 取出。
+ */
+export function routeLabelToFeature(route) {
+  if (route == null) return null;
+  const ll = routeMidLngLat(route);
+  if (!ll) return null;
+  return {
+    type: 'Feature',
+    geometry: { type: 'Point', coordinates: ll },
+    properties: {
+      id: route.id ?? null,
+      color: route.color ?? '#58a6ff',
+      label: route.label ?? '',
+    },
+  };
+}
+
+/**
  * route-shaped object → GeoJSON LineString Feature。
  * map_config.maps.outdoor.routes schema：{ id, latlngs: [[lat,lng],...], color, route_type, label?, dash? }
  *

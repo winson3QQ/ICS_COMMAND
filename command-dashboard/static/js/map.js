@@ -31,14 +31,19 @@ import {
 import {
   EntityLayer,
   polygonToFeature,
+  polygonCentroid,
   polygonLabelToFeature,
   infraToFeature,
   routeToFeature,
+  routeMidLngLat,
+  routeLabelToFeature,
   flowToFeature,
   zoneToNodeFeature,
   bakeTextSdf,
   bakeArrowSdf,
 } from './map/entity_layer.js';
+import { DrawPreview } from './map/draw_tools.js';
+import { LabelMarkerManager } from './map/label_markers.js';
 
 const API_BASE = location.origin;
 const el = id => document.getElementById(id);
@@ -56,6 +61,9 @@ let _infraLayer = null;     // EntityLayer (Point circle)
 let _flowLayer = null;      // EntityLayer (LineString)
 let _routeLayer = null;     // EntityLayer (LineString)
 let _zoneLayer = null;      // EntityLayer (Point circle) — step 7 階段 1
+let _drawPreview = null;       // DrawPreview — step 8（polygon / route 繪製預覽）
+let _polyLabelMgr = null;      // LabelMarkerManager (polygons)
+let _routeLabelMgr = null;     // LabelMarkerManager (routes)
 let _entityLayersInstalled = false;
 let _mgrsGridLayer = null;
 let _coordPin = null;            // 雙擊放置的藍色十字 marker
@@ -1178,6 +1186,8 @@ function _ensureEntityLayers() {
         // → zoom 拉大 polygon 跨多 tile → 多個 label 的 bug。
         // filter geometry-type=Point 確保只渲染 caller 加的 centroid Point feature，
         // 同 source 的 Polygon feature 不被本 layer render。
+        // text-opacity：拖曳期間 (feature-state.dragging=true) 隱藏，讓 HTML drag handle
+        // 的 ghost label 接手視覺 — LabelMarkerManager 控制（step 8 hybrid B）。
         id: 'polygons-label', type: 'symbol',
         filter: ['all',
           ['has', 'label'],
@@ -1194,6 +1204,9 @@ function _ensureEntityLayers() {
           'text-color': ['get', 'color'],
           'text-halo-color': '#0d1117',
           'text-halo-width': 2,
+          'text-opacity': [
+            'case', ['boolean', ['feature-state', 'dragging'], false], 0, 1,
+          ],
         },
       },
     ],
@@ -1248,7 +1261,10 @@ function _ensureEntityLayers() {
         paint: { 'line-color': ['get', 'color'], 'line-width': 3, 'line-opacity': 0.9, 'line-dasharray': [2, 1.5] },
       },
       {
+        // 顯式 LineString filter — routes source 在 step 8 起含 Point label feature，
+        // 防 line-placement 套到 Point 干擾整 source 的 symbol rendering（user 撞到 label 消失）
         id: 'routes-arrow', type: 'symbol',
+        filter: ['==', ['geometry-type'], 'LineString'],
         layout: {
           'symbol-placement': 'line',
           'symbol-spacing': 90,
@@ -1261,21 +1277,33 @@ function _ensureEntityLayers() {
         paint: { 'icon-color': ['get', 'color'], 'icon-opacity': 0.9 },
       },
       {
-        // Route label：放在線中點，水平閱讀
+        // Route label：用 Point geometry（caller 算 midpoint/label_anchor 加進 source）。
+        // 解 symbol-placement:'line-center' 不認 label_anchor 的問題 — drag 後 anchor
+        // 寫進 route.label_anchor，re-render emit 新 Point feature，label 跟到新位置。
+        // filter geometry-type=Point 確保只渲染 caller 加的 Point feature。
+        // text-opacity 拖曳期間隱藏（feature-state.dragging），讓 HTML handle ghost 接手。
+        // text-allow-overlap / text-ignore-placement: true — 避免 routes-arrow chevron
+        // 在線中點附近時把 label 推開（user 撞到的「滑鼠落差」bug）。
         id: 'routes-label', type: 'symbol',
-        filter: ['has', 'label'],
+        filter: ['all',
+          ['has', 'label'],
+          ['==', ['geometry-type'], 'Point'],
+        ],
         layout: {
           'text-field': ['get', 'label'],
           'text-font': ['Noto Sans Regular'],
           'text-size': 11,
-          'symbol-placement': 'line-center',
-          'text-rotation-alignment': 'viewport',  // 文字永遠水平，不跟線斜
-          'text-allow-overlap': false,
+          'symbol-placement': 'point',
+          'text-allow-overlap': true,
+          'text-ignore-placement': true,
         },
         paint: {
           'text-color': ['get', 'color'],
           'text-halo-color': '#0d1117',
           'text-halo-width': 2,
+          'text-opacity': [
+            'case', ['boolean', ['feature-state', 'dragging'], false], 0, 1,
+          ],
         },
       },
     ],
@@ -1416,8 +1444,18 @@ function _ensureEntityLayers() {
     });
   });
 
+  // Step 8：DrawPreview（polygon/route 繪製預覽）— 共用 'draw-vertices' + 'draw-shape'
+  // 兩個 source，lazy install 直到 _startPolyDraw / _startRouteDraw 第一次呼叫。
+  _drawPreview = new DrawPreview(map);
+
+  // Step 8：LabelMarkerManager — 透明 HTML drag handle 蓋在 SDF symbol layer text 上方，
+  // 提供 polygon/route label 拖曳重定位能力（取代 Leaflet 原 L.marker draggable）。
+  _polyLabelMgr = new LabelMarkerManager(map, window.maplibregl, 'polygons');
+  _routeLabelMgr = new LabelMarkerManager(map, window.maplibregl, 'routes');
+
   _entityLayersInstalled = true;
 }
+
 
 function _findById(arr, id) {
   return Array.isArray(arr) ? arr.find((x) => x?.id === id) : null;
@@ -1489,7 +1527,11 @@ function _renderPolygons() {
   if (typeof window.maplibregl !== 'undefined') {
     if (!_polygonLayer) return;
     _polygonLayer.setVisible(_layerVis.polygons);
-    if (!_layerVis.polygons) { _polygonLayer.clear(); return; }
+    if (!_layerVis.polygons) {
+      _polygonLayer.clear();
+      _polyLabelMgr?.clear();
+      return;
+    }
     // 每個 polygon 產出 2 個 feature 餵同 source：
     //   1. Polygon geometry（fill / stroke layer 渲染）
     //   2. Point geometry（centroid，label layer 渲染 — 解 MapLibre 跨 tile 多
@@ -1500,6 +1542,16 @@ function _renderPolygons() {
       ...polys.map(polygonLabelToFeature).filter(Boolean),
     ];
     _polygonLayer.update(features);
+    // Step 8：sync HTML drag handles 給有 label 的 polygon
+    if (_polyLabelMgr) {
+      _polyLabelMgr.sync(polys, async (id, latlng) => {
+        const p = polys.find((x) => x.id === id);
+        if (!p) return;
+        p.label_anchor = [latlng.lat, latlng.lng];
+        await saveMapConfig();
+        _renderPolygons();
+      }, polygonCentroid);
+    }
     return;
   }
   // Leaflet legacy path（不會跑到，refreshLeafletMarkers 已分流；保留供 fallback / unit test 用）
@@ -1595,10 +1647,29 @@ function _renderRoutes() {
   if (typeof window.maplibregl !== 'undefined') {
     if (!_routeLayer) return;
     _routeLayer.setVisible(_layerVis.routes);
-    if (!_layerVis.routes) { _routeLayer.clear(); return; }
-    const features = (_mapConfig?.maps?.outdoor?.routes || [])
-      .map(routeToFeature).filter(Boolean);
+    if (!_layerVis.routes) {
+      _routeLayer.clear();
+      _routeLabelMgr?.clear();
+      return;
+    }
+    const routes = _mapConfig?.maps?.outdoor?.routes || [];
+    // 每個 route 產出 LineString（line/arrow layer 渲染）+ Point（label layer 渲染，
+    // 支援 label_anchor override 給 drag handle 移動後的新位置）。
+    const features = [
+      ...routes.map(routeToFeature).filter(Boolean),
+      ...routes.map(routeLabelToFeature).filter(Boolean),
+    ];
     _routeLayer.update(features);
+    // Step 8：sync route label drag handles
+    if (_routeLabelMgr) {
+      _routeLabelMgr.sync(routes, async (id, latlng) => {
+        const r = routes.find((x) => x.id === id);
+        if (!r) return;
+        r.label_anchor = [latlng.lat, latlng.lng];
+        await saveMapConfig();
+        _renderRoutes();
+      }, routeMidLngLat);
+    }
     return;
   }
   // Leaflet legacy
@@ -1845,45 +1916,38 @@ export function _startPolyDraw() {
   if (_polyDrawState) _cancelPolyDraw();
   if (_routeDrawState) _cancelRouteDraw();
   if (_currentMap !== 'outdoor') switchMap('outdoor');
-  _polyDrawState = { latlngs: [], markers: [], previewPoly: null };
+  // _polyDrawState 仍用為 truthy flag（onClick callback / shouldSuppressInteraction 查它）
+  // 實際 latlngs / preview state 改由 _drawPreview 管理
+  _polyDrawState = { active: true };
+  if (_drawPreview) _drawPreview.start('polygon');
   const banner = el('poly-draw-banner');
   if (banner) banner.style.display = 'flex';
   if (el('map-coord-panel')) el('map-coord-panel').style.display = 'none';
-  if (_leafletMap) _leafletMap.getContainer().style.cursor = 'crosshair';
+  // canvas cursor crosshair（hover system 在 click 期間不會搶 — hover 只 mouseenter/leave 觸發）
+  if (_leafletMap) _leafletMap.getCanvas().style.cursor = 'crosshair';
   document.getElementById('btn-poly-draw')?.classList.add('active');
 }
 
 export function _cancelPolyDraw() {
   if (!_polyDrawState) return;
-  _polyDrawState.markers.forEach(m => m.remove());
-  if (_polyDrawState.previewPoly) _polyDrawState.previewPoly.remove();
   _polyDrawState = null;
+  if (_drawPreview) _drawPreview.cancel();
   const banner = el('poly-draw-banner');
   if (banner) banner.style.display = 'none';
-  if (_leafletMap) _leafletMap.getContainer().style.removeProperty('cursor');
+  if (_leafletMap) _leafletMap.getCanvas().style.cursor = '';
   document.getElementById('btn-poly-draw')?.classList.remove('active');
 }
 
 function _addPolyVertex(lat, lng) {
-  if (!_polyDrawState || !window.L || !_leafletMap) return;
-  _polyDrawState.latlngs.push([lat, lng]);
-  const m = L.circleMarker([lat, lng], {
-    radius: 4, color: '#fff', weight: 2, fillColor: '#58a6ff', fillOpacity: 1, interactive: false,
-  }).addTo(_leafletMap);
-  _polyDrawState.markers.push(m);
-  if (_polyDrawState.previewPoly) _polyDrawState.previewPoly.remove();
-  if (_polyDrawState.latlngs.length >= 2) {
-    _polyDrawState.previewPoly = L.polygon(_polyDrawState.latlngs, {
-      color: '#58a6ff', weight: 1.5, dashArray: '6 3', fillOpacity: 0.08, interactive: false,
-    }).addTo(_leafletMap);
-  }
+  if (!_polyDrawState || !_drawPreview) return;
+  _drawPreview.addVertex(lat, lng);
   const finBtn = document.getElementById('poly-finish-btn');
-  if (finBtn) finBtn.disabled = _polyDrawState.latlngs.length < 3;
+  if (finBtn) finBtn.disabled = !_drawPreview.canFinish();
 }
 
 export function _finishPolyDraw() {
-  if (!_polyDrawState || _polyDrawState.latlngs.length < 3) return;
-  const latlngs = [..._polyDrawState.latlngs];
+  if (!_polyDrawState || !_drawPreview || !_drawPreview.canFinish()) return;
+  const latlngs = _drawPreview.getLatlngs();
   _cancelPolyDraw();
   _openPolyForm(latlngs);
 }
@@ -2003,6 +2067,8 @@ export function _openFlowForm() {
   html += `<select id="flow-to-sel" style="${SEL}">${endpointOpts}</select></div>`;
   html += `<div style="margin-bottom:16px;"><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:4px;">標籤（可選）</label>`;
   html += `<input id="flow-label" placeholder="例：傷患後送路徑" autocomplete="off" style="${SEL}"></div>`;
+  // 錯誤提示區（驗證失敗時 _saveFlow 寫進去）
+  html += `<div id="flow-err" style="display:none;font-size:11px;color:var(--red);margin-bottom:10px;"></div>`;
   html += `<div style="display:flex;gap:8px;">`;
   html += `<button data-action="closeModal" style="flex:1;padding:8px;background:transparent;border:1px solid var(--border);color:var(--text2);border-radius:6px;cursor:pointer;font-family:var(--mono);">取消</button>`;
   html += `<button data-action="saveFlow" style="flex:2;padding:8px;background:var(--green);color:#fff;border:none;border-radius:6px;font-weight:700;cursor:pointer;font-family:var(--mono);">儲存</button>`;
@@ -2016,7 +2082,15 @@ export async function _saveFlow() {
   const fromRef = document.getElementById('flow-from-sel')?.value || '';
   const toRef = document.getElementById('flow-to-sel')?.value || '';
   const labelVal = (document.getElementById('flow-label')?.value || '').trim();
-  if (!fromRef || !toRef || fromRef === toRef) return;
+  const errEl = document.getElementById('flow-err');
+  // 顯式驗證失敗提示（取代原 silent return；user dogfood 撞到）
+  const showErr = (msg) => {
+    if (!errEl) return;
+    errEl.textContent = msg;
+    errEl.style.display = 'block';
+  };
+  if (!fromRef || !toRef) { showErr('請選擇起點與終點'); return; }
+  if (fromRef === toRef) { showErr('起點與終點不能相同'); return; }
   const flow = {
     id: 'flow_' + Date.now(),
     flow_type: typeVal,
@@ -2048,45 +2122,35 @@ export function _startRouteDraw() {
   if (_routeDrawState) _cancelRouteDraw();
   if (_polyDrawState) _cancelPolyDraw();
   if (_currentMap !== 'outdoor') switchMap('outdoor');
-  _routeDrawState = { latlngs: [], markers: [], previewLine: null };
+  _routeDrawState = { active: true };
+  if (_drawPreview) _drawPreview.start('route');
   const banner = el('route-draw-banner');
   if (banner) banner.style.display = 'flex';
   if (el('map-coord-panel')) el('map-coord-panel').style.display = 'none';
-  if (_leafletMap) _leafletMap.getContainer().style.cursor = 'crosshair';
+  if (_leafletMap) _leafletMap.getCanvas().style.cursor = 'crosshair';
   document.getElementById('btn-route-draw')?.classList.add('active');
 }
 
 export function _cancelRouteDraw() {
   if (!_routeDrawState) return;
-  _routeDrawState.markers.forEach(m => m.remove());
-  if (_routeDrawState.previewLine) _routeDrawState.previewLine.remove();
   _routeDrawState = null;
+  if (_drawPreview) _drawPreview.cancel();
   const banner = el('route-draw-banner');
   if (banner) banner.style.display = 'none';
-  if (_leafletMap) _leafletMap.getContainer().style.removeProperty('cursor');
+  if (_leafletMap) _leafletMap.getCanvas().style.cursor = '';
   document.getElementById('btn-route-draw')?.classList.remove('active');
 }
 
 function _addRouteVertex(lat, lng) {
-  if (!_routeDrawState || !window.L || !_leafletMap) return;
-  _routeDrawState.latlngs.push([lat, lng]);
-  const m = L.circleMarker([lat, lng], {
-    radius: 4, color: '#fff', weight: 2, fillColor: '#56d364', fillOpacity: 1, interactive: false,
-  }).addTo(_leafletMap);
-  _routeDrawState.markers.push(m);
-  if (_routeDrawState.previewLine) _routeDrawState.previewLine.remove();
-  if (_routeDrawState.latlngs.length >= 2) {
-    _routeDrawState.previewLine = L.polyline(_routeDrawState.latlngs, {
-      color: '#56d364', weight: 2, dashArray: '6 3', opacity: 0.7, interactive: false,
-    }).addTo(_leafletMap);
-  }
+  if (!_routeDrawState || !_drawPreview) return;
+  _drawPreview.addVertex(lat, lng);
   const finBtn = document.getElementById('route-finish-btn');
-  if (finBtn) finBtn.disabled = _routeDrawState.latlngs.length < 2;
+  if (finBtn) finBtn.disabled = !_drawPreview.canFinish();
 }
 
 export function _finishRouteDraw() {
-  if (!_routeDrawState || _routeDrawState.latlngs.length < 2) return;
-  const latlngs = [..._routeDrawState.latlngs];
+  if (!_routeDrawState || !_drawPreview || !_drawPreview.canFinish()) return;
+  const latlngs = _drawPreview.getLatlngs();
   _cancelRouteDraw();
   _openRouteForm(latlngs);
 }
