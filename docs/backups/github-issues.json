@@ -362,6 +362,20 @@
         "minimizedReason": "",
         "reactionGroups": [],
         "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/19#issuecomment-4550738365"
+      },
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## Progress — 步驟 7 階段 2 + 3a 完成（NAPSG abbr SDF + chevron arrows）\n\nCommit `fcf0f9f` push GitHub + Codeberg ✓。Branch 累積 11 commits。\n\n### Step 7 進度\n\n| 階段 | 內容 | 狀態 |\n|---|---|---|\n| 1 | zone EntityLayer + circle marker | ✅ `ae972d8` |\n| **2** | **NAPSG abbr SDF（zones-abbr layer + bakeTextSdf 9 字）** | ✅ `fcf0f9f` |\n| **3a** | **route/flow chevron arrows（routes-arrow + flows-arrow + bakeArrowSdf）** | ✅ `fcf0f9f` |\n| 3b | vendor 離線 fonts.pbf glyphs source（user-typed polygon/route labels） | ⏳ 待 user 拍板 |\n\n### 階段 2 — NAPSG abbr SDF\n\n新 helper `bakeTextSdf(map, idPrefix, chars, opts)`：\n- Canvas 32×32 + sans-serif 系統字渲染 char → ImageData\n- `map.addImage(id, data, { sdf: true })` → MapLibre 用 alpha mask 當 SDF，icon-color 上色\n- 中文字依 browser 本機 CJK font（user Mac 有 PingFang TC / Noto Sans CJK 都 OK）\n\n`_ensureEntityLayers` 開頭 bake 9 個 abbr 字：`收/醫/指/前/安/救/護/設/行`\n\n`zones` EntityLayer 新增 `zones-abbr` symbol layer：\n- `icon-image: ['concat', 'napsg-abbr-', ['get', 'abbr']]`\n- `icon-color: '#ffffff'`（白字浮在任何 base color 上都可見）\n- 也掛 click + hover handler（跟 zones-base 同 `_onZoneClick`）\n\n### 階段 3a — Chevron arrows\n\n新 helper `bakeArrowSdf(map, id, opts)`：\n- Canvas 14×14 stroke chevron `>`（lineWidth 2, round join/cap）\n- 比實心三角輕量、不蓋線本體\n- arrow:line ≈ 4-5:1 — 戰術地圖典型 ratio（vs 第一版 6:1 過胖被 user 點出來）\n\n`routes` EntityLayer 新增 `routes-arrow`：\n- `symbol-placement: 'line'`, `symbol-spacing: 90px`, `icon-size: 1.0`\n- `icon-rotation-alignment: 'map'`（跟線方向自動旋轉）\n- `icon-color: ['get', 'color']`（chevron 跟線同色）\n- `icon-allow-overlap: true` + `icon-ignore-placement: true`（防 culled）\n\n`flows` EntityLayer 新增 `flows-arrow`：同模式，spacing 80px / size 1.05（flow 方向更重要，密一點略大）。\n\n### Verification（real browser, real injected route/flow）\n\n| 項 | 結果 |\n|---|---|\n| zone abbr「收醫安前指」白字浮在 circle | ✅ PASS |\n| route 綠線 chevron 沿線、朝向、綠色 | ✅ PASS |\n| flow 黃線 chevron 略密、朝向、黃色 | ✅ PASS |\n| vitest | 55 passed |\n| pytest | 443 passed |\n| eslint / doc_sync | clean / ✓ |\n\n⚠️ 已知 test 限制：`cop.js:327 refresh()` 每 5s 呼叫 `refreshLeafletMarkers` → routes/flows source 用空 array 蓋掉 console inject → 5 秒後 arrow 消失。**非 bug，是 test inject 撐不過 refresh tick**。真實 user 透過 admin UI 新增 route/flow（saveMapConfig）會持久。\n\n### Debug 過程記錄（值得留痕）\n\n1. 第一版 SDF arrow（pixelRatio 2 + size 0.8）→ 螢幕實際 5.6px 太小看不到。修：pixelRatio 移除 + 18px source。\n2. 18px 實心三角 → user 反應「比例調整空間」。改 14px chevron stroke，更接近戰術符號學。\n3. SDF baking with binary alpha mask（非 true SDF）→ MapLibre 接受，邊緣略硬但功能 OK。未來如要 anti-aliased SDF 邊緣可引入 tiny-sdf 套件，但目前視覺夠用。\n\n### 下一步\n\n依 user 之前指示「Finish the Step 7 2/3 and 3/3」— 階段 3b 仍待。\n- **階段 3b**：vendor 離線 Noto Sans Regular pbf files (subset CJK，~3MB) +\n  glyphs URL in style + 加 text-field labels for user-typed polygon/route names\n\n如要做 3b 請 user 確認：\n- 是否接受 ~3MB CJK 字體入 repo（與 P1-10c PMTiles 200-400MB 比微不足道，但仍需 confirm）\n- 或選縮減字符集（只 cover 演練用詞彙約 100 字 = ~50KB）\n\n或如 user 想跳到 **step 8 (draw_tools port)** 也合理（draw mode 仍是 Leaflet API 殘留，user 撞到 console error）。\n",
+        "createdAt": "2026-05-27T05:04:01Z",
+        "id": "IC_kwDOSnBjpc8AAAABD0nKgg",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/19#issuecomment-4551461506"
       }
     ],
     "createdAt": "2026-05-26T08:48:30Z",
@@ -370,7 +384,7 @@
     "number": 19,
     "state": "OPEN",
     "title": "P1-10b: MapLibre GL JS 全替換（移除 Leaflet）",
-    "updatedAt": "2026-05-27T02:33:34Z",
+    "updatedAt": "2026-05-27T05:04:01Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/19"
   },
   {
