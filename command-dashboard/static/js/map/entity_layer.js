@@ -158,6 +158,123 @@ export class EntityLayer {
   }
 }
 
+/** 內部：座標 [lat, lng] → [lng, lat]（MapLibre 順序） */
+function _llToLngLat(pair) {
+  if (!Array.isArray(pair) || pair.length < 2) return null;
+  const lat = Number(pair[0]);
+  const lng = Number(pair[1]);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  return [lng, lat];
+}
+
+/**
+ * polygon-shaped object → GeoJSON Polygon Feature。
+ * map_config.maps.outdoor.polygons schema：{ id, latlngs: [[lat,lng],...], color, poly_type, label, label_anchor?, dash? }
+ *
+ * 不合法（< 3 頂點 / 任一座標 NaN）→ 回 null
+ */
+export function polygonToFeature(poly) {
+  if (poly == null || !Array.isArray(poly.latlngs)) return null;
+  const ring = poly.latlngs.map(_llToLngLat).filter(Boolean);
+  if (ring.length < 3) return null;
+  // GeoJSON Polygon 須閉合（首尾相同點）
+  const closed = (ring[0][0] === ring[ring.length - 1][0] && ring[0][1] === ring[ring.length - 1][1])
+    ? ring : [...ring, ring[0]];
+  return {
+    type: 'Feature',
+    geometry: { type: 'Polygon', coordinates: [closed] },
+    properties: {
+      id: poly.id ?? null,
+      poly_type: poly.poly_type ?? null,
+      color: poly.color ?? '#888888',
+      label: poly.label ?? '',
+      dash: !!poly.dash,
+    },
+  };
+}
+
+/**
+ * route-shaped object → GeoJSON LineString Feature。
+ * map_config.maps.outdoor.routes schema：{ id, latlngs: [[lat,lng],...], color, route_type, label?, dash? }
+ *
+ * 不合法（< 2 頂點 / 任一座標 NaN）→ 回 null
+ */
+export function routeToFeature(route) {
+  if (route == null || !Array.isArray(route.latlngs)) return null;
+  const coords = route.latlngs.map(_llToLngLat).filter(Boolean);
+  if (coords.length < 2) return null;
+  return {
+    type: 'Feature',
+    geometry: { type: 'LineString', coordinates: coords },
+    properties: {
+      id: route.id ?? null,
+      route_type: route.route_type ?? null,
+      color: route.color ?? '#58a6ff',
+      label: route.label ?? '',
+      dash: !!route.dash,
+    },
+  };
+}
+
+/**
+ * infra-shaped object → GeoJSON Point Feature。
+ * map_config.maps.outdoor.infrastructure schema：{ id, lat, lng, infra_type, label }
+ *
+ * 步驟 6 用 circle + text symbol 渲染；步驟 7 升級成 SDF icon。
+ */
+export function infraToFeature(infra) {
+  if (infra == null) return null;
+  const lat = Number(infra.lat);
+  const lng = Number(infra.lng);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  return {
+    type: 'Feature',
+    geometry: { type: 'Point', coordinates: [lng, lat] },
+    properties: {
+      id: infra.id ?? null,
+      infra_type: infra.infra_type ?? 'utility',
+      label: infra.label ?? '',
+      // color / abbr 由 caller 透過 INFRA_TYPES 對映後寫進來，避免 entity_layer 耦合業務常數
+      color: infra.color ?? '#888888',
+      abbr: infra.abbr ?? '?',
+    },
+  };
+}
+
+/**
+ * flow-shaped object + resolveRef 函式 → GeoJSON LineString Feature。
+ * map_config.maps.outdoor.flows schema：{ id, from_ref|from_zone_id, to_ref|to_zone_id, flow_type, color?, label? }
+ *
+ * caller 必須提供 resolveRef(ref) → { lat, lng, label? } | null
+ * （map.js 已有 _resolveRef 可重用；entity_layer 不知道 zones / infrastructure 在哪）
+ *
+ * @param {object} flow
+ * @param {(ref: string | null) => ({lat: number, lng: number, label?: string} | null)} resolveRef
+ */
+export function flowToFeature(flow, resolveRef) {
+  if (flow == null || typeof resolveRef !== 'function') return null;
+  const fromRef = flow.from_ref || (flow.from_zone_id ? `zone:${flow.from_zone_id}` : null);
+  const toRef   = flow.to_ref   || (flow.to_zone_id   ? `zone:${flow.to_zone_id}`   : null);
+  const from = resolveRef(fromRef);
+  const to   = resolveRef(toRef);
+  if (!from || !to) return null;
+  const fLng = Number(from.lng), fLat = Number(from.lat);
+  const tLng = Number(to.lng),   tLat = Number(to.lat);
+  if (![fLng, fLat, tLng, tLat].every(Number.isFinite)) return null;
+  return {
+    type: 'Feature',
+    geometry: { type: 'LineString', coordinates: [[fLng, fLat], [tLng, tLat]] },
+    properties: {
+      id: flow.id ?? null,
+      flow_type: flow.flow_type ?? null,
+      color: flow.color ?? '#888888',
+      label: flow.label ?? '',
+      from_label: from.label ?? '',
+      to_label: to.label ?? '',
+    },
+  };
+}
+
 /**
  * 標準化 helper：把 zone-shaped object（cop_entities 或 map_config.maps.outdoor.zones）
  * 轉成 GeoJSON Feature with ICS_Command 三維度 properties。

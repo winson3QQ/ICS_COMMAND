@@ -9,7 +9,14 @@
  */
 
 import { describe, test, expect, beforeEach } from 'vitest';
-import { EntityLayer, zoneToFeature } from '../../static/js/map/entity_layer.js';
+import {
+  EntityLayer,
+  zoneToFeature,
+  polygonToFeature,
+  routeToFeature,
+  infraToFeature,
+  flowToFeature,
+} from '../../static/js/map/entity_layer.js';
 
 /** Mock MapLibre Map：記錄所有 addSource/addLayer/setData 呼叫 */
 function makeMockMap() {
@@ -215,5 +222,134 @@ describe('zoneToFeature', () => {
   test('priority 預設 0（symbol-sort-key 步驟 7 用）', () => {
     expect(zoneToFeature({ lat: 0, lng: 0 }).properties.priority).toBe(0);
     expect(zoneToFeature({ lat: 0, lng: 0, priority: 99 }).properties.priority).toBe(99);
+  });
+});
+
+describe('polygonToFeature', () => {
+  test('合法 polygon → 閉合 Polygon Feature', () => {
+    const f = polygonToFeature({
+      id: 'p1', poly_type: 'control', color: '#e05555', dash: true,
+      latlngs: [[24.825, 121.012], [24.832, 121.012], [24.832, 121.020], [24.825, 121.020]],
+    });
+    expect(f).not.toBeNull();
+    expect(f.type).toBe('Feature');
+    expect(f.geometry.type).toBe('Polygon');
+    // 自動閉合（首尾相同）
+    expect(f.geometry.coordinates[0][0]).toEqual(f.geometry.coordinates[0][4]);
+    expect(f.geometry.coordinates[0]).toHaveLength(5);
+    // 座標順序 [lng, lat]（MapLibre 順序）
+    expect(f.geometry.coordinates[0][0]).toEqual([121.012, 24.825]);
+    expect(f.properties.color).toBe('#e05555');
+    expect(f.properties.dash).toBe(true);
+    expect(f.properties.poly_type).toBe('control');
+  });
+
+  test('已閉合 polygon 不重複加點', () => {
+    const f = polygonToFeature({
+      latlngs: [[0, 0], [1, 0], [1, 1], [0, 0]],
+    });
+    expect(f.geometry.coordinates[0]).toHaveLength(4);
+  });
+
+  test('< 3 頂點 / 無 latlngs / null → null', () => {
+    expect(polygonToFeature(null)).toBeNull();
+    expect(polygonToFeature({})).toBeNull();
+    expect(polygonToFeature({ latlngs: [[0, 0], [1, 1]] })).toBeNull();
+    expect(polygonToFeature({ latlngs: 'not-array' })).toBeNull();
+  });
+
+  test('NaN 座標頂點被濾掉，剩下 < 3 → null', () => {
+    expect(polygonToFeature({ latlngs: [[NaN, 0], [1, 0], [1, 1]] })).toBeNull();
+  });
+
+  test('預設 color = #888888（防 paint expression 抓不到）', () => {
+    const f = polygonToFeature({ latlngs: [[0, 0], [1, 0], [1, 1]] });
+    expect(f.properties.color).toBe('#888888');
+    expect(f.properties.dash).toBe(false);
+  });
+});
+
+describe('routeToFeature', () => {
+  test('合法 route → LineString Feature，座標 [lng, lat]', () => {
+    const f = routeToFeature({
+      id: 'r1', route_type: 'primary', color: '#56d364',
+      latlngs: [[24.826, 121.014], [24.829, 121.016], [24.831, 121.019]],
+    });
+    expect(f).not.toBeNull();
+    expect(f.geometry.type).toBe('LineString');
+    expect(f.geometry.coordinates).toHaveLength(3);
+    expect(f.geometry.coordinates[0]).toEqual([121.014, 24.826]);
+    expect(f.properties.route_type).toBe('primary');
+  });
+
+  test('< 2 頂點 → null', () => {
+    expect(routeToFeature(null)).toBeNull();
+    expect(routeToFeature({ latlngs: [[0, 0]] })).toBeNull();
+  });
+
+  test('預設 color = #58a6ff', () => {
+    const f = routeToFeature({ latlngs: [[0, 0], [1, 1]] });
+    expect(f.properties.color).toBe('#58a6ff');
+  });
+});
+
+describe('infraToFeature', () => {
+  test('合法 infra → Point Feature with color/abbr', () => {
+    const f = infraToFeature({ id: 'i1', lat: 24.828, lng: 121.015, infra_type: 'hospital', label: '醫院', color: '#e05555', abbr: 'H' });
+    expect(f).not.toBeNull();
+    expect(f.geometry).toEqual({ type: 'Point', coordinates: [121.015, 24.828] });
+    expect(f.properties.color).toBe('#e05555');
+    expect(f.properties.abbr).toBe('H');
+    expect(f.properties.infra_type).toBe('hospital');
+  });
+
+  test('座標無效 → null', () => {
+    expect(infraToFeature(null)).toBeNull();
+    expect(infraToFeature({ lat: NaN, lng: 0 })).toBeNull();
+  });
+
+  test('預設值：infra_type=utility / color=#888 / abbr=?', () => {
+    const f = infraToFeature({ lat: 0, lng: 0 });
+    expect(f.properties.infra_type).toBe('utility');
+    expect(f.properties.color).toBe('#888888');
+    expect(f.properties.abbr).toBe('?');
+  });
+});
+
+describe('flowToFeature', () => {
+  const zones = {
+    z1: { lat: 24.826, lng: 121.014, label: 'A' },
+    z2: { lat: 24.831, lng: 121.019, label: 'B' },
+  };
+  const resolveRef = (ref) => {
+    if (!ref) return null;
+    const id = ref.includes(':') ? ref.split(':')[1] : ref;
+    return zones[id] || null;
+  };
+
+  test('合法 flow → LineString 帶 from/to label', () => {
+    const f = flowToFeature({ id: 'f1', from_zone_id: 'z1', to_zone_id: 'z2', flow_type: 'casualty', color: '#e05555' }, resolveRef);
+    expect(f).not.toBeNull();
+    expect(f.geometry.type).toBe('LineString');
+    expect(f.geometry.coordinates).toEqual([[121.014, 24.826], [121.019, 24.831]]);
+    expect(f.properties.from_label).toBe('A');
+    expect(f.properties.to_label).toBe('B');
+    expect(f.properties.color).toBe('#e05555');
+  });
+
+  test('from_ref 優先於 from_zone_id', () => {
+    const f = flowToFeature({ from_ref: 'zone:z2', to_zone_id: 'z1' }, resolveRef);
+    expect(f.geometry.coordinates).toEqual([[121.019, 24.831], [121.014, 24.826]]);
+  });
+
+  test('from/to 解析失敗 → null', () => {
+    expect(flowToFeature({ from_zone_id: 'unknown', to_zone_id: 'z1' }, resolveRef)).toBeNull();
+    expect(flowToFeature({ from_zone_id: 'z1', to_zone_id: 'unknown' }, resolveRef)).toBeNull();
+    expect(flowToFeature({}, resolveRef)).toBeNull();
+  });
+
+  test('resolveRef 非 function → null（防呆）', () => {
+    expect(flowToFeature({ from_zone_id: 'z1', to_zone_id: 'z2' }, null)).toBeNull();
+    expect(flowToFeature(null, resolveRef)).toBeNull();
   });
 });

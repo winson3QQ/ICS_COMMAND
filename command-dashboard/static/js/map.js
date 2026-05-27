@@ -28,6 +28,13 @@ import {
   getCoordPinLatLng as _getCoordPinLatLng,
   hasCoordPin as _hasCoordPin,
 } from './map/maplibre_core.js';
+import {
+  EntityLayer,
+  polygonToFeature,
+  infraToFeature,
+  routeToFeature,
+  flowToFeature,
+} from './map/entity_layer.js';
 
 const API_BASE = location.origin;
 const el = id => document.getElementById(id);
@@ -39,10 +46,13 @@ let _currentMap = 'indoor';
 // 為避免大爆炸 rename，過渡期保留變數名；mapInitialized 旗標更可靠。
 let _leafletMap = null;
 let _leafletMarkers = [];
-let _polygonLayer = null;
-let _infraLayer = null;
-let _flowLayer = null;
-let _routeLayer = null;
+// P1-10b 步驟 6：上述 4 個原為 Leaflet L.layerGroup，現改持 EntityLayer instance。
+// 變數名暫保留（過渡期 reference 仍存在散落代碼，rename 後續清）。
+let _polygonLayer = null;   // EntityLayer (Polygon fill+stroke)
+let _infraLayer = null;     // EntityLayer (Point circle+text)
+let _flowLayer = null;      // EntityLayer (LineString)
+let _routeLayer = null;     // EntityLayer (LineString)
+let _entityLayersInstalled = false;
 let _mgrsGridLayer = null;
 let _coordPin = null;            // 雙擊放置的藍色十字 marker
 let _polyDrawState = null;       // { latlngs, markers, previewPoly }
@@ -291,10 +301,16 @@ export function renderMapOverlay() {
 
 export function refreshLeafletMarkers() {
   if (!_leafletMap || !_mapConfig) return;
-  // P1-10b 步驟 5+ port 到 MapLibre EntityLayer 之前先 stub。
-  // L global 仍存在但 L.marker.addTo(maplibreMap) 會炸。過渡期不渲染 entity。
-  // TODO(P1-10b#19 step 5): 改走 EntityLayer 抽象（GeoJSON source + Symbol Layer）。
-  if (typeof window.maplibregl !== 'undefined') return;
+  // P1-10b 步驟 6：polygons / infra / routes / flows 已 port 到 MapLibre EntityLayer。
+  // Zone marker（NAPSG SVG）仍待 step 7 port — 過渡期 zones 不渲染。
+  if (typeof window.maplibregl !== 'undefined') {
+    _ensureEntityLayers();
+    _renderPolygons();
+    _renderInfra();
+    _renderFlows();
+    _renderRoutes();
+    return;  // zones 部分尚未 port，過渡期 skip
+  }
   _leafletMarkers.forEach(m => m.remove());
   _leafletMarkers = [];
   _renderPolygons();
@@ -1118,7 +1134,151 @@ export function _panToCoordTarget(event) {
   if (_coordPin) _leafletMap.panTo(_coordPin.getLatLng());
 }
 
+// P1-10b 步驟 6：MapLibre EntityLayer 實例化（一次建好，refreshLeafletMarkers 重複叫只 update data）
+// 步驟 7 補：zone NAPSG SVG addImage + 4-layer state stack；arrow marker for route/flow；label 顯示
+// 步驟 8 補：label drag-to-reposition（draw_tools）
+function _ensureEntityLayers() {
+  if (_entityLayersInstalled) return;
+  const map = _getMap();
+  if (!map) return;
+  if (!map.isStyleLoaded()) {
+    map.once('load', () => _ensureEntityLayers());
+    return;
+  }
+
+  // Polygons — fill + line stroke（同 source 兩 layer 共用）
+  _polygonLayer = new EntityLayer(map, 'polygons', {
+    layers: [
+      {
+        id: 'polygons-fill', type: 'fill',
+        paint: { 'fill-color': ['get', 'color'], 'fill-opacity': 0.12 },
+      },
+      {
+        id: 'polygons-stroke', type: 'line',
+        paint: {
+          'line-color': ['get', 'color'], 'line-width': 2,
+          'line-dasharray': ['case', ['get', 'dash'], ['literal', [2, 1.5]], ['literal', [1]]],
+        },
+      },
+    ],
+  });
+
+  // Infra — circle + text-field 縮寫（step 7 升級 SDF icon）
+  _infraLayer = new EntityLayer(map, 'infra', {
+    layers: [
+      {
+        id: 'infra-circle', type: 'circle',
+        paint: {
+          'circle-radius': 12, 'circle-color': ['get', 'color'],
+          'circle-stroke-width': 2, 'circle-stroke-color': '#ffffff', 'circle-opacity': 0.92,
+        },
+      },
+      {
+        id: 'infra-label', type: 'symbol',
+        layout: {
+          'text-field': ['get', 'abbr'],
+          'text-size': 11, 'text-font': ['Noto Sans Regular'],
+          'text-anchor': 'center', 'text-allow-overlap': true,
+        },
+        paint: { 'text-color': '#ffffff' },
+      },
+    ],
+  });
+
+  // Routes — line（step 7 補 arrow symbol-on-line）
+  _routeLayer = new EntityLayer(map, 'routes', {
+    layers: [{
+      id: 'routes-line', type: 'line',
+      paint: {
+        'line-color': ['get', 'color'], 'line-width': 3, 'line-opacity': 0.9,
+        'line-dasharray': ['case', ['get', 'dash'], ['literal', [2, 1.5]], ['literal', [1]]],
+      },
+    }],
+  });
+
+  // Flows — line（step 7 補 arrow symbol-on-line）
+  _flowLayer = new EntityLayer(map, 'flows', {
+    layers: [{
+      id: 'flows-line', type: 'line',
+      paint: { 'line-color': ['get', 'color'], 'line-width': 2.5, 'line-opacity': 0.85 },
+    }],
+  });
+
+  // Click handlers — 統一走 map.on('click', layerId, ...) 委派
+  map.on('click', 'polygons-fill', (e) => _onPolygonClick(e));
+  map.on('click', 'infra-circle', (e) => _onInfraClick(e));
+  map.on('click', 'routes-line', (e) => _onRouteClick(e));
+  map.on('click', 'flows-line', (e) => _onFlowClick(e));
+
+  // Cursor 變 pointer 提示可點
+  ['polygons-fill', 'infra-circle', 'routes-line', 'flows-line'].forEach((id) => {
+    map.on('mouseenter', id, () => { map.getCanvas().style.cursor = 'pointer'; });
+    map.on('mouseleave', id, () => { map.getCanvas().style.cursor = ''; });
+  });
+
+  _entityLayersInstalled = true;
+}
+
+function _findById(arr, id) {
+  return Array.isArray(arr) ? arr.find((x) => x?.id === id) : null;
+}
+
+function _onPolygonClick(e) {
+  if (!canAccessMapObjects()) return;
+  const id = e.features?.[0]?.properties?.id;
+  const poly = _findById(_mapConfig?.maps?.outdoor?.polygons, id);
+  if (!poly) return;
+  const typeLabel = POLY_TYPES[poly.poly_type]?.label || poly.poly_type;
+  const desc = `${typeLabel}　${poly.latlngs.length} 個頂點`;
+  _deps.openModal?.(`▱ ${poly.label || '範圍'}`,
+    _featureInfo(desc, 'deletePolygon', poly.id,
+      poly.label_anchor ? { resetAnchorAction: 'resetPolyLabelAnchor' } : {}));
+}
+
+function _onInfraClick(e) {
+  if (!canAccessMapObjects()) return;
+  const id = e.features?.[0]?.properties?.id;
+  const item = _findById(_mapConfig?.maps?.outdoor?.infrastructure, id);
+  if (!item) return;
+  const def = INFRA_TYPES[item.infra_type] || INFRA_TYPES.utility;
+  _deps.openModal?.(`${def.abbr} ${item.label}`, _featureInfo(def.label, 'deleteInfra', item.id));
+}
+
+function _onRouteClick(e) {
+  if (!canAccessMapObjects()) return;
+  const id = e.features?.[0]?.properties?.id;
+  const route = _findById(_mapConfig?.maps?.outdoor?.routes, id);
+  if (!route) return;
+  const typeLabel = ROUTE_TYPES[route.route_type]?.label || route.route_type;
+  const desc = `${typeLabel}　${route.latlngs.length} 個節點`;
+  _deps.openModal?.(`↗ ${route.label || '路線'}`,
+    _featureInfo(desc, 'deleteRoute', route.id,
+      route.label_anchor ? { resetAnchorAction: 'resetRouteLabelAnchor' } : {}));
+}
+
+function _onFlowClick(e) {
+  if (!canAccessMapObjects()) return;
+  const id = e.features?.[0]?.properties?.id;
+  const flow = _findById(_mapConfig?.maps?.outdoor?.flows, id);
+  if (!flow) return;
+  const def = FLOW_TYPES[flow.flow_type] || FLOW_TYPES.casualty;
+  const props = e.features?.[0]?.properties || {};
+  const desc = `${def.label || flow.flow_type}　${props.from_label || '?'} → ${props.to_label || '?'}`;
+  _deps.openModal?.(`→ ${flow.label || def.label || '流向'}`,
+    _featureInfo(desc, 'deleteFlow', flow.id));
+}
+
 function _renderPolygons() {
+  if (typeof window.maplibregl !== 'undefined') {
+    if (!_polygonLayer) return;
+    _polygonLayer.setVisible(_layerVis.polygons);
+    if (!_layerVis.polygons) { _polygonLayer.clear(); return; }
+    const features = (_mapConfig?.maps?.outdoor?.polygons || [])
+      .map(polygonToFeature).filter(Boolean);
+    _polygonLayer.update(features);
+    return;
+  }
+  // Leaflet legacy path（不會跑到，refreshLeafletMarkers 已分流；保留供 fallback / unit test 用）
   if (!_leafletMap) return;
   if (!_polygonLayer) _polygonLayer = L.layerGroup().addTo(_leafletMap);
   _polygonLayer.clearLayers();
@@ -1127,12 +1287,8 @@ function _renderPolygons() {
   for (const poly of polygons) {
     const dash = poly.dash ? '8 5' : null;
     const layer = L.polygon(poly.latlngs, {
-      color: poly.color,
-      weight: 2,
-      dashArray: dash,
-      fillColor: poly.color,
-      fillOpacity: 0.12,
-      interactive: true,
+      color: poly.color, weight: 2, dashArray: dash,
+      fillColor: poly.color, fillOpacity: 0.12, interactive: true,
     }).addTo(_polygonLayer);
     layer.on('click', () => {
       if (!canAccessMapObjects()) return;
@@ -1142,29 +1298,6 @@ function _renderPolygons() {
         _featureInfo(desc, 'deletePolygon', poly.id,
           poly.label_anchor ? { resetAnchorAction: 'resetPolyLabelAnchor' } : {}));
     });
-    if (poly.label) {
-      const labelPos = poly.label_anchor ? [poly.label_anchor[0], poly.label_anchor[1]] : _polyCentroid(poly.latlngs);
-      const labelMarker = L.marker(labelPos, {
-        icon: L.divIcon({
-          html: `<div style="font-size:10px;font-weight:700;color:${poly.color};text-shadow:0 0 4px rgba(14,22,29,.9),0 0 4px rgba(14,22,29,.9);white-space:nowrap;padding:2px 4px;cursor:grab;user-select:none;" title="拖曳可移動標籤位置">${poly.label}</div>`,
-          className: '',
-          iconSize: [120, 20],
-          iconAnchor: [0, 10],
-        }),
-        draggable: true,
-        zIndexOffset: 100,
-        bubblingMouseEvents: false,
-      }).addTo(_polygonLayer);
-      labelMarker.on('mousedown touchstart', (e) => L.DomEvent.stopPropagation(e));
-      labelMarker.on('dragend', async () => {
-        const ll = labelMarker.getLatLng();
-        poly.label_anchor = [
-          Math.round(ll.lat * 1000000) / 1000000,
-          Math.round(ll.lng * 1000000) / 1000000,
-        ];
-        await saveMapConfig();
-      });
-    }
   }
 }
 
@@ -1185,6 +1318,20 @@ function _infraIcon(infraType) {
 }
 
 function _renderInfra() {
+  if (typeof window.maplibregl !== 'undefined') {
+    if (!_infraLayer) return;
+    _infraLayer.setVisible(_layerVis.infra);
+    if (!_layerVis.infra) { _infraLayer.clear(); return; }
+    const features = (_mapConfig?.maps?.outdoor?.infrastructure || [])
+      .map((item) => {
+        const def = INFRA_TYPES[item.infra_type] || INFRA_TYPES.utility;
+        return infraToFeature({ ...item, color: def.color, abbr: def.abbr });
+      })
+      .filter(Boolean);
+    _infraLayer.update(features);
+    return;
+  }
+  // Leaflet legacy
   if (!_leafletMap) return;
   if (!_infraLayer) _infraLayer = L.layerGroup().addTo(_leafletMap);
   _infraLayer.clearLayers();
@@ -1193,20 +1340,11 @@ function _renderInfra() {
   for (const item of items) {
     const def = INFRA_TYPES[item.infra_type] || INFRA_TYPES.utility;
     const marker = L.marker([item.lat, item.lng], {
-      icon: _infraIcon(item.infra_type),
-      title: item.label,
-      zIndexOffset: -100,
+      icon: _infraIcon(item.infra_type), title: item.label, zIndexOffset: -100,
     });
-    marker.bindTooltip(`<span style="color:${def.color}">${def.label}</span> ${item.label}`, {
-      className: 'napsg-tooltip',
-      direction: 'top',
-      offset: [0, -16],
-    });
-    marker.on('click', e => {
-      L.DomEvent.stopPropagation(e);
+    marker.on('click', () => {
       if (!canAccessMapObjects()) return;
-      _deps.openModal?.(`${def.abbr} ${item.label}`,
-        _featureInfo(def.label, 'deleteInfra', item.id));
+      _deps.openModal?.(`${def.abbr} ${item.label}`, _featureInfo(def.label, 'deleteInfra', item.id));
     });
     marker.addTo(_infraLayer);
   }
@@ -1230,6 +1368,16 @@ function _arrowIcon(angle, color) {
 }
 
 function _renderRoutes() {
+  if (typeof window.maplibregl !== 'undefined') {
+    if (!_routeLayer) return;
+    _routeLayer.setVisible(_layerVis.routes);
+    if (!_layerVis.routes) { _routeLayer.clear(); return; }
+    const features = (_mapConfig?.maps?.outdoor?.routes || [])
+      .map(routeToFeature).filter(Boolean);
+    _routeLayer.update(features);
+    return;
+  }
+  // Leaflet legacy
   if (!_leafletMap) return;
   if (!_routeLayer) _routeLayer = L.layerGroup().addTo(_leafletMap);
   _routeLayer.clearLayers();
@@ -1237,10 +1385,8 @@ function _renderRoutes() {
   const routes = _mapConfig?.maps?.outdoor?.routes || [];
   for (const route of routes) {
     const line = L.polyline(route.latlngs, {
-      color: route.color,
-      weight: 3,
-      dashArray: route.dash ? '8 5' : null,
-      opacity: 0.9,
+      color: route.color, weight: 3,
+      dashArray: route.dash ? '8 5' : null, opacity: 0.9,
     }).addTo(_routeLayer);
     line.on('click', () => {
       if (!canAccessMapObjects()) return;
@@ -1250,38 +1396,6 @@ function _renderRoutes() {
         _featureInfo(desc, 'deleteRoute', route.id,
           route.label_anchor ? { resetAnchorAction: 'resetRouteLabelAnchor' } : {}));
     });
-    for (let i = 0; i < route.latlngs.length - 1; i += 1) {
-      const [lat1, lng1] = route.latlngs[i];
-      const [lat2, lng2] = route.latlngs[i + 1];
-      L.marker([(lat1 + lat2) / 2, (lng1 + lng2) / 2], {
-        icon: _arrowIcon(_bearing(lat1, lng1, lat2, lng2), route.color),
-        interactive: false,
-        zIndexOffset: 50,
-      }).addTo(_routeLayer);
-    }
-    if (route.label) {
-      const labelPos = route.label_anchor || route.latlngs[Math.floor(route.latlngs.length / 2)];
-      const labelMarker = L.marker(labelPos, {
-        icon: L.divIcon({
-          html: `<div style="font-size:10px;font-weight:700;color:${route.color};text-shadow:0 0 4px rgba(14,22,29,.9),0 0 4px rgba(14,22,29,.9);white-space:nowrap;padding:2px 4px;cursor:grab;user-select:none;" title="拖曳可移動標籤位置">${route.label}</div>`,
-          className: '',
-          iconSize: [120, 20],
-          iconAnchor: [0, 10],
-        }),
-        draggable: true,
-        zIndexOffset: 100,
-        bubblingMouseEvents: false,
-      }).addTo(_routeLayer);
-      labelMarker.on('mousedown touchstart', (e) => L.DomEvent.stopPropagation(e));
-      labelMarker.on('dragend', async () => {
-        const ll = labelMarker.getLatLng();
-        route.label_anchor = [
-          Math.round(ll.lat * 1000000) / 1000000,
-          Math.round(ll.lng * 1000000) / 1000000,
-        ];
-        await saveMapConfig();
-      });
-    }
   }
 }
 
@@ -1303,20 +1417,34 @@ function _resolveRef(ref, flow) {
 }
 
 function _renderFlows() {
+  if (typeof window.maplibregl !== 'undefined') {
+    if (!_flowLayer) return;
+    _flowLayer.setVisible(_layerVis.flows);
+    if (!_layerVis.flows) { _flowLayer.clear(); return; }
+    const features = (_mapConfig?.maps?.outdoor?.flows || [])
+      .map((flow) => {
+        const def = FLOW_TYPES[flow.flow_type] || FLOW_TYPES.casualty;
+        return flowToFeature({ ...flow, color: flow.color || def.color }, _resolveRef);
+      })
+      .filter(Boolean);
+    _flowLayer.update(features);
+    return;
+  }
+  // Leaflet legacy
   if (!_leafletMap) return;
   if (!_flowLayer) _flowLayer = L.layerGroup().addTo(_leafletMap);
   _flowLayer.clearLayers();
   if (!_layerVis.flows) return;
   const flows = _mapConfig?.maps?.outdoor?.flows || [];
   for (const flow of flows) {
-    const from = _resolveRef(flow.from_ref || (flow.from_zone_id ? `zone:${flow.from_zone_id}` : null), flow);
-    const to = _resolveRef(flow.to_ref || (flow.to_zone_id ? `zone:${flow.to_zone_id}` : null), flow);
+    const fromRef = flow.from_ref || (flow.from_zone_id ? `zone:${flow.from_zone_id}` : null);
+    const toRef = flow.to_ref || (flow.to_zone_id ? `zone:${flow.to_zone_id}` : null);
+    const from = _resolveRef(fromRef);
+    const to = _resolveRef(toRef);
     if (!from?.lat || !to?.lat) continue;
     const def = FLOW_TYPES[flow.flow_type] || FLOW_TYPES.casualty;
     const line = L.polyline([[from.lat, from.lng], [to.lat, to.lng]], {
-      color: def.color,
-      weight: 2.5,
-      opacity: 0.85,
+      color: def.color, weight: 2.5, opacity: 0.85,
     }).addTo(_flowLayer);
     line.on('click', () => {
       if (!canAccessMapObjects()) return;
@@ -1324,11 +1452,6 @@ function _renderFlows() {
       _deps.openModal?.(`→ ${flow.label || def.label || '流向'}`,
         _featureInfo(desc, 'deleteFlow', flow.id));
     });
-    L.marker([(from.lat + to.lat) / 2, (from.lng + to.lng) / 2], {
-      icon: _arrowIcon(_bearing(from.lat, from.lng, to.lat, to.lng), def.color),
-      interactive: false,
-      zIndexOffset: 50,
-    }).addTo(_flowLayer);
   }
 }
 
