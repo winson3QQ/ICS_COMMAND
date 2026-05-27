@@ -424,8 +424,23 @@
       "name": ""
     },
     "body": "## 問題\n\n`command-dashboard/static/commander_dashboard.html` 行 725 + 849 兩處 reference `/static/臂章後製版.png`，但 `.gitignore` 黑名單 `command-dashboard/static/*.png` 且只白名單 `badge.png`，所以 `臂章後製版.png` 永遠不會被 track。\n\n**結果**：任何新 clone / git worktree 都看不到 badge 圖（user 在 P1-10b dogfood verify 時撞到）。Main repo 之所以正常是因為作者本機歷史檔留著。\n\n## 影響\n\n- 新接手者 / 新 worktree 第一次跑 dashboard 會看 broken-image icon\n- 不是 P1-10b scope，是更早的 doc-vs-code drift\n\n## 修法選項\n\n| 選項 | 內容 | 優缺 |\n|---|---|---|\n| A | `.gitignore` 加 whitelist `!臂章後製版.png` + commit PNG 進 repo | 永久 fix；缺點 = 多 2.4MB 入 repo（已含 badge.png 1.8MB）|\n| B | rename 為 ASCII 名（例 `team_badge.png`）+ 改 HTML + commit | 永久 fix + 跨平台檔名安全；缺點 = 又多一個 PNG 入 repo |\n| C | 改 HTML 指 `badge.png`（已 tracked）| 0 PNG 入 repo；缺點 = 視覺改變（badge.png 是不同設計） |\n\nUser 先前 reject C（明示要 `臂章後製版.png` 那張視覺）。\n\n## 建議\n\n選 **A**（最小變動 + 保留視覺）。\n\n## 在 P1-10b dogfood 中的暫解\n\nworktree 本機 `cp /Users/3qq/Desktop/ICS_Command/command-dashboard/static/臂章後製版.png` 進來 unblock 測試。**這個 cp 不算 fix**，因為 .gitignore 仍會忽略，未 commit。\n",
-    "closedAt": null,
-    "comments": [],
+    "closedAt": "2026-05-27T08:48:16Z",
+    "comments": [
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "已於 commit [`d3e9386`](https://github.com/winson3QQ/ICS_COMMAND/commit/d3e9386) 'fix(static): track 臂章後製版.png 解 commander_dashboard badge HTML drift' 修復（選項 A：.gitignore 加 whitelist + commit PNG 進 repo）。\n\n收進 [PR #22](https://github.com/winson3QQ/ICS_COMMAND/pull/22) 一起 merge。",
+        "createdAt": "2026-05-27T08:48:16Z",
+        "id": "IC_kwDOSnBjpc8AAAABD2CaWA",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/20#issuecomment-4552956504"
+      }
+    ],
     "createdAt": "2026-05-27T01:54:09Z",
     "labels": [
       {
@@ -437,9 +452,9 @@
     ],
     "milestone": null,
     "number": 20,
-    "state": "OPEN",
+    "state": "CLOSED",
     "title": "Badge HTML 指 gitignored PNG 導致新 clone broken-image",
-    "updatedAt": "2026-05-27T01:54:09Z",
+    "updatedAt": "2026-05-27T08:48:16Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/20"
   },
   {

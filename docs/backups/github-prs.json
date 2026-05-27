@@ -532,5 +532,41 @@
     "title": "P1-10a: Vendor WaveInk DS + MIL-STD-2525 token + JetBrains Mono 離線打包",
     "updatedAt": "2026-05-26T08:22:20Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/18"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "## ROADMAP item\n\n- ref [P1-10b #19](https://github.com/winson3QQ/ICS_COMMAND/issues/19)（**步驟 9/14**，仍 WIP，本 PR 為 partial / checkpoint；剩 step 10-14 由後續 PR 或追加 commit 接續）\n- Closes #20（badge PNG gitignore drift — 已於 [`d3e9386`](../commit/d3e9386) fix）\n- Closes #21（step 8 SDF label regression — cannot reproduce on `418a65a`，root cause 推測為 stale browser state）\n\n## What changed\n\nP1-10b 步驟 1-9 累積 15 commits，Leaflet → MapLibre GL JS 核心架構已替換完成：\n\n| Step | 內容 | Commit |\n|---|---|---|\n| 1 | vendor MapLibre v4.7.1 + pmtiles v4.4.1 + LICENSE | `6ddb3ff` `ffc4ea5` |\n| 2-4 | HTML loader + maplibre_core init + commander_modules SoT contract | `552cdf5` `13f0aa7` |\n| 5 | EntityLayer 抽象 + zoneToFeature helper | `80a0dc0` |\n| 6 | 4 個 render 函式 port（polygons / infra / routes / flows）+ MapLibre v4 paint hotfix | `f603599` `6c27d3a` |\n| 7 | zone marker EntityLayer + NAPSG abbr SDF + chevron arrows + Noto Sans CJK glyphs（3 階段）| `ae972d8` `fcf0f9f` `4d6d7c8` |\n| 8 | DrawPreview + LabelMarkerManager + flow UX + Point geometry labels | `418a65a` |\n| 9 | EventPopup（L.popup → maplibregl.Popup）+ 11 unit tests | `0a5e6e4` |\n| infra | preview launch.json 指 .venv python | `445dfe7` |\n| infra | badge PNG track（#20 fix）| `d3e9386` |\n\n## DoD checklist\n\n- [x] Tests added / updated（vitest 81 / pytest 443）\n- [x] `pytest` green\n- [x] `npm test` green\n- [ ] 規格書更新（P1-10 收尾整批寫，step 14 一起做）\n- [ ] ROADMAP item 對應 sub-item 完成（**步驟 9/14**，尚未全勾 ✅）\n\n## §8 Human Verification Script\n\n```bash\n# Step 1: 啟動 dashboard\n./start_mac.sh\n# 預期：FastAPI :8000，登入畫面開啟\n\n# Step 2: 登入 + 切站外\n# 預期：MapLibre 地圖出現（dark theme，無底圖，僅 entity layers）\n\n# Step 3: 畫 polygon\n# 點 ▱ → 點地圖三處 → 完成 → 命名「測試A」儲存\n# 預期：dashed border polygon + 中心 SDF 文字「測試A」+ 可拖 label\n\n# Step 4: 畫 route\n# 點 ↗ → 點地圖兩處 → 完成 → 命名「測試R」儲存\n# 預期：實線 + chevron arrow + 中點 SDF 文字「測試R」+ 可拖 label\n\n# Step 5: 長按地圖 (~650ms)\n# 預期：event popup 開啟，header 顯示「回報：[單位] 📍 [MGRS]」\n#       群組按鈕 grid（安全/救援/醫療/care/infra/ops）\n\n# Step 6: 點任一群組 → 點任一 type\n# 預期：popup 關閉，地圖出現新事件 marker（circle + abbr），\n#       右側「事件追蹤」+1，POST /api/events 200\n\n# Step 7: 跑 tests\ncd command-dashboard\nnpm test                                          # 81 passed\n.venv/bin/python -m pytest -q                     # 443 passed\nnode_modules/.bin/eslint static/js tests/js       # clean\ncd .. && python3 scripts/doc_sync_check.py        # ✓\n```\n\n## 已知後續（不 block 本 PR；可 merge 後另開 PR 接續）\n\n- **Zone marker drag in pin-edit-mode**：step 7 symbol layer 化後遺失原 Leaflet `L.marker draggable` 行為。會另開 issue tracking `LabelMarkerManager → DragHandleManager` refactor（通用化 polygon-label / route-label / zone-marker drag handle）\n- **事件 marker 改菱形 frame + MIL-STD-2525 frame 渲染**：P2-05 milsymbol 範圍\n- **Step 10-14**：coord_tools.js（MGRS grid port）/ 清死碼 + Leaflet API sweep / unit tests 收尾 / CSP smoke / Lighthouse + 1000 entity FPS — 由後續 PR 接續\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+    "closedAt": null,
+    "comments": [
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## VERIFY-PASS — step 9 EventPopup port (browser dogfood)\n\n### 環境\n- Branch `feat/issue-19-maplibre-replace` @ `0a5e6e4` (本 PR head)\n- preview server 跑 `.venv/bin/python -m uvicorn` 起的 dashboard\n- 登入 admin（pin 111111）後 dogfood\n\n### Happy path ✓\n\n| 步驟 | 預期 | 結果 |\n|---|---|---|\n| 長按地圖 ~650ms | popup 在按壓位置開 | ✅ |\n| Header: 回報單位 select + MGRS | 顯示 | ✅ |\n| 群組按鈕 grid（6 個）| 安全/救援/醫療/care/infra/ops | ✅ |\n| 點群組 → type 列表 | severity stripe 顏色正確（critical=紅 / warning=黃 / info=灰）| ✅ |\n| 「← 返回」 | 回群組選單 | ✅ |\n| 點 type | POST /api/events、popup 關、新事件 marker 出現、事件追蹤 +1 | ✅ |\n| × close button | 關閉 popup | ✅ |\n| Popup 視覺 | dark bg #161b22 + 圓角 + tip + halo | ✅ |\n| 重複長按 | 舊 popup 自動關、新 popup 開新點 | ✅ |\n| dogfood 截圖（管制區A + Route + 5 zone full labels）| 步驟 7-8 labels 仍正常 | ✅ |\n\n### 自動測試 ✓\n\n```\nvitest:    81 passed（70 既有 + 11 新 event_popup tests）\npytest:    443 passed\neslint:    clean\ndoc_sync:  ✓\n```\n\n### Dogfood 觀察（不 block，分流處理）\n\n1. **事件 marker 是小圓形**（非菱形）— 符合 step 7 階段 1 設計（NAPSG circle baseline）。完整菱形 frame + MIL-STD-2525 affiliation 屬 **P2-05 milsymbol 整合**。不在 P1-10b scope。\n2. **Zone marker 無法 drag**（pin edit mode 失效）— step 7 EntityLayer symbol layer 化後遺漏 `L.marker draggable` 行為。**14-step 計畫漏列**。已決定處理路線：**重構 LabelMarkerManager 為通用 DragHandleManager**，把 polygon-label / route-label / zone-marker 三者統一。會在本 PR merge 後另開 issue + branch 接續。\n\n### 結論\n\nStep 9 scope **DONE**。本 PR 涵蓋 step 1-9 + #20 #21 sub-fixes，可以 merge。剩餘 step 10-14（coord_tools port / Leaflet API sweep / CSP / Lighthouse / 1000 entity FPS）+ Zone DragHandle 重構 由後續 PR 接續。\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+        "createdAt": "2026-05-27T08:48:06Z",
+        "id": "IC_kwDOSnBjpc8AAAABD2CWDw",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/22#issuecomment-4552955407"
+      }
+    ],
+    "createdAt": "2026-05-27T08:47:37Z",
+    "headRefName": "feat/issue-19-maplibre-replace",
+    "labels": [],
+    "mergedAt": null,
+    "number": 22,
+    "state": "OPEN",
+    "title": "P1-10b: MapLibre GL JS 全替換 — 步驟 1-9（含 #20 #21 sub-fixes）",
+    "updatedAt": "2026-05-27T08:48:06Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/22"
   }
 ]
