@@ -348,6 +348,20 @@
         "minimizedReason": "",
         "reactionGroups": [],
         "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/19#issuecomment-4550563170"
+      },
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## Progress — 步驟 7 階段 1 完成（zone marker port to EntityLayer）\n\nCommit `ae972d8` push GitHub + Codeberg ✓。Branch 累積 10 commits。\n\n### Step 7 拆 3 階段（本次完成階段 1）\n\n| 階段 | 內容 | 狀態 |\n|---|---|---|\n| **1** | zone EntityLayer + circle marker + click handler + 3 個 step 4-7 過渡 bug 收尾 | ✅ 本 commit |\n| 2 | NAPSG SVG SDF icon（含 abbr text-in-icon，OffscreenCanvas → addImage SDF） | ⏳ |\n| 3 | vendor 離線 fonts.pbf glyphs source + 重啟 infra-label / polygon-route label / arrow symbol-on-line | ⏳ |\n\n### 進度：6/14 + 7-階段1 ≈ 6.5/14 步驟\n\n| # | 步驟 | 狀態 |\n|---|---|---|\n| 1-6 | Vendor / HTML / loader / maplibre_core / EntityLayer / 4 render fn port | ✅ |\n| **7** | **NAPSG marker (階段 1 zone circle ✅；階段 2/3 SDF + glyphs 待續)** | 🚧 |\n| 8 | 建 draw_tools.js（含 polygon/route label 拖曳）— 修 user 撞到的 `_addPolyVertex` Leaflet API 殘留 | ⏳ next |\n| 9 | 建 event_popup.js | ⏳ |\n| 10 | 建 coord_tools.js（MGRS grid port） | ⏳ |\n| 11 | 清死碼 + Leaflet API sweep | ⏳ |\n| 12 | Unit tests（public API snapshot） | ⏳ |\n| 13 | CSP smoke test | ⏳ |\n| 14 | Verify 全流程 + Lighthouse + 1000 entity FPS | ⏳ |\n\n### 本 commit 內容（4 檔 +229 -16）\n\n**entity_layer.js**：新 helper `zoneToNodeFeature(zone, opts)` — 標準化 zone-shaped object（map_config.zones / cop_entities）→ GeoJSON Point with 三維度 properties。caller 透過 `_NODE_COLORS` / `_SEV_COLORS` / `_RAG_COLORS` 對映後餵 color/abbr，entity_layer 不耦合業務常數。\n\n**map.js**：\n- `_zoneLayer` — EntityLayer with 2 layers stack：\n  - `zones-halo`（circle r=22, blur 0.6, opacity 0.18 for severity=critical）\n  - `zones-base`（circle r=13/14 by is_event, color data-driven, white stroke, opacity 0.55/0.92 by stale）\n- `_onZoneClick` — event → `showEventProcessModal` (orphan 走 `_showOrphanZoneModal`)，普通 → `showZoneDetail`\n- `_renderZones` — port 既有 zones 渲染邏輯到 `EntityLayer.update()`，保留 severity / RAG / pi_node link stale 解析\n- `refreshLeafletMarkers` maplibregl 分支加入 `_renderZones`（從 step 6 stubbed 復活）\n\n**MapLibre case 條件規則**：用 `['==', ['coalesce', ['get', x], false], true]` 通過 style 驗證（直接 `['get', 'x']` 當 truthy 被 MapLibre v4 拒絕，style 完全不 load — debug 一輪才找到根因）。\n\n### 3 個 step 4-7 過渡期 bug 一併修\n\n| Bug | 根因 | 修法 |\n|---|---|---|\n| Cursor hover stuck（空白區也卡 pointer） | mouseleave reset `''` 在多 layer 重疊時順序錯亂 | counter 模式 `_hoverCount`，為 0 才 reset，用 `''` 讓 MapLibre 接管 grab/grabbing 狀態 |\n| NavigationControl 與 `#map-tools` 重疊（白色 zoom 框蓋 ⊞ 按鈕）| 既有 toolbar 占 top-right，又 addControl 同位置 | 移除 NavigationControl — 滑鼠滾輪 / 觸控板 pinch zoom 仍 work |\n| `_mgrsSearch` 完全不動作 | `_leafletMap.setView([lat,lng], zoom)` Leaflet API 殘留（step 4 panTo 修了 setView 沒抓到）| 改 `flyTo({ center: [lng, lat], zoom })` |\n\n### Verification\n\n```\nhuman verify (real browser): PASS\n  - 5 zone marker 全 render（紅醫療 / 橘收容 / 黃安全 / 藍前進 / 灰指揮）\n  - 點 zone → modal 開\n  - cursor 空白區 grab / hover marker pointer / 離開回 grab\n  - MGRS 搜尋輸入 → flyTo + coord pin\n  - toolbar 不再被 zoom control 重疊\nvitest:    55 passed (+ 6 new zoneToNodeFeature tests)\npytest:    443 passed\neslint:    clean\ndoc_sync:  ✓\n```\n\n### 教訓 — 防 regression\n\n`_leafletMap.setView` 是 step 4 漏修同類 bug。下次 port 必須**全 file grep Leaflet API**：\n\n```\ngrep -n '_leafletMap\\.\\(setView\\|panTo\\|fitBounds\\|flyTo\\|invalidateSize\\|getBounds\\|containerPointToLatLng\\|removeLayer\\|addLayer\\|getContainer\\|hasLayer\\|closePopup\\|openPopup\\|openOn\\)' map.js\n```\n\nstep 11（清死碼）會做完整 sweep。\n\n### 下一步建議\n\n**Step 8 — draw_tools.js port**（user 撞到的 `_addPolyVertex` / `_addRouteVertex` Leaflet API 殘留是 step 8 範圍）。優先順序高過 step 7 階段 2/3 — 因為 draw tools 是 user 互動主流程，比 NAPSG 視覺精細度更影響可用性。\n\n預估 1 天：\n- `_addPolyVertex` / `_finishPolyDraw` / `_cancelPolyDraw` port 到 MapLibre EntityLayer\n- 同步 `_addRouteVertex` / `_finishRouteDraw` / `_cancelRouteDraw`\n- Polygon / route 完成後寫進 map_config + saveMapConfig\n- Click 在繪製中 layer 上時的 preview line 更新\n",
+        "createdAt": "2026-05-27T02:33:34Z",
+        "id": "IC_kwDOSnBjpc8AAAABDz7BvQ",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/19#issuecomment-4550738365"
       }
     ],
     "createdAt": "2026-05-26T08:48:30Z",
@@ -356,7 +370,7 @@
     "number": 19,
     "state": "OPEN",
     "title": "P1-10b: MapLibre GL JS 全替換（移除 Leaflet）",
-    "updatedAt": "2026-05-27T01:53:26Z",
+    "updatedAt": "2026-05-27T02:33:34Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/19"
   },
   {
