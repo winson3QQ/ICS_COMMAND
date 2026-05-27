@@ -45,6 +45,7 @@ import {
 import { DrawPreview } from './map/draw_tools.js';
 import { LabelMarkerManager } from './map/label_markers.js';
 import { EventPopup } from './map/event_popup.js';
+import { EventDragManager } from './map/event_drag.js';
 
 const API_BASE = location.origin;
 const el = id => document.getElementById(id);
@@ -66,6 +67,8 @@ let _drawPreview = null;       // DrawPreview — step 8（polygon / route 繪�
 let _polyLabelMgr = null;      // LabelMarkerManager (polygons)
 let _routeLabelMgr = null;     // LabelMarkerManager (routes)
 let _eventPopup = null;        // EventPopup — step 9（長按 → 兩階段事件選單）
+let _eventDragMgr = null;      // EventDragManager — 補 step 7 symbol layer 化後事件
+                               //   zone 失去的拖曳行為；只服務事件 zone（節點不在 scope）
 let _entityLayersInstalled = false;
 let _mgrsGridLayer = null;
 let _coordPin = null;            // 雙擊放置的藍色十字 marker
@@ -1263,19 +1266,36 @@ function _ensureEntityLayers() {
   // 用 ['==', ..., true] 確保通過 style 驗證。
   _zoneLayer = new EntityLayer(map, 'zones', {
     layers: [
-      // halo（為 critical/selected entity 預留，目前 hidden）
+      // halo（給 critical entity / right-panel 長按 highlight 用）
+      // 三狀態優先序：
+      //   dimmed=true   → halo 隱（focus 模式下其他 zone 整個暗，halo 跟著消）
+      //   highlighted=true → 綠色泛光（右側事件欄長按 target 的視覺回饋；
+      //                      呼應舊 Leaflet zone-marker 周圍綠光效果）
+      //   severity=critical → 紅色淡 halo（baseline，永遠開）
+      //   其他 → 隱
       {
         id: 'zones-halo', type: 'circle',
         paint: {
-          'circle-radius': 22,
-          'circle-color': ['get', 'color'],
+          'circle-radius': [
+            'case', ['boolean', ['feature-state', 'highlighted'], false], 26, 22,
+          ],
+          'circle-color': [
+            'case',
+            ['boolean', ['feature-state', 'highlighted'], false], '#3fb950',
+            ['get', 'color'],
+          ],
           'circle-opacity': [
-            'case', ['==', ['get', 'severity'], 'critical'], 0.18, 0,
+            'case',
+            ['boolean', ['feature-state', 'dimmed'], false], 0,
+            ['boolean', ['feature-state', 'highlighted'], false], 0.45,
+            ['==', ['get', 'severity'], 'critical'], 0.18,
+            0,
           ],
           'circle-blur': 0.6,
         },
       },
       // base circle
+      // dimmed=true：opacity 0.15（與舊 Leaflet .zone-marker.dimmed CSS 對齊）
       {
         id: 'zones-base', type: 'circle',
         paint: {
@@ -1286,7 +1306,10 @@ function _ensureEntityLayers() {
           'circle-stroke-color': '#ffffff',
           'circle-stroke-width': 2,
           'circle-opacity': [
-            'case', ['==', ['coalesce', ['get', 'stale'], false], true], 0.55, 0.92,
+            'case',
+            ['boolean', ['feature-state', 'dimmed'], false], 0.15,
+            ['==', ['coalesce', ['get', 'stale'], false], true], 0.55,
+            0.92,
           ],
         },
       },
@@ -1301,7 +1324,12 @@ function _ensureEntityLayers() {
           'icon-allow-overlap': true,
           'icon-ignore-placement': true,
         },
-        paint: { 'icon-color': '#ffffff', 'icon-opacity': 0.95 },
+        paint: {
+          'icon-color': '#ffffff',
+          'icon-opacity': [
+            'case', ['boolean', ['feature-state', 'dimmed'], false], 0.15, 0.95,
+          ],
+        },
       },
       // P1-10b 步驟 7 階段 3b：zone full label（收容組/醫療組/...）放圓圈下方
       {
@@ -1319,6 +1347,9 @@ function _ensureEntityLayers() {
           'text-color': '#e6edf3',
           'text-halo-color': '#0d1117',
           'text-halo-width': 2,
+          'text-opacity': [
+            'case', ['boolean', ['feature-state', 'dimmed'], false], 0.15, 1,
+          ],
         },
       },
     ],
@@ -1360,6 +1391,11 @@ function _ensureEntityLayers() {
   _polyLabelMgr = new LabelMarkerManager(map, window.maplibregl, 'polygons');
   _routeLabelMgr = new LabelMarkerManager(map, window.maplibregl, 'routes');
 
+  // Step 9 後新增：EventDragManager — 補 step 7 zone symbol layer 化後事件 zone
+  // 失去的拖曳行為。沿用 step 8 hybrid B（透明 HTML handle 蓋 SDF circle）；
+  // 只服務事件 zone，handle click 轉派 _onZoneClick 開事件 modal。
+  _eventDragMgr = new EventDragManager(map, window.maplibregl);
+
   // Step 9：EventPopup — 長按事件回報 popup（取代 Leaflet 的 L.popup + L.DomUtil/DomEvent）。
   // 兩階段選單：group 按鈕 → type 按鈕；submit 走 _evPopupSubmit 寫 /api/events。
   _eventPopup = new EventPopup(map, window.maplibregl, {
@@ -1375,7 +1411,54 @@ function _ensureEntityLayers() {
     onSubmit: (typeKey, ctx) => _evPopupSubmit(typeKey, ctx),
   });
 
+  // 右側事件欄長按 → 地圖 highlight 該事件 + 其他暗化（events.js dispatch
+  // map:highlightEvent / map:unhighlightEvent CustomEvent）
+  // 機制：zones source `dimmed` feature-state + paint expression 控 opacity；
+  //       event_drag handle 走 inline style opacity / pointerEvents。
+  document.addEventListener('map:highlightEvent', (e) => {
+    _highlightEvent(e.detail?.eventId);
+  });
+  document.addEventListener('map:unhighlightEvent', () => {
+    _unhighlightEvent();
+  });
+
   _entityLayersInstalled = true;
+}
+
+/**
+ * 對所有 zones 設 feature-state.dimmed=true，target event 的 zone 設 false。
+ * zones-halo / zones-base / zones-abbr / zones-label 四個 layer 的 paint
+ * expression 都已對應，視覺一致地暗化。event_drag handle 也同步 dim。
+ */
+function _highlightEvent(eventId) {
+  if (!eventId) return;
+  const map = _getMap();
+  if (!map) return;
+  const zones = _mapConfig?.maps?.outdoor?.zones || [];
+  const target = zones.find((z) => z.event_id === eventId);
+  if (!target) return;
+  for (const z of zones) {
+    if (!z?.id) continue;
+    const isTarget = z.id === target.id;
+    // target → highlighted=true (綠光 halo) + dimmed=false
+    // others → dimmed=true (整個暗化)
+    map.setFeatureState(
+      { source: 'zones', id: z.id },
+      { dimmed: !isTarget, highlighted: isTarget },
+    );
+  }
+  _eventDragMgr?.dimAllExcept(target.id);
+}
+
+function _unhighlightEvent() {
+  const map = _getMap();
+  if (!map) return;
+  const zones = _mapConfig?.maps?.outdoor?.zones || [];
+  for (const z of zones) {
+    if (!z?.id) continue;
+    map.setFeatureState({ source: 'zones', id: z.id }, { dimmed: false, highlighted: false });
+  }
+  _eventDragMgr?.undimAll();
 }
 
 
@@ -1674,7 +1757,7 @@ function _renderFlows() {
 
 // P1-10b 步驟 7 階段 1：zone marker port — circle only（NAPSG SVG SDF + abbr text
 // 留階段 2，需 addImage + glyphs source）。Drag-to-reposition 留 step 8 draw_tools.js。
-function _renderZones() {
+function _renderZones(opts = {}) {
   if (typeof window.maplibregl === 'undefined') return;  // Leaflet legacy 走原 refreshLeafletMarkers
   if (!_zoneLayer) return;
   _zoneLayer.setVisible(_layerVis.zones);
@@ -1732,6 +1815,89 @@ function _renderZones() {
     if (feat) features.push(feat);
   }
   _zoneLayer.update(features);
+  if (!opts.skipHandleSync) _syncEventDragHandles();
+}
+
+/**
+ * Sync 事件 zone 的拖曳 handle（在每次 _renderZones 完成後呼叫）。
+ *
+ * - 只服務事件 zone（event_id / event_code 非空）
+ * - drag（每幀）：更新 zone.lat/lng（in-memory）+ re-render zones source 讓 GPU
+ *   circle 跟著 handle 走；**不**存 map_config、**不** PATCH（這些放 dragend）。
+ *   skipHandleSync=true 避免 sync() 對正在被拖的 marker setLngLat 干擾 drag。
+ * - dragend：寫 zone.lat/lng → saveMapConfig → PATCH /api/events/{id} location_desc=新MGRS
+ *   → refreshLeafletMarkers re-render（會再次走到本函式更新 handle 位置，但因 sync()
+ *   內部走 setLngLat 不重建，無無限遞迴風險）
+ * - click：轉派 _onZoneClick（不然 handle 蓋住 zones-base，事件 modal 開不起來）
+ */
+function _syncEventDragHandles() {
+  if (!_eventDragMgr) return;
+  // 同步 _renderZones 的過濾邏輯：只 sync 還在「open / in_progress」狀態的事件
+  // zone，避免事件結案後 GPU circle 已消失、handle 還掛在原地（dogfood 撞到）。
+  const data = _deps.getData?.() || {};
+  const eventZones = (_mapConfig?.maps?.outdoor?.zones || []).filter((z) => {
+    if (!z.event_id && !z.event_code) return false;
+    if (z.event_id) {
+      const ev = (data.events || []).find((e) => e.id === z.event_id);
+      if (ev && ['resolved', 'closed'].includes(ev.status)) return false;
+    }
+    return true;
+  });
+  _eventDragMgr.sync(
+    eventZones,
+    async (id, latlng, from) => {
+      const z = (_mapConfig?.maps?.outdoor?.zones || []).find((x) => x.id === id);
+      if (!z) return;
+      z.lat = latlng.lat;
+      z.lng = latlng.lng;
+      await saveMapConfig();
+      if (z.event_id) {
+        const newMgrs = _latlngToMGRS(z.lat, z.lng, 5);
+        // 1. PATCH location_desc — events table 同步
+        try {
+          await authFetch(API_BASE + '/api/events/' + z.event_id, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ location_desc: newMgrs }),
+          });
+        } catch (e) {
+          console.warn('[map.js] event location PATCH failed', e);
+        }
+        // 2. POST 處置紀錄條目 — from → to 一條 note，不每幀寫
+        try {
+          const fromMgrs = from ? _latlngToMGRS(from.lat, from.lng, 5) : null;
+          const noteText = fromMgrs
+            ? `地圖位置已移動 ${fromMgrs} → ${newMgrs}`
+            : `地圖位置已移動 → ${newMgrs}`;
+          await authFetch(API_BASE + '/api/events/' + z.event_id + '/notes', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              text: noteText,
+              operator: _deps.getCurrentOperator?.() || '',
+            }),
+          });
+          _deps.doPoll?.();
+        } catch (e) {
+          console.warn('[map.js] event drag note POST failed', e);
+        }
+      }
+      refreshLeafletMarkers();
+    },
+    (id) => {
+      // 仿真 zones-base click 事件結構，重用既有 _onZoneClick
+      _onZoneClick({ features: [{ properties: { id } }] });
+    },
+    (id, latlng) => {
+      // drag per-frame：in-memory 更新 zone 座標 + 重畫 zones source
+      // （skipHandleSync=true 避免動到正在被拖的 handle 自己）
+      const z = (_mapConfig?.maps?.outdoor?.zones || []).find((x) => x.id === id);
+      if (!z) return;
+      z.lat = latlng.lat;
+      z.lng = latlng.lng;
+      _renderZones({ skipHandleSync: true });
+    },
+  );
 }
 
 function _simpleInfo(text) {

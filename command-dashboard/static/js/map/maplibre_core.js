@@ -89,6 +89,12 @@ export function initMaplibre(containerId, callbacks = {}) {
   let lpMoved = false;
   _map.on('mousedown', (e) => {
     if (e.originalEvent && e.originalEvent.button !== 0) return;
+    // 短路：mousedown target 在 maplibregl.Marker（drag handle / coord pin / 未來
+    // 任何 HTML marker）內 → 不啟動長按計時器。否則使用者在 event circle 上按住
+    // 想拖時，map 自己的長按 listener 也會 fire，650ms 後再彈出一個新的事件 popup
+    // （dogfood 撞到的 regression）。drag handle 自己 stopPropagation 只攔 click，
+    // mousedown 仍會冒泡到 map container 觸發 MapLibre 的 mousedown 事件。
+    if (e.originalEvent?.target?.closest?.('.maplibregl-marker')) return;
     if (isSuppressed()) return;
     lpMoved = false;
     if (lpTimer) { clearTimeout(lpTimer); lpTimer = null; }
