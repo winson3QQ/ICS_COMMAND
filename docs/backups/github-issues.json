@@ -466,7 +466,7 @@
       "name": ""
     },
     "body": "## 問題\n\nP1-10b step 8 dogfood verification 撞到：所有 SDF text-field labels（zones-label / infra-label / polygons-label / routes-label）**全部不渲染**。\n\n### 已知範圍\n\n- Polygon 形狀 (fill + stroke) ✓ 正常\n- Route 線 + chevron arrows ✓ 正常\n- Zone circle + abbr SDF icon ✓ 正常\n- Infra circle ✓ 正常\n- **所有 text-field label 全部消失** ❌\n\n### 已排除（dogfood eval 過）\n\n- ✅ Features 在 source 內：polygons / routes 都有 Polygon/LineString + Point 兩 features，label property 非空\n- ✅ Feature-state `dragging: false`：text-opacity expression 應 eval 為 1\n- ✅ Symbol layer paint expression 結構正確：`text-opacity: ['case', [...], 0, 1]`\n- ✅ Style glyphs URL 存在：`/static/fonts/glyphs/{fontstack}/{range}.pbf`\n- ✅ 不是 FULLWIDTH glyph coverage 問題：注入「測試多邊形」「測試路線」（常用中文）也不顯示\n\n### 待 diagnose（下次 session 起手點）\n\n1. **Network tab 看 pbf 請求**：失敗（404 / CORS / 編碼問題）？還是 200？\n2. **Console 看 MapLibre 錯誤**：可能有 glyph fetch failed 警告但不算 error\n3. **手動 fetch glyphs URL**：`/static/fonts/glyphs/Noto%20Sans%20Regular/19712-19967.pbf` 在 worktree FastAPI 是否還 200 OK\n4. **嫌疑改動**（按時序）：\n   - step 8 給 routes-label 加 `text-allow-overlap: true / text-ignore-placement: true`\n   - step 8 給 routes-arrow 加 `filter: ['==', ['geometry-type'], 'LineString']`\n   - step 8 polygons-label / routes-label 加 `text-opacity` case expression on feature-state.dragging\n   - step 8 label_markers.js 移除 element CSS 的 `position: relative`\n5. **回溯測試**：git checkout `4d6d7c8` (step 7 stage 3b commit) 再測一次 — 確認 step 7 結束時 labels 仍可 render\n6. **若 step 7 OK / step 8 fail**：bisect step 8 內 4 個改動，找哪個 break labels\n\n### 重現步驟\n\n1. Login + 切站外\n2. 透過 toolbar ▱ 畫 polygon、↗ 畫 route，命名後儲存\n3. 觀察：shape 出現但 label 不顯示\n4. 即使 inject 真實中文字到 source 也不渲染\n\n### 相關 commits\n\n- `4d6d7c8` (step 7 stage 3b vendor Noto Sans + label layers) — labels 仍可顯示\n- Step 8 work（即將 commit）— labels 全消失\n\nStep 8 work 因 user fatigue 暫停，merge 前必須先解此 label regression。\n",
-    "closedAt": null,
+    "closedAt": "2026-05-27T08:48:30Z",
     "comments": [
       {
         "author": {
@@ -481,6 +481,20 @@
         "minimizedReason": "",
         "reactionGroups": [],
         "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/21#issuecomment-4552755617"
+      },
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "Step 9 dogfood 再驗 — SDF labels 全部正常渲染（zone full names / abbr / polygon / route 都 OK）。原報告應為 stale browser state（HMR / cache / map_config 半舊狀態），非 step 8 code defect。詳見 [先前 cannot-reproduce 留痕](https://github.com/winson3QQ/ICS_COMMAND/issues/21#issuecomment-4552755617)。\n\n收進 [PR #22](https://github.com/winson3QQ/ICS_COMMAND/pull/22) 一起 merge（PR body 已 `Closes #21`）。",
+        "createdAt": "2026-05-27T08:48:29Z",
+        "id": "IC_kwDOSnBjpc8AAAABD2CgUw",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/21#issuecomment-4552958035"
       }
     ],
     "createdAt": "2026-05-27T07:32:02Z",
@@ -494,9 +508,9 @@
     ],
     "milestone": null,
     "number": 21,
-    "state": "OPEN",
+    "state": "CLOSED",
     "title": "P1-10b step 8: SDF text-field labels 全部不渲染（dogfood regression）",
-    "updatedAt": "2026-05-27T08:20:05Z",
+    "updatedAt": "2026-05-27T08:48:30Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/21"
   }
 ]
