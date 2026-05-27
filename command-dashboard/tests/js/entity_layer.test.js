@@ -12,6 +12,7 @@ import { describe, test, expect, beforeEach } from 'vitest';
 import {
   EntityLayer,
   zoneToFeature,
+  zoneToNodeFeature,
   polygonToFeature,
   routeToFeature,
   infraToFeature,
@@ -313,6 +314,60 @@ describe('infraToFeature', () => {
     expect(f.properties.infra_type).toBe('utility');
     expect(f.properties.color).toBe('#888888');
     expect(f.properties.abbr).toBe('?');
+  });
+});
+
+describe('zoneToNodeFeature', () => {
+  test('合法 zone → Point with color/abbr/is_event/stale opts', () => {
+    const f = zoneToNodeFeature(
+      { id: 'z1', lat: 24.82, lng: 121.01, node_type: 'shelter', label: '收容組' },
+      { color: '#f0883e', abbr: '收', severity: 'info', stale: false }
+    );
+    expect(f).not.toBeNull();
+    expect(f.geometry.type).toBe('Point');
+    expect(f.geometry.coordinates).toEqual([121.01, 24.82]);
+    expect(f.properties.id).toBe('z1');
+    expect(f.properties.node_type).toBe('shelter');
+    expect(f.properties.color).toBe('#f0883e');
+    expect(f.properties.abbr).toBe('收');
+    expect(f.properties.is_event).toBe(false);
+    expect(f.properties.stale).toBe(false);
+    expect(f.properties.severity).toBe('info');
+  });
+
+  test('event zone → is_event=true', () => {
+    const f = zoneToNodeFeature(
+      { id: 'ze', lat: 24.82, lng: 121.01, event_id: 'e7', event_code: 'TEST' },
+      { color: '#e05555', severity: 'critical' }
+    );
+    expect(f.properties.is_event).toBe(true);
+    expect(f.properties.severity).toBe('critical');
+  });
+
+  test('opts.stale 為 truthy → properties.stale=true（boolean coerce）', () => {
+    expect(zoneToNodeFeature({ lat: 0, lng: 0 }, { stale: 1 }).properties.stale).toBe(true);
+    expect(zoneToNodeFeature({ lat: 0, lng: 0 }, { stale: 0 }).properties.stale).toBe(false);
+    expect(zoneToNodeFeature({ lat: 0, lng: 0 }, {}).properties.stale).toBe(false);
+  });
+
+  test('座標無效 → null', () => {
+    expect(zoneToNodeFeature(null, {})).toBeNull();
+    expect(zoneToNodeFeature({}, {})).toBeNull();
+    expect(zoneToNodeFeature({ lat: NaN, lng: 0 }, {})).toBeNull();
+  });
+
+  test('預設值：color=#888 / abbr=? / severity=info', () => {
+    const f = zoneToNodeFeature({ lat: 0, lng: 0 });
+    expect(f.properties.color).toBe('#8b949e');
+    expect(f.properties.abbr).toBe('?');
+    expect(f.properties.severity).toBe('info');
+  });
+
+  test('label fallback：label → event_code → id → ""', () => {
+    expect(zoneToNodeFeature({ lat: 0, lng: 0, label: 'L' }).properties.label).toBe('L');
+    expect(zoneToNodeFeature({ lat: 0, lng: 0, event_code: 'EC' }).properties.label).toBe('EC');
+    expect(zoneToNodeFeature({ lat: 0, lng: 0, id: 'x' }).properties.label).toBe('x');
+    expect(zoneToNodeFeature({ lat: 0, lng: 0 }).properties.label).toBe('');
   });
 });
 

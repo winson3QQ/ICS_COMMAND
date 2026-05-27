@@ -34,6 +34,7 @@ import {
   infraToFeature,
   routeToFeature,
   flowToFeature,
+  zoneToNodeFeature,
 } from './map/entity_layer.js';
 
 const API_BASE = location.origin;
@@ -46,12 +47,12 @@ let _currentMap = 'indoor';
 // 為避免大爆炸 rename，過渡期保留變數名；mapInitialized 旗標更可靠。
 let _leafletMap = null;
 let _leafletMarkers = [];
-// P1-10b 步驟 6：上述 4 個原為 Leaflet L.layerGroup，現改持 EntityLayer instance。
-// 變數名暫保留（過渡期 reference 仍存在散落代碼，rename 後續清）。
+// P1-10b 步驟 6/7：原為 Leaflet L.layerGroup，現改持 EntityLayer instance。
 let _polygonLayer = null;   // EntityLayer (Polygon fill+stroke)
-let _infraLayer = null;     // EntityLayer (Point circle+text)
+let _infraLayer = null;     // EntityLayer (Point circle)
 let _flowLayer = null;      // EntityLayer (LineString)
 let _routeLayer = null;     // EntityLayer (LineString)
+let _zoneLayer = null;      // EntityLayer (Point circle) — step 7 階段 1
 let _entityLayersInstalled = false;
 let _mgrsGridLayer = null;
 let _coordPin = null;            // 雙擊放置的藍色十字 marker
@@ -301,15 +302,15 @@ export function renderMapOverlay() {
 
 export function refreshLeafletMarkers() {
   if (!_leafletMap || !_mapConfig) return;
-  // P1-10b 步驟 6：polygons / infra / routes / flows 已 port 到 MapLibre EntityLayer。
-  // Zone marker（NAPSG SVG）仍待 step 7 port — 過渡期 zones 不渲染。
+  // P1-10b 步驟 6/7：polygons/infra/routes/flows/zones 全 port 到 MapLibre EntityLayer。
   if (typeof window.maplibregl !== 'undefined') {
     _ensureEntityLayers();
     _renderPolygons();
     _renderInfra();
     _renderFlows();
     _renderRoutes();
-    return;  // zones 部分尚未 port，過渡期 skip
+    _renderZones();
+    return;
   }
   _leafletMarkers.forEach(m => m.remove());
   _leafletMarkers = [];
@@ -1112,7 +1113,8 @@ export function _mgrsSearch() {
     input.classList.add('error');
     return;
   }
-  _leafletMap.setView([ll.lat, ll.lng], Math.max(_leafletMap.getZoom(), 16));
+  // P1-10b: MapLibre 用 flyTo + [lng, lat]（Leaflet 的 setView 已不存在）
+  _leafletMap.flyTo({ center: [ll.lng, ll.lat], zoom: Math.max(_leafletMap.getZoom(), 16) });
   _showCoordPin(ll.lat, ll.lng);
   _refreshCoordPanel();
   input.value = '';
@@ -1199,12 +1201,48 @@ function _ensureEntityLayers() {
     ],
   });
 
-  // Flows — line（step 7 補 arrow symbol-on-line）
+  // Flows — line（step 7 階段 2+ 補 arrow symbol-on-line）
   _flowLayer = new EntityLayer(map, 'flows', {
     layers: [{
       id: 'flows-line', type: 'line',
       paint: { 'line-color': ['get', 'color'], 'line-width': 2.5, 'line-opacity': 0.85 },
     }],
+  });
+
+  // Zones — step 7 階段 1：circle marker（NAPSG SVG SDF 留階段 2；
+  // 用三層 stack 預留 hover/selected/halo 接點，目前 selected/halo 給 0 opacity）
+  // MapLibre case 條件需顯式 boolean expression（不接受 ['get','xxx'] 直接當 truthy），
+  // 用 ['==', ..., true] 確保通過 style 驗證。
+  _zoneLayer = new EntityLayer(map, 'zones', {
+    layers: [
+      // halo（為 critical/selected entity 預留，目前 hidden）
+      {
+        id: 'zones-halo', type: 'circle',
+        paint: {
+          'circle-radius': 22,
+          'circle-color': ['get', 'color'],
+          'circle-opacity': [
+            'case', ['==', ['get', 'severity'], 'critical'], 0.18, 0,
+          ],
+          'circle-blur': 0.6,
+        },
+      },
+      // base circle
+      {
+        id: 'zones-base', type: 'circle',
+        paint: {
+          'circle-radius': [
+            'case', ['==', ['coalesce', ['get', 'is_event'], false], true], 13, 14,
+          ],
+          'circle-color': ['get', 'color'],
+          'circle-stroke-color': '#ffffff',
+          'circle-stroke-width': 2,
+          'circle-opacity': [
+            'case', ['==', ['coalesce', ['get', 'stale'], false], true], 0.55, 0.92,
+          ],
+        },
+      },
+    ],
   });
 
   // Click handlers — 統一走 map.on('click', layerId, ...) 委派
@@ -1214,14 +1252,23 @@ function _ensureEntityLayers() {
   map.on('click', 'routes-line-solid', (e) => _onRouteClick(e));
   map.on('click', 'routes-line-dash', (e) => _onRouteClick(e));
   map.on('click', 'flows-line', (e) => _onFlowClick(e));
+  map.on('click', 'zones-base', (e) => _onZoneClick(e));
 
-  // Cursor 變 pointer 提示可點
+  // Cursor 變 pointer 提示可點 — 用 counter 追進入多少 clickable layer，
+  // 為 0 時還原 MapLibre 預設 'grab'（不能 reset 成 '' 否則拖曳 cursor 卡住）。
+  let _hoverCount = 0;
+  const _setHoverCursor = () => { map.getCanvas().style.cursor = 'pointer'; };
+  const _resetHoverCursor = () => { map.getCanvas().style.cursor = ''; };  // '' = 回 MapLibre 自己管
   [
     'polygons-fill', 'infra-circle',
     'routes-line-solid', 'routes-line-dash', 'flows-line',
+    'zones-base',
   ].forEach((id) => {
-    map.on('mouseenter', id, () => { map.getCanvas().style.cursor = 'pointer'; });
-    map.on('mouseleave', id, () => { map.getCanvas().style.cursor = ''; });
+    map.on('mouseenter', id, () => { _hoverCount += 1; _setHoverCursor(); });
+    map.on('mouseleave', id, () => {
+      _hoverCount = Math.max(0, _hoverCount - 1);
+      if (_hoverCount === 0) _resetHoverCursor();
+    });
   });
 
   _entityLayersInstalled = true;
@@ -1274,6 +1321,23 @@ function _onFlowClick(e) {
   const desc = `${def.label || flow.flow_type}　${props.from_label || '?'} → ${props.to_label || '?'}`;
   _deps.openModal?.(`→ ${flow.label || def.label || '流向'}`,
     _featureInfo(desc, 'deleteFlow', flow.id));
+}
+
+function _onZoneClick(e) {
+  if (!canAccessMapObjects()) return;
+  const id = e.features?.[0]?.properties?.id;
+  const zone = _findById(_mapConfig?.maps?.outdoor?.zones, id);
+  if (!zone) return;
+  const isEvent = !!(zone.event_id || zone.event_code);
+  if (isEvent) {
+    // 看事件存在否，決定 orphan 路徑（與既有 Leaflet path 相同邏輯）
+    const data = _deps.getData?.() || {};
+    const ev = (data.events || []).find((item) => item.id === zone.event_id);
+    if (!ev) _showOrphanZoneModal(zone);
+    else _deps.showEventProcessModal?.(zone);
+    return;
+  }
+  (_deps.showZoneDetail || showZoneDetail)(zone);
 }
 
 function _renderPolygons() {
@@ -1461,6 +1525,68 @@ function _renderFlows() {
         _featureInfo(desc, 'deleteFlow', flow.id));
     });
   }
+}
+
+// P1-10b 步驟 7 階段 1：zone marker port — circle only（NAPSG SVG SDF + abbr text
+// 留階段 2，需 addImage + glyphs source）。Drag-to-reposition 留 step 8 draw_tools.js。
+function _renderZones() {
+  if (typeof window.maplibregl === 'undefined') return;  // Leaflet legacy 走原 refreshLeafletMarkers
+  if (!_zoneLayer) return;
+  _zoneLayer.setVisible(_layerVis.zones);
+  if (!_layerVis.zones) { _zoneLayer.clear(); return; }
+  const map = _mapConfig?.maps?.outdoor;
+  if (!map?.zones) { _zoneLayer.clear(); return; }
+  const data = _deps.getData?.() || {};
+  const features = [];
+  for (const zone of map.zones) {
+    if (zone.lat == null || zone.lng == null) continue;
+    const isEvent = !!(zone.event_id || zone.event_code);
+    let severity = 'warning';
+    let isOrphan = false;
+    if (isEvent) {
+      const ev = (data.events || []).find((item) => item.id === zone.event_id);
+      if (!ev) { severity = 'info'; isOrphan = true; }
+      else if (['resolved', 'closed'].includes(ev.status)) continue;
+      else severity = ev.severity || 'warning';
+    }
+
+    // 顏色解析：事件 → SEV；節點 → NODE base，shelter/medical 受 RAG 蓋過
+    let color = isEvent
+      ? (_SEV_COLORS[severity] || '#8b949e')
+      : (_NODE_COLORS[zone.node_type] || '#8b949e');
+    let stale = false;
+    if (!isEvent && zone.icon === 'pin' && (zone.node_type === 'shelter' || zone.node_type === 'medical')) {
+      const calc = data.calc || {};
+      const piNode = (data.pi_nodes || []).find((n) => n.unit_id === zone.node_type);
+      let linkLevel = 'lkp';
+      if (piNode?.last_seen_at) {
+        const age = Date.now() - new Date(piNode.last_seen_at).getTime();
+        linkLevel = age < 30000 ? 'ok' : age < 90000 ? 'warn' : 'crit';
+      }
+      const snapshot = calc[zone.node_type]?.snapshot;
+      if (snapshot) {
+        const used = snapshot.bed_used || 0;
+        const total = snapshot.bed_total || 1;
+        const pct = (used / total) * 100;
+        const rag = pct >= 90 ? 'crit' : pct >= 70 ? 'warn' : 'ok';
+        color = _RAG_COLORS[rag] || color;
+      }
+      if (linkLevel === 'crit' || linkLevel === 'lkp') stale = true;
+    }
+
+    // NAPSG group abbr（事件 zone 走 event group；節點 zone 走 node abbr）
+    let abbr = '?';
+    if (isEvent) {
+      const evDef = _EVENT_TYPES[zone.event_code] || {};
+      abbr = _NAPSG_GROUP_ABBR[evDef.group] || _NODE_ABBR[zone.node_type] || '?';
+    } else {
+      abbr = _NODE_ABBR[zone.node_type] || '?';
+    }
+
+    const feat = zoneToNodeFeature(zone, { color, abbr, severity, stale, is_orphan: isOrphan });
+    if (feat) features.push(feat);
+  }
+  _zoneLayer.update(features);
 }
 
 function _simpleInfo(text) {

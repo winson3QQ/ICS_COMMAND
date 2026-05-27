@@ -66,11 +66,8 @@ export function initMaplibre(containerId, callbacks = {}) {
     touchPitch: false,
   });
 
-  // 內建 zoom 控制（右上）
-  _map.addControl(new window.maplibregl.NavigationControl({
-    showCompass: false,               // 不旋轉故不需指北
-    visualizePitch: false,
-  }), 'top-right');
+  // 不掛 NavigationControl — 既有 toolbar (#map-tools) 已占 top-right，重疊；
+  // zoom 走滑鼠滾輪 / 觸控板 pinch 即可。指北、傾斜 P1 都不啟用。
 
   // ── 事件 wiring（callback 模式，邏輯留 caller） ──
   const isSuppressed = () => callbacks.shouldSuppressInteraction?.() ?? false;

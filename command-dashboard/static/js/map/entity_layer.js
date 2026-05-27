@@ -158,6 +158,41 @@ export class EntityLayer {
   }
 }
 
+/**
+ * 把 zone-shaped object（cop_entities 或 map_config.maps.outdoor.zones）
+ * 轉成「節點圖示」用 GeoJSON Point Feature。
+ *
+ * 不同於 zoneToFeature（一般 entity）：caller 透過 _NODE_COLORS / _SEV_COLORS / _RAG_COLORS
+ * 對映後餵 color / abbr 進來，本 helper 不耦合業務常數。
+ *
+ * 設計（step 7 階段 1）：
+ *   - 用 circle layer 渲染（NAPSG 完整 SVG SDF + 形狀變化留階段 2）
+ *   - color 為事件 severity > RAG > node_type 三者依優先序 caller 解出
+ *   - stale flag 透過 properties.stale 帶（caller 看 link age 決定）
+ *   - is_event flag 區分節點 vs 事件 zone（影響 click handler 走向）
+ */
+export function zoneToNodeFeature(zone, opts = {}) {
+  if (zone == null) return null;
+  const lat = Number(zone.lat);
+  const lng = Number(zone.lng);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  return {
+    type: 'Feature',
+    geometry: { type: 'Point', coordinates: [lng, lat] },
+    properties: {
+      id: zone.id ?? null,
+      node_type: zone.node_type ?? null,
+      label: zone.label ?? zone.event_code ?? zone.id ?? '',
+      color: opts.color ?? '#8b949e',
+      abbr: opts.abbr ?? '?',
+      is_event: !!(zone.event_id || zone.event_code),
+      is_orphan: !!opts.is_orphan,
+      severity: opts.severity ?? 'info',
+      stale: !!opts.stale,
+    },
+  };
+}
+
 /** 內部：座標 [lat, lng] → [lng, lat]（MapLibre 順序） */
 function _llToLngLat(pair) {
   if (!Array.isArray(pair) || pair.length < 2) return null;
