@@ -35,6 +35,8 @@ import {
   routeToFeature,
   flowToFeature,
   zoneToNodeFeature,
+  bakeTextSdf,
+  bakeArrowSdf,
 } from './map/entity_layer.js';
 
 const API_BASE = location.origin;
@@ -1185,7 +1187,13 @@ function _ensureEntityLayers() {
     ],
   });
 
-  // Routes — 同 polygons 兩 layer 拆 dash/solid
+  // P1-10b 步驟 7 階段 2/3a：bake SDF icons（zone abbr 字 + arrow 三角形）
+  // 必須在新 EntityLayer 建 symbol layer 之前 addImage，否則 layer 找不到 icon-image。
+  // 不重複 bake — bakeTextSdf/bakeArrowSdf 內部 hasImage 判斷。
+  bakeTextSdf(map, 'napsg-abbr-', ['收', '醫', '指', '前', '安', '救', '護', '設', '行']);
+  bakeArrowSdf(map, 'route-arrow');
+
+  // Routes — line（solid/dash 拆兩 layer）+ arrow symbol-on-line（step 7 階段 3a）
   _routeLayer = new EntityLayer(map, 'routes', {
     layers: [
       {
@@ -1198,15 +1206,43 @@ function _ensureEntityLayers() {
         filter: ['==', ['coalesce', ['get', 'dash'], false], true],
         paint: { 'line-color': ['get', 'color'], 'line-width': 3, 'line-opacity': 0.9, 'line-dasharray': [2, 1.5] },
       },
+      {
+        id: 'routes-arrow', type: 'symbol',
+        layout: {
+          'symbol-placement': 'line',
+          'symbol-spacing': 90,
+          'icon-image': 'route-arrow',
+          'icon-size': 1.0,
+          'icon-allow-overlap': true,
+          'icon-ignore-placement': true,
+          'icon-rotation-alignment': 'map',
+        },
+        paint: { 'icon-color': ['get', 'color'], 'icon-opacity': 0.9 },
+      },
     ],
   });
 
-  // Flows — line（step 7 階段 2+ 補 arrow symbol-on-line）
+  // Flows — line + arrow（同 routes 模式，方向感更重要因為 flow 本身 = 流向）
   _flowLayer = new EntityLayer(map, 'flows', {
-    layers: [{
-      id: 'flows-line', type: 'line',
-      paint: { 'line-color': ['get', 'color'], 'line-width': 2.5, 'line-opacity': 0.85 },
-    }],
+    layers: [
+      {
+        id: 'flows-line', type: 'line',
+        paint: { 'line-color': ['get', 'color'], 'line-width': 2.5, 'line-opacity': 0.85 },
+      },
+      {
+        id: 'flows-arrow', type: 'symbol',
+        layout: {
+          'symbol-placement': 'line',
+          'symbol-spacing': 80,
+          'icon-image': 'route-arrow',
+          'icon-size': 1.05,
+          'icon-allow-overlap': true,
+          'icon-ignore-placement': true,
+          'icon-rotation-alignment': 'map',
+        },
+        paint: { 'icon-color': ['get', 'color'], 'icon-opacity': 0.95 },
+      },
+    ],
   });
 
   // Zones — step 7 階段 1：circle marker（NAPSG SVG SDF 留階段 2；
@@ -1242,6 +1278,19 @@ function _ensureEntityLayers() {
           ],
         },
       },
+      // P1-10b 步驟 7 階段 2：abbr 字（白色 SDF 字浮在 circle 上）
+      // icon-image 動態組 'napsg-abbr-' + properties.abbr；caller 須確認 abbr 已 bake。
+      // SDF + icon-color 白 → 任何 base color 上都可見。
+      {
+        id: 'zones-abbr', type: 'symbol',
+        layout: {
+          'icon-image': ['concat', 'napsg-abbr-', ['get', 'abbr']],
+          'icon-size': 0.9,
+          'icon-allow-overlap': true,
+          'icon-ignore-placement': true,
+        },
+        paint: { 'icon-color': '#ffffff', 'icon-opacity': 0.95 },
+      },
     ],
   });
 
@@ -1253,6 +1302,7 @@ function _ensureEntityLayers() {
   map.on('click', 'routes-line-dash', (e) => _onRouteClick(e));
   map.on('click', 'flows-line', (e) => _onFlowClick(e));
   map.on('click', 'zones-base', (e) => _onZoneClick(e));
+  map.on('click', 'zones-abbr', (e) => _onZoneClick(e));  // abbr 字也可點，跟 base 同 handler
 
   // Cursor 變 pointer 提示可點 — 用 counter 追進入多少 clickable layer，
   // 為 0 時還原 MapLibre 預設 'grab'（不能 reset 成 '' 否則拖曳 cursor 卡住）。
@@ -1262,7 +1312,7 @@ function _ensureEntityLayers() {
   [
     'polygons-fill', 'infra-circle',
     'routes-line-solid', 'routes-line-dash', 'flows-line',
-    'zones-base',
+    'zones-base', 'zones-abbr',
   ].forEach((id) => {
     map.on('mouseenter', id, () => { _hoverCount += 1; _setHoverCursor(); });
     map.on('mouseleave', id, () => {

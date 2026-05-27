@@ -159,6 +159,69 @@ export class EntityLayer {
 }
 
 /**
+ * SDF icon baking — Canvas → ImageData → map.addImage(id, data, {sdf: true})
+ *
+ * MapLibre SDF mode 把 image alpha channel 當 mask，用 icon-color 上色。
+ * 用 sans-serif system font 渲染 char（browser 本機字體 — 中文需 user 安裝 CJK font）。
+ *
+ * P1-10b 步驟 7 階段 2：用於 zone abbr 字（收/醫/指/前/安 等）+ event group abbr。
+ *
+ * @param {maplibregl.Map} map
+ * @param {string} idPrefix - addImage 用的 id 前綴（例 'napsg-abbr-'）
+ * @param {string[]} chars - 要 bake 的字元清單
+ * @param {object} opts - { size: 32, fontSize: 22, weight: '700', font: 'sans-serif' }
+ */
+export function bakeTextSdf(map, idPrefix, chars, opts = {}) {
+  const size = opts.size ?? 32;
+  const fontSize = opts.fontSize ?? 22;
+  const weight = opts.weight ?? '700';
+  const font = opts.font ?? 'sans-serif';
+  for (const ch of chars) {
+    const id = idPrefix + ch;
+    if (map.hasImage?.(id)) continue;
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, size, size);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = `${weight} ${fontSize}px ${font}`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(ch, size / 2, size / 2);
+    map.addImage(id, ctx.getImageData(0, 0, size, size), { sdf: true, pixelRatio: 2 });
+  }
+}
+
+/**
+ * Arrow SDF icon — 三角形，用於 routes/flows 的 symbol-placement: 'line'。
+ * 預設指向 12 點鐘方向（MapLibre symbol-on-line 會自動依 line bearing 旋轉）。
+ */
+export function bakeArrowSdf(map, id, opts = {}) {
+  if (map.hasImage?.(id)) return;
+  // 預設 14px — 與 route line-width 3 約 4:1 比例（戰術地圖典型 arrow-to-line ratio）。
+  // 用 chevron 形狀（>）而非實心三角，視覺輕量、線條不被蓋。
+  const size = opts.size ?? 14;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, size, size);
+  ctx.strokeStyle = '#ffffff';
+  ctx.fillStyle = '#ffffff';
+  ctx.lineWidth = 2;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  // Chevron（>）：從左下 → 中上頂點 → 右下
+  ctx.beginPath();
+  ctx.moveTo(2, size - 3);
+  ctx.lineTo(size / 2, 2);
+  ctx.lineTo(size - 2, size - 3);
+  ctx.stroke();
+  map.addImage(id, ctx.getImageData(0, 0, size, size), { sdf: true });
+}
+
+/**
  * 把 zone-shaped object（cop_entities 或 map_config.maps.outdoor.zones）
  * 轉成「節點圖示」用 GeoJSON Point Feature。
  *
