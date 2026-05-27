@@ -334,6 +334,20 @@
         "minimizedReason": "",
         "reactionGroups": [],
         "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/19#issuecomment-4550373485"
+      },
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## Hotfix — 步驟 6 dogfood verification 發現 4 個 regression（已修）\n\nCommit `6c27d3a` 已 push GitHub + Codeberg。Branch 累積 8 commits / 進度仍 6/14。\n\n### 4 個 regression\n\n| # | 問題 | 根因 | 修法 |\n|---|---|---|---|\n| **A** | 切站外 = 純黑 canvas（user 第一個報的「地圖沒出來」）| `'line-dasharray': ['case', ...]` data-driven expression **MapLibre v4 不支援**，layers.polygons-stroke / routes-line 拒絕 addLayer → EntityLayer install fail → 0 layers | dash/solid 拆兩 layer + filter，layer 內用 literal `[2, 1.5]` |\n| **B** | infra-label symbol layer install fail | `text-field` 需要 style.glyphs URL，沒設拒絕 addLayer | 移除 infra-label layer（step 7 setup 離線 fonts.pbf glyphs 後加回） |\n| **C** | 7 個 UI button 同時失效（user 報的「WGS84/MGRS switching not function」是其中之一） | maplibre_core.js 對 7 個 overlay 加 `e.stopPropagation()`，把 click event 完全擋掉 → main.js document-level data-action 委派收不到 | 整段移除（Leaflet 的 `L.DomEvent.disableClickPropagation` 只擋 Leaflet 內部 event system；MapLibre 的 `map.on('click')` 只對 map render 區域內 click 觸發，overlay 不在 #leaflet-map 內，本不需手動擋）|\n| **D** | 點浮島外圈空白會 throw（step 4 漏修）| `_panToCoordTarget` 用 `_coordPin.getLatLng()` Leaflet API；step 4 已改 _coordPin 為 plain `{lat, lng}` | 用 core helper `_getCoordPinLatLng()` + MapLibre `panTo([lng, lat])` |\n\n### C 的 collateral damage 範圍\n\n| Overlay | 失效的 data-action |\n|---|---|\n| map-coord-panel | toggleCoordMode |\n| mgrs-island | mgrsSearch |\n| poly-draw-banner | finishPolyDraw, cancelPolyDraw |\n| route-draw-banner | finishRouteDraw, cancelRouteDraw |\n| node-place-banner | cancelNodePlace |\n| event-pin-banner | cancelEventPin |\n| layer-panel | toggleLayer（動態 build） |\n\n### Verification\n\n```\nreal-browser eval against running preview:\n  - toggleCoordMode 真 click：MGRS ↔ WGS84 切換成功\n  - panTo：center (25.0, 121.5) → 精準 pan 回 pin (24.83, 121.01)\n  - 8 layer + 4 source install 全 OK（無 validation error 在 fresh load）\nvitest:    49 passed (無 regression)\npytest:    443 passed (無 regression)\neslint:    clean\ndoc_sync:  ✓ passed\nhuman verify: PASS（user 確認）\n```\n\n### 教訓 — 步驟 4 / 6 寫法該檢討的\n\n1. **MapLibre 不是 Leaflet 的 drop-in replacement**：data-driven expression 支援度需 case-by-case 查 spec（v4 比 mapbox-gl v1 仍有限制）\n2. **`e.stopPropagation()` 在 document-level 委派架構下絕對不能亂用**：Leaflet 的 disable*Propagation 是專用 API（只擋自家 event bus），不能用標準 DOM API 替代\n3. **`_xxx` private state migration 要全 file grep**：`_coordPin.getLatLng()` 是 step 4 漏掉的 ghost reference；之後 port 應該每次 grep `_oldVarName\\.` 確認 0 殘留\n\n### 下一步\n\n請 step 7（NAPSG SVG SDF marker + glyphs source 接離線 fonts.pbf + 補回 infra-label / route arrow / zone rendering）— 同步處理 step 6 三個 known gap（infra label / arrow / zone）。預估 1.5 天。\n",
+        "createdAt": "2026-05-27T01:53:26Z",
+        "id": "IC_kwDOSnBjpc8AAAABDzwVYg",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/19#issuecomment-4550563170"
       }
     ],
     "createdAt": "2026-05-26T08:48:30Z",
@@ -342,7 +356,7 @@
     "number": 19,
     "state": "OPEN",
     "title": "P1-10b: MapLibre GL JS 全替換（移除 Leaflet）",
-    "updatedAt": "2026-05-27T01:11:37Z",
+    "updatedAt": "2026-05-27T01:53:26Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/19"
   }
 ]
