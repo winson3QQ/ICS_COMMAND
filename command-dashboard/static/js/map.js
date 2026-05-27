@@ -31,6 +31,7 @@ import {
 import {
   EntityLayer,
   polygonToFeature,
+  polygonLabelToFeature,
   infraToFeature,
   routeToFeature,
   flowToFeature,
@@ -1153,7 +1154,7 @@ function _ensureEntityLayers() {
     return;
   }
 
-  // Polygons — fill + stroke（dash/solid 拆兩 layer + filter，因 MapLibre v4
+  // Polygons — fill + stroke + label（dash/solid 拆兩 layer + filter，因 MapLibre v4
   // line-dasharray 不支援 data-driven expression）
   _polygonLayer = new EntityLayer(map, 'polygons', {
     layers: [
@@ -1171,10 +1172,34 @@ function _ensureEntityLayers() {
         filter: ['==', ['coalesce', ['get', 'dash'], false], true],
         paint: { 'line-color': ['get', 'color'], 'line-width': 2, 'line-dasharray': [2, 1.5] },
       },
+      {
+        // Polygon label：用 Point geometry（caller 算 centroid 加進 source）。
+        // 解 MapLibre 對 Polygon symbol-placement:'point' 跨 tile 算多次 centroid
+        // → zoom 拉大 polygon 跨多 tile → 多個 label 的 bug。
+        // filter geometry-type=Point 確保只渲染 caller 加的 centroid Point feature，
+        // 同 source 的 Polygon feature 不被本 layer render。
+        id: 'polygons-label', type: 'symbol',
+        filter: ['all',
+          ['has', 'label'],
+          ['==', ['geometry-type'], 'Point'],
+        ],
+        layout: {
+          'text-field': ['get', 'label'],
+          'text-font': ['Noto Sans Regular'],
+          'text-size': 11,
+          'symbol-placement': 'point',
+          'text-allow-overlap': false,
+        },
+        paint: {
+          'text-color': ['get', 'color'],
+          'text-halo-color': '#0d1117',
+          'text-halo-width': 2,
+        },
+      },
     ],
   });
 
-  // Infra — circle only（text-field abbr 留 step 7 接 glyphs source 後加回）
+  // Infra — circle + abbr text label（P1-10b 步驟 7 階段 3b：glyphs source 已 vendor）
   _infraLayer = new EntityLayer(map, 'infra', {
     layers: [
       {
@@ -1182,6 +1207,22 @@ function _ensureEntityLayers() {
         paint: {
           'circle-radius': 12, 'circle-color': ['get', 'color'],
           'circle-stroke-width': 2, 'circle-stroke-color': '#ffffff', 'circle-opacity': 0.92,
+        },
+      },
+      {
+        id: 'infra-label', type: 'symbol',
+        layout: {
+          'text-field': ['get', 'abbr'],
+          'text-font': ['Noto Sans Regular'],
+          'text-size': 12,
+          'text-anchor': 'center',
+          'text-allow-overlap': true,
+          'text-ignore-placement': true,
+        },
+        paint: {
+          'text-color': '#ffffff',
+          'text-halo-color': '#000000',
+          'text-halo-width': 0.5,
         },
       },
     ],
@@ -1219,6 +1260,24 @@ function _ensureEntityLayers() {
         },
         paint: { 'icon-color': ['get', 'color'], 'icon-opacity': 0.9 },
       },
+      {
+        // Route label：放在線中點，水平閱讀
+        id: 'routes-label', type: 'symbol',
+        filter: ['has', 'label'],
+        layout: {
+          'text-field': ['get', 'label'],
+          'text-font': ['Noto Sans Regular'],
+          'text-size': 11,
+          'symbol-placement': 'line-center',
+          'text-rotation-alignment': 'viewport',  // 文字永遠水平，不跟線斜
+          'text-allow-overlap': false,
+        },
+        paint: {
+          'text-color': ['get', 'color'],
+          'text-halo-color': '#0d1117',
+          'text-halo-width': 2,
+        },
+      },
     ],
   });
 
@@ -1241,6 +1300,24 @@ function _ensureEntityLayers() {
           'icon-rotation-alignment': 'map',
         },
         paint: { 'icon-color': ['get', 'color'], 'icon-opacity': 0.95 },
+      },
+      {
+        // Flow label：放在線中點
+        id: 'flows-label', type: 'symbol',
+        filter: ['has', 'label'],
+        layout: {
+          'text-field': ['get', 'label'],
+          'text-font': ['Noto Sans Regular'],
+          'text-size': 11,
+          'symbol-placement': 'line-center',
+          'text-rotation-alignment': 'viewport',
+          'text-allow-overlap': false,
+        },
+        paint: {
+          'text-color': ['get', 'color'],
+          'text-halo-color': '#0d1117',
+          'text-halo-width': 2,
+        },
       },
     ],
   });
@@ -1290,6 +1367,24 @@ function _ensureEntityLayers() {
           'icon-ignore-placement': true,
         },
         paint: { 'icon-color': '#ffffff', 'icon-opacity': 0.95 },
+      },
+      // P1-10b 步驟 7 階段 3b：zone full label（收容組/醫療組/...）放圓圈下方
+      {
+        id: 'zones-label', type: 'symbol',
+        filter: ['has', 'label'],
+        layout: {
+          'text-field': ['get', 'label'],
+          'text-font': ['Noto Sans Regular'],
+          'text-size': 11,
+          'text-anchor': 'top',
+          'text-offset': [0, 1.4],   // circle 半徑 ~14 / text-size 11 → offset 1.4 em
+          'text-allow-overlap': false,
+        },
+        paint: {
+          'text-color': '#e6edf3',
+          'text-halo-color': '#0d1117',
+          'text-halo-width': 2,
+        },
       },
     ],
   });
@@ -1395,8 +1490,15 @@ function _renderPolygons() {
     if (!_polygonLayer) return;
     _polygonLayer.setVisible(_layerVis.polygons);
     if (!_layerVis.polygons) { _polygonLayer.clear(); return; }
-    const features = (_mapConfig?.maps?.outdoor?.polygons || [])
-      .map(polygonToFeature).filter(Boolean);
+    // 每個 polygon 產出 2 個 feature 餵同 source：
+    //   1. Polygon geometry（fill / stroke layer 渲染）
+    //   2. Point geometry（centroid，label layer 渲染 — 解 MapLibre 跨 tile 多
+    //      centroid 導致 label 重複的 bug，filter geometry-type=Point）
+    const polys = _mapConfig?.maps?.outdoor?.polygons || [];
+    const features = [
+      ...polys.map(polygonToFeature).filter(Boolean),
+      ...polys.map(polygonLabelToFeature).filter(Boolean),
+    ];
     _polygonLayer.update(features);
     return;
   }

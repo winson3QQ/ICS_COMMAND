@@ -22,8 +22,11 @@ const HSINCHU_ZOOM = 15;
 const LONG_PRESS_MS = 650;
 
 // 暫時的 empty dark style — P1-10c 才接真實 PMTiles
+// glyphs URL：P1-10b 步驟 7 階段 3b vendor Noto Sans Regular（OFL，~6.8MB / 256 pbf）
+// 為了 polygon / route / flow / infra 的 text-field labels 可顯示中文。
 const EMPTY_DARK_STYLE = {
   version: 8,
+  glyphs: '/static/fonts/glyphs/{fontstack}/{range}.pbf',
   sources: {},
   layers: [
     {

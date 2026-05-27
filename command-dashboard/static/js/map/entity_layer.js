@@ -200,7 +200,9 @@ export function bakeTextSdf(map, idPrefix, chars, opts = {}) {
 export function bakeArrowSdf(map, id, opts = {}) {
   if (map.hasImage?.(id)) return;
   // 預設 14px — 與 route line-width 3 約 4:1 比例（戰術地圖典型 arrow-to-line ratio）。
-  // 用 chevron 形狀（>）而非實心三角，視覺輕量、線條不被蓋。
+  // chevron 形狀（>）：**點在右側** — MapLibre symbol-placement: 'line' 將 icon 的
+  // positive X 對齊 line forward direction，所以「右指」chevron 才會指向沿線方向。
+  // 第一版點在 top 是錯的 — 會橫躺指向 line 法向量（user dogfood 發現）。
   const size = opts.size ?? 14;
   const canvas = document.createElement('canvas');
   canvas.width = size;
@@ -208,15 +210,14 @@ export function bakeArrowSdf(map, id, opts = {}) {
   const ctx = canvas.getContext('2d');
   ctx.clearRect(0, 0, size, size);
   ctx.strokeStyle = '#ffffff';
-  ctx.fillStyle = '#ffffff';
   ctx.lineWidth = 2;
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
-  // Chevron（>）：從左下 → 中上頂點 → 右下
+  // Chevron（>）：左上 → 右中頂點 → 左下
   ctx.beginPath();
-  ctx.moveTo(2, size - 3);
-  ctx.lineTo(size / 2, 2);
-  ctx.lineTo(size - 2, size - 3);
+  ctx.moveTo(3, 3);
+  ctx.lineTo(size - 2, size / 2);
+  ctx.lineTo(3, size - 3);
   ctx.stroke();
   map.addImage(id, ctx.getImageData(0, 0, size, size), { sdf: true });
 }
@@ -263,6 +264,47 @@ function _llToLngLat(pair) {
   const lng = Number(pair[1]);
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
   return [lng, lat];
+}
+
+/**
+ * 算 polygon 簡單算術中心（用 outer ring 點平均）。
+ * 對 convex polygon 接近 visual center；concave 可能落在 polygon 外（接受 trade-off
+ * 為簡單性，呼叫端可指定 label_anchor override）。
+ * @returns {[number, number] | null} [lng, lat] 或 null
+ */
+export function polygonCentroid(poly) {
+  if (poly == null || !Array.isArray(poly.latlngs)) return null;
+  if (Array.isArray(poly.label_anchor) && poly.label_anchor.length === 2) {
+    const [lat, lng] = poly.label_anchor.map(Number);
+    if (Number.isFinite(lat) && Number.isFinite(lng)) return [lng, lat];
+  }
+  const valid = poly.latlngs
+    .map((p) => (Array.isArray(p) && p.length >= 2 ? [Number(p[0]), Number(p[1])] : null))
+    .filter((p) => p && Number.isFinite(p[0]) && Number.isFinite(p[1]));
+  if (valid.length === 0) return null;
+  const sumLat = valid.reduce((a, [lat]) => a + lat, 0);
+  const sumLng = valid.reduce((a, [, lng]) => a + lng, 0);
+  return [sumLng / valid.length, sumLat / valid.length];
+}
+
+/**
+ * polygon 的 label 用 Point Feature 代替（解 MapLibre 對 Polygon symbol-placement:'point'
+ * 跨 tile 算多個 centroid 導致 label 重複的 bug）。同 source 加 Point feature，
+ * caller layer 用 ['==', ['geometry-type'], 'Point'] filter 取出。
+ */
+export function polygonLabelToFeature(poly) {
+  if (poly == null) return null;
+  const ctr = polygonCentroid(poly);
+  if (!ctr) return null;
+  return {
+    type: 'Feature',
+    geometry: { type: 'Point', coordinates: ctr },
+    properties: {
+      id: poly.id ?? null,
+      color: poly.color ?? '#888888',
+      label: poly.label ?? '',
+    },
+  };
 }
 
 /**

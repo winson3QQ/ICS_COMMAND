@@ -102,6 +102,36 @@ ee5fc05a0677eaf69601d2c7db0d9ecd6cc27c3abc1d0733bc9ed34707cf8ef2  LICENSE-maplib
 
 **供應鏈紅線確認**：Protomaps 由 Brandon Liu（US 籍）維護，non-Chinese 實體。
 
+### Noto Sans Regular pbf glyphs（MapLibre text-field 渲染，P1-10b 步驟 7 階段 3b 起）
+
+| 項目 | 值 |
+|---|---|
+| 來源 repo | https://github.com/protomaps/basemaps-assets |
+| Vendored from | tag main (zip download) — basemaps-assets-main/fonts/Noto Sans Regular/ |
+| License | **SIL Open Font License 1.1**（OFL）|
+| Copyright | 2022 The Noto Project Authors（Google / Adobe collaboration via Noto project）|
+| Vendored as | `command-dashboard/static/fonts/glyphs/Noto Sans Regular/<range>.pbf`（256 files）+ `command-dashboard/static/fonts/glyphs/OFL.txt` |
+| 總大小 | ~6.8 MB |
+| 涵蓋範圍 | Basic Multilingual Plane 全範圍（U+0000–U+FFFF）含 ASCII + 拉丁 + 繁體中文 CJK Unified Ideographs |
+| 用途 | MapLibre `text-field` glyphs source — polygon/route/flow/infra/zone label 渲染中文（user-typed 內容） |
+| Style URL | `/static/fonts/glyphs/{fontstack}/{range}.pbf`（FastAPI static serve）|
+
+**OFL 散布義務**：保留 copyright 通知 + 不能單獨販賣字體 + 衍生作品需用相同 license。
+LICENSE 文字 vendored at `static/fonts/glyphs/OFL.txt`。
+
+**供應鏈紅線確認**：Noto 字體 = Google + Adobe 合作（non-Chinese 實體 + open standard）；
+Protomaps 是 Brandon Liu (US) 自製的 build pipeline 產生 pbf。Pipeline 工具
+`maplibre/font-maker` 為 MapLibre 社群維護（non-Chinese）。
+
+**選擇 rationale**（B1 全 CJK）：
+- 戰術系統 user-typed label 涵蓋人名/地名/部隊代號等不可預期字
+- 與 TAK / 政府指揮系統對標：完整 CJK 是標準
+- subset 解法（B2）會在邊緣 case 破圖且 subset 選擇本身是技術債
+- repo 增量 6.8MB vs P1-10c PMTiles 200-400MB 微不足道 (~2-3%)
+
+**未來如要加 Bold / Italic weight**：同 repo 已有 `Noto Sans Medium` / `Noto Sans Italic`，
+依需求再 vendor，預期再 +6-7MB。當前 Regular + `text-halo-width` 已足夠 readable。
+
 ### 將被移除（P1-10b 步驟 11）
 
 完成 MapLibre 替換後 `static/lib/` 內以下檔案刪除：
