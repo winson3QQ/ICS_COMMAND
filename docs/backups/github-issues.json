@@ -390,6 +390,20 @@
         "minimizedReason": "",
         "reactionGroups": [],
         "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/19#issuecomment-4551711280"
+      },
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## Session pause — step 8 WIP，下次起手點\n\nCommit `418a65a` push GitHub + Codeberg ✓。Branch 13 commits。\n\n### Step 8 進度\n\n**完成**：\n- ✅ `static/js/map/draw_tools.js` — `DrawPreview` class（取代 Leaflet draw API）\n- ✅ `static/js/map/label_markers.js` — `LabelMarkerManager` class（HTML drag handle + SDF text 混合）\n- ✅ map.js draw 整合（`_addPolyVertex` / `_addRouteVertex` 等改委派 DrawPreview）\n- ✅ entity_layer.js helpers（`polygonCentroid`, `polygonLabelToFeature`, `routeMidLngLat`, `routeLabelToFeature`）\n- ✅ map.js symbol layer 調整（polygons-label / routes-label 用 Point geometry + feature-state.dragging）\n- ✅ _saveFlow UX fix（起點=終點 silent return → 顯式紅字提示）\n- ✅ `tests/js/draw_tools.test.js` — 15 unit tests\n\n**Blocking regression**：[#21](https://github.com/winson3QQ/ICS_COMMAND/issues/21) — **SDF text labels 全部不渲染**\n\n### 下次 session 起手 SOP\n\n```bash\n./status.sh            # 確認 branch + commit head 4d6d7c8 等\ngh issue view 21       # 讀 label regression 已知資訊\n```\n\n按 issue #21 的 diagnose checklist：\n1. 開 Network tab，filter `.pbf`，hard reload + 切站外，看 pbf 請求有沒有 200\n2. 手動 `curl /static/fonts/glyphs/Noto%20Sans%20Regular/19712-19967.pbf` 確認檔案還在 + FastAPI 還能 serve\n3. 若 pbf 正常 → bisect step 8 內 4 個嫌疑改動（依 commit `418a65a` 內列表 #4）\n4. 若 pbf 異常 → 看編碼 / CORS / Content-Type\n\n### 視覺現況（暫停時）\n\n正常 render：\n- ✅ Polygon fill + stroke (虛線 / 實線)\n- ✅ Route line + chevron arrow\n- ✅ Flow line + chevron arrow\n- ✅ Zone circle + abbr SDF icon (收/醫/指/前/安)\n- ✅ Infra circle\n- ✅ Coord pin\n- ✅ Pan / zoom / hover state\n- ✅ Draw polygon / route + 永久 save 到 map_config\n\n不正常：\n- ❌ **所有 SDF text-field labels 全消失**（zone names / infra abbr / polygon name / route name / flow name）\n- ⚠️ Label drag handle 可看見 hover dashed 框 + 可拖（功能 OK），但 SDF text 沒顯示沒視覺對比\n\n### 14 步驟進度\n\n| # | 狀態 |\n|---|---|\n| 1-7 | ✅ |\n| 8 | 🚧 WIP — feature 完成但 #21 blocking |\n| 9-14 | ⏳ pending step 8 resolved |\n\n### Branch 累積 13 commits\n\n```\n418a65a feat(map): DrawPreview + LabelMarkerManager + flow UX + 路徑 label Point geometry (P1-10b 步驟 8 進行中)\n4d6d7c8 feat(map): vendor Noto Sans CJK pbf + text-field labels for all entities (P1-10b 步驟 7 階段 3b)\nfcf0f9f feat(map): NAPSG abbr SDF + route/flow chevron arrows (P1-10b 步驟 7 階段 2+3a)\nae972d8 feat(map): zone marker port to EntityLayer (P1-10b 步驟 7 階段 1)\nd3e9386 fix(static): track 臂章後製版.png 解 commander_dashboard badge HTML drift\n6c27d3a fix(map): MapLibre v4 paint + overlay click regression (P1-10b 步驟 6 hotfix)\nf603599 feat(map): port 4 個 render 函式用 EntityLayer (P1-10b 步驟 6)\n80a0dc0 feat(map): EntityLayer 抽象 + zoneToFeature helper (P1-10b 步驟 5)\n13f0aa7 test(map): 更新 commander_modules SoT contract test (P1-10b 步驟 2-4)\n552cdf5 feat(map): MapLibre core 取代 Leaflet init (P1-10b 步驟 2-4)\nffc4ea5 chore(vendor): 補 MapLibre + pmtiles LICENSE 文字\n6ddb3ff chore(vendor): MapLibre GL JS v4.7.1 + pmtiles v4.4.1 進 static/lib\n85f75e7 docs(roadmap): P1-10b/c scope 修訂\n```\n",
+        "createdAt": "2026-05-27T07:33:52Z",
+        "id": "IC_kwDOSnBjpc8AAAABD1jDGw",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/19#issuecomment-4552442651"
       }
     ],
     "createdAt": "2026-05-26T08:48:30Z",
@@ -398,7 +412,7 @@
     "number": 19,
     "state": "OPEN",
     "title": "P1-10b: MapLibre GL JS 全替換（移除 Leaflet）",
-    "updatedAt": "2026-05-27T05:44:28Z",
+    "updatedAt": "2026-05-27T07:33:52Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/19"
   },
   {
