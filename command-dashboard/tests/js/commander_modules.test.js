@@ -150,11 +150,18 @@ describe('C1-F commander modules', () => {
     await expect(map.initMap()).resolves.toBeUndefined();
     expect(map.getMapConfig()).toEqual({ maps: { indoor: { zones: [] }, outdoor: { zones: [] } } });
     const source = file('static/js/map.js');
-    expect(source).toMatch(/protomapsL\.leafletLayer/);
-    expect(source).toMatch(/\/tiles\/pmtiles\/taiwan\.pmtiles/);
+    // P1-10b 步驟 4：map.js 委派 outdoor map 給 maplibre_core.js（取代 Leaflet + protomaps-leaflet）
+    expect(source).toMatch(/from '\.\/map\/maplibre_core\.js'/);
+    expect(source).toMatch(/_initMaplibre\(\)/);
+    expect(source).toMatch(/initMaplibre\('leaflet-map'/);
+    // 過渡期：entity rendering 函式仍存在但 stubbed（步驟 5+ port）
     expect(source).toMatch(/_napsgIcon/);
     expect(source).toMatch(/_renderPolygons/);
     expect(source).toMatch(/_renderRoutes/);
+    // P1-10c PMTiles 接上前 grayscale 底圖暫拿掉（empty dark style 在 maplibre_core.js 內）
+    const coreSource = file('static/js/map/maplibre_core.js');
+    expect(coreSource).toMatch(/background-color': '#0d1117'/);
+    expect(coreSource).toMatch(/maplibregl\.Map/);
   });
 
   test('events_crud_renders', async () => {
@@ -410,7 +417,9 @@ describe('C1-F commander modules', () => {
     expect(mainSource).toMatch(/ttxToggle\.style\.display = canUseRealModeControls\(\) \? '' : 'none'/);
     expect(mainSource).toMatch(/if \(!canCreateEvents\(\)\) break;/);
     expect(eventsSource).toMatch(/if \(!canCreateEvents\(\)\) return;/);
-    expect(mapSource).toMatch(/if \(!_lpMoved && canCreateEvents\(\)\) _openEventPopup/);
+    // P1-10b 步驟 4：長按 popup 改走 maplibre_core onLongPress callback；
+    // canCreateEvents() 守門點在 callback 內（_lpMoved 已封裝進 core，map.js 不再見此變數）
+    expect(mapSource).toMatch(/onLongPress: \(\{ lat, lng \}\) => \{\s+if \(canCreateEvents\(\)\) _openEventPopup\(lat, lng\);/);
     expect(mapSource).toMatch(/function _openEventPopup\(lat, lng\) {\s+if \(!canCreateEvents\(\)\) return;/);
     expect(mapSource).toMatch(/async function _evPopupSubmit\(typeKey\) {\s+if \(!canCreateEvents\(\)\) return;/);
     expect(wsSource).toMatch(/canCreateEvents/);
@@ -481,9 +490,14 @@ describe('C1-F commander modules', () => {
     );
     expect(modules['auth.js']).not.toMatch(/^import\s/m);
     expect([...modules['ws.js'].matchAll(/from\s+['"]([^'"]+)['"]/g)].map(m => m[1])).toEqual(['./auth.js']);
-    for (const name of ['map.js', 'events.js', 'decisions.js', 'charts.js']) {
+    for (const name of ['events.js', 'decisions.js', 'charts.js']) {
       const imports = [...modules[name].matchAll(/from\s+['"]([^'"]+)['"]/g)].map(m => m[1]);
       expect(imports.every(spec => spec === './ws.js')).toBe(true);
+    }
+    // P1-10b 步驟 4：map.js 額外允許 import './map/*.js'（內部拆檔 maplibre_core / entity_layer 等）
+    {
+      const imports = [...modules['map.js'].matchAll(/from\s+['"]([^'"]+)['"]/g)].map(m => m[1]);
+      expect(imports.every(spec => spec === './ws.js' || spec.startsWith('./map/'))).toBe(true);
     }
     expect(modules['cop.js']).toMatch(/from '\.\/ws\.js'/);
     expect(modules['cop.js']).toMatch(/from '\.\/map\.js'/);
@@ -497,11 +511,15 @@ describe('C1-F commander modules', () => {
     expect(html).not.toMatch(/CMD_VERSION/);
     expect(main).toMatch(/\/api\/version/);
     expect(main).toMatch(/cmd_version/);
+    // P1-10b 步驟 2-3：HTML 加 maplibre-gl.css（leaflet.min.css 過渡期仍掛，步驟 11 刪）；
+    // main.js loader 換 maplibre + pmtiles；_configureLeafletAssets + marker PNG 已移除
     expect(html).toMatch(/href="\/static\/lib\/leaflet\.min\.css"/);
-    expect(main).toMatch(/\/static\/lib\/marker-icon\.png/);
-    expect(main).toMatch(/\/static\/lib\/marker-icon-2x\.png/);
-    expect(main).toMatch(/\/static\/lib\/marker-shadow\.png/);
-    expect(main).toMatch(/delete window\.L\.Icon\.Default\.prototype\._getIconUrl/);
+    expect(html).toMatch(/href="\/static\/lib\/maplibre-gl\.css"/);
+    expect(main).toMatch(/\/static\/lib\/maplibre-gl\.js/);
+    expect(main).toMatch(/\/static\/lib\/pmtiles\.js/);
+    expect(main).toMatch(/_waitForGlobal\('maplibregl'\)/);
+    expect(main).not.toMatch(/_configureLeafletAssets\(\)/);
+    expect(main).not.toMatch(/delete window\.L\.Icon\.Default/);
   });
 
   test('commander_health_light_uses_api_health_details', () => {
