@@ -121,9 +121,25 @@ export class LabelMarkerManager {
         existing.lastLabel = feat.label;
       }
       existing.lastColor = feat.color;
+      // 防 stuck-dragging：若 dragend race / browser interrupt（例 user drag 到一半
+      // 切視窗、過 modal、ESC 中斷）導致 feature-state.dragging 卡 true，text-opacity
+      // case → 0，label 從此永遠 invisible。每次 sync 在非當前 drag 中時主動清。
+      this._clearStuckDragState(feat.id, existing);
       return;
     }
-    // 新建 transparent handle
+    // 新建 transparent handle —— entry 先建（先 set 進 map）讓 dragstart/dragend
+    // closure 抓到。marker 字段稍後 fill。
+    const entry = {
+      marker: null,
+      lastLabel: feat.label,
+      lastColor: feat.color,
+      isDragging: false,
+    };
+    this.markers.set(feat.id, entry);
+    // 新 marker 也順手清一次：若上一輪 marker（同 feat.id）dragend race
+    //  留下 stuck state，這次建新 marker 時 state 仍在 source 裡（promoteId 持久化）。
+    this._clearStuckDragState(feat.id, entry);
+
     const el = document.createElement('div');
     el.className = 'mlb-label-handle';
     el.dataset.featureId = feat.id;
@@ -154,11 +170,13 @@ export class LabelMarkerManager {
     })
       .setLngLat(lnglat)
       .addTo(this.map);
+    entry.marker = marker;
 
     // 拖曳期間 ghost label：給 user 看到拖到哪
     let ghostEl = null;
 
     marker.on('dragstart', () => {
+      entry.isDragging = true;
       el.style.cursor = 'grabbing';
       // 隱藏 symbol layer text（避免 ghost + symbol 雙層疊）
       try {
@@ -182,6 +200,7 @@ export class LabelMarkerManager {
       try {
         this.map.setFeatureState({ source: this.sourceId, id: feat.id }, { dragging: false });
       } catch (e) { /* skip */ }
+      entry.isDragging = false;
       const ll = marker.getLngLat();
       const lat = Math.round(ll.lat * 1000000) / 1000000;
       const lng = Math.round(ll.lng * 1000000) / 1000000;
@@ -189,8 +208,20 @@ export class LabelMarkerManager {
         onDragEnd(feat.id, { lat, lng });
       }
     });
+  }
 
-    this.markers.set(feat.id, { marker, lastLabel: feat.label, lastColor: feat.color });
+  /**
+   * 在 feature 非當前 drag 中時，若 source 內殘留 dragging:true，主動清回 false。
+   * 走 getFeatureState 先確認，避免每次 sync 都重 setData 觸發無謂 repaint。
+   */
+  _clearStuckDragState(featureId, entry) {
+    if (entry?.isDragging) return;
+    try {
+      const cur = this.map.getFeatureState({ source: this.sourceId, id: featureId });
+      if (cur && cur.dragging === true) {
+        this.map.setFeatureState({ source: this.sourceId, id: featureId }, { dragging: false });
+      }
+    } catch (_) { /* source 不存在 / id 未進入 source — skip */ }
   }
 
   clear() {

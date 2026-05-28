@@ -14,7 +14,9 @@ import {
   zoneToFeature,
   zoneToNodeFeature,
   polygonToFeature,
+  polygonLabelToFeature,
   routeToFeature,
+  routeLabelToFeature,
   infraToFeature,
   flowToFeature,
 } from '../../static/js/map/entity_layer.js';
@@ -406,5 +408,49 @@ describe('flowToFeature', () => {
   test('resolveRef 非 function → null（防呆）', () => {
     expect(flowToFeature({ from_zone_id: 'z1', to_zone_id: 'z2' }, null)).toBeNull();
     expect(flowToFeature(null, resolveRef)).toBeNull();
+  });
+});
+
+// MapLibre 4.7.1 render pipeline 對 ['geometry-type'] expression 在 symbol layer
+// 內 cull 掉所有 features（dogfood 發現）。Label feature 必須帶 properties.kind='label'
+// 才能讓 layer 用 ['==', ['get', 'kind'], 'label'] filter 通過，rendering 才正常。
+// 本 group lock 這個 contract — 之後 refactor 不會誤刪 kind property。
+describe('polygonLabelToFeature / routeLabelToFeature kind="label" 標記', () => {
+  test('polygonLabelToFeature 回傳 feature 帶 kind="label"', () => {
+    const f = polygonLabelToFeature({
+      id: 'p1', label: 'A', color: '#fff',
+      latlngs: [[24, 121], [24, 122], [25, 121.5]],
+    });
+    expect(f).not.toBeNull();
+    expect(f.properties.kind).toBe('label');
+    expect(f.properties.label).toBe('A');
+    expect(f.geometry.type).toBe('Point');
+  });
+
+  test('routeLabelToFeature 回傳 feature 帶 kind="label"', () => {
+    const f = routeLabelToFeature({
+      id: 'r1', label: 'B', color: '#0f0',
+      latlngs: [[24, 121], [25, 122]],
+    });
+    expect(f).not.toBeNull();
+    expect(f.properties.kind).toBe('label');
+    expect(f.properties.label).toBe('B');
+    expect(f.geometry.type).toBe('Point');
+  });
+
+  test('polygonToFeature (本體 Polygon) 不帶 kind property（避免與 label feature 混）', () => {
+    const f = polygonToFeature({
+      id: 'p1', label: 'A', color: '#fff',
+      latlngs: [[24, 121], [24, 122], [25, 121.5]],
+    });
+    expect(f.properties.kind).toBeUndefined();
+  });
+
+  test('routeToFeature (本體 LineString) 不帶 kind property', () => {
+    const f = routeToFeature({
+      id: 'r1', label: 'B', color: '#0f0',
+      latlngs: [[24, 121], [25, 122]],
+    });
+    expect(f.properties.kind).toBeUndefined();
   });
 });

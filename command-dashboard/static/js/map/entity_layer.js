@@ -290,7 +290,12 @@ export function polygonCentroid(poly) {
 /**
  * polygon 的 label 用 Point Feature 代替（解 MapLibre 對 Polygon symbol-placement:'point'
  * 跨 tile 算多個 centroid 導致 label 重複的 bug）。同 source 加 Point feature，
- * caller layer 用 ['==', ['geometry-type'], 'Point'] filter 取出。
+ * caller layer 用 `['==', ['get', 'kind'], 'label']` filter 取出。
+ *
+ * ⚠️ 為什麼不用 `['geometry-type']` filter（前一輪寫法）：MapLibre 4.7.1 render
+ * pipeline 對該 expression 不穩定（querySourceFeatures 用 OK、symbol layer 渲染
+ * 階段卻 cull 掉，dogfood 撞到），改用 explicit `properties.kind` 標籤 + `get`
+ * 對映 filter 規避。
  */
 export function polygonLabelToFeature(poly) {
   if (poly == null) return null;
@@ -303,6 +308,7 @@ export function polygonLabelToFeature(poly) {
       id: poly.id ?? null,
       color: poly.color ?? '#888888',
       label: poly.label ?? '',
+      kind: 'label',
     },
   };
 }
@@ -357,7 +363,9 @@ export function routeMidLngLat(route) {
 /**
  * route 的 label 用 Point Feature 代替（解 symbol-placement:'line-center' 不認
  * label_anchor 的問題）。同 source 加 Point feature，caller layer 用
- * `['==', ['geometry-type'], 'Point']` filter 取出。
+ * `['==', ['get', 'kind'], 'label']` filter 取出。
+ * （ geometry-type filter 在 MapLibre 4.7.1 render pipeline 有 bug — 見
+ *   polygonLabelToFeature 同樣的 rationale ）
  */
 export function routeLabelToFeature(route) {
   if (route == null) return null;
@@ -367,6 +375,7 @@ export function routeLabelToFeature(route) {
     type: 'Feature',
     geometry: { type: 'Point', coordinates: ll },
     properties: {
+      kind: 'label',
       id: route.id ?? null,
       color: route.color ?? '#58a6ff',
       label: route.label ?? '',
