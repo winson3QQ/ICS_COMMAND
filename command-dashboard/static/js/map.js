@@ -46,6 +46,16 @@ import { DrawPreview } from './map/draw_tools.js';
 import { LabelMarkerManager } from './map/label_markers.js';
 import { EventPopup } from './map/event_popup.js';
 import { EventDragManager } from './map/event_drag.js';
+// P1-10b 步驟 10：座標工具（UTM / MGRS / WGS84 互轉）+ MGRS grid 渲染統一抽到
+// coord_tools.js。本檔保留舊命名作為 import alias，caller 無需改。
+import {
+  latlngToMgrs as _latlngToMGRS,
+  mgrsToLatLng as _mgrsToLatLng,
+  latlngToUtm as _latlngToUtm,
+  utmToLatLng as _utmToLatLng,
+  parseWgs84 as _parseWgs84,
+  MgrsGrid,
+} from './map/coord_tools.js';
 
 const API_BASE = location.origin;
 const el = id => document.getElementById(id);
@@ -70,7 +80,8 @@ let _eventPopup = null;        // EventPopup — step 9（長按 → 兩階段�
 let _eventDragMgr = null;      // EventDragManager — 補 step 7 symbol layer 化後事件
                                //   zone 失去的拖曳行為；只服務事件 zone（節點不在 scope）
 let _entityLayersInstalled = false;
-let _mgrsGridLayer = null;
+let _mgrsGridLayer = null;   // legacy Leaflet group ref（過渡保留供 fallback；新走 _mgrsGrid）
+let _mgrsGrid = null;        // MgrsGrid instance — step 10 port 到 MapLibre symbol/line layer
 let _coordPin = null;            // 雙擊放置的藍色十字 marker
 let _polyDrawState = null;       // { latlngs, markers, previewPoly }
 let _routeDrawState = null;      // { latlngs, markers, previewLine }
@@ -244,11 +255,12 @@ function _initMaplibre() {
       if (canCreateEvents()) _openEventPopup(lat, lng);
     },
 
-    // moveend / zoomend → sessionStorage view save + MGRS placeholder 更新
+    // moveend / zoomend → sessionStorage view save + MGRS placeholder + grid redraw
     onMoveEnd: ({ lat, lng, zoom }) => {
       sessionStorage.setItem('_mapView', JSON.stringify({ lat, lng, zoom }));
       _updateMgrsPlaceholder();
-      if (_mgrsGridVisible) _drawMgrsGrid();
+      // step 10：MGRS grid 改走 MapLibre source/layer，redraw() 內部會處理「未啟用就跳過」
+      if (_mgrsGrid && _mgrsGridVisible) _mgrsGrid.redraw();
     },
   });
 
@@ -430,149 +442,10 @@ export function refreshLeafletMarkers() {
 }
 
 // ══════════════════════════════════════════════════════════════
-// MGRS / WGS84 座標轉換（DMA TM 8358.2 規格）
+// MGRS / WGS84 / UTM 工具：步驟 10 已抽出到 map/coord_tools.js。
+// 本檔僅留 _latlngToMGRS / _mgrsToLatLng / _latlngToUtm / _utmToLatLng /
+// _parseWgs84 為 import alias（見檔首），caller 不需改。
 // ══════════════════════════════════════════════════════════════
-
-function _latlngToMGRS(lat, lng, precision) {
-  precision = (precision === undefined) ? 5 : precision;
-  const zoneNum = Math.floor((lng + 180) / 6) + 1;
-  const latBands = 'CDEFGHJKLMNPQRSTUVWX';
-  const latBand = latBands[Math.min(Math.floor((lat + 80) / 8), 19)];
-  const a = 6378137.0, f = 1 / 298.257223563;
-  const b = a * (1 - f), e2 = 1 - (b * b) / (a * a), ep2 = e2 / (1 - e2), k0 = 0.9996;
-  const phi = lat * Math.PI / 180, lam = lng * Math.PI / 180;
-  const lam0 = ((zoneNum - 1) * 6 - 180 + 3) * Math.PI / 180;
-  const sinp = Math.sin(phi), cosp = Math.cos(phi), tanp = Math.tan(phi);
-  const N = a / Math.sqrt(1 - e2 * sinp * sinp);
-  const T = tanp * tanp, C = ep2 * cosp * cosp, A = cosp * (lam - lam0);
-  const M = a * (
-    (1 - e2 / 4 - 3 * e2 * e2 / 64 - 5 * e2 * e2 * e2 / 256) * phi
-    - (3 * e2 / 8 + 3 * e2 * e2 / 32 + 45 * e2 * e2 * e2 / 1024) * Math.sin(2 * phi)
-    + (15 * e2 * e2 / 256 + 45 * e2 * e2 * e2 / 1024) * Math.sin(4 * phi)
-    - (35 * e2 * e2 * e2 / 3072) * Math.sin(6 * phi));
-  let E = k0 * N * (A + (1 - T + C) * A * A * A / 6 + (5 - 18 * T + T * T + 72 * C - 58 * ep2) * A * A * A * A * A / 120) + 500000;
-  let Nn = k0 * (M + N * tanp * (A * A / 2 + (5 - T + 9 * C + 4 * C * C) * A * A * A * A / 24
-    + (61 - 58 * T + T * T + 600 * C - 330 * ep2) * A * A * A * A * A * A / 720));
-  if (lat < 0) Nn += 10000000;
-  const colSets = ['ABCDEFGH', 'JKLMNPQR', 'STUVWXYZ'];
-  const rowOdd = 'ABCDEFGHJKLMNPQRSTUV';
-  const rowEven = 'FGHJKLMNPQRSTUVABCDE';
-  const colIdx = Math.floor(E / 100000) - 1;
-  const rowIdx = Math.floor(Nn / 100000) % 20;
-  if (colIdx < 0 || colIdx > 7) return `${zoneNum}${latBand} ??`;
-  const colLetter = colSets[(zoneNum - 1) % 3][colIdx];
-  const rowLetter = (zoneNum % 2 === 1 ? rowOdd : rowEven)[rowIdx];
-  const ep = String(Math.round(E % 100000)).padStart(5, '0').substring(0, precision);
-  const np = String(Math.round(Nn % 100000)).padStart(5, '0').substring(0, precision);
-  return `${zoneNum}${latBand} ${colLetter}${rowLetter} ${ep} ${np}`;
-}
-
-function _utmToLatLng(zoneNum, E, N) {
-  const a = 6378137.0, f = 1 / 298.257223563;
-  const b = a * (1 - f), e2 = 1 - (b * b) / (a * a), ep2 = e2 / (1 - e2), k0 = 0.9996;
-  const e1 = (1 - Math.sqrt(1 - e2)) / (1 + Math.sqrt(1 - e2));
-  const x = E - 500000;
-  const M = N / k0;
-  const mu = M / (a * (1 - e2 / 4 - 3 * e2 * e2 / 64 - 5 * e2 * e2 * e2 / 256));
-  const phi1 = mu
-    + (3 * e1 / 2 - 27 * e1 * e1 * e1 / 32) * Math.sin(2 * mu)
-    + (21 * e1 * e1 / 16 - 55 * e1 * e1 * e1 * e1 / 32) * Math.sin(4 * mu)
-    + (151 * e1 * e1 * e1 / 96) * Math.sin(6 * mu)
-    + (1097 * e1 * e1 * e1 * e1 / 512) * Math.sin(8 * mu);
-  const sinp = Math.sin(phi1), cosp = Math.cos(phi1), tanp = Math.tan(phi1);
-  const N1 = a / Math.sqrt(1 - e2 * sinp * sinp);
-  const T1 = tanp * tanp, C1 = ep2 * cosp * cosp;
-  const R1 = a * (1 - e2) / Math.pow(1 - e2 * sinp * sinp, 1.5);
-  const D = x / (N1 * k0);
-  const latRad = phi1 - (N1 * tanp / R1) * (
-    D * D / 2
-    - (5 + 3 * T1 + 10 * C1 - 4 * C1 * C1 - 9 * ep2) * D * D * D * D / 24
-    + (61 + 90 * T1 + 298 * C1 + 45 * T1 * T1 - 252 * ep2 - 3 * C1 * C1) * D * D * D * D * D * D / 720
-  );
-  const lngRad = (D
-    - (1 + 2 * T1 + C1) * D * D * D / 6
-    + (5 - 2 * C1 + 28 * T1 - 3 * C1 * C1 + 8 * ep2 + 24 * T1 * T1) * D * D * D * D * D / 120
-  ) / cosp;
-  const lam0 = ((zoneNum - 1) * 6 - 180 + 3) * Math.PI / 180;
-  return { lat: latRad * 180 / Math.PI, lng: (lam0 + lngRad) * 180 / Math.PI };
-}
-
-function _latlngToUtm(lat, lng) {
-  const a = 6378137.0, f = 1 / 298.257223563;
-  const b = a * (1 - f), e2 = 1 - (b * b) / (a * a), ep2 = e2 / (1 - e2), k0 = 0.9996;
-  const zoneNum = Math.floor((lng + 180) / 6) + 1;
-  const phi = lat * Math.PI / 180, lam = lng * Math.PI / 180;
-  const lam0 = ((zoneNum - 1) * 6 - 180 + 3) * Math.PI / 180;
-  const sinp = Math.sin(phi), cosp = Math.cos(phi), tanp = Math.tan(phi);
-  const N = a / Math.sqrt(1 - e2 * sinp * sinp);
-  const T = tanp * tanp, C = ep2 * cosp * cosp, A = cosp * (lam - lam0);
-  const M = a * (
-    (1 - e2 / 4 - 3 * e2 * e2 / 64 - 5 * e2 * e2 * e2 / 256) * phi
-    - (3 * e2 / 8 + 3 * e2 * e2 / 32 + 45 * e2 * e2 * e2 / 1024) * Math.sin(2 * phi)
-    + (15 * e2 * e2 / 256 + 45 * e2 * e2 * e2 / 1024) * Math.sin(4 * phi)
-    - (35 * e2 * e2 * e2 / 3072) * Math.sin(6 * phi));
-  let E = k0 * N * (A + (1 - T + C) * A * A * A / 6 + (5 - 18 * T + T * T + 72 * C - 58 * ep2) * A * A * A * A * A / 120) + 500000;
-  let Nn = k0 * (M + N * tanp * (A * A / 2 + (5 - T + 9 * C + 4 * C * C) * A * A * A * A / 24
-    + (61 - 58 * T + T * T + 600 * C - 330 * ep2) * A * A * A * A * A * A / 720));
-  if (lat < 0) Nn += 10000000;
-  return { zoneNum, easting: E, northing: Nn };
-}
-
-function _mgrsToLatLng(mgrsStr) {
-  const s = mgrsStr.trim().toUpperCase().replace(/\s+/g, '');
-  const m = s.match(/^(\d{1,2})([C-HJ-NP-X])([A-HJ-NP-Z])([A-HJ-NP-V])(\d{2,10})$/);
-  if (!m) return null;
-  const zoneNum = parseInt(m[1], 10);
-  const latBand = m[2];
-  const colLtr = m[3];
-  const rowLtr = m[4];
-  const digits = m[5];
-  if (digits.length % 2 !== 0) return null;
-  const half = digits.length / 2;
-  const scale = Math.pow(10, 5 - half);
-  const eOff = parseInt(digits.substring(0, half), 10) * scale;
-  const nOff = parseInt(digits.substring(half), 10) * scale;
-  const colSets = ['ABCDEFGH', 'JKLMNPQR', 'STUVWXYZ'];
-  const colSet = colSets[(zoneNum - 1) % 3];
-  const colIdx = colSet.indexOf(colLtr);
-  if (colIdx < 0) return null;
-  const utmE = (colIdx + 1) * 100000 + eOff;
-  const rowOdd = 'ABCDEFGHJKLMNPQRSTUV';
-  const rowEven = 'FGHJKLMNPQRSTUVABCDE';
-  const rowSet = (zoneNum % 2 === 1) ? rowOdd : rowEven;
-  const rowIdx = rowSet.indexOf(rowLtr);
-  if (rowIdx < 0) return null;
-  const latBands = 'CDEFGHJKLMNPQRSTUVWX';
-  const bandIdx = latBands.indexOf(latBand);
-  if (bandIdx < 0) return null;
-  const approxLat = (bandIdx * 8 - 80) + 4;
-  const a = 6378137.0, f = 1 / 298.257223563;
-  const b = a * (1 - f), e2 = 1 - (b * b) / (a * a), k0 = 0.9996;
-  const phi = approxLat * Math.PI / 180;
-  const Mapprox = a * (
-    (1 - e2 / 4 - 3 * e2 * e2 / 64 - 5 * e2 * e2 * e2 / 256) * phi
-    - (3 * e2 / 8 + 3 * e2 * e2 / 32 + 45 * e2 * e2 * e2 / 1024) * Math.sin(2 * phi)
-    + (15 * e2 * e2 / 256 + 45 * e2 * e2 * e2 / 1024) * Math.sin(4 * phi)
-    - (35 * e2 * e2 * e2 / 3072) * Math.sin(6 * phi));
-  let approxNn = k0 * Mapprox;
-  if (approxLat < 0) approxNn += 10000000;
-  let nBand = Math.floor(approxNn / 100000);
-  const approxRowIdx = nBand % 20;
-  let diff = (rowIdx - approxRowIdx + 20) % 20;
-  if (diff > 10) diff -= 20;
-  nBand += diff;
-  const utmN = nBand * 100000 + nOff;
-  return _utmToLatLng(zoneNum, utmE, utmN);
-}
-
-function _parseWgs84(str) {
-  const m = str.match(/(-?\d+\.?\d*)[,\s]+(-?\d+\.?\d*)/);
-  if (!m) return null;
-  const lat = parseFloat(m[1]), lng = parseFloat(m[2]);
-  if (isNaN(lat) || isNaN(lng)) return null;
-  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
-  return { lat, lng };
-}
 
 function _currentMgrsGzd() {
   const c = _mapGetCenter();
@@ -670,104 +543,14 @@ function _rebuildLayerPanel() {
 }
 
 // ══════════════════════════════════════════════════════════════
-// MGRS 格線（簡化版：依像素密度自動決定間距）
+// MGRS 格線：步驟 10 已 port 到 map/coord_tools.js 的 MgrsGrid class。
+// 渲染走 MapLibre GeoJSON source + line/symbol layer，redraw() 在 moveend 觸發。
+// 本檔僅留 _drawMgrsGrid 作為 toggle 的 thin wrapper（向後相容 caller）。
 // ══════════════════════════════════════════════════════════════
 
-function _mgrsGridSpacing() {
-  const MIN_PX = 60;
-  const zoom = _mapGetZoom();
-  const c = _mapGetCenter();
-  if (zoom == null || !c) return 100000;
-  const metersPerPx = (40075016.686 / (256 * Math.pow(2, zoom))) / Math.cos(c.lat * Math.PI / 180);
-  const minMeters = metersPerPx * MIN_PX;
-  const levels = [1, 10, 100, 1000, 10000, 100000];
-  return levels.find(s => s >= minMeters) || 100000;
-}
-
-function _mgrsGridLabel(val, spacing) {
-  // 位數 = log10(100000 / spacing)：10km→1位、1km→2位、100m→3位、10m→4位
-  const digits = Math.max(3, Math.round(Math.log10(100000 / spacing)));
-  const divisor = Math.pow(10, 5 - digits);
-  const v = Math.round(val % 100000);
-  return String(Math.floor(v / divisor)).padStart(digits, '0');
-}
-
-function _mgrsLabelIconW(spacing) {
-  const digits = Math.max(1, Math.round(Math.log10(100000 / spacing)));
-  return 16 + digits * 6;
-}
-
 function _drawMgrsGrid() {
-  // P1-10b: MapLibre 啟用後 L.polyline + addTo(_leafletMap) 會炸；MGRS grid port 留到 P2-05
-  //（MIL-STD-2525 同 phase）或步驟 10 收尾。過渡期 toggle MGRS 圖層 no-op。
-  // TODO(P1-10b#19): port 到 MapLibre line layer（GeoJSON source + line layer）。
-  if (typeof window.maplibregl !== 'undefined') return;
-  if (!_leafletMap || !window.L) return;
-  if (!_mgrsGridLayer) _mgrsGridLayer = L.layerGroup();
-  _mgrsGridLayer.clearLayers();
-  if (!_mgrsGridVisible) {
-    if (_mgrsGridLayer._map) _mgrsGridLayer.remove();
-    return;
-  }
-  if (!_mgrsGridLayer._map) _mgrsGridLayer.addTo(_leafletMap);
-  const sp = _mgrsGridSpacing();
-  const b = _leafletMap.getBounds();
-  const ctr = _latlngToUtm(b.getCenter().lat, b.getCenter().lng);
-  const sw = _latlngToUtm(b.getSouth(), b.getWest());
-  const ne = _latlngToUtm(b.getNorth(), b.getEast());
-  const zn = ctr.zoneNum;
-  const lineOpt = { color: 'rgba(90,150,215,.55)', weight: 1, interactive: false };
-
-  // 將標籤定位於距 viewport 邊緣固定像素的位置（避免被 UI 元件遮蓋）
-  const mapW = _leafletMap.getContainer().offsetWidth;
-  const mapH = _leafletMap.getContainer().offsetHeight;
-  const leftPx = 24;     // Y 標籤距左側
-  const bottomPx = 60;   // X 標籤距底部（避開 MGRS 搜尋欄）
-  const llLeft   = _leafletMap.containerPointToLatLng(L.point(leftPx,   mapH / 2));
-  const llBottom = _leafletMap.containerPointToLatLng(L.point(mapW / 2, mapH - bottomPx));
-  const labelE = _latlngToUtm(llLeft.lat,   llLeft.lng).easting;
-  const labelN = _latlngToUtm(llBottom.lat, llBottom.lng).northing;
-  const labelW = _mgrsLabelIconW(sp);
-
-  // 東西向 northing 線 + 左側 Y 軸標籤
-  const n0 = Math.floor(sw.northing / sp) * sp;
-  const n1 = Math.ceil(ne.northing / sp) * sp;
-  for (let n = n0; n <= n1; n += sp) {
-    const p1 = _utmToLatLng(zn, sw.easting - sp, n);
-    const p2 = _utmToLatLng(zn, ne.easting + sp, n);
-    if (!isFinite(p1.lat) || !isFinite(p2.lat)) continue;
-    L.polyline([[p1.lat, p1.lng], [p2.lat, p2.lng]], lineOpt).addTo(_mgrsGridLayer);
-    const ll = _utmToLatLng(zn, labelE, n);
-    if (isFinite(ll.lat)) {
-      L.marker([ll.lat, ll.lng], {
-        icon: L.divIcon({
-          html: `<div class="mgrs-gl">${_mgrsGridLabel(n, sp)}</div>`,
-          className: '', iconSize: [labelW, 14], iconAnchor: [labelW / 2, 7],
-        }),
-        interactive: false, zIndexOffset: -900,
-      }).addTo(_mgrsGridLayer);
-    }
-  }
-
-  // 南北向 easting 線 + 底部 X 軸標籤
-  const e0 = Math.floor(sw.easting / sp) * sp;
-  const e1 = Math.ceil(ne.easting / sp) * sp;
-  for (let e = e0; e <= e1; e += sp) {
-    const p1 = _utmToLatLng(zn, e, sw.northing - sp);
-    const p2 = _utmToLatLng(zn, e, ne.northing + sp);
-    if (!isFinite(p1.lat) || !isFinite(p2.lat)) continue;
-    L.polyline([[p1.lat, p1.lng], [p2.lat, p2.lng]], lineOpt).addTo(_mgrsGridLayer);
-    const ll = _utmToLatLng(zn, e, labelN);
-    if (isFinite(ll.lat)) {
-      L.marker([ll.lat, ll.lng], {
-        icon: L.divIcon({
-          html: `<div class="mgrs-gl">${_mgrsGridLabel(e, sp)}</div>`,
-          className: '', iconSize: [labelW, 14], iconAnchor: [labelW / 2, 7],
-        }),
-        interactive: false, zIndexOffset: -900,
-      }).addTo(_mgrsGridLayer);
-    }
-  }
+  if (!_mgrsGrid) return;     // _ensureEntityLayers 未跑（map 未 init），跳過
+  _mgrsGrid.setVisible(_mgrsGridVisible);
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -1099,9 +882,12 @@ function _ensureEntityLayers() {
         // text-opacity：拖曳期間 (feature-state.dragging=true) 隱藏，讓 HTML drag handle
         // 的 ghost label 接手視覺 — LabelMarkerManager 控制（step 8 hybrid B）。
         id: 'polygons-label', type: 'symbol',
+        // ⚠️ 不用 geometry-type filter — MapLibre 4.7.1 render pipeline 對該
+        // expression 有 bug（symbol layer cull 掉所有 features），改用
+        // polygonLabelToFeature 注入的 properties.kind='label' 分流。
         filter: ['all',
           ['has', 'label'],
-          ['==', ['geometry-type'], 'Point'],
+          ['==', ['get', 'kind'], 'label'],
         ],
         layout: {
           'text-field': ['get', 'label'],
@@ -1195,9 +981,11 @@ function _ensureEntityLayers() {
         // text-allow-overlap / text-ignore-placement: true — 避免 routes-arrow chevron
         // 在線中點附近時把 label 推開（user 撞到的「滑鼠落差」bug）。
         id: 'routes-label', type: 'symbol',
+        // 同 polygons-label — 改用 properties.kind='label' filter（geometry-type
+        // expression 在 MapLibre 4.7.1 render pipeline 不穩定）。
         filter: ['all',
           ['has', 'label'],
-          ['==', ['geometry-type'], 'Point'],
+          ['==', ['get', 'kind'], 'label'],
         ],
         layout: {
           'text-field': ['get', 'label'],
@@ -1395,6 +1183,10 @@ function _ensureEntityLayers() {
   // 失去的拖曳行為。沿用 step 8 hybrid B（透明 HTML handle 蓋 SDF circle）；
   // 只服務事件 zone，handle click 轉派 _onZoneClick 開事件 modal。
   _eventDragMgr = new EventDragManager(map, window.maplibregl);
+
+  // Step 10：MGRS grid — 透過 MgrsGrid 抽象走 MapLibre GeoJSON source + line/symbol
+  // layer。Toggle 走 setVisible()，redraw() 在 moveend 自動 trigger。
+  _mgrsGrid = new MgrsGrid(map);
 
   // Step 9：EventPopup — 長按事件回報 popup（取代 Leaflet 的 L.popup + L.DomUtil/DomEvent）。
   // 兩階段選單：group 按鈕 → type 按鈕；submit 走 _evPopupSubmit 寫 /api/events。
