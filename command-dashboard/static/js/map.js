@@ -80,7 +80,6 @@ let _eventPopup = null;        // EventPopup — step 9（長按 → 兩階段�
 let _eventDragMgr = null;      // EventDragManager — 補 step 7 symbol layer 化後事件
                                //   zone 失去的拖曳行為；只服務事件 zone（節點不在 scope）
 let _entityLayersInstalled = false;
-let _mgrsGridLayer = null;   // legacy Leaflet group ref（過渡保留供 fallback；新走 _mgrsGrid）
 let _mgrsGrid = null;        // MgrsGrid instance — step 10 port 到 MapLibre symbol/line layer
 let _coordPin = null;            // 雙擊放置的藍色十字 marker
 let _polyDrawState = null;       // { latlngs, markers, previewPoly }

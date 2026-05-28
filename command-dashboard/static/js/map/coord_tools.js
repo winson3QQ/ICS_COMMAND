@@ -310,15 +310,18 @@ export class MgrsGrid {
       this.map.addSource('mgrs-grid', { type: 'geojson', data: EMPTY_FC });
     }
     // Secondary lines 先畫（z-order 較低）— primary 蓋在上面更突出
+    // ⚠️ Filter 一律走 properties (tier / axis) 不靠 ['geometry-type'] — 對齊
+    // entity_layer.js polygon-label / route-label 修正的 rationale：MapLibre 4.7.1
+    // render pipeline 對 ['geometry-type'] expression 在 symbol layer 內 cull 掉
+    // features（step 10 dogfood 撞到的 bug，code-review #1 finding）。
+    // 邊際效應：line layer 對 Point feature 本來就免疫（type:line 只 render LineString），
+    // 拿掉 geometry-type 也安全；symbol layer 由 axis property 唯一判別。
     if (!this.map.getLayer('mgrs-grid-lines-secondary')) {
       this.map.addLayer({
         id: 'mgrs-grid-lines-secondary',
         source: 'mgrs-grid',
         type: 'line',
-        filter: ['all',
-          ['==', ['geometry-type'], 'LineString'],
-          ['==', ['get', 'tier'], 'secondary'],
-        ],
+        filter: ['==', ['get', 'tier'], 'secondary'],
         paint: {
           'line-color': this.secondaryColor,
           'line-width': this.secondaryWidth,
@@ -330,10 +333,7 @@ export class MgrsGrid {
         id: 'mgrs-grid-lines-primary',
         source: 'mgrs-grid',
         type: 'line',
-        filter: ['all',
-          ['==', ['geometry-type'], 'LineString'],
-          ['==', ['get', 'tier'], 'primary'],
-        ],
+        filter: ['==', ['get', 'tier'], 'primary'],
         paint: {
           'line-color': this.primaryColor,
           'line-width': this.primaryWidth,
@@ -346,11 +346,8 @@ export class MgrsGrid {
         source: 'mgrs-grid',
         type: 'symbol',
         // 只渲染 edge labels（4 軸鏡像），designator 給 mgrs-grid-designators 處理
-        filter: ['all',
-          ['==', ['geometry-type'], 'Point'],
-          ['in', ['get', 'axis'],
-            ['literal', ['x-bottom', 'x-top', 'y-left', 'y-right']],
-          ],
+        filter: ['in', ['get', 'axis'],
+          ['literal', ['x-bottom', 'x-top', 'y-left', 'y-right']],
         ],
         layout: {
           'text-field': ['get', 'label'],
@@ -394,10 +391,7 @@ export class MgrsGrid {
         id: 'mgrs-grid-designators',
         source: 'mgrs-grid',
         type: 'symbol',
-        filter: ['all',
-          ['==', ['geometry-type'], 'Point'],
-          ['==', ['get', 'axis'], 'designator'],
-        ],
+        filter: ['==', ['get', 'axis'], 'designator'],
         layout: {
           'text-field': ['get', 'label'],
           'text-font': ['Noto Sans Regular'],
