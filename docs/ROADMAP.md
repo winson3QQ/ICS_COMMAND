@@ -47,6 +47,7 @@
 | P1-10 | **地圖 UX baseline 升級**：見下方〈P1-10 細項展開〉。改採 **MapLibre GL JS + PMTiles + dark ops theme + SVG marker + 等寬字體**，全替換 Leaflet（不走 `leaflet-maplibre-gl` 折衷路線，避免 P2 二次手術），預埋 P2 TAK + MIL-STD-2525 渲染接點 |
 | ✅ P1-11 | **Commander Dashboard UI 移除 PWA-specific 元素**：見下方〈P1-11 範圍〉。配合 P1-04 backend federation infra 保留決策，UI 層拿掉「收容/醫療」固定二元呈現，**改為 Option B 整刪**（dogfood 中決議；P2 TAK / P3 WaveInk 接入再重蓋）。源於 P1-01 dogfood 跑 dashboard 時的截圖盤點 — 完成於 [#4](https://github.com/winson3QQ/ICS_COMMAND/pull/4) `23dee14`（2026-05-26）|
 | P1-12 | **統一 key management + At-rest 加密 + Backup GUI**：FIDO2-derived 主密鑰 + HKDF 衍生子鑰，統一 backup encryption + live DB at-rest encryption（SQLCipher）+ 未來簽章用途。詳見下方〈P1-12 範圍〉 |
+| P1-13 | **`map_config.json` seed/runtime 分離（user-data boundary 建立，P1-12 prep）**：現況 `command-dashboard/static/map_config.json` 被 git tracked 又被 server runtime 寫入，造成 (a) 工作樹永遠 dirty、(b) 切 branch 洗掉 user zone/route、(c) snapshot script 把 user data 當 code commit、(d) 上線後場域 / 演習資料活在版控（違反 user data 邊界）。改為 `static/map_config.seed.json`（tracked，factory default）+ `data/map_config.json`（gitignored，runtime），讀寫對稱走 `GET/POST /api/map_config`，startup hook + migration script 兜底既有部署。**建議先於 P1-12b/c 完成**（`data/` 是 backup + SQLCipher 操作邊界）。源於 issue #24 dogfood 副發現（2026-05-28）。**Plan 已備**（4.5h / 半天）|
 
 ### Definition of Done
 

@@ -1,4 +1,5 @@
 import json
+import re
 import sqlite3
 from pathlib import Path
 
@@ -10,6 +11,47 @@ from core.config import MBTILES_DIR, SRC_DIR, STATIC_DIR
 router = APIRouter(tags=["map"])
 
 _CERT_PATH = SRC_DIR.parent.parent / "certs" / "rootCA.pem"
+
+# map_config schema 防護（issue #24 security review）
+# 背景：α PR 把 POST /api/map_config 從 COMMAND_ROLES 開放給 WRITE_ROLES（operator）後，
+# 前端 renderer（map.js innerHTML / Leaflet bindTooltip / cop.js openModal title）的
+# 既有 HTML sink 變成 operator → commander/sysadmin 提權路徑：operator 在 zone.label / id
+# / sub / event_code / flow.label 等字串裡注入 `<img onerror=...>` → 上層 role 載入地圖時
+# 被執行。Recursive 走 JSON 把所有 string value 過 HTML-unsafe 字元白名單。
+#
+# 策略選擇：recursive validator 而非 Pydantic schema —
+# (1) map_config 既有結構鬆散（legacy image/label 欄位、未來會加新 entity 類型）
+# (2) 攻擊面只在 string content，不在 structure
+# (3) 未來新增 sink 自動被保護，不需要再回頭補 schema
+_UNSAFE_CHAR_RE = re.compile(r"[<>`{}]|&#|&\w+;|javascript:|data:|vbscript:", re.IGNORECASE)
+_MAX_STRING_LEN = 512
+_MAX_BODY_BYTES = 256 * 1024  # 256 KB — 一份正常 map_config 約 2-10 KB，給足 polygon/route
+
+
+def _validate_map_config_strings(obj: object, path: str = "$") -> None:
+    """遞迴檢查所有 string value 不含 HTML / JS context-escape 危險字元。
+    違反 → 422 reject，aw aw 不寫入 disk。"""
+    if isinstance(obj, str):
+        if len(obj) > _MAX_STRING_LEN:
+            raise HTTPException(
+                422,
+                f"map_config: 字串過長（{len(obj)} > {_MAX_STRING_LEN}）at {path}",
+            )
+        if _UNSAFE_CHAR_RE.search(obj):
+            raise HTTPException(
+                422,
+                f"map_config: 含 HTML / JS 危險字元 at {path}：{obj[:50]!r}",
+            )
+    elif isinstance(obj, dict):
+        for key, value in obj.items():
+            # key 也要驗（雖然極少被 render，但同樣可能流入 sink）
+            if isinstance(key, str) and _UNSAFE_CHAR_RE.search(key):
+                raise HTTPException(422, f"map_config: 危險 key at {path}：{key!r}")
+            _validate_map_config_strings(value, f"{path}.{key}")
+    elif isinstance(obj, list):
+        for i, item in enumerate(obj):
+            _validate_map_config_strings(item, f"{path}[{i}]")
+    # numbers, booleans, None → 安全，pass
 
 
 def _get_tile_db(name: str) -> Path:
@@ -86,7 +128,19 @@ def serve_pmtiles(filename: str, request: Request):
 
 @router.post("/api/map_config", tags=["system"])
 async def save_map_config(request: Request):
-    body = await request.json()
+    # body 大小硬上限（防 disk fill；α PR operator 開放後不該毫無防護地讓任何 writer 灌資料）
+    raw = await request.body()
+    if len(raw) > _MAX_BODY_BYTES:
+        raise HTTPException(
+            413,
+            f"map_config 過大（{len(raw)} > {_MAX_BODY_BYTES}）",
+        )
+    try:
+        body = json.loads(raw)
+    except json.JSONDecodeError as e:
+        raise HTTPException(400, f"無效 JSON：{e}") from e
+    # XSS hardening — 詳見模組頂 _validate_map_config_strings 註釋
+    _validate_map_config_strings(body)
     config_path = STATIC_DIR / "map_config.json"
     config_path.write_text(json.dumps(body, ensure_ascii=False, indent=2), encoding="utf-8")
     return {"ok": True, "path": str(config_path)}
@@ -94,7 +148,7 @@ async def save_map_config(request: Request):
 
 @router.post("/api/map/upload-image", tags=["system"])
 async def upload_map_image(request: Request, file: UploadFile = File(...)):
-    request.state.session
+    # session 由 middleware 強制，不必再 access — 原 `request.state.session` 是 B018 dead code
     filename = file.filename or "map.jpg"
     ext = filename.rsplit(".", 1)[-1].lower()
     if ext not in {"jpg", "jpeg", "png", "gif", "webp", "svg"}:

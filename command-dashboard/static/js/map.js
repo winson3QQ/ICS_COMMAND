@@ -60,6 +60,20 @@ import {
 const API_BASE = location.origin;
 const el = id => document.getElementById(id);
 
+// HTML escape — 深度防禦（backend `_validate_map_config_strings` 已擋，這層是 belt-and-braces）
+// 用於 map_config-derived 字串注入到 innerHTML / Leaflet bindTooltip(HTML) / openModal title。
+// issue #24 security review：α PR 把 map_config 寫入下放給 operator → 既有 sink 變提權路徑。
+function _escapeHtml(s) {
+  if (s == null) return '';
+  return String(s)
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;')
+    .replaceAll('`', '&#96;');
+}
+
 let _deps = {};
 let _mapConfig = null;
 let _currentMap = 'indoor';
@@ -178,18 +192,33 @@ export function initMap(deps = {}) {
 }
 
 async function _loadMapConfig() {
+  // cache-bust：reset DB / 拖曳 / 新增 marker 後 saveMapConfig 才寫回靜態檔案，
+  // 但 /static/map_config.json 預設無 Cache-Control，瀏覽器會用啟發式快取
+  // 導致 location.reload() 後仍讀到舊版本（殘留事件 marker）
+  //
+  // **不要 fallback 空殼**（issue #24 code-review 衍生）：原本 catch 後設 _mapConfig
+  // 為 `{ maps: { indoor: { zones: [] }, outdoor: { zones: [] } } }`，會造成 feedback loop：
+  // (1) server reload / 短暫 5xx → fetch 失敗 → _mapConfig 變空殼
+  // (2) user 任何動作觸發 saveMapConfig → 把空殼寫回 disk
+  // (3) 下次 hard reload → disk 已空 → 全部消失
+  // 留 _mapConfig=null 讓 saveMapConfig 的 `if (!_mapConfig) return;` guard 護住 disk，
+  // user 看到的是「載入失敗」而不是「資料消失」，可手動 reload 救回。P1-13 上線後此段
+  // 將完全重寫（走 /api/map_config + seed 兜底）。
   try {
-    // cache-bust：reset DB / 拖曳 / 新增 marker 後 saveMapConfig 才寫回靜態檔案，
-    // 但 /static/map_config.json 預設無 Cache-Control，瀏覽器會用啟發式快取
-    // 導致 location.reload() 後仍讀到舊版本（殘留事件 marker）
     const resp = await fetch(API_BASE + '/static/map_config.json?t=' + Date.now(), {
       cache: 'no-store',
     });
-    _mapConfig = await resp.json();
+    if (!resp.ok) {
+      console.warn(`[map.js] map_config 載入失敗（HTTP ${resp.status}），_mapConfig 保持 null，本地動作不會洗 disk`);
+    } else {
+      _mapConfig = await resp.json();
+    }
   } catch (e) {
-    console.warn('[map.js] map_config 載入失敗', e);
-    _mapConfig = { maps: { indoor: { zones: [] }, outdoor: { zones: [] } } };
+    console.warn('[map.js] map_config 載入錯誤，_mapConfig 保持 null', e);
   }
+  // switchMap 不論載入成功與否都跑（map tab UI / Leaflet container 要初始化）；
+  // 載入失敗時 _mapConfig=null，switchMap 內部 `_mapConfig?.maps?.[..]` optional chaining
+  // 已保護，不會 NPE，但畫面上 zones / markers 就會空白 — user 可手動 reload 救回。
   switchMap(sessionStorage.getItem('_currentMap') || 'indoor');
 }
 
@@ -317,8 +346,10 @@ export function renderMapOverlay() {
     marker.style.top = (zone.y_pct || 50) + '%';
     marker.style.pointerEvents = 'auto';
     marker.dataset.zoneId = zone.id;
+    // _icon(zone) 內部產 SVG（由 _NAPSG_GROUP_ABBR 對照表查 abbr，安全）；
+    // event_code / label / id 是 user-controlled → escape（issue #24 XSS hardening）
     marker.innerHTML = `<div class="zone-dot">${_icon(zone)}</div>
-      <div class="zone-info"><div class="zone-label">${zone.event_code || zone.label || zone.id}</div></div>`;
+      <div class="zone-info"><div class="zone-label">${_escapeHtml(zone.event_code || zone.label || zone.id)}</div></div>`;
     marker.addEventListener('click', () => {
       if (!canAccessMapObjects()) return;
       if (orphanZone) _showOrphanZoneModal(zone);
@@ -392,8 +423,10 @@ export function refreshLeafletMarkers() {
       draggable: true,
       title: zone.label || zone.id,
     });
+    // bindTooltip 預設 parse HTML — user-controlled label/id/event_code 必須 escape
+    // （issue #24 XSS hardening；backend validator 已擋但深度防禦保留）。
     marker.bindTooltip(
-      `<span>${zone.label || zone.id}</span>${zone.event_code ? ` <span style="color:var(--yellow)">${zone.event_code}</span>` : ''}`,
+      `<span>${_escapeHtml(zone.label || zone.id)}</span>${zone.event_code ? ` <span style="color:var(--yellow)">${_escapeHtml(zone.event_code)}</span>` : ''}`,
       { className: 'napsg-tooltip', direction: 'top', offset: [0, -16], permanent: false }
     );
     marker.on('click', e => {
@@ -630,7 +663,24 @@ async function _evPopupSubmit(typeKey, ctx) {
   if (zone.event_id) {
     if (!_mapConfig.maps.outdoor.zones) _mapConfig.maps.outdoor.zones = [];
     _mapConfig.maps.outdoor.zones.push(zone);
-    saveMapConfig();
+    // pre-existing bug：saveMapConfig() 沒 await + 失敗 silently → DB 有 event row
+    // 但 map_config 沒對應 zone = orphan event。改 await + 失敗時 rollback push 並提示。
+    try {
+      await saveMapConfig();
+    } catch (e) {
+      _mapConfig.maps.outdoor.zones.pop();
+      console.warn('[map.js] _evPopupSubmit: zone push 已 rollback，事件落 DB 但 map 無 marker', e);
+      const panel = el('map-coord-panel');
+      if (panel) {
+        panel.style.display = 'flex';
+        panel.innerHTML =
+          `<span style="color:#f85149">✗ 儲存失敗</span>&nbsp;<b>${zone.event_code}</b>` +
+          `<span style="color:#8b949e;margin-left:8px">事件已建立但地圖未存，請重試</span>`;
+        setTimeout(() => _refreshCoordPanel(), 5000);
+      }
+      _deps.doPoll?.();
+      return;
+    }
     refreshLeafletMarkers();
     // 顯示放置確認
     const panel = el('map-coord-panel');
@@ -745,11 +795,26 @@ export function closeMapConfigPanel() {
 
 export async function saveMapConfig() {
   if (!_mapConfig) return;
-  await authFetch(API_BASE + '/api/map_config', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(_mapConfig),
-  });
+  // 防 silent fail：authFetch 只攔 401，403/5xx 會 silently 流過。
+  // **失敗必須 throw** — 不能 silently return，否則 caller 的 await chain 跑下去會把後續
+  // side effects（PATCH /api/events / alert 成功 / UI ✓ 已儲存 / orphan event push）
+  // 全部執行，造成 DB / disk / in-memory 三方分歧（issue #24 code-review 5 findings）。
+  let resp;
+  try {
+    resp = await authFetch(API_BASE + '/api/map_config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(_mapConfig),
+    });
+  } catch (e) {
+    console.warn('[map.js] saveMapConfig 網路錯誤，map_config 未上 disk', e);
+    throw e;
+  }
+  if (!resp.ok) {
+    const msg = `saveMapConfig 失敗（HTTP ${resp.status}），本地變動未上 disk，refresh 會消失`;
+    console.warn('[map.js]', msg);
+    throw new Error(msg);
+  }
 }
 
 export function togglePinEditMode() {
@@ -1065,18 +1130,25 @@ function _ensureEntityLayers() {
       {
         id: 'zones-halo', type: 'circle',
         paint: {
+          // highlighted radius / opacity 從 feature-state 拿（RAF pulse loop 每幀更新），
+          // 沒 pulse 值（剛 highlight 還沒第一幀）時 coalesce 預設值。
           'circle-radius': [
-            'case', ['boolean', ['feature-state', 'highlighted'], false], 26, 22,
+            'case',
+            ['boolean', ['feature-state', 'highlighted'], false],
+            ['coalesce', ['feature-state', 'pulse_radius'], 28],
+            22,
           ],
           'circle-color': [
             'case',
-            ['boolean', ['feature-state', 'highlighted'], false], '#3fb950',
+            // 綠色加強（原 #3fb950 → #4ade80 更鮮亮）
+            ['boolean', ['feature-state', 'highlighted'], false], '#4ade80',
             ['get', 'color'],
           ],
           'circle-opacity': [
             'case',
             ['boolean', ['feature-state', 'dimmed'], false], 0,
-            ['boolean', ['feature-state', 'highlighted'], false], 0.45,
+            ['boolean', ['feature-state', 'highlighted'], false],
+            ['coalesce', ['feature-state', 'pulse_opacity'], 0.6],
             ['==', ['get', 'severity'], 'critical'], 0.18,
             0,
           ],
@@ -1084,7 +1156,8 @@ function _ensureEntityLayers() {
         },
       },
       // base circle
-      // dimmed=true：opacity 0.15（與舊 Leaflet .zone-marker.dimmed CSS 對齊）
+      // dimmed=true：opacity 0.15（與舊 Leaflet .zone-marker.dimmed CSS 對齊），
+      // **stroke 也要 0.15** — 否則白圈仍然顯眼（issue #24 dogfood UX 反饋）。
       {
         id: 'zones-base', type: 'circle',
         paint: {
@@ -1094,6 +1167,11 @@ function _ensureEntityLayers() {
           'circle-color': ['get', 'color'],
           'circle-stroke-color': '#ffffff',
           'circle-stroke-width': 2,
+          'circle-stroke-opacity': [
+            'case',
+            ['boolean', ['feature-state', 'dimmed'], false], 0.15,
+            1,
+          ],
           'circle-opacity': [
             'case',
             ['boolean', ['feature-state', 'dimmed'], false], 0.15,
@@ -1230,7 +1308,51 @@ function _ensureEntityLayers() {
  * 對所有 zones 設 feature-state.dimmed=true，target event 的 zone 設 false。
  * zones-halo / zones-base / zones-abbr / zones-label 四個 layer 的 paint
  * expression 都已對應，視覺一致地暗化。event_drag handle 也同步 dim。
+ *
+ * UX 強化（issue #24 dogfood 反饋）：
+ *   1. flyTo target — 找事件不用 user 自己捲動地圖
+ *   2. RAF pulse loop — halo radius / opacity 用 sin wave 呼吸（28→34, 0.45→0.80）
+ *   3. base circle stroke 跟著 dim（已在 zones-base paint expression 處理）
  */
+let _highlightPulseRaf = null;
+let _highlightPulseZoneId = null;
+const _PULSE_PERIOD_MS = 1100;
+const _PULSE_R_MIN = 28;
+const _PULSE_R_MAX = 34;
+const _PULSE_O_MIN = 0.45;
+const _PULSE_O_MAX = 0.80;
+
+function _stopHighlightPulse(map) {
+  if (_highlightPulseRaf) {
+    cancelAnimationFrame(_highlightPulseRaf);
+    _highlightPulseRaf = null;
+  }
+  if (_highlightPulseZoneId && map) {
+    map.setFeatureState(
+      { source: 'zones', id: _highlightPulseZoneId },
+      { pulse_radius: null, pulse_opacity: null },
+    );
+  }
+  _highlightPulseZoneId = null;
+}
+
+function _startHighlightPulse(map, zoneId) {
+  _stopHighlightPulse(map);
+  _highlightPulseZoneId = zoneId;
+  const start = performance.now();
+  const loop = (t) => {
+    const phase = (Math.sin(((t - start) / _PULSE_PERIOD_MS) * Math.PI * 2) + 1) / 2;
+    const r = _PULSE_R_MIN + (_PULSE_R_MAX - _PULSE_R_MIN) * phase;
+    const o = _PULSE_O_MIN + (_PULSE_O_MAX - _PULSE_O_MIN) * phase;
+    map.setFeatureState(
+      { source: 'zones', id: zoneId },
+      { highlighted: true, pulse_radius: r, pulse_opacity: o },
+    );
+    _highlightPulseRaf = requestAnimationFrame(loop);
+  };
+  _highlightPulseRaf = requestAnimationFrame(loop);
+}
+
 function _highlightEvent(eventId) {
   if (!eventId) return;
   const map = _getMap();
@@ -1249,11 +1371,18 @@ function _highlightEvent(eventId) {
     );
   }
   _eventDragMgr?.dimAllExcept(target.id);
+  // (1) flyTo target — 找事件不用 user 自己捲
+  if (typeof target.lat === 'number' && typeof target.lng === 'number') {
+    map.flyTo({ center: [target.lng, target.lat], duration: 600, essential: true });
+  }
+  // (2) 啟動 pulse
+  _startHighlightPulse(map, target.id);
 }
 
 function _unhighlightEvent() {
   const map = _getMap();
   if (!map) return;
+  _stopHighlightPulse(map);
   const zones = _mapConfig?.maps?.outdoor?.zones || [];
   for (const z of zones) {
     if (!z?.id) continue;
