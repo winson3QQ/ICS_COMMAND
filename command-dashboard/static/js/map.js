@@ -88,7 +88,9 @@ let _pendingPolyLatlngs = null;  // _openPolyForm → _savePolygon 暫存
 let _pendingRouteLatlngs = null; // _openRouteForm → _saveRoute 暫存
 let _pinEditMode = false;
 let _coordDisplayMode = 'mgrs';  // 'mgrs' | 'wgs84'
-let _mgrsGridVisible = false;
+// MGRS 格線開關跨 refresh 保留（issue #24 step 1）：用 sessionStorage 持久化，
+// 與既有 _mapView / _currentMap 等狀態的 storage 慣例一致。
+let _mgrsGridVisible = sessionStorage.getItem('_mgrsGridVisible') === '1';
 const _layerVis = { zones: true, polygons: true, infra: true, flows: true, routes: true, mgrs: false };
 
 const _HSINCHU_CENTER = [24.8283, 121.0149];
@@ -1186,6 +1188,14 @@ function _ensureEntityLayers() {
   // Step 10：MGRS grid — 透過 MgrsGrid 抽象走 MapLibre GeoJSON source + line/symbol
   // layer。Toggle 走 setVisible()，redraw() 在 moveend 自動 trigger。
   _mgrsGrid = new MgrsGrid(map);
+  // 跨 refresh 持久化（issue #24 step 1）：sessionStorage 載到的 _mgrsGridVisible
+  // 若是 true，map style ready 後立刻 restore 視覺 — 用 _drawMgrsGrid 統一路徑
+  // 同步 button .active class 給 toolbar 顯示對的狀態。
+  if (_mgrsGridVisible) {
+    _layerVis.mgrs = true;
+    document.getElementById('btn-mgrs-grid')?.classList.add('active');
+    _drawMgrsGrid();
+  }
 
   // Step 9：EventPopup — 長按事件回報 popup（取代 Leaflet 的 L.popup + L.DomUtil/DomEvent）。
   // 兩階段選單：group 按鈕 → type 按鈕；submit 走 _evPopupSubmit 寫 /api/events。
@@ -1723,6 +1733,8 @@ function _featureInfo(desc, action, id, extra = {}) {
 export function _toggleMgrsGrid() {
   _mgrsGridVisible = !_mgrsGridVisible;
   _layerVis.mgrs = _mgrsGridVisible;
+  // 持久化到 sessionStorage — refresh 後 _ensureEntityLayers restore（issue #24 step 1）
+  sessionStorage.setItem('_mgrsGridVisible', _mgrsGridVisible ? '1' : '0');
   document.getElementById('btn-mgrs-grid')?.classList.toggle('active', _mgrsGridVisible);
   _drawMgrsGrid();
 }
