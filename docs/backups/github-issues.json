@@ -537,6 +537,20 @@
         "minimizedReason": "",
         "reactionGroups": [],
         "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/24#issuecomment-4561219313"
+      },
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## α 完成（2026-05-28）\n\n兩個 PR 合計把 issue #24 的「**operator 無法持久化 map_config + silent fail**」根因解決：\n\n- [#25](https://github.com/winson3QQ/ICS_COMMAND/pull/25) `b8ed5de` — MGRS grid toggle 跨 refresh 持久化（step 1，sessionStorage）\n- [#26](https://github.com/winson3QQ/ICS_COMMAND/pull/26) `146dbcf` — α 完整解：\n  - Backend RBAC widen `/api/map_config` → `WRITE_ROLES`（operator 可寫）\n  - Frontend `saveMapConfig` 失敗 throw（不再 silent return）\n  - `_evPopupSubmit` await + rollback 解 orphan event\n  - `_loadMapConfig` 不 fallback 空殼 → 切斷 hard-reload 洗檔 feedback loop\n  - UX：點事件 flyTo + 綠色 halo pulse + dim stroke + 已結案 select disabled + timer 凍結\n  - Security (HIGH/9): backend XSS validator + frontend escapeHtml + openModal title textContent\n\n## Issue 維持 OPEN — 剩餘工作\n\n### β（即時跨 account 同步，依賴）\n\n- 前置：**P1-13**（map_config seed/runtime 分離 + atomic write）必須先完成，否則重蹈 commit `58bb5d4` race-condition 洗 disk 覆轍\n- β 本身：WebSocket push / ETag 樂觀鎖 / poll with in-flight guard\n- Push 前強制：multi-session stress test（Playwright，3 browser context 各畫 10 polygon 不丟）\n\n### Operator 看到 admin polygon render 不出來（dogfood comment step 5）\n\n- 需獨立 diagnose，可能是 P1-10b MapLibre baseline bug，與 sync 無關\n- 留 TODO，β 開工前確認是否還存在\n\n### Auto-backup map_config.json\n\n- 不在 #24 scope，但與 P1-13 同 cluster\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+        "createdAt": "2026-05-28T09:22:13Z",
+        "id": "IC_kwDOSnBjpc8AAAABD_LD3w",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/24#issuecomment-4562535391"
       }
     ],
     "createdAt": "2026-05-28T03:19:30Z",
@@ -545,7 +559,7 @@
     "number": 24,
     "state": "OPEN",
     "title": "Operator 角色畫 zone/route 後 refresh 消失（RBAC frontend/backend 不一致 + 缺 live sync）",
-    "updatedAt": "2026-05-28T05:58:59Z",
+    "updatedAt": "2026-05-28T09:22:13Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/24"
   }
 ]

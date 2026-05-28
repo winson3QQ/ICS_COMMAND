@@ -678,7 +678,7 @@
     },
     "baseRefName": "main",
     "body": "## ROADMAP item\n\n- Partially addresses #24（α: operator 寫入 map_config + 防 silent fail）\n- 新增 **P1-13**（`map_config.json` seed/runtime 分離；P1-12 prep）— ROADMAP 已 update\n\n## What changed\n\nIssue #24 dogfood 撞牆，α 根因是 RBAC 不一致 + frontend 不檢 resp.ok：\n\n1. **Backend** [role_enum.py](command-dashboard/src/auth/role_enum.py)：\n   - `/api/map_config` 從 `COMMAND_ROLES` → `WRITE_ROLES`（sysadmin + commander + **operator**）\n   - `/api/map/upload-image` 維持 `COMMAND_ROLES`（換底圖屬系統設定，operator 不該動）\n2. **Frontend** [map.js](command-dashboard/static/js/map.js)：`saveMapConfig` 加 `resp.ok` check + try/catch，403/5xx/網路錯誤明確 `console.warn`，不再 silent fail\n3. **Tests**：[test_rbac_issue24.py](command-dashboard/tests/security/test_rbac_issue24.py) 5 個新案例\n4. **ROADMAP**：新增 P1-13 — `map_config.json` seed/runtime 分離（**dogfood 過程實際撞到**：working tree map_config.json 被 runtime 寫成空檔，洗掉預設節點 zones；Plan 已備 4.5h）\n\n## DoD checklist\n\n- [x] Tests added（5 new RBAC cases）\n- [x] `pytest` green（448 passed, 0 regression）\n- [x] doc_sync_check ✓\n- [x] eslint clean（無新 lint warning）\n- [ ] 規格書更新（無介面 / 資料格式 / 行為變更）\n\n## §8 Human Verification Script\n\n```bash\n# Step 1: server 已跑 / 重啟到本 branch\n./start_mac.sh\n\n# Step 2: 建立 operator account（若無），登入\n\n# Step 3: 驗 operator 可寫 map_config\n# 用 operator 登入 → 在地圖畫 polygon / route → refresh\n# 預期：polygon/route 仍在（修法前會消失）\n\n# Step 4: 驗 silent fail 不再\n# 把 operator role 暫改為 observer 後再 POST → 開 devtools console\n# 預期：console.warn 'saveMapConfig 失敗（HTTP 403）...'\n\n# Step 5: regression — commander / sysadmin 仍可寫\n# admin 登入 → 畫 polygon → refresh → 仍在 ✓\n\n# Step 6: regression — upload-image 仍限 commander+\n# operator 嘗試換底圖 → 預期 403\n```\n\n## Out of scope / known limitations\n\n- **不解 issue #24 β（即時跨 account 同步）**：admin↔commander 目前還是只靠 hard reload 同步，operator 之間也是；β 需要 push / poll / ETag 機制。前次嘗試（commit 58bb5d4，已 revert）撞到 race 洗光 disk → β 推進前必須先有 **P1-13 atomic write** + 多 session stress test\n- **不 sweep 其他 mutating authFetch**：event POST / PATCH / note 三處仍只有 try/catch（網路錯誤），未加 resp.ok。本 PR scope 只動 saveMapConfig 主路徑\n- **不修 operator 看到 admin polygon 但 render 不出來**（issue #24 dogfood comment step 5）— 需獨立 diagnose，可能是 P1-10b baseline bug\n\n## Notes for reviewer\n\n- backend 改動只有 4 行（拆 case）\n- 注意：`/api/map_config` 從寫 → 變成「READ_ROLES 也能 GET、WRITE_ROLES 能 POST」沒有改變，原本就是這樣（middleware fallthrough）；本 PR 只動 POST 的 RBAC\n- `saveMapConfig` resp.ok check 是純加值，沒改 success path 行為\n- ROADMAP P1-13 是順帶記錄，**不在本 PR scope**，只是寫進路線圖\n",
-    "closedAt": null,
+    "closedAt": "2026-05-28T09:21:10Z",
     "comments": [
       {
         "author": {
@@ -698,11 +698,11 @@
     "createdAt": "2026-05-28T07:46:53Z",
     "headRefName": "fix/issue-24-operator-map-write",
     "labels": [],
-    "mergedAt": null,
+    "mergedAt": "2026-05-28T09:21:10Z",
     "number": 26,
-    "state": "OPEN",
+    "state": "MERGED",
     "title": "fix(rbac+map): operator 可寫 map_config + 防 saveMapConfig silent fail（issue #24 α）",
-    "updatedAt": "2026-05-28T09:18:41Z",
+    "updatedAt": "2026-05-28T09:21:32Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/26"
   }
 ]
