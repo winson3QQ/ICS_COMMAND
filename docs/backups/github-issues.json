@@ -551,6 +551,20 @@
         "minimizedReason": "",
         "reactionGroups": [],
         "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/24#issuecomment-4562535391"
+      },
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## C（operator render bug）已隨 α 順手解（2026-05-28 dogfood 驗證）\n\nUser 重新 dogfood：admin 畫 polygon → operator 登入 → **看得到了**。\n\n最可能的元兇 = `_loadMapConfig` 之前的 fallback 空殼，本次 α [PR #26](https://github.com/winson3QQ/ICS_COMMAND/pull/26) 已拔掉。\n\n→ 移出 issue #24 剩餘工作清單。\n\n## Issue #24 剩餘僅 β + P1-13 前置\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+        "createdAt": "2026-05-28T09:25:42Z",
+        "id": "IC_kwDOSnBjpc8AAAABD_MwYQ",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/24#issuecomment-4562563169"
       }
     ],
     "createdAt": "2026-05-28T03:19:30Z",
@@ -559,7 +573,7 @@
     "number": 24,
     "state": "OPEN",
     "title": "Operator 角色畫 zone/route 後 refresh 消失（RBAC frontend/backend 不一致 + 缺 live sync）",
-    "updatedAt": "2026-05-28T09:22:13Z",
+    "updatedAt": "2026-05-28T09:25:42Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/24"
   }
 ]
