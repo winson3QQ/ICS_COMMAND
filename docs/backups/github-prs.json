@@ -606,7 +606,7 @@
     },
     "baseRefName": "main",
     "body": "## ROADMAP item\n\n- ref [P1-10b #19](https://github.com/winson3QQ/ICS_COMMAND/issues/19)（**步驟 10/14**，#22 之後接續）\n\n## What changed\n\n`map.js` 內所有座標工具 + MGRS grid 從 Leaflet (`L.polyline` + `L.divIcon`) port 成 MapLibre symbol/line layer，全抽到新模組 `map/coord_tools.js`。grid 渲染風格**對齊 TAK / ATAK 慣例**（兩層 tier + 4 邊鏡像 label + 100km designator），P2 接 TAK Server 時 grid 不用再大改。\n\n順手修兩個 dogfood 撞到的舊 bug（不在 step 10 名義 scope，但卡 verify）：\n\n1. **stuck-dragging label disappears** (label_markers.js)\n   - drag 中途切視窗 / ESC → dragend 沒 fire → `feature-state.dragging` 永遠卡 true → `text-opacity case → 0` → label 永遠 invisible\n   - Fix：sync() 期間若 marker 非當前 drag 中且 source 殘留 `dragging:true` → 主動清\n\n2. **MapLibre 4.7.1 geometry-type filter regression** (entity_layer.js + map.js)\n   - `['==', ['geometry-type'], 'Point']` filter 在 symbol layer render pipeline 內 cull 掉所有 features（`querySourceFeatures` 用 OK，render 時 0）\n   - Fix：注入 `properties.kind = 'label'` 標記分流，layer filter 改用 `['==', ['get', 'kind'], 'label']`\n\n## File summary\n\n| File | 動作 | LoC |\n|---|---|---|\n| **新** `static/js/map/coord_tools.js` | UTM / MGRS / WGS84 helpers + `MgrsGrid` class | +470 |\n| **新** `tests/js/coord_tools.test.js` | 37 unit tests | +280 |\n| **新** `tests/js/label_markers.test.js` | 11 unit tests（補既有檔遺漏）| +180 |\n| `static/js/map.js` | 刪 9 個重複定義 + import alias + `MgrsGrid` 接點 + label filter 改 | −230 +30 |\n| `static/js/map/entity_layer.js` | label feature 注入 `kind: 'label'` | +6 |\n| `static/js/map/label_markers.js` | stuck-dragging defensive clear | +20 |\n| `tests/js/entity_layer.test.js` | 4 條 `kind=label` lock test | +46 |\n\n## DoD checklist\n\n- [x] vitest **155 passed**（既有 140 + 15 新）\n- [x] pytest **443 passed**\n- [x] eslint clean\n- [x] doc_sync ✓\n- [ ] 規格書（P1-10 收尾整批寫，step 14 一起做）\n- [ ] ROADMAP P1-10b 勾 ✅（等 step 14 全完）\n\n## §8 Human Verification Script\n\n```bash\n./start_mac.sh   # 從 worktree 啟動（preview server 需在 feat branch worktree path）\n\n# Step 1: 登入 admin / 切站外 / 點 ⊞ MGRS 格線按鈕\n# 預期：兩層 tier grid（primary + secondary）4 邊鏡像 label 出現\n\n# Step 2: 縮到極低 zoom\n# 預期：100km tier，每個方格中央浮現 'TH' / 'UH' designator 大字\n\n# Step 3: 拖事件（從 PR #22 已 merge 的功能回歸）\n# 預期：circle 跟手、處置紀錄寫 'A → B'、events.location_desc 同步\n\n# Step 4: 畫 polygon + route，命名儲存\n# 預期：SDF label 顯示（驗 MapLibre 4.7.1 geometry-type filter regression 修正）\n\n# Step 5: drag polygon label 拖到別處\n# 預期：label 跟到新位置、anchor 持久化\n\n# Step 6: 自動測試\ncd command-dashboard\nnpm test                                    # 155 passed\n.venv/bin/python -m pytest -q               # 443 passed\nnode_modules/.bin/eslint static/js tests/js # clean\ncd .. && python3 scripts/doc_sync_check.py  # ✓\n```\n\n## 已知後續（不 block 本 PR）\n\n- **monospace 字體（JetBrains Mono SDF glyphs）** for grid labels — 留 polish PR\n- **GZD 6°/8° zone boundary** — 台灣全境在單一 51R，畫面永遠看不到 boundary，**永遠不做**\n- **routes-arrow geometry-type filter** — 該 layer chevron 一直正常 render（symbol-placement:'line' 本身對 Point 免疫），暫不修；step 11 sweep 一併處理\n\n## Step 11-14 由後續 PR 接\n\nref #19\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
-    "closedAt": null,
+    "closedAt": "2026-05-28T03:06:00Z",
     "comments": [
       {
         "author": {
@@ -626,11 +626,11 @@
     "createdAt": "2026-05-28T02:54:17Z",
     "headRefName": "feat/issue-19-step10-coord-tools",
     "labels": [],
-    "mergedAt": null,
+    "mergedAt": "2026-05-28T03:05:59Z",
     "number": 23,
-    "state": "OPEN",
+    "state": "MERGED",
     "title": "P1-10b step 10: coord_tools.js port + TAK-aligned MGRS grid",
-    "updatedAt": "2026-05-28T03:03:16Z",
+    "updatedAt": "2026-05-28T03:06:02Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/23"
   }
 ]

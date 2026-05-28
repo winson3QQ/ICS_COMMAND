@@ -512,5 +512,25 @@
     "title": "P1-10b step 8: SDF text-field labels 全部不渲染（dogfood regression）",
     "updatedAt": "2026-05-27T10:31:20Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/21"
+  },
+  {
+    "assignees": [],
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "body": "## 撞到的現象\n\n3 個帳號 dogfood：1 admin + 2 operator。Operator 帳號在地圖上畫 zone / route / polygon，**畫完視覺看得到**，但 **refresh 後消失**。Admin 帳號正常持久化。\n\n額外：operator A 的變更（即使 admin 操作的）**不會自動反映**到 operator B 的螢幕，必須手動 reload 才看得到。\n\n## Root cause\n\n### Frontend / backend RBAC 不一致\n\n| Layer | `POST /api/map_config` 允許角色 |\n|---|---|\n| Backend ([role_enum.py:92-93](command-dashboard/src/auth/role_enum.py#L92)) | `COMMAND_ROLES` = sysadmin + commander |\n| Frontend ([auth.js:77](command-dashboard/static/js/auth.js#L77)) `canAccessMapObjects()` | sysadmin + commander + **operator** |\n\n### 失敗序列（operator）\n\n1. 通過前端 RBAC → 看得到「畫 polygon ▱」「畫 route ↗」工具\n2. 畫完 → `_savePolygon` push 進 local `_mapConfig` → 視覺立刻看得到\n3. `saveMapConfig` → `POST /api/map_config` → backend 回 **403**\n4. `authFetch` 只攔 401，403 silent 流過（[auth.js:208-213](command-dashboard/static/js/auth.js#L208)）\n5. `saveMapConfig` 也不檢查 `resp.ok` → user 無感知\n6. Refresh → 抓 server 上原始 map_config → 繪製不存在 → 消失\n\n### 缺 live sync\n\n`_mapConfig` 在 `initMap()` 載一次，之後只被本地 mutation 改寫。其他 user push 進來的更新**沒有任何機制觸發本地 re-fetch**，必須手動 location.reload。\n\n## 設計決策（per 指揮所 ops 實況）\n\n指揮組不只指揮官，操作會由**多名操作員**完成。operator 應該可以畫 zone/route/polygon、移動事件、建事件。\n- `/api/map_config` 應放給 `WRITE_ROLES`（sysadmin + commander + operator）\n- `/api/map/upload-image`（換底圖）維持 `COMMAND_ROLES` — 屬於 config 不該 frontline 改\n\n## 修法 plan\n\n### 1. Backend RBAC widen\n[role_enum.py](command-dashboard/src/auth/role_enum.py)：拆兩個 case\n```python\nif path == \"/api/map_config\":\n    return WRITE_ROLES         # ← operator 可寫\nif path == \"/api/map/upload-image\":\n    return COMMAND_ROLES       # ← 維持\n```\n\n### 2. Frontend error handling\n`saveMapConfig` + 其他 mutating authFetch 加 `resp.ok` check + warn，防未來 RBAC 收緊時又 silent fail。\n\n### 3. Live sync — `pollMapConfig()`\n- map.js export `pollMapConfig()`：cache-bust fetch → hash diff → replace `_mapConfig` + `refreshLeafletMarkers()`\n- `initMap` `setInterval(pollMapConfig, 5000)` 沿用 ws.js 5s 節拍\n- Skip 條件：draw mode active / form modal 開啟（避免吞掉 user 在編輯的暫存）\n- Logout 時 `clearInterval`\n\n## 已知限制（out of scope，另開 follow-up issue）\n\n**Last-write-wins concurrent edit race**：A 與 B 同時編輯時後存覆蓋先存。本 PR 5s poll 縮短 stale window 但沒解。正解要 ETag/version 樂觀鎖 + 自動 merge — 待規劃。\n\n## Events 檢查（順帶確認）\n\n| Endpoint | RBAC for operator | OK? |\n|---|---|---|\n| POST /api/events | WRITE_ROLES (fallthrough) | ✅ |\n| PATCH /api/events/{id} | WRITE_ROLES (fallthrough) | ✅ |\n| POST /api/events/{id}/notes | WRITE_ROLES (fallthrough) | ✅ |\n\nEvents 相關早就 OK，operator 建 event / 拖 event / 寫處置紀錄都能持久。\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+    "closedAt": null,
+    "comments": [],
+    "createdAt": "2026-05-28T03:19:30Z",
+    "labels": [],
+    "milestone": null,
+    "number": 24,
+    "state": "OPEN",
+    "title": "Operator 角色畫 zone/route 後 refresh 消失（RBAC frontend/backend 不一致 + 缺 live sync）",
+    "updatedAt": "2026-05-28T03:19:30Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/24"
   }
 ]
