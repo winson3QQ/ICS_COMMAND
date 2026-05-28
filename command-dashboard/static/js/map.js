@@ -745,11 +745,24 @@ export function closeMapConfigPanel() {
 
 export async function saveMapConfig() {
   if (!_mapConfig) return;
-  await authFetch(API_BASE + '/api/map_config', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(_mapConfig),
-  });
+  // 防 silent fail：authFetch 只攔 401，403/5xx 會 silently 流過；不檢 resp.ok 就形成
+  // 「user 畫完看得到、refresh 消失」幻象（issue #24 alpha 根因）。
+  let resp;
+  try {
+    resp = await authFetch(API_BASE + '/api/map_config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(_mapConfig),
+    });
+  } catch (e) {
+    console.warn('[map.js] saveMapConfig 網路錯誤，map_config 未上 disk', e);
+    return;
+  }
+  if (!resp.ok) {
+    console.warn(
+      `[map.js] saveMapConfig 失敗（HTTP ${resp.status}），本地變動未上 disk，refresh 會消失`,
+    );
+  }
 }
 
 export function togglePinEditMode() {
