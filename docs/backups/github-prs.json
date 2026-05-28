@@ -632,5 +632,77 @@
     "title": "P1-10b step 10: coord_tools.js port + TAK-aligned MGRS grid",
     "updatedAt": "2026-05-28T03:06:02Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/23"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "## ROADMAP item\n\n無 ROADMAP item 直接對應（dogfood follow-up）。\n- Partially addresses #24（step 1 only；step 3-6 將另開 issue）\n\n## What changed\n\nUser dogfood 撞到：refresh 後 MGRS 格線消失需重按 ⊞，UX 不順。\n用 `sessionStorage` 持久化 `_mgrsGridVisible`，沿用既有 `_mapView` / `_currentMap` 等 storage 慣例。\n\n只動 `command-dashboard/static/map.js` 3 處小改，沒碰 entity rendering / sync / RBAC。\n\n## DoD checklist\n\n- [x] Tests added / updated（沿用既有，無新增需求）\n- [x] `pytest` green（443 passed，沒動 backend）\n- [x] `npm test` green（vitest 155 passed）\n- [x] eslint clean\n- [x] doc_sync_check ✓\n- [ ] 規格書更新（無介面 / 資料格式 / 行為變更）\n- [ ] ROADMAP item 對應 sub-item 完成（無對應 item）\n\n## §8 Human Verification Script\n\n```bash\n# Step 1: 啟動 server\n./start_mac.sh\n# 預期：FastAPI :8000 起來\n\n# Step 2: 開 dashboard 並登入\n# http://127.0.0.1:8000/static/commander_dashboard.html\n\n# Step 3: 驗 toggle on → refresh 仍在\n# 點地圖上 ⊞ 按鈕 → MGRS 格線出現 → 瀏覽器 refresh\n# 預期：格線仍在，按鈕仍 .active\n\n# Step 4: 驗 toggle off → refresh 仍消失\n# 再點 ⊞ → MGRS 格線消失 → refresh\n# 預期：格線仍消失，按鈕無 .active\n```\n\nVERIFY-PASS（user 2026-05-28 手動驗證通過）\n\n## Out of scope / known limitations\n\n- Issue #24 其他子步驟（RBAC widen / resp.ok / live sync v2 / operator render bug）**不在本 PR**，將另開 issue 分批處理。\n- 仍**保留** `fix/issue-24-operator-map-rbac` branch 作為後續 step 3-6 工作基地（保存戰果）。\n- 不處理 `static/map_config.json` 被 git tracked 的架構問題（dogfood 過程發現，將另開 issue）。\n\n## Notes for reviewer\n\n- 純前端、3 行小改、純加值（沒改既有行為，只多了 sessionStorage 同步）\n- 風險面僅限：sessionStorage 不可用 / 容量爆掉 → 應 graceful fallback 為當下行為\n",
+    "closedAt": "2026-05-28T07:41:25Z",
+    "comments": [
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "VERIFY-PASS\n\n**Human verification (2026-05-28)**\n\n- Step 3：點 ⊞ → MGRS 格線出現、reload → 格線仍在、按鈕仍 .active ✓\n- Step 4：再點 ⊞ → 格線消失、reload → 仍消失 ✓\n\n**Automated checks**\n- pytest: 443 passed（沒動 backend）\n- vitest: 155 passed\n- eslint: clean\n- doc_sync_check: ✓\n\nReady to merge.",
+        "createdAt": "2026-05-28T07:41:13Z",
+        "id": "IC_kwDOSnBjpc8AAAABD-dsoQ",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/25#issuecomment-4561792161"
+      }
+    ],
+    "createdAt": "2026-05-28T06:33:29Z",
+    "headRefName": "feat/issue-24-step1-mgrs-persist",
+    "labels": [],
+    "mergedAt": "2026-05-28T07:41:25Z",
+    "number": 25,
+    "state": "MERGED",
+    "title": "feat(map): MGRS 格線 toggle 跨 refresh 持久化（issue #24 step 1）",
+    "updatedAt": "2026-05-28T07:41:26Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/25"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "## ROADMAP item\n\n- Partially addresses #24（α: operator 寫入 map_config + 防 silent fail）\n- 新增 **P1-13**（`map_config.json` seed/runtime 分離；P1-12 prep）— ROADMAP 已 update\n\n## What changed\n\nIssue #24 dogfood 撞牆，α 根因是 RBAC 不一致 + frontend 不檢 resp.ok：\n\n1. **Backend** [role_enum.py](command-dashboard/src/auth/role_enum.py)：\n   - `/api/map_config` 從 `COMMAND_ROLES` → `WRITE_ROLES`（sysadmin + commander + **operator**）\n   - `/api/map/upload-image` 維持 `COMMAND_ROLES`（換底圖屬系統設定，operator 不該動）\n2. **Frontend** [map.js](command-dashboard/static/js/map.js)：`saveMapConfig` 加 `resp.ok` check + try/catch，403/5xx/網路錯誤明確 `console.warn`，不再 silent fail\n3. **Tests**：[test_rbac_issue24.py](command-dashboard/tests/security/test_rbac_issue24.py) 5 個新案例\n4. **ROADMAP**：新增 P1-13 — `map_config.json` seed/runtime 分離（**dogfood 過程實際撞到**：working tree map_config.json 被 runtime 寫成空檔，洗掉預設節點 zones；Plan 已備 4.5h）\n\n## DoD checklist\n\n- [x] Tests added（5 new RBAC cases）\n- [x] `pytest` green（448 passed, 0 regression）\n- [x] doc_sync_check ✓\n- [x] eslint clean（無新 lint warning）\n- [ ] 規格書更新（無介面 / 資料格式 / 行為變更）\n\n## §8 Human Verification Script\n\n```bash\n# Step 1: server 已跑 / 重啟到本 branch\n./start_mac.sh\n\n# Step 2: 建立 operator account（若無），登入\n\n# Step 3: 驗 operator 可寫 map_config\n# 用 operator 登入 → 在地圖畫 polygon / route → refresh\n# 預期：polygon/route 仍在（修法前會消失）\n\n# Step 4: 驗 silent fail 不再\n# 把 operator role 暫改為 observer 後再 POST → 開 devtools console\n# 預期：console.warn 'saveMapConfig 失敗（HTTP 403）...'\n\n# Step 5: regression — commander / sysadmin 仍可寫\n# admin 登入 → 畫 polygon → refresh → 仍在 ✓\n\n# Step 6: regression — upload-image 仍限 commander+\n# operator 嘗試換底圖 → 預期 403\n```\n\n## Out of scope / known limitations\n\n- **不解 issue #24 β（即時跨 account 同步）**：admin↔commander 目前還是只靠 hard reload 同步，operator 之間也是；β 需要 push / poll / ETag 機制。前次嘗試（commit 58bb5d4，已 revert）撞到 race 洗光 disk → β 推進前必須先有 **P1-13 atomic write** + 多 session stress test\n- **不 sweep 其他 mutating authFetch**：event POST / PATCH / note 三處仍只有 try/catch（網路錯誤），未加 resp.ok。本 PR scope 只動 saveMapConfig 主路徑\n- **不修 operator 看到 admin polygon 但 render 不出來**（issue #24 dogfood comment step 5）— 需獨立 diagnose，可能是 P1-10b baseline bug\n\n## Notes for reviewer\n\n- backend 改動只有 4 行（拆 case）\n- 注意：`/api/map_config` 從寫 → 變成「READ_ROLES 也能 GET、WRITE_ROLES 能 POST」沒有改變，原本就是這樣（middleware fallthrough）；本 PR 只動 POST 的 RBAC\n- `saveMapConfig` resp.ok check 是純加值，沒改 success path 行為\n- ROADMAP P1-13 是順帶記錄，**不在本 PR scope**，只是寫進路線圖\n",
+    "closedAt": null,
+    "comments": [
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "VERIFY-PASS（2026-05-28，post-review iteration）\n\n新 commit `8720ed3` 加上一輪 code-review + security-review + UX polish 完整解。\n\n## Verification\n\n### Backend\n- pytest: **455 passed**（+7 XSS hardening tests vs 之前 448）\n- doc_sync_check: ✓\n\n### Frontend\n- vitest: **155 passed**\n- ESlint clean（無新 warning）\n\n### Code-review findings（CONFIRMED）\n| # | Finding | 解法 |\n|---|---|---|\n| 1 | drag-end 三方分歧 | saveMapConfig 失敗 throw → await rejects → PATCH 不跑 ✓ |\n| 2 | _evPopupSubmit orphan event | await + try/catch + rollback push ✓ |\n| 3 | DB reset alert 假成功 | throw → cop.js 外層 catch 跑 ✓ |\n| 4 | dragend ✓ 已儲存 假成功 | throw → setTimeout 不跑 ✓ |\n| 5 | saveMapConfig never-rejects 契約 | 恢復 fail-throw ✓ |\n\n### Security-review HIGH（confidence 9）\noperator → commander/sysadmin 提權路徑（pre-existing XSS sink + 本 PR RBAC 變動）：\n\n**A. Backend XSS validator** (`routers/map.py`)\n- recursive walk 所有 string，禁 `<>\\`{}` + HTML entity + javascript:/data:/vbscript: URL\n- 單 string ≤ 512 chars，body ≤ 256 KB\n- 違反 → 422，不落 disk\n\n**B. Frontend defense in depth**\n- `_escapeHtml` helper + 2 個 known sink escape\n- `cop.js openModal` title 改 textContent\n\n### Human dogfood verify\n- ✅ operator 畫 zone/route → refresh 持久\n- ✅ MGRS toggle 跨 refresh\n- ✅ 已結案事件 select disabled + opacity\n- ✅ 已結案事件 timer 凍結\n- ✅ 點右側欄事件 → 地圖 flyTo + 綠色 halo pulse\n- ✅ dimmed zone 不再顯眼\n\n## Out of scope（保留 follow-up）\n\n- **P1-13**（map_config seed/runtime 分離）— ROADMAP 已新增\n- **β**（即時跨 account 同步）— 需 P1-13 atomic write 完成才能安全推進\n\nReady to squash merge.",
+        "createdAt": "2026-05-28T09:18:41Z",
+        "id": "IC_kwDOSnBjpc8AAAABD_JW_Q",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/26#issuecomment-4562507517"
+      }
+    ],
+    "createdAt": "2026-05-28T07:46:53Z",
+    "headRefName": "fix/issue-24-operator-map-write",
+    "labels": [],
+    "mergedAt": null,
+    "number": 26,
+    "state": "OPEN",
+    "title": "fix(rbac+map): operator 可寫 map_config + 防 saveMapConfig silent fail（issue #24 α）",
+    "updatedAt": "2026-05-28T09:18:41Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/26"
   }
 ]
