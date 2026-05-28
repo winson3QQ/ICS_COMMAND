@@ -586,14 +586,29 @@
     },
     "body": "## ROADMAP item\n\n**P1-13**：`map_config.json` seed/runtime 分離（user-data boundary 建立，P1-12 prep）\n\n## 問題\n\n現況 `command-dashboard/static/map_config.json` 被 git tracked 又被 server runtime 寫入，造成：\n\n| 現象 | 後果 |\n|---|---|\n| 工作樹永遠 dirty | `git status` 永遠看到 `M static/map_config.json` |\n| 切 branch 洗掉 user zone/route | branch checkout 把別 branch 的 map config 覆寫過來 |\n| snapshot script 把 user data 當 code commit | `chore(backup):` 提交把場域資料推到 git 歷史 |\n| 上線後場域 / 演習資料活在版控 | 違反 user data 邊界 |\n| `_loadMapConfig` 短暫 fetch 失敗 → 空殼 fallback → 任何後續 save 洗 disk | **本 session 連續撞了 3 次**，issue #24 dogfood 親身體驗 |\n\n## 解法\n\n```\nstatic/map_config.seed.json    ← TRACKED，factory default = 現況 snapshot\ndata/map_config.json            ← GITIGNORED，runtime 實檔\n                                  startup hook：不存在 → 從 seed 複製\n                                  POST：atomic write（write tmp → os.replace）\n```\n\n對齊 **P1-12 backup / SQLCipher 邊界**：`data/` 變成 user data home。\n\n## 改動範圍\n\n| 檔 | 改動 |\n|---|---|\n| `command-dashboard/src/routers/map.py` | `GET /api/map_config`（新）、`POST` 寫 `data/`、seed fallback helper、atomic write |\n| `command-dashboard/src/core/config.py` | `MAP_CONFIG_PATH = DATA_DIR / \"map_config.json\"`、`MAP_CONFIG_SEED = STATIC_DIR / \"map_config.seed.json\"` |\n| `command-dashboard/src/main.py` | startup hook 呼叫 `ensure_map_config()` |\n| `command-dashboard/static/js/map.js` | `_loadMapConfig` 從 `/static/map_config.json` 改打 `/api/map_config` |\n| `command-dashboard/static/map_config.seed.json` | 新檔，現況 snapshot |\n| `data/.gitignore` 或 `.gitignore` | 加 `command-dashboard/data/map_config.json` |\n| `command-dashboard/static/map_config.json` | `git rm --cached` |\n| `scripts/migrate_map_config.py` | 新檔，idempotent 一鍵 migration |\n| `command-dashboard/tests/test_map_config_router.py` | 新檔，7 個測試 |\n| `docs/ROADMAP.md` / `CLAUDE.md` | 補 user-data boundary 段 |\n\n## DoD\n\n- [ ] `static/map_config.json` 不再被 git tracked\n- [ ] `static/map_config.seed.json` 已 tracked，合法 JSON\n- [ ] `.gitignore` 含 `command-dashboard/data/map_config.json`\n- [ ] POST 寫入 `DATA_DIR`，GET 從 `data/` 讀（無檔則 seed 兜底）\n- [ ] `scripts/migrate_map_config.py` 存在且 idempotent\n- [ ] 7 個 pytest case 全 pass\n- [ ] 切 branch 不再產生 dirty `map_config.json`\n- [ ] Atomic write（`os.replace`）防半寫\n- [ ] 文件更新\n\n## §8 Human Verification Script\n\n```bash\n# 1. 切 branch 不再 dirty\ngit checkout main && git checkout -\ngit status --porcelain command-dashboard/static/map_config.json   # 應空\n\n# 2. Runtime 檔在 data/\ntest -f command-dashboard/data/map_config.json\n\n# 3. Seed 檔 tracked\ngit ls-files --error-unmatch command-dashboard/static/map_config.seed.json\n\n# 4. 舊位置不再 tracked\n! git ls-files --error-unmatch command-dashboard/static/map_config.json 2>/dev/null\n\n# 5. POST 寫對位置（server 跑著）\nBEFORE=$(stat -f %m command-dashboard/data/map_config.json)\ncurl -s -X POST http://localhost:8000/api/map_config \\\n  -H 'Content-Type: application/json' \\\n  -d '{\"maps\":{\"indoor\":{\"zones\":[]},\"outdoor\":{\"zones\":[]}}}'\nAFTER=$(stat -f %m command-dashboard/data/map_config.json)\ntest \"$BEFORE\" != \"$AFTER\"\n\n# 6. Migration idempotent\npython3 command-dashboard/scripts/migrate_map_config.py\npython3 command-dashboard/scripts/migrate_map_config.py   # 第二次 no-op\n```\n\n## Out of scope（明確排除）\n\n- Concurrent edit race（issue #24 step 6 / β 範圍）\n- ETag / version 樂觀鎖（β 範圍）\n- Seed 內容的產品決策（要不要清空、要不要加範例）— 初版用現況 snapshot\n- GET 加 require_role（不在 refactor scope）\n- SQLCipher 加密（P1-12c）\n\n## 估時\n\n4.5 小時 / 半天（plan 已備，2026-05-28）\n\n## Related\n\n- Roots from issue #24 dogfood 副發現\n- Unblocks **β（即時跨 account 同步）** + P1-12b/c\n- 對齊 P1-12 user-data 邊界\n",
     "closedAt": null,
-    "comments": [],
+    "comments": [
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## Kickoff（2026-05-28）\n\nBranch `refactor/issue-27-map-config-seed-runtime` 開好（off main `4e1a097`）。\n\n## 實作順序\n\n1. **新檔 + 路徑常數**（30 min）\n   - `command-dashboard/src/core/config.py`：加 `MAP_CONFIG_PATH`、`MAP_CONFIG_SEED`\n   - `command-dashboard/static/map_config.seed.json`：從現況 `static/map_config.json` snapshot\n2. **Backend router**（1 h）\n   - `routers/map.py`：`ensure_map_config()` helper + `GET /api/map_config` + `POST` 改寫 `DATA_DIR`\n   - atomic write（`os.replace`）\n   - 保留現有 XSS validator\n3. **Startup hook**（10 min）\n   - `main.py`：lifespan 或 `@app.on_event(\"startup\")` 呼叫 `ensure_map_config()`\n4. **Migration script**（30 min）\n   - `scripts/migrate_map_config.py` idempotent\n5. **Frontend switch**（10 min）\n   - `map.js:185` `/static/map_config.json` → `/api/map_config`\n6. **gitignore + git rm --cached**（10 min）\n   - 加 ignore rule，但**等本 PR 其他改動到位後才執行 `git rm --cached`**（避免中途 staging 不一致）\n7. **Tests**（1.5 h）\n   - 7 個 pytest case（seed fallback / POST 寫對位置 / migration idempotent / atomic write / GET roundtrip / seed-missing 空殼 / migration preserves user data）\n8. **Docs**（30 min）\n   - ROADMAP P1-13 mark in-progress / DoD checklist\n   - CLAUDE.md 補 user-data boundary 段\n\n## §8 verification script\n\nissue body 已包含。\n\n## Out of scope\n\n- Concurrent write race / ETag → β\n- Seed 內容精簡 → 另開 issue\n- GET 加 require_role → 不在 refactor scope\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+        "createdAt": "2026-05-28T23:41:31Z",
+        "id": "IC_kwDOSnBjpc8AAAABEFigSw",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/27#issuecomment-4569210955"
+      }
+    ],
     "createdAt": "2026-05-28T23:41:03Z",
     "labels": [],
     "milestone": null,
     "number": 27,
     "state": "OPEN",
     "title": "refactor(map): split map_config into tracked seed + gitignored runtime (P1-13, P1-12 prep)",
-    "updatedAt": "2026-05-28T23:41:03Z",
+    "updatedAt": "2026-05-28T23:41:31Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/27"
   }
 ]
