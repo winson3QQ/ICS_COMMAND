@@ -57,7 +57,11 @@ export function openModal(title, bodyHtml, footerHtml = '') {
   const b = document.getElementById('modal-body');
   const f = document.getElementById('modal-footer');
   const o = document.getElementById('overlay');
-  if (t) t.innerHTML = title;
+  // title 改用 textContent — 語意上 title 是純文字，所有 caller 也都當純文字傳。
+  // 過去用 innerHTML 是 silent XSS sink（issue #24 security review）：
+  //   _deps.openModal(`▱ ${poly.label}`, ...) — poly.label 來自 map_config，operator 可寫
+  // body / footer 維持 innerHTML（caller 確實有傳結構化 HTML，如 button / row）。
+  if (t) t.textContent = title;
   if (b) b.innerHTML = bodyHtml;
   if (f) f.innerHTML = footerHtml;
   if (o) o.className = 'show';

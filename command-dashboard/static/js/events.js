@@ -114,10 +114,12 @@ export function _fmtLocal(iso, timeOnly) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${time}`;
 }
 
-export function _countdownStr(deadline) {
+export function _countdownStr(deadline, nowMs) {
   if (!deadline) return '';
   const ts = deadline.endsWith('Z') ? deadline : deadline + 'Z';
-  const diff = new Date(ts).getTime() - Date.now();
+  // nowMs 可選：傳入已 resolve / closed 事件的 resolved_at 時間，凍結倒數於關閉當下
+  // （dogfood UX 反饋：closed event 的 timer 還在跑）。
+  const diff = new Date(ts).getTime() - (typeof nowMs === 'number' ? nowMs : Date.now());
   const absDiff = Math.abs(diff);
   const hour = Math.floor(absDiff / 3600000);
   const min = Math.floor((absDiff % 3600000) / 60000);
@@ -355,7 +357,11 @@ export function showEventProcessModal(zone) {
   const unitLabel = { forward: '前進組', security: '安全組', shelter: '收容組', medical: '醫療組', command: '指揮部' }[ev.reported_by_unit] || ev.reported_by_unit;
   const notes = _parseNotes(ev.notes);
   const isOpen = ev.status === 'open' || ev.status === 'in_progress';
-  const countdown = ev.response_deadline ? _countdownStr(ev.response_deadline) : '';
+  // 已結案 / resolved：用 resolved_at 凍結倒數（dogfood UX）；fallback 用當下時間（避免 null）。
+  const frozenNowMs = (!isOpen && ev.resolved_at)
+    ? new Date(ev.resolved_at.endsWith('Z') ? ev.resolved_at : ev.resolved_at + 'Z').getTime()
+    : undefined;
+  const countdown = ev.response_deadline ? _countdownStr(ev.response_deadline, frozenNowMs) : '';
   const countdownColor = countdown.startsWith('逾時') ? 'var(--red)' : 'var(--yellow)';
 
   import('./map.js').then(m => {
@@ -373,7 +379,8 @@ export function showEventProcessModal(zone) {
   if (countdown && isOpen) {
     html += `<div style="font-size:12px;font-weight:700;color:${countdownColor};cursor:pointer;" data-action="resetDeadlineMenu" data-id="${ev.id}" title="點擊重設時間" data-countdown-deadline="${ev.response_deadline}" data-countdown-prefix="⏱ ">⏱ ${countdown}</div>`;
   } else if (countdown) {
-    html += `<div style="font-size:12px;font-weight:700;color:var(--text3);" data-countdown-deadline="${ev.response_deadline}" data-countdown-prefix="⏱ ">⏱ ${countdown}</div>`;
+    // closed / resolved：**不**加 data-countdown-deadline，避免 _tickCountdowns 每秒覆寫凍結值。
+    html += `<div style="font-size:12px;font-weight:700;color:var(--text3);">⏱ ${countdown}</div>`;
   }
   html += `</div>`;
 
@@ -383,7 +390,10 @@ export function showEventProcessModal(zone) {
   html += `<div style="font-size:11px;color:var(--text2);margin-bottom:10px;line-height:1.6;">`;
   html += `回報：${unitLabel}　${ev.operator_name}<br>`;
   html += `<span style="display:inline-flex;align-items:center;gap:6px;">指派處理：<span style="color:${assignedColor};font-weight:600;">${assignedLabel}</span>`;
-  html += `<select style="font-size:10px;padding:1px 4px;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:3px;font-family:var(--mono);" data-change-action="setAssignedUnit" data-id="${ev.id}">`;
+  // 已結案 / resolved 不能再改指派（dogfood UX 反饋：closed 事件 select 仍可動但 PATCH 沒意義）
+  const assignDisabledAttr = isOpen ? '' : 'disabled';
+  const assignDisabledStyle = isOpen ? '' : 'opacity:0.4;cursor:not-allowed;';
+  html += `<select ${assignDisabledAttr} style="font-size:10px;padding:1px 4px;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:3px;font-family:var(--mono);${assignDisabledStyle}" data-change-action="setAssignedUnit" data-id="${ev.id}">`;
   html += `<option value="">—</option>`;
   ['forward', 'security', 'shelter', 'medical', 'command'].forEach(u => {
     html += `<option value="${u}" ${ev.assigned_unit === u ? 'selected' : ''}>${unitLabels[u]}</option>`;
