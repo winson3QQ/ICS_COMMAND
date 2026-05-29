@@ -761,6 +761,20 @@
         "minimizedReason": "",
         "reactionGroups": [],
         "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/29#issuecomment-4571396343"
+      },
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## Cutover 計畫定案（與使用者討論後）\n\nissue #29 原始痛點（畫 zone/route 別人即時看到）= legacy map_config 物件需 cutover 進 cop_entities。\n\n### 決策\n- **節奏**：逐類型增量（非 big-bang）—— 風險隔離 / 複雜度差異 / 快交付痛點 / 可逆。\n- **第一刀**：zone + event + route + **polygon**（route 做了頂點 adapter，polygon 共用幾近免費 → 一起收「線+面」）。\n- **既有資料**：**可丟、從 0 開始 → 不做 migration（PR-F 取消）**。代價：上線時這些型在地圖上為空，待重畫；底圖設定不動。\n- **TAK（雙向 / command 唯讀 TAK + 雙向可見性開關）**：實作留 P2-04，但 cutover **現在就對齊 CoT**：`type` 用 MIL-STD-2525/CoT 值、保留 `source` 語意（manual 可 outbound、tak 唯讀且 loop-prevention 不回推）、可見性按 source 分層、`origin_node_id` 預留。schema 已備齊這些欄位。\n\n### 拆分\n- **PR-G1** — cutover zone+event+route+polygon：EntityLayer 餵 cop_stream + 編輯器改打 /api/cop/* + 頂點 adapter（vertices↔latlngs）+ 依 type 分類渲染\n- **PR-G2** — flow（cop_entity_links）+ infra\n- **PR-H** — 清理 map_config 死欄位 / 退役 PR-E 的 ＋標記 MVP + docs + ROADMAP + close #29\n\n🤖 via Claude Opus 4.8",
+        "createdAt": "2026-05-29T06:41:31Z",
+        "id": "IC_kwDOSnBjpc8AAAABEH2vxg",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/29#issuecomment-4571639750"
       }
     ],
     "createdAt": "2026-05-29T01:30:20Z",
@@ -769,7 +783,7 @@
     "number": 29,
     "state": "OPEN",
     "title": "feat(map): real-time multi-user map_config sync (β)",
-    "updatedAt": "2026-05-29T06:15:54Z",
+    "updatedAt": "2026-05-29T06:41:31Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/29"
   }
 ]
