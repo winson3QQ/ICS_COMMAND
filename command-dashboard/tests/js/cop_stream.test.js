@@ -139,6 +139,18 @@ describe("_onMessage dispatch", () => {
     stream._onMessage({ op: "delete", uid: "a", version_clock: 3 });
     expect(stream._byUid.size).toBe(0);
   });
+
+  test("resync op → 全量對帳（admin reset 後清掉 server 已無者）", async () => {
+    // server reset 後 GET 回空 → 本地既有 entity 全移除
+    const { stream } = makeStream({ fetchImpl: () => _resp(200, { entities: [] }) });
+    stream._applyEntity(E("a", 1, { attributes: { kind: "event", event_id: "x" } }));
+    stream._applyEntity(E("b", 1, { attributes: { kind: "route" } }));
+    expect(stream._byUid.size).toBe(2);
+    stream._onMessage({ op: "resync" });
+    await Promise.resolve(); // 等 resync 內的 await fetch microtask
+    await Promise.resolve();
+    expect(stream._byUid.size).toBe(0);
+  });
 });
 
 // ── REST 寫入 ───────────────────────────────────────────────────────────────
@@ -333,5 +345,45 @@ describe("render delegation seam", () => {
     stream._applyEntity(E("a", 7));
     expect(stream.getEntity("a").version_clock).toBe(7);
     expect(stream.getEntity("nope")).toBe(null);
+  });
+
+  test("event kind 被委派（不自建 marker）", () => {
+    const { stream } = makeStream();
+    stream.onChange(() => {});
+    stream._applyEntity(E("e1", 1, { attributes: { kind: "event", event_id: "x" } }));
+    expect(stream._byUid.get("e1").marker).toBe(null);
+  });
+});
+
+// ── dragLocal（PR-G1b 事件拖曳 per-frame 樂觀位移）──────────────────────────
+describe("dragLocal", () => {
+  test("設 dragging + 就地更新 lat/lon，且不 emit（map.js 自行重繪）", () => {
+    const { stream } = makeStream();
+    let fires = 0;
+    stream.onChange(() => { fires += 1; });
+    stream._applyEntity(E("e1", 1, { attributes: { kind: "event", event_id: "x" } }));
+    const baseline = fires; // _applyEntity 自己會 emit 一次
+    const ok = stream.dragLocal("e1", 25.5, 121.5);
+    expect(ok).toBe(true);
+    expect(stream.getEntity("e1").lat).toBe(25.5);
+    expect(stream.getEntity("e1").lon).toBe(121.5);
+    expect(stream._debugState().dragging).toBe("e1"); // 防遠端覆蓋
+    expect(fires).toBe(baseline); // dragLocal 不 emit
+  });
+
+  test("dragging 中遠端更新被擋；updateEntity 落地後清 dragging", async () => {
+    const { stream } = makeStream({ fetchImpl: () => _resp(200, E("e1", 5, { lat: 9, lon: 9 })) });
+    stream._applyEntity(E("e1", 1, { attributes: { kind: "event", event_id: "x" } }));
+    stream.dragLocal("e1", 25.5, 121.5);
+    // 拖曳中：遠端 update 不得覆蓋（防護 4）
+    expect(stream._applyEntity(E("e1", 9, { lat: 0, lon: 0 }))).toBe(false);
+    // 落地 → 清 dragging
+    await stream.updateEntity("e1", { lat: 25.5, lon: 121.5 });
+    expect(stream._debugState().dragging).toBe(null);
+  });
+
+  test("uid 不存在 → 回 false", () => {
+    const { stream } = makeStream();
+    expect(stream.dragLocal("nope", 1, 2)).toBe(false);
   });
 });

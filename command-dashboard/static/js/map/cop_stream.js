@@ -24,8 +24,9 @@ const RECONNECT_MAX_MS = 30000;
 // 委派給 map.js EntityLayer 渲染的 kind（PR-G1a cutover）。其餘 kind（含無 kind 的
 // ＋標記 MVP）仍由 cop_stream 自建 marker —— 這條是「安全 fallback」：未被 map.js 接管
 // 的 kind 至少還有 marker 可見，不會無聲消失。**只列 map.js 真的會渲染的 kind**，
-// 否則被委派卻沒人畫 = 隱形（zone 等待 G1b 接好 _renderZones 渲染後再加回此 set）。
-const _DELEGATED_KINDS = new Set(["route", "polygon"]);
+// 否則被委派卻沒人畫 = 隱形。
+// G1b：event 加入 —— map.js _renderZones 已能渲染 event-kind（事件位置圖釘 cutover）。
+const _DELEGATED_KINDS = new Set(["route", "polygon", "event"]);
 
 /**
  * @param {object} deps
@@ -124,6 +125,11 @@ export function createCopStream(deps) {
         break;
       case "delete":
         _applyDelete(msg.uid, msg.version_clock);
+        break;
+      case "resync":
+        // server 端批次清空（admin reset）等不走 per-entity delete 的變動 → 全量對帳，
+        // 移除 server 已無者（防護 2 / in-flight 保留邏輯都在 resync 內）。
+        resync();
         break;
       default:
         break;
@@ -229,6 +235,9 @@ export function createCopStream(deps) {
   async function _putEntity(uid, patch) {
     const rec = _byUid.get(uid);
     if (!rec || !canWrite()) return false;
+    // dragLocal 期間以 _draggingUid 擋遠端覆蓋；提交（PUT）即代表拖曳結束，於此交棒給
+    // _isSaving（防護 1）並清掉 dragging，否則 dragend 後該 uid 永遠不收遠端更新。
+    if (_draggingUid === uid) _draggingUid = null;
     const expected = rec.entity.version_clock;
     return _withSaving(uid, async () => {
       const resp = await authFetch(`${apiBase}/api/cop/entities/${encodeURIComponent(uid)}`, {
@@ -413,6 +422,23 @@ export function createCopStream(deps) {
     return rec ? rec.entity : null;
   }
 
+  /**
+   * 拖曳中的本地樂觀位移（不 POST、不 emit）：標 _draggingUid（防遠端覆蓋，防護 4）、
+   * 就地改 lat/lon。委派模式下供 map.js 每幀平滑移動 GPU symbol —— **不 _emitChange**，
+   * 由 map.js 自行 _renderZones({skipHandleSync}) 重畫（避免重繪時 re-sync 干擾正在拖的
+   * handle）。dragend 才由 caller 呼 updateEntity 落地（PUT + If-Match，會清 dragging）。
+   * 回傳是否套用（uid 不存在 → false）。
+   */
+  function dragLocal(uid, lat, lon) {
+    const rec = _byUid.get(uid);
+    if (!rec) return false;
+    _draggingUid = uid;
+    rec.entity.lat = lat;
+    rec.entity.lon = lon;
+    if (rec.marker) rec.marker.setLngLat([lon, lat]);
+    return true;
+  }
+
   return {
     connect,
     stop,
@@ -426,6 +452,7 @@ export function createCopStream(deps) {
     onChange,
     getEntitiesByKind,
     getEntity,
+    dragLocal,
     // 測試 hook
     _onMessage,
     _applyEntity,

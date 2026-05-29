@@ -39,6 +39,7 @@ from schemas.admin import (
     PinResetIn,
     RoleUpdateIn,
 )
+from services.realtime_hub import cop_hub  # issue #29 PR-G1b：reset 後廣播 resync
 
 router = APIRouter(prefix="/api/admin", tags=["account-admin"])
 
@@ -101,9 +102,7 @@ def admin_status(request: Request):
 def list_migrations(request: Request):
     _check_system_admin(request)
     with get_conn() as conn:
-        rows = conn.execute(
-            "SELECT version, name, applied_at FROM schema_migrations ORDER BY version"
-        ).fetchall()
+        rows = conn.execute("SELECT version, name, applied_at FROM schema_migrations ORDER BY version").fetchall()
     return [dict(r) for r in rows]
 
 
@@ -191,7 +190,7 @@ def change_pin(body: AdminPinIn, request: Request):
 
 
 @router.post("/reset-db", tags=["system"])
-def reset_db(request: Request):
+async def reset_db(request: Request):
     sess = _check_system_admin(request)
     tables = [
         "snapshots",
@@ -207,6 +206,11 @@ def reset_db(request: Request):
         "resource_snapshots",
         "aar_entries",
         "ai_recommendations",
+        # issue #29 PR-G1b：COP 即時同步表（事件/route/polygon/＋標記 圖釘）。
+        # 全清＝乾淨起點，並修「reset 清不到 cop_entities → 事件記錄沒了但圖釘留孤兒」的破口。
+        "cop_entity_tracks",
+        "cop_entity_links",
+        "cop_entities",
     ]
     with get_conn() as conn:
         for table in tables:
@@ -215,14 +219,21 @@ def reset_db(request: Request):
             except Exception:
                 pass
     audit(sess["username"], None, "db_reset", "system", "all", {"tables": tables})
+    # issue #29 PR-G1b：cop_entities 被 raw SQL 清空、不會自動發 per-entity WS delete。
+    # 廣播 resync → 各 client 重新 GET /api/cop/entities 對帳（清掉 server 已無者），
+    # 否則其他瀏覽器的事件/圖釘殘留到手動 reload。exercise_id=None → 廣播給所有連線。
+    await cop_hub.broadcast({"op": "resync"})
     return {"ok": True, "cleared_tables": tables}
 
 
 @router.post("/reset-exercise", tags=["system"])
-def reset_exercise(request: Request):
+async def reset_exercise(request: Request):
     sess = _check_system_admin(request)
     ex_tables = ["ttx_injects", "exercises", "resource_snapshots", "aar_entries", "ai_recommendations"]
-    data_tables = ["snapshots", "events", "decisions", "manual_records", "audit_log"]
+    # issue #29 PR-G1b：cop_entities 有 exercise_id，演習重設一併清演習場域的 COP 圖釘
+    # （事件/route/polygon）。tracks/links 無 exercise_id（references uid）；演習事件目前不建
+    # tracks/links，故此處不處理，待 P2 TAK 移動軌跡落地時再補 orphan 清理。
+    data_tables = ["snapshots", "events", "decisions", "manual_records", "audit_log", "cop_entities"]
     cleared = {}
     with get_conn() as conn:
         for table in ex_tables:
@@ -238,6 +249,7 @@ def reset_exercise(request: Request):
             except Exception:
                 pass
     audit(sess["username"], None, "exercise_reset", "system", "all", {"cleared": cleared})
+    await cop_hub.broadcast({"op": "resync"})  # 同 reset-db：各 client 對帳清掉演習場域圖釘
     return {"ok": True, "cleared": cleared}
 
 
