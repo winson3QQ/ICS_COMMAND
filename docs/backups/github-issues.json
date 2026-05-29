@@ -747,6 +747,20 @@
         "minimizedReason": "",
         "reactionGroups": [],
         "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/29#issuecomment-4570798975"
+      },
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## ✅ PR-E merged（即時同步基礎建設 + COP marker 層）\n\n- **PR #37**（squash → main \\`8ca2d34\\`）：`cop_stream.js`（WS client + per-uid LWW merge + 6 防護 + reconnect resync）+ main.js 接線 + `◉ COP`/`＋標記` 按鈕 + 11 vitest。\n- **Human verify PASS**：兩瀏覽器 A↔B，create/drag/delete 即時同步、並發不丟。\n- code-review（BUG#2/#3 修）+ security-review（clean）。**Refs #29，不 close。**\n\n### 進度：A✅ B✅ (C skip) D✅ E✅\n管線全綠：schema CAS → REST + If-Match → WebSocket → 前端即時 merge。\n\n### ⚠ 尚未解的原始痛點（issue 不關閉的原因）\nPR-E 只同步 **cop_entities**（＋標記 的新 marker）。**zone / route / label / event 等 legacy map_config 物件仍不即時同步**——它們走整檔 blob、未接 per-entity WS。issue 開頭的痛點（「畫 zone 別人即時看到」「拖 event marker 別人看到」）講的正是這些 legacy 物件。\n\n→ 需要 **cutover**：legacy map_config entity migrate 進 cop_entities + 前端 zone/route/event 編輯改走 cop 管線。**正在與使用者討論拆分**，另開 PR(s) 進行。issue #29 待 cutover 完成才關。\n\n🤖 via Claude Opus 4.8",
+        "createdAt": "2026-05-29T06:15:54Z",
+        "id": "IC_kwDOSnBjpc8AAAABEHn49w",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/29#issuecomment-4571396343"
       }
     ],
     "createdAt": "2026-05-29T01:30:20Z",
@@ -755,7 +769,7 @@
     "number": 29,
     "state": "OPEN",
     "title": "feat(map): real-time multi-user map_config sync (β)",
-    "updatedAt": "2026-05-29T05:01:30Z",
+    "updatedAt": "2026-05-29T06:15:54Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/29"
   }
 ]

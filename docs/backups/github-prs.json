@@ -962,5 +962,26 @@
     "title": "feat(cop): issue#29 PR-D — COP entity WebSocket 即時推播 + in-process hub",
     "updatedAt": "2026-05-29T04:58:05Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/36"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "## ROADMAP item\nissue #29 **PR-E**（A✅ B✅ (C skip) D✅ **E**）。前端即時同步，第一個 GUI 可驗點。\n- **Refs #29（不 close）** — 見下方「已知落差」。\n\n## What changed（additive overlay，不動 legacy map_config 渲染）\n- **`static/js/map/cop_stream.js`**（新）：WebSocket client（token 走 Sec-WebSocket-Protocol）+ per-uid last-write-wins merge（version_clock）+ 斷線重連全量 resync + 6 道防護（in-flight `_isSaving` / dragging skip / post-fetch double-check / draw-mode / logout·pagehide cleanup / server atomic+樂觀鎖）。\n- **`static/js/main.js`**：`_initCopStream`（auth 後連 WS）、`onAuthChange` 生命週期、`beforeunload` cleanup、`copToggle`/`copPlace` data-action。\n- **`commander_dashboard.html`**：`◉ COP` 顯示切換 + `＋標記`（拖=更新、雙擊=刪除）。\n- **`tests/js/cop_stream.test.js`**：11 vitest。\n\n## DoD checklist\n- [x] Tests（11 vitest；全 JS suite 166 passed）\n- [x] Human verify（dogfood 通過）：兩瀏覽器 A↔B，create/drag/delete 即時同步、並發不丟 — **VERIFY-PASS**\n- [x] pytest 514 green（後端未動）/ doc_sync exit 0\n- [ ] 規格書 / ROADMAP tick → 收尾 PR\n\n## §8 Human Verification（已執行，PASS）\n兩個 browser session 登入 → 站外地圖 → A 點 ＋標記 → B 不重整即時出現；A 拖 → B 即時移動；A 雙擊刪 → 兩邊即時消失；A/B 各拖不同 marker → 互不覆蓋不丟。\n\n## 已知落差（重要，决定 issue 是否關閉）\nPR-E 只同步 **cop_entities**（＋標記 那種新 marker）。**zone / route / label / event 等 legacy `map_config` 物件不會即時同步** —— 它們仍走整檔 blob，未接 per-entity WS。這是先前拍板的 additive 決策的直接結果。\n→ issue #29 原始痛點（「畫 zone 別人即時看到」）**需後續 cutover PR**（legacy map_config → cop_entities migration + 前端 zone/route/event 編輯改走 cop 管線）才真正解掉。本 PR 交付**即時同步基礎建設 + COP marker 層**並驗證管線可動。\n\n## Review\n- code-review：BUG#1（drag→PUT window）refuted（JS run-to-completion 無 yield）；BUG#2（resync 誤刪飛行中新建）+ BUG#3（_initCopStream 無重試）已修 + 測；另修連線去重。\n- security-review：clean（entity 字串不進 HTML sink；token 僅在 WS subprotocol；CSP connect-src 已含 ws/wss）。\n\n## Out of scope\n- legacy zone/route/event 即時同步 → cutover PR（待討論拆分）。\n- COP marker 視覺精緻化（icon/label/severity 配色）→ 後續。\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+    "closedAt": "2026-05-29T06:14:35Z",
+    "comments": [],
+    "createdAt": "2026-05-29T06:13:02Z",
+    "headRefName": "feat/issue-29-pr-e-cop-stream",
+    "labels": [],
+    "mergedAt": "2026-05-29T06:14:35Z",
+    "number": 37,
+    "state": "MERGED",
+    "title": "feat(cop): issue#29 PR-E — 前端 COP 即時同步層（疊加 marker + cop_stream）",
+    "updatedAt": "2026-05-29T06:14:35Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/37"
   }
 ]
