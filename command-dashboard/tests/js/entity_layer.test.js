@@ -21,6 +21,7 @@ import {
   flowToFeature,
   copEntityToRoute,
   copEntityToPolygon,
+  copEntityToEventZone,
 } from '../../static/js/map/entity_layer.js';
 
 /** Mock MapLibre Map：記錄所有 addSource/addLayer/setData 呼叫 */
@@ -522,5 +523,33 @@ describe('copEntityToRoute / copEntityToPolygon adapter（PR-G1a cutover）', ()
     const p = copEntityToPolygon({ uid: 'p', attributes: { vertices: [[0, 0], [1, 0], [1, 1]] } });
     expect(p.label).toBe('');
     expect(p.color).toBe('#888888');
+  });
+});
+
+describe('copEntityToEventZone adapter（PR-G1b cutover）', () => {
+  test('event cop_entity → 既有事件 zone shape', () => {
+    const ent = {
+      uid: 'manual:e1',
+      lat: 24.8,
+      lon: 121.0,
+      callsign: '疑似爆裂物',
+      attributes: { kind: 'event', event_id: 'ev-123', event_code: 'EV-0529-001', node_type: 'security' },
+    };
+    const z = copEntityToEventZone(ent);
+    expect(z.id).toBe('manual:e1');       // cop uid → zone.id（刪除/回查用）
+    expect(z.lat).toBe(24.8);
+    expect(z.lng).toBe(121.0);            // cop lon → zone.lng
+    expect(z.label).toBe('疑似爆裂物');
+    expect(z.node_type).toBe('security');
+    expect(z.icon).toBe('event');
+    expect(z.event_id).toBe('ev-123');
+    expect(z.event_code).toBe('EV-0529-001');
+  });
+
+  test('非 event kind / 缺 event_id / null → 回 null', () => {
+    expect(copEntityToEventZone(null)).toBeNull();
+    expect(copEntityToEventZone({ uid: 'x', lat: 1, lon: 2, attributes: { kind: 'route', vertices: [] } })).toBeNull();
+    expect(copEntityToEventZone({ uid: 'x', lat: 1, lon: 2, attributes: { kind: 'event' } })).toBeNull(); // 缺 event_id
+    expect(copEntityToEventZone({ uid: 'x', attributes: { kind: 'event', event_id: 'e' } })).toBeNull(); // 缺座標
   });
 });

@@ -450,6 +450,39 @@ export function copEntityToPolygon(entity) {
 }
 
 /**
+ * cop_entity（attributes.kind='event'）→ 既有「事件 zone」shape（issue #29 PR-G1b cutover）。
+ *
+ * 事件位置圖釘從 map_config.zones 搬進 cop_entities，但 render（_renderZones）與所有
+ * consumer（showEventProcessModal / findZoneByEventId / _onZoneClick / orphan）仍吃舊 zone
+ * shape `{ id, lat, lng, label, node_type, icon, event_id, event_code }`。本 adapter 還原它：
+ *   - uid              → id（cop 主鍵；刪除 / 回查用）
+ *   - lat / lon        → lat / lng（注意：cop 用 lon，zone 用 lng）
+ *   - callsign         → label（事件類型中文名）
+ *   - attributes.{event_id, event_code, node_type} → 同名（event_id 是與 events 表的連結）
+ *   - icon 固定 'event'
+ *
+ * 缺 event_id（非事件 entity / 資料殘缺）→ 回 null（下游已用 event_id 判斷是否為事件）。
+ */
+export function copEntityToEventZone(entity) {
+  if (entity == null) return null;
+  const attrs = entity.attributes || {};
+  if (attrs.kind !== 'event' || !attrs.event_id) return null;
+  const lat = Number(entity.lat);
+  const lng = Number(entity.lon);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  return {
+    id: entity.uid ?? null,
+    lat,
+    lng,
+    label: entity.callsign ?? '',
+    node_type: attrs.node_type ?? 'ops',
+    icon: 'event',
+    event_id: attrs.event_id,
+    event_code: attrs.event_code ?? null,
+  };
+}
+
+/**
  * infra-shaped object → GeoJSON Point Feature。
  * map_config.maps.outdoor.infrastructure schema：{ id, lat, lng, infra_type, label }
  *

@@ -41,6 +41,7 @@ import {
   zoneToNodeFeature,
   copEntityToRoute,
   copEntityToPolygon,
+  copEntityToEventZone,
   bakeTextSdf,
   bakeArrowSdf,
 } from './map/entity_layer.js';
@@ -111,7 +112,10 @@ let _coordDisplayMode = 'mgrs';  // 'mgrs' | 'wgs84'
 // MGRS 格線開關跨 refresh 保留（issue #24 step 1）：用 sessionStorage 持久化，
 // 與既有 _mapView / _currentMap 等狀態的 storage 慣例一致。
 let _mgrsGridVisible = sessionStorage.getItem('_mgrsGridVisible') === '1';
-const _layerVis = { zones: true, polygons: true, infra: true, flows: true, routes: true, mgrs: false };
+// PR-G1b：events 從 zones 拆出獨立可見性 —— 事件圖釘與永久節點同走 _zoneLayer，但分別
+// 由 _layerVis.zones（節點）/ _layerVis.events（事件）控制，feature-level 過濾（取消勾「節點」
+// 不再連帶把事件藏掉）。
+const _layerVis = { zones: true, events: true, polygons: true, infra: true, flows: true, routes: true, mgrs: false };
 
 const _HSINCHU_CENTER = [24.8283, 121.0149];
 const _HSINCHU_ZOOM = 15;
@@ -193,6 +197,9 @@ const ROUTE_TYPES = {
 // kind 另存 attributes.kind（getEntitiesByKind 過濾用），與 type 解耦。
 const ROUTE_COT_TYPE = 'b-m-r';
 const POLY_COT_TYPE = 'u-d-f';
+// 事件位置圖釘 cutover（PR-G1b）：暫用 a-u-G（atoms-unknown-ground，未識別陸上目標）。
+// 事件嚴重度/狀態仍由 events 表掌管，CoT type 的 affiliation/dimension 細分留 P2-04 TAK。
+const EVENT_COT_TYPE = 'a-u-G';
 
 const FLOW_TYPES = {
   casualty:   { label: '傷患後送', color: '#e05555' },
@@ -396,6 +403,7 @@ function _scheduleCopRender() {
     _copRenderScheduled = false;
     _renderRoutes();
     _renderPolygons();
+    _renderZones(); // PR-G1b：事件位置圖釘也在 cop_entities，即時重繪
   };
   if (typeof requestAnimationFrame !== 'undefined') requestAnimationFrame(run);
   else setTimeout(run, 0);
@@ -494,6 +502,7 @@ function _rebuildLayerPanel() {
   _layerVis.mgrs = _mgrsGridVisible;
   const layers = [
     { key: 'zones',    icon: '◆', label: '節點' },
+    { key: 'events',   icon: '▲', label: '事件' },
     { key: 'polygons', icon: '▱', label: '範圍' },
     { key: 'infra',    icon: '＋', label: '設施' },
     { key: 'flows',    icon: '→', label: '流向' },
@@ -560,16 +569,13 @@ async function _evPopupSubmit(typeKey, ctx) {
     try { return window.__sessionType || 'real'; } catch { return 'real'; }
   })();
 
-  const zone = {
-    id,
-    label: evDef.label,
-    sub: '',
-    lat: Math.round(lat * 1000000) / 1000000,
-    lng: Math.round(lng * 1000000) / 1000000,
-    node_type: evDef.group || 'ops',
-    icon: 'event',
-  };
+  const nodeType = evDef.group || 'ops';
+  const roundedLat = Math.round(lat * 1000000) / 1000000;
+  const roundedLng = Math.round(lng * 1000000) / 1000000;
 
+  // 1. 建立事件記錄（events 表）—— 嚴重度/狀態/處置流程的 SoT，不變。
+  let eventId = null;
+  let eventCode = null;
   try {
     const resp = await authFetch(API_BASE + '/api/events', {
       method: 'POST',
@@ -580,56 +586,50 @@ async function _evPopupSubmit(typeKey, ctx) {
         severity: evDef.severity || 'warning',
         description: evDef.label,
         operator_name: operator,
-        location_zone_id: id,
+        location_zone_id: id,   // 記錄用 client id；consumer 主要靠 event_id 連結
         location_desc: mgrs,
         session_type: sessionType,
       }),
     });
     if (resp.ok) {
       const data = await resp.json();
-      zone.event_id = data.id;
-      zone.event_code = data.event_code;
+      eventId = data.id;
+      eventCode = data.event_code;
     } else {
       console.warn('[map.js] 事件建立失敗', resp.status);
     }
   } catch (e) {
     console.error('[map.js] _evPopupSubmit', e);
   }
+  if (!eventId) return; // 事件沒建起來就不放圖釘
 
-  if (zone.event_id) {
-    if (!_mapConfig.maps.outdoor.zones) _mapConfig.maps.outdoor.zones = [];
-    _mapConfig.maps.outdoor.zones.push(zone);
-    // pre-existing bug：saveMapConfig() 沒 await + 失敗 silently → DB 有 event row
-    // 但 map_config 沒對應 zone = orphan event。改 await + 失敗時 rollback push 並提示。
-    try {
-      await saveMapConfig();
-    } catch (e) {
-      _mapConfig.maps.outdoor.zones.pop();
-      console.warn('[map.js] _evPopupSubmit: zone push 已 rollback，事件落 DB 但 map 無 marker', e);
-      const panel = el('map-coord-panel');
-      if (panel) {
-        panel.style.display = 'flex';
-        panel.innerHTML =
-          `<span style="color:#f85149">✗ 儲存失敗</span>&nbsp;<b>${zone.event_code}</b>` +
-          `<span style="color:#8b949e;margin-left:8px">事件已建立但地圖未存，請重試</span>`;
-        setTimeout(() => _refreshCoordPanel(), 5000);
-      }
-      _deps.doPoll?.();
-      return;
-    }
-    refreshLeafletMarkers();
-    // 顯示放置確認
-    const panel = el('map-coord-panel');
-    if (panel) {
-      panel.style.display = 'flex';
-      panel.innerHTML =
-        `<span style="color:#3fb950">✓ 放置</span>&nbsp;<b>${zone.event_code}</b>` +
-        `<span style="color:#8b949e;margin-left:8px">MGRS</span>&nbsp;${mgrs}`;
-      setTimeout(() => _refreshCoordPanel(), 3000);
-    }
-    // 觸發 poll 讓右側事件追蹤欄即時更新
+  // 2. PR-G1b cutover：事件「位置圖釘」改建為 cop_entity（即時同步），取代 push 進 map_config。
+  //    event_id 連回 events 表；node_type=NAPSG group；label→callsign。
+  if (!_copStream) { _flashMapMsg('✗ 即時同步未就緒，事件已建立但圖釘未放，請重整'); _deps.doPoll?.(); return; }
+  const created = await _copStream.createEntity({
+    type: EVENT_COT_TYPE,
+    lat: roundedLat,
+    lon: roundedLng,
+    callsign: evDef.label,
+    severity: evDef.severity || 'warning',
+    attributes: { kind: 'event', event_id: eventId, event_code: eventCode, node_type: nodeType },
+  });
+  if (!created) {
+    // 事件已落 DB 但圖釘沒建起來 = orphan event（與舊 rollback 行為對齊：提示重試）
+    _flashMapMsg(`✗ ${eventCode || ''} 圖釘建立失敗，事件已建立但地圖未放，請重試`);
     _deps.doPoll?.();
+    return;
   }
+  // 放置確認（createEntity 內部 upsert + onChange 已即時重繪 zones）
+  const panel = el('map-coord-panel');
+  if (panel) {
+    panel.style.display = 'flex';
+    panel.innerHTML =
+      `<span style="color:#3fb950">✓ 放置</span>&nbsp;<b>${_escapeHtml(eventCode || '')}</b>` +
+      `<span style="color:#8b949e;margin-left:8px">MGRS</span>&nbsp;${_escapeHtml(mgrs)}`;
+    setTimeout(() => _refreshCoordPanel(), 3000);
+  }
+  _deps.doPoll?.(); // 右側事件追蹤欄即時更新
 }
 
 // P1-10b 步驟 11：_napsgIcon dead code 移除（L.divIcon 工廠，原為 Leaflet legacy fallback
@@ -653,6 +653,12 @@ export function renderIcon(icon) {
 }
 
 export function findZoneByEventId(eventId) {
+  if (!eventId) return null;
+  // PR-G1b：事件 zone 已 cutover 進 cop_entities，先查 cop（adapter 還原 zone shape）。
+  for (const ent of (_copStream?.getEntitiesByKind('event') || [])) {
+    if (ent.attributes?.event_id === eventId) return copEntityToEventZone(ent);
+  }
+  // 退路：map_config 殘留（節點不帶 event_id，但保險用）。
   if (!_mapConfig) return null;
   for (const map of Object.values(_mapConfig.maps || {})) {
     const found = (map.zones || []).find(z => z.event_id === eventId || z.id === eventId);
@@ -1242,11 +1248,26 @@ function _startHighlightPulse(map, zoneId) {
   _highlightPulseRaf = requestAnimationFrame(loop);
 }
 
+/**
+ * 'zones' EntityLayer 目前渲染的全部 zone（PR-G1b hybrid 唯一真相來源）：
+ *   - 永久節點：map_config（icon='pin'，排除任何殘留 event zone）
+ *   - 事件圖釘：cop_entities（attributes.kind='event'）→ adapter 還原 zone shape，id=cop uid
+ * _renderZones / _highlightEvent / _unhighlightEvent / _syncEventDragHandles 共用此來源，
+ * 確保 setFeatureState 用的 id 與實際渲染的 feature id 一致（highlight 才點得到事件）。
+ */
+function _allRenderedZones() {
+  const nodeZones = (_mapConfig?.maps?.outdoor?.zones || []).filter((z) => !(z.event_id || z.event_code));
+  const eventZones = (_copStream?.getEntitiesByKind('event') || [])
+    .map(copEntityToEventZone)
+    .filter(Boolean);
+  return { nodeZones, eventZones, all: [...nodeZones, ...eventZones] };
+}
+
 function _highlightEvent(eventId) {
   if (!eventId) return;
   const map = _getMap();
   if (!map) return;
-  const zones = _mapConfig?.maps?.outdoor?.zones || [];
+  const zones = _allRenderedZones().all; // 事件已 cutover 進 cop_entities（PR-G1b）
   const target = zones.find((z) => z.event_id === eventId);
   if (!target) return;
   for (const z of zones) {
@@ -1272,7 +1293,7 @@ function _unhighlightEvent() {
   const map = _getMap();
   if (!map) return;
   _stopHighlightPulse(map);
-  const zones = _mapConfig?.maps?.outdoor?.zones || [];
+  const zones = _allRenderedZones().all;
   for (const z of zones) {
     if (!z?.id) continue;
     map.setFeatureState({ source: 'zones', id: z.id }, { dimmed: false, highlighted: false });
@@ -1335,7 +1356,8 @@ function _onFlowClick(e) {
 function _onZoneClick(e) {
   if (!canAccessMapObjects()) return;
   const id = e.features?.[0]?.properties?.id;
-  const zone = _findById(_mapConfig?.maps?.outdoor?.zones, id);
+  // PR-G1b：事件 zone 在 cop_entities（id=uid），節點仍在 map_config。先查 cop 事件，再退節點。
+  const zone = copEntityToEventZone(_copStream?.getEntity(id)) || _findById(_mapConfig?.maps?.outdoor?.zones, id);
   if (!zone) return;
   const isEvent = !!(zone.event_id || zone.event_code);
   if (isEvent) {
@@ -1517,13 +1539,20 @@ function _renderFlows() {
 function _renderZones(opts = {}) {
   // P1-10b 步驟 11：Leaflet legacy 已刪，window.maplibregl guard 也不再需要。
   if (!_zoneLayer) return;
-  _zoneLayer.setVisible(_layerVis.zones);
-  if (!_layerVis.zones) { _zoneLayer.clear(); return; }
-  const map = _mapConfig?.maps?.outdoor;
-  if (!map?.zones) { _zoneLayer.clear(); return; }
+  // PR-G1b：節點 / 事件分別由 _layerVis.zones / _layerVis.events 控制（同一 _zoneLayer，
+  // feature-level 過濾）。任一開即顯示圖層；兩者皆關才清空。
+  const showNodes = _layerVis.zones;
+  const showEvents = _layerVis.events;
+  _zoneLayer.setVisible(showNodes || showEvents);
+  if (!showNodes && !showEvents) { _zoneLayer.clear(); return; }
   const data = _deps.getData?.() || {};
+  const rendered = _allRenderedZones(); // PR-G1b hybrid：節點 map_config + 事件 cop_entities
+  const zones = [
+    ...(showNodes ? rendered.nodeZones : []),
+    ...(showEvents ? rendered.eventZones : []),
+  ];
   const features = [];
-  for (const zone of map.zones) {
+  for (const zone of zones) {
     if (zone.lat == null || zone.lng == null) continue;
     const isEvent = !!(zone.event_id || zone.event_code);
     let severity = 'warning';
@@ -1576,7 +1605,8 @@ function _renderZones(opts = {}) {
     if (feat) features.push(feat);
   }
   _zoneLayer.update(features);
-  if (!opts.skipHandleSync) _syncEventDragHandles();
+  // 帶入避免重複全掃；事件隱藏時不掛拖曳 handle
+  if (!opts.skipHandleSync) _syncEventDragHandles(showEvents ? rendered.eventZones : []);
 }
 
 /**
@@ -1591,32 +1621,32 @@ function _renderZones(opts = {}) {
  *   內部走 setLngLat 不重建，無無限遞迴風險）
  * - click：轉派 _onZoneClick（不然 handle 蓋住 zones-base，事件 modal 開不起來）
  */
-function _syncEventDragHandles() {
+function _syncEventDragHandles(eventZonesArg) {
   if (!_eventDragMgr) return;
   // 同步 _renderZones 的過濾邏輯：只 sync 還在「open / in_progress」狀態的事件
   // zone，避免事件結案後 GPU circle 已消失、handle 還掛在原地（dogfood 撞到）。
   const data = _deps.getData?.() || {};
-  const eventZones = (_mapConfig?.maps?.outdoor?.zones || []).filter((z) => {
-    if (!z.event_id && !z.event_code) return false;
-    if (z.event_id) {
-      const ev = (data.events || []).find((e) => e.id === z.event_id);
-      if (ev && ['resolved', 'closed'].includes(ev.status)) return false;
-    }
-    return true;
+  // PR-G1b：事件 zone 來源改 cop_entities（共用 _allRenderedZones，id=cop uid）；只 sync 仍
+  // open/in_progress 的事件，避免結案後 handle 殘留。eventZonesArg 由 _renderZones 帶入
+  // 避免重複 getEntitiesByKind 全掃（standalone 呼叫則自行取）。
+  const eventZones = (eventZonesArg || _allRenderedZones().eventZones).filter((z) => {
+    const ev = (data.events || []).find((e) => e.id === z.event_id);
+    return !(ev && ['resolved', 'closed'].includes(ev.status));
   });
   _eventDragMgr.sync(
     eventZones,
     async (id, latlng, from) => {
-      const z = (_mapConfig?.maps?.outdoor?.zones || []).find((x) => x.id === id);
-      if (!z) return;
-      z.lat = latlng.lat;
-      z.lng = latlng.lng;
-      await saveMapConfig();
-      if (z.event_id) {
-        const newMgrs = _latlngToMGRS(z.lat, z.lng, 5);
-        // 1. PATCH location_desc — events table 同步
+      // dragend：① cop 落地位置（PUT + If-Match，會清 dragging）。失敗（409/網路）則 cop 已
+      // 採 server 現值（pin 彈回），**不可**再寫 events 表，否則 location_desc 與 pin 分歧。
+      const ent = _copStream?.getEntity(id);
+      const eventId = ent?.attributes?.event_id;
+      const ok = await _copStream?.updateEntity(id, { lat: latlng.lat, lon: latlng.lng });
+      if (!ok) { _flashMapMsg('✗ 事件位置儲存失敗（可能被他人同時修改），請重試'); return; }
+      if (eventId) {
+        const newMgrs = _latlngToMGRS(latlng.lat, latlng.lng, 5);
+        // 1. PATCH location_desc — events table 同步（僅在 cop 落地成功後）
         try {
-          await authFetch(API_BASE + '/api/events/' + z.event_id, {
+          await authFetch(API_BASE + '/api/events/' + eventId, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ location_desc: newMgrs }),
@@ -1630,7 +1660,7 @@ function _syncEventDragHandles() {
           const noteText = fromMgrs
             ? `地圖位置已移動 ${fromMgrs} → ${newMgrs}`
             : `地圖位置已移動 → ${newMgrs}`;
-          await authFetch(API_BASE + '/api/events/' + z.event_id + '/notes', {
+          await authFetch(API_BASE + '/api/events/' + eventId + '/notes', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -1643,19 +1673,16 @@ function _syncEventDragHandles() {
           console.warn('[map.js] event drag note POST failed', e);
         }
       }
-      refreshLeafletMarkers();
+      // updateEntity 成功 → onChange 已即時重繪；此處不需手動 render。
     },
     (id) => {
       // 仿真 zones-base click 事件結構，重用既有 _onZoneClick
       _onZoneClick({ features: [{ properties: { id } }] });
     },
     (id, latlng) => {
-      // drag per-frame：in-memory 更新 zone 座標 + 重畫 zones source
-      // （skipHandleSync=true 避免動到正在被拖的 handle 自己）
-      const z = (_mapConfig?.maps?.outdoor?.zones || []).find((x) => x.id === id);
-      if (!z) return;
-      z.lat = latlng.lat;
-      z.lng = latlng.lng;
+      // drag per-frame：cop 本地樂觀位移（不 POST）+ 重畫 zones（skipHandleSync 避免動到
+      // 正在被拖的 handle 自己）。落地在 dragend 的 updateEntity。
+      _copStream?.dragLocal(id, latlng.lat, latlng.lng);
       _renderZones({ skipHandleSync: true });
     },
   );
@@ -1728,34 +1755,22 @@ export function _toggleLayer(key) {
 
 function _showOrphanZoneModal(zone) {
   if (!canAccessMapObjects()) return;
-  const code = zone.event_code || zone.id || '?';
+  // 深度防禦：cop callsign/attributes 已過 backend validate_no_unsafe_strings，這層 escape
+  // 與其他 modal sink 一致（issue #24 belt-and-braces），避免日後驗證鬆動成提權路徑。
+  const code = _escapeHtml(zone.event_code || zone.id || '?');
   const desc = `此事件標記在地圖上仍存在，但對應的事件紀錄已不在資料庫（可能已被清除或重設）。`
-    + `<br><br><span style="color:var(--text3);font-size:11px;">標記：${code}　·　類型：${zone.label || zone.node_type || '—'}</span>`;
+    + `<br><br><span style="color:var(--text3);font-size:11px;">標記：${code}　·　類型：${_escapeHtml(zone.label || zone.node_type || '—')}</span>`;
   _deps.openModal?.(`⚠ 孤兒事件標記`,
     _featureInfo(desc, 'deleteEventZone', zone.id));
 }
 
 export async function _deleteEventZone(id) {
-  if (!_mapConfig?.maps || !id) return;
-  let removed = false;
-  for (const m of Object.values(_mapConfig.maps)) {
-    if (!m.zones) continue;
-    const before = m.zones.length;
-    m.zones = m.zones.filter(z => z.id !== id);
-    if (m.zones.length !== before) removed = true;
-    // 同時清掉指向此 zone 的 flow（避免另一種孤兒）
-    if (m.flows) {
-      m.flows = m.flows.filter(f =>
-        f.from_ref !== `zone:${id}` && f.to_ref !== `zone:${id}` &&
-        f.from_zone_id !== id && f.to_zone_id !== id
-      );
-    }
-  }
-  if (!removed) return;
-  await saveMapConfig();
+  // PR-G1b：事件 zone 已 cutover 進 cop_entities（id=uid）→ 走 cop soft-delete，WS 即時同步。
+  if (!_copStream || !id) return;
+  const ok = await _copStream.deleteEntity(id);
   _deps.closeModal?.();
-  if (_currentMap === 'outdoor') refreshLeafletMarkers();
-  else renderMapOverlay();
+  if (!ok) _flashMapMsg('✗ 事件標記刪除失敗，請重試');
+  // 成功 → onChange 即時重繪移除。
 }
 
 // ══════════════════════════════════════════════════════════════
