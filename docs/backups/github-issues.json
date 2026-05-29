@@ -845,6 +845,20 @@
         "minimizedReason": "",
         "reactionGroups": [],
         "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/29#issuecomment-4572776037"
+      },
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## ✅ PR-G1b merged — event marker cutover 進 cop_entities\n\n**PR [#39](https://github.com/winson3QQ/ICS_COMMAND/pull/39)**（squash → main \\`86e389c\\`）。事件位置圖釘也即時同步了（釘/拖/結案/highlight，其他畫面不 reload 即時更新）。事件記錄（嚴重度/狀態/處置紀錄/倒數）仍在 events 表、流程不變；cop_entity 只承載位置圖釘（attributes.event_id 連回 events）。\n\n### 進度\nA✅ B✅ (C skip) D✅ E✅ **G1a✅ G1b✅** ／ 剩 **G2**（flow+infra）、**H**（清理+退役 ＋標記 MVP+close #29）\n\n### 落地\n- 分類 attributes.kind='event'；CoT type a-u-G（P2-04 TAK 預留）；位置→lat/lon、label→callsign。\n- 渲染 hybrid（節點 map_config + 事件 cop），`_allRenderedZones()` 統一來源；click/highlight/drag/delete/findZoneByEventId 全走 cop。\n- 拖事件 dragend 雙寫：cop updateEntity ＋ PATCH /api/events location_desc ＋ note（失敗不雙寫，避免分歧）。\n- **reset 修補**：reset-db/reset-exercise 一併清 cop_entities(+tracks/links)，改 async 並廣播 `{op:'resync'}` → 其他 client 即時對帳清空（修「reset 清不到 COP」既有破口 +「批次刪除不發 WS、其他瀏覽器殘留圖釘」）。\n- 圖層面板拆獨立「事件」開關（取消勾「節點」不再連帶藏事件）。\n\n### 驗證\n185 vitest + full pytest 全綠（含 reset 清 cop + WS resync 廣播 + exercise-scoped 測）· lint clean · doc_sync ✓ · /code-review（4 findings 全修）· /security-review 0 新漏洞 · 兩瀏覽器 dogfood PASS（即時同步/拖移/highlight/reset 跨瀏覽器清空/事件過濾）· 規格書同步。\n\n### 已知限制\nflow 端點選單暫只列節點＋設施（事件端點待 G2）。\n\n三邊 main 同步。**本 issue 不關**（待 G2 / H）。\n\n🤖 via Claude Opus 4.8",
+        "createdAt": "2026-05-29T10:09:01Z",
+        "id": "IC_kwDOSnBjpc8AAAABEJzkow",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/29#issuecomment-4573684899"
       }
     ],
     "createdAt": "2026-05-29T01:30:20Z",
@@ -853,7 +867,7 @@
     "number": 29,
     "state": "CLOSED",
     "title": "feat(map): real-time multi-user map_config sync (β)",
-    "updatedAt": "2026-05-29T10:06:34Z",
+    "updatedAt": "2026-05-29T10:09:01Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/29"
   }
 ]
