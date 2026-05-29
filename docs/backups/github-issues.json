@@ -803,6 +803,20 @@
         "minimizedReason": "",
         "reactionGroups": [],
         "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/29#issuecomment-4571716657"
+      },
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## ⚠ 更正前一則 handoff(此則為最新權威)\n\n前一則「🔖 Session handoff（cutover）」寫 G1a step 1「未 commit」——**已過時**。更正:\n\n- **G1a step 1 已 commit `ba5e046`**(`wip(cop): ... 渲染委派 seam`),在 branch **`feat/issue-29-pr-g1-cutover`**。\n- ⚠ **此 branch 與該 commit 僅 local,尚未 push**。下個 session 先 `git checkout feat/issue-29-pr-g1-cutover` 確認 `ba5e046` 在(`git log --oneline -1`);若機器不同步看不到,需從前一則 handoff 的設計重做 step 1(seam:`onChange`/`getEntitiesByKind`/`getEntity` + 委派渲染 + 3 vitest)。\n- 14 vitest 全綠。從 **step 2(adapter)** 續。\n\n注意:本 issue 有兩則「START HERE」——舊的(指向 PR-A、本 session 起點)已作廢;**以「cutover」那則 + 本更正為準**。",
+        "createdAt": "2026-05-29T07:44:40Z",
+        "id": "IC_kwDOSnBjpc8AAAABEIYgSg",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/29#issuecomment-4572192842"
       }
     ],
     "createdAt": "2026-05-29T01:30:20Z",
@@ -811,7 +825,7 @@
     "number": 29,
     "state": "OPEN",
     "title": "feat(map): real-time multi-user map_config sync (β)",
-    "updatedAt": "2026-05-29T06:51:53Z",
+    "updatedAt": "2026-05-29T07:44:40Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/29"
   }
 ]
