@@ -704,5 +704,41 @@
     "title": "fix(rbac+map): operator 可寫 map_config + 防 saveMapConfig silent fail（issue #24 α）",
     "updatedAt": "2026-05-28T09:21:32Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/26"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "## ROADMAP item\n\n- Closes #27\n- **P1-13**：`map_config.json` seed/runtime 分離 — `⏳ → ✅` 預期\n- 順帶更新 ROADMAP：**P1-12b scope 擴張**（2-3 天，三層觸發 + Restore）、**新 P1-14**（Exercise data scoping）、**P1-12b+14 bundling 決策**（合併省 2 天）\n\n## What changed\n\n源於 issue #24 dogfood 親身體驗 3 次「runtime 寫入洗 disk」事故，本 PR 把 `map_config.json` 從 tracked + runtime-mutated 改為 seed/runtime 分離架構。建立 `data/` 為 user-data 邊界，為 P1-12 backup/encryption 鋪路。\n\n### 架構\n\n```\nstatic/map_config.seed.json   ← TRACKED，factory default，跟 release 走\ndata/map_config.json           ← GITIGNORED，runtime 實檔，跟 deployment 走\n                                  startup hook 不存在 → 從 seed 複製\n                                  POST：atomic write（tmp → os.replace）\n```\n\n### 改動範圍（12 檔，+585 / -48）\n\n**Backend**：`services/map_config_store.py`（新）+ `routers/map.py` 加 GET + lifespan ensure() + `core/config.py` 路徑常數\n\n**Frontend**：`map.js` `_loadMapConfig` 改打 `/api/map_config`\n\n**Migration**：`scripts/migrate_map_config.py`（新，idempotent，三場景全覆蓋）\n\n**Git / 部署**：`.gitignore` 加 `data/map_config.json`；移除舊 tracked `static/map_config.json`（git rename 自動對映）；`static/map_config.seed.json` 乾淨 5 outdoor 預設據點\n\n**Tests**：12 個新 unit tests + conftest `_isolate_map_config` autouse fixture（pytest 不再洗真 disk）\n\n**Docs**：ROADMAP P1-13 ⏳ + P1-12b scope 擴張 + 新 P1-14 + bundling 決策；CLAUDE.md「User Data 邊界」段\n\n## DoD checklist\n\n- [x] `static/map_config.json` 不再 tracked\n- [x] `static/map_config.seed.json` tracked，乾淨 factory default\n- [x] `.gitignore` 含 `data/map_config.json`\n- [x] POST 寫 DATA_DIR，GET 從 data/ 讀（無檔 → seed 兜底）\n- [x] Migration script idempotent\n- [x] 12 個 pytest case 全 pass\n- [x] 切 branch 不再產生 dirty map_config.json\n- [x] Atomic write（os.replace）\n- [x] ROADMAP / CLAUDE.md 文件更新\n- [x] `pytest` green（**467 passed**，+12 vs main 455）\n- [x] `vitest` green（155 passed）\n- [x] doc_sync_check ✓\n\n## §8 Human Verification Script\n\n```bash\n# 1. Fresh deploy 從 seed 復原\nrm command-dashboard/data/map_config.json\n./start_mac.sh\nls command-dashboard/data/map_config.json\ngrep \"copied seed\" /tmp/ics_command.log\n\n# 2. Dashboard 看 5 個 outdoor 預設據點\n# 開 http://127.0.0.1:8000/static/commander_dashboard.html\n# 切「站外」分頁 → 5 節點（指揮部 / 醫療 / 收容 / 安全 / 前進）\n# 站內 → 乾淨（factory default 無 indoor zone）\n\n# 3. 切 branch 不產生 dirty\ngit checkout main && git checkout -\ngit status --porcelain command-dashboard/static/map_config.json   # 應空\n\n# 4. Migration script idempotent\npython3 command-dashboard/scripts/migrate_map_config.py\npython3 command-dashboard/scripts/migrate_map_config.py\n```\n\n**VERIFY-PASS（user dogfood 已確認，2026-05-29）**\n\n## Out of scope\n\n- Concurrent edit race / WebSocket sync → β（issue #24 step 6）\n- Seed 內容精簡 / 新增預設據點 → 另開 issue（產品決策）\n- GET 加 require_role → 不在 refactor scope（middleware 仍強制 session）\n- SQLCipher → P1-12c\n- Backup GUI 實作 → P1-12b\n- Events exercise scoping 實作 → P1-14\n",
+    "closedAt": "2026-05-29T01:10:33Z",
+    "comments": [
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "VERIFY-PASS + code-review HIGH/MEDIUM/LOW 全 resolved（2026-05-29）\n\n## Code-review findings 處置\n\n| # | Severity | Status | Fix commit |\n|---|---|---|---|\n| 1 | HIGH | ✅ resolved | bdae702 — default arg 改 None，內部讀 module 常數讓 monkeypatch 真實生效 |\n| 2 | HIGH | ✅ resolved | bdae702 — setup.sh 移除舊 static/ 處理 + 新加 data/ mkdir/chown |\n| 3 | MEDIUM | ✅ resolved | bdae702 — write_atomic 加 fsync(fd) + fsync(parent dir) |\n| 4 | MEDIUM | Out of scope（行為設計決定，記在 PR description）|\n| 5 | LOW | ✅ resolved | bdae702 — map.js:5 docstring 改為 /api/map_config |\n| 6 | LOW | ✅ resolved | bdae702 — test 內 dead code 移除 |\n\n## Fixture isolation 驗證\n\n關鍵測試：pytest 完整跑 467 case 後，data/map_config.json 內容**仍是 5 zones**（未被測試洗）。\n證明 `_isolate_map_config` autouse fixture 真實生效，後續 dogfood 跑 pytest 不會\n再污染 user data — HIGH 1 修法正確。\n\n## Security review\n\n0 finding above confidence 8 — refactor 沒新增攻擊面。\n\n## 驗收\n\n- pytest: **467 passed**\n- vitest: **155 passed**\n- doc_sync: ✓\n- §8 dogfood verification: ✓（user 2026-05-29 確認）\n\nReady to squash merge.",
+        "createdAt": "2026-05-29T01:10:30Z",
+        "id": "IC_kwDOSnBjpc8AAAABEF6eFA",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/28#issuecomment-4569603604"
+      }
+    ],
+    "createdAt": "2026-05-29T00:56:44Z",
+    "headRefName": "refactor/issue-27-map-config-seed-runtime",
+    "labels": [],
+    "mergedAt": "2026-05-29T01:10:33Z",
+    "number": 28,
+    "state": "MERGED",
+    "title": "refactor(map): map_config seed/runtime 分離（P1-13）+ ROADMAP P1-12b/P1-14 更新",
+    "updatedAt": "2026-05-29T01:10:33Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/28"
   }
 ]
