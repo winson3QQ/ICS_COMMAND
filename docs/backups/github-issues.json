@@ -705,6 +705,20 @@
         "minimizedReason": "",
         "reactionGroups": [],
         "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/29#issuecomment-4570077458"
+      },
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## ✅ PR-A merged（per-entity 同步硬前置完成）\n\n- **PR #33**（squash → main \\`e2a73c4\\`）：m014 schema + \\`update_cop_entity_cas\\` + \\`delete_cop_entity\\`（TAK soft-delete）+ 15 unit test。\n- code-review：`[]` 無 actionable finding（兩個候選 — notfound/conflict race、DROP COLUMN — 經查分別「無 hard-delete 路徑不可達」「與既有 m011/m012 down 同慣例」皆 refuted）。\n- security-review：無 ≥8 信心漏洞（唯一 SQL 面 = 動態 column 名，已由 PRAGMA 白名單 + bound params 封死）。\n- 全套 484 passed，CI 綠。\n\n### 附帶清掉一個 pre-existing 紅 gate\n- **PR #34**（→ main \\`ac159e3\\`）：\\`doc_sync_check\\` 自 P1-13（PR #28）起在 main 一直紅（誤報 gitignored runtime 路徑 \\`data/map_config.json\\`），DoD step 7.5 被動 bypass。已修為根因（\\`git check-ignore\\` 豁免 gitignored 路徑）。\n\n### 進度\n序 **A → (B∥C) → D → E → F → G**：A ✅。下一步 **PR-B**（\\`routers/cop.py\\`：GET/POST/PUT/DELETE + If-Match/409/428 + XSS validator port + RBAC）∥ **PR-C**（\\`normalize_manual\\`）。\n\n🤖 via Claude Opus 4.8",
+        "createdAt": "2026-05-29T03:46:40Z",
+        "id": "IC_kwDOSnBjpc8AAAABEGlOMQ",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/29#issuecomment-4570304049"
       }
     ],
     "createdAt": "2026-05-29T01:30:20Z",
@@ -713,7 +727,7 @@
     "number": 29,
     "state": "OPEN",
     "title": "feat(map): real-time multi-user map_config sync (β)",
-    "updatedAt": "2026-05-29T03:01:54Z",
+    "updatedAt": "2026-05-29T03:46:41Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/29"
   }
 ]

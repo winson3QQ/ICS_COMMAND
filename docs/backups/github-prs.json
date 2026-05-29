@@ -843,7 +843,7 @@
     },
     "baseRefName": "main",
     "body": "## ROADMAP item\n\nissue #29（β realtime sync — per-entity cop_entities / TAK CoT 重定向）的 **PR-A**：schema + repo CAS。整個 per-entity 同步鏈的硬前置。序：**A → (B∥C) → D → E → F → G**。\n\n- Refs #29（不 close issue，A 只是第一塊）\n\n## What changed\n\n- **m014 migration**：`cop_entities` ALTER ADD `updated_by` / `updated_at`（per-entity CAS 的 audit 落點；version_clock 已於 m013 預埋）。\n- **`update_cop_entity_cas(uid, expected_version_clock, patch, actor)`**：單句 `UPDATE ... SET ..., version_clock=version_clock+1 WHERE uid=? AND version_clock=?`，SQLite row-level atomic、**不需 asyncio.Lock**。回 `{\"status\": \"ok\"|\"conflict\"|\"notfound\", \"entity\": ...}` 供 PR-B router 對映 200/409/404。\n- **`delete_cop_entity(uid, expected_version_clock, actor)`**：TAK soft-delete（標 stale=now + bump version_clock，不 hard delete），走同一 CAS path → 一樣受樂觀鎖保護。\n\n從根本根除 commit `58bb5d4`（已 revert）的整檔 last-write-wins clobber：A 改 entity① / B 改 entity② 是不同 row = 零競爭，只有同 uid 才 409。\n\n## DoD checklist\n\n- [x] Tests added / updated（新 `test_cop_entity_cas.py` 15 case）\n- [x] `pytest` green（全套 484 passed）\n- [ ] `npm test` green（無 JS 改動，N/A）\n- [ ] 規格書更新（PR-A 純底層、無對外介面變更；對外 API schema 留 PR-B）\n- [x] ROADMAP 對應 sub-item（issue #29 PR-A）\n\n## §8 Human Verification Script\n\n> PR-A 純後端、**無 GUI 可驗**。驗證形式 = unit test（per PROCESS.md 純後端 PR 慣例）。\n\n\\`\\`\\`bash\ncd command-dashboard\npython3 -m pytest tests/unit/test_cop_entity_cas.py -v -p no:warnings\n# 預期：15 passed —— 並發一勝一敗 / conflict 時 DB 不動 / soft-delete 過濾但 row 保留 / injection 拒絕\n\npython3 -m pytest tests/security/test_rbac_issue26.py::test_migrations_reach_m014_and_down_helpers_exist -v -p no:warnings\n# 預期：1 passed —— migration 已 bump 到 m014 且 down-helper 齊備\n\npython3 -m pytest -q -p no:warnings\n# 預期：484 passed —— 無 regression\n\\`\\`\\`\n\n## Out of scope / known limitations\n\n- 對外 HTTP endpoint（GET/POST/PUT/DELETE + If-Match/409/428）→ **PR-B**\n- WebSocket broadcast → PR-D；前端接線（首個 GUI 可驗點）→ **PR-E**\n- 回傳契約用 dict status 而非 raise exception：conflict 是正常並發結果（非錯誤），且需把 DB 現值一起回給 caller 當 409 server_body。\n\n## Notes for reviewer\n\n- 特別看 `update_cop_entity_cas` 的 **column 白名單**（patch 的 key 直接拼進 SQL `set_clause`，靠 PRAGMA table_info 白名單 + `_CAS_PROTECTED_COLS` 擋 injection 與 managed 欄位偽造）。\n- WAL 二次連線可見性：UPDATE 後在 `with` 區塊外才 `get_cop_entity`（沿用 PR #16 的修法）。\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
-    "closedAt": null,
+    "closedAt": "2026-05-29T03:45:36Z",
     "comments": [
       {
         "author": {
@@ -863,11 +863,32 @@
     "createdAt": "2026-05-29T03:22:50Z",
     "headRefName": "feat/issue-29-pr-a-cop-cas",
     "labels": [],
-    "mergedAt": null,
+    "mergedAt": "2026-05-29T03:45:35Z",
     "number": 33,
-    "state": "OPEN",
+    "state": "MERGED",
     "title": "feat(cop): issue#29 PR-A — cop_entities per-entity 樂觀鎖 + soft-delete",
-    "updatedAt": "2026-05-29T03:23:44Z",
+    "updatedAt": "2026-05-29T03:45:36Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/33"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "## What changed\n\n`doc_sync_check.py` 對 CLAUDE.md〈User Data 邊界〉宣告的 runtime 路徑 `command-dashboard/data/map_config.json` 誤報「不存在」→ exit 1。**此 gate 自 P1-13（PR #28）起在 main 一直紅**，DoD step 7.5 被動 bypass（已驗：`origin/main` 跑 `doc_sync_check.py` 也 exit 1）。\n\n該路徑本就是 gitignored runtime（啟動時由 `static/map_config.seed.json` 兜底生成），doc 記錄它是正確的、不算 drift。\n\n修法：新增 `_is_gitignored(ref)`，引用路徑若實際被 `.gitignore` 涵蓋則跳過 warn（用 `git check-ignore`）。根因修正，一次涵蓋所有 runtime/derived 路徑，亦 subsume 既有 `SKIP_PATHS` 的 `static/badge.png` 特例。\n\n## DoD checklist\n\n- [x] `pytest` green（無 test 改動，純 CI 腳本）\n- [x] gate 本身：`python3 scripts/doc_sync_check.py` → exit 0（修前 exit 1）\n\n## §8 Human Verification Script\n\n\\`\\`\\`bash\npython3 scripts/doc_sync_check.py\necho \"exit: $?\"\n# 預期：✓ doc-sync check passed / exit: 0（修前為 1 warning / exit: 1）\n\n# 負向驗證：真正缺檔仍要報。可暫時在 CLAUDE.md 加一個假路徑 `foo/bar-nonexist.py` 跑一次，\n# 應 exit 1；非 gitignored 的缺檔不被誤跳過。\n\\`\\`\\`\n\n## Out of scope\n\n- 不動 CLAUDE.md（policy SoT 內容正確，問題在 checker）。\n- 不改 PR-A 邏輯；本 PR 先 merge 以解 gate，PR-A (#33) 隨後 rebase 取得本修正即轉綠。\n\n## Notes for reviewer\n\n`_is_gitignored` 只在「三種路徑解析都找不到實體檔」之後才呼叫 → 既有的正向檢查（真缺檔仍 warn）不受影響，只豁免 gitignored 路徑。\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+    "closedAt": "2026-05-29T03:42:16Z",
+    "comments": [],
+    "createdAt": "2026-05-29T03:41:10Z",
+    "headRefName": "fix/doc-sync-gitignore",
+    "labels": [],
+    "mergedAt": "2026-05-29T03:42:16Z",
+    "number": 34,
+    "state": "MERGED",
+    "title": "fix(ci): doc_sync_check 跳過 gitignored runtime 路徑（解 main 既有紅 gate）",
+    "updatedAt": "2026-05-29T03:42:16Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/34"
   }
 ]
