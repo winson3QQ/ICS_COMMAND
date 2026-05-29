@@ -20,6 +20,8 @@ from core.database import (
     _m012_audit_hash_prev_down,
     _m013_cop_v1_schema,
     _m013_cop_v1_schema_down,
+    _m014_cop_entities_audit_cols,
+    _m014_cop_entities_audit_cols_down,
 )
 from repositories.account_repo import create_account
 
@@ -59,9 +61,9 @@ def _set_session(token: str, **values: str) -> None:
         conn.commit()
 
 
-def test_migrations_reach_m013_and_down_helpers_exist(client):
-    # bump 12 → 13 (P1-03 #15 COP schema v1: cop_entities + tracks + links)
-    assert _MIGRATIONS[-1][0] == 13
+def test_migrations_reach_m014_and_down_helpers_exist(client):
+    # bump 13 → 14 (issue #29 PR-A: cop_entities updated_by/updated_at — per-entity CAS audit)
+    assert _MIGRATIONS[-1][0] == 14
     assert callable(_m010_role_detail_down)
     assert callable(_m011_audit_correlation_id)
     assert callable(_m011_audit_correlation_id_down)
@@ -69,6 +71,8 @@ def test_migrations_reach_m013_and_down_helpers_exist(client):
     assert callable(_m012_audit_hash_prev_down)
     assert callable(_m013_cop_v1_schema)
     assert callable(_m013_cop_v1_schema_down)
+    assert callable(_m014_cop_entities_audit_cols)
+    assert callable(_m014_cop_entities_audit_cols_down)
 
 
 def test_m011_correlation_id_up_is_idempotent_and_down_removes_column(tmp_path):

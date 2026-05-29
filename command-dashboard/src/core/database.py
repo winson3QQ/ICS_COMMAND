@@ -644,6 +644,29 @@ def _m013_cop_v1_schema_down(conn: sqlite3.Connection) -> None:
     conn.execute("DROP TABLE IF EXISTS cop_entities")
 
 
+def _m014_cop_entities_audit_cols(conn: sqlite3.Connection) -> None:
+    """Issue #29 PR-A：cop_entities 補 updated_by / updated_at。
+
+    per-entity 協作編輯的 audit 落點：誰（updated_by）在何時（updated_at）改了
+    這顆 entity。version_clock（樂觀鎖計數）已於 m013 預埋，本 migration 只補
+    「最後一次變更的署名與時間」兩欄，供：
+    - WS broadcast payload 附帶 updated_by（前線看得到是誰動的）
+    - 409 conflict 回溯（兩人同改同一 uid 時，server_body 帶現值與 updater）
+
+    兩欄皆 nullable：m013 之前既有的 entity（pi-node / tak ingest）updated_by=NULL
+    表示「從未經 manual 編輯」，語意正確，不需 backfill。
+    """
+    _add_column_if_missing(conn, "cop_entities", "updated_by", "TEXT")
+    _add_column_if_missing(conn, "cop_entities", "updated_at", "TEXT")
+
+
+def _m014_cop_entities_audit_cols_down(conn: sqlite3.Connection) -> None:
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(cop_entities)")}
+    for col in ("updated_at", "updated_by"):
+        if col in cols:
+            conn.execute(f"ALTER TABLE cop_entities DROP COLUMN {col}")  # nosec B608
+
+
 _MIGRATIONS: list[tuple[int, str, object]] = [
     (1, "events_columns", _m001_events_columns),
     (2, "decisions_columns", _m002_decisions_columns),
@@ -658,6 +681,7 @@ _MIGRATIONS: list[tuple[int, str, object]] = [
     (11, "audit_correlation_id", _m011_audit_correlation_id),
     (12, "audit_hash_prev", _m012_audit_hash_prev),
     (13, "cop_v1_schema", _m013_cop_v1_schema),
+    (14, "cop_entities_audit_cols", _m014_cop_entities_audit_cols),
 ]
 
 
