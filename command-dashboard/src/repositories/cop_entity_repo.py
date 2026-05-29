@@ -9,12 +9,12 @@ repositories/cop_entity_repo.py — COP entity 資料存取層（P1-03 v1）
 設計：所有寫入透過 CoPEntity/CoPEntityTrack/CoPEntityLink Pydantic 驗證；
 讀取回傳 dict (row_to_dict) 而非 Pydantic（避免 caller 強迫升版模型）。
 """
+
 import json
 import logging
 from datetime import UTC, datetime
 
 from core.database import get_conn
-
 from schemas.cop import CoPEntity, CoPEntityLink, CoPEntityTrack
 
 from ._helpers import row_to_dict
@@ -64,7 +64,7 @@ def get_cop_entity(uid: str) -> dict | None:
 
 
 def list_cop_entities(
-    source:      str | None = None,
+    source: str | None = None,
     exercise_id: int | None = None,
     include_stale: bool = False,
     limit: int = 500,
@@ -103,10 +103,7 @@ def mark_stale(uid: str, stale_at: str) -> bool:
     try:
         dt = datetime.fromisoformat(stale_at.replace("Z", "+00:00"))
     except (ValueError, AttributeError) as e:
-        raise ValueError(
-            f"mark_stale: stale_at 必須是 ISO 8601 格式（Z 或 +00:00），"
-            f"收到 {stale_at!r}: {e}"
-        ) from e
+        raise ValueError(f"mark_stale: stale_at 必須是 ISO 8601 格式（Z 或 +00:00），收到 {stale_at!r}: {e}") from e
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=UTC)
     normalized = dt.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -117,6 +114,112 @@ def mark_stale(uid: str, stale_at: str) -> bool:
             (normalized, uid),
         )
         return cur.rowcount > 0
+
+
+# ── per-entity 樂觀鎖（issue #29 PR-A）─────────────────────────────────────────
+
+# patch 不可直接覆寫的欄位：由 CAS 邏輯 / DB 管理，caller 改不得
+#   uid           — PK，改了等於換 entity
+#   version_clock — 樂觀鎖計數，由 CAS 自行 +1
+#   updated_by    — 由 actor 參數寫，不接受 patch 偽造
+#   updated_at    — 由 server 時鐘寫，不接受 client 帶
+#   received_at   — ingest 時間，DB DEFAULT 一次性，事後不改
+_CAS_PROTECTED_COLS = {"uid", "version_clock", "updated_by", "updated_at", "received_at"}
+
+# patch 傳 Python 物件、存 DB 前需 JSON 序列化的欄位（對齊 insert_cop_entity）
+_JSON_COLS = {"visible_to", "attributes"}
+
+
+def update_cop_entity_cas(
+    uid: str,
+    expected_version_clock: int,
+    patch: dict,
+    actor: str | None = None,
+) -> dict:
+    """Per-entity 樂觀鎖更新（TAK version_clock CAS）。
+
+    核心是單句 `UPDATE ... WHERE uid=? AND version_clock=?` —— SQLite row-level
+    atomic，**不需 asyncio.Lock**。兩個 writer 帶同一 expected_version_clock 並發
+    時，只有一個 rowcount==1（勝，version_clock 被 +1），另一個 rowcount==0（敗）。
+    這從根本上根除 commit 58bb5d4 的整檔 last-write-wins clobber（issue #29）。
+
+    回傳契約（讓 PR-B router 直接對映 HTTP status）：
+      {"status": "ok",       "entity": <更新後完整 row>}   # → 200
+      {"status": "conflict", "entity": <DB 現值 row>}      # → 409 + server_body 讓 client merge
+      {"status": "notfound", "entity": None}               # → 404
+
+    Args:
+        uid: 目標 entity。
+        expected_version_clock: client 手上那份的 version_clock（If-Match 語意）。
+        patch: 欄位→新值。key 必須是 cop_entities 真實欄位且非受保護欄位，
+               否則 raise ValueError（防 SQL injection：column 名直接拼進 SQL）。
+        actor: 變更者署名，寫入 updated_by。
+    """
+    if not patch:
+        raise ValueError("update_cop_entity_cas: patch 不可為空")
+
+    # 欄位白名單：column 名直接拼進 SQL，必須擋未知欄位（injection）+ 受保護欄位
+    with get_conn() as conn:
+        valid_cols = {row[1] for row in conn.execute("PRAGMA table_info(cop_entities)")}
+    unknown = set(patch) - valid_cols
+    if unknown:
+        raise ValueError(f"update_cop_entity_cas: 未知欄位 {sorted(unknown)}")
+    protected = set(patch) & _CAS_PROTECTED_COLS
+    if protected:
+        raise ValueError(f"update_cop_entity_cas: 不可 patch 受保護欄位 {sorted(protected)}")
+
+    # JSON 欄位序列化（對齊 insert_cop_entity 的存法，下游 _row_to_entity_dict 會 decode）
+    set_values = {
+        col: (json.dumps(val, ensure_ascii=False) if col in _JSON_COLS else val) for col, val in patch.items()
+    }
+    set_clause = ", ".join(f"{col} = :{col}" for col in set_values)
+
+    now = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    params = dict(set_values)
+    params.update(
+        {
+            "_uid": uid,
+            "_expected": expected_version_clock,
+            "_actor": actor,
+            "_now": now,
+        }
+    )
+    sql = (  # nosec B608 — set_clause 欄位名已通過 PRAGMA 白名單，值全 parameterized
+        f"UPDATE cop_entities SET {set_clause}, "
+        "version_clock = version_clock + 1, "
+        "updated_by = :_actor, updated_at = :_now "
+        "WHERE uid = :_uid AND version_clock = :_expected"
+    )
+    with get_conn() as conn:
+        changed = conn.execute(sql, params).rowcount
+
+    # 必須在 with 外讀（WAL：second connection 看不到 uncommitted row，同 insert_cop_entity）
+    if changed == 1:
+        return {"status": "ok", "entity": get_cop_entity(uid)}
+    # rowcount==0：分辨 notfound（uid 根本不存在）vs conflict（uid 在但 version 對不上）
+    current = get_cop_entity(uid)
+    if current is None:
+        return {"status": "notfound", "entity": None}
+    return {"status": "conflict", "entity": current}
+
+
+def delete_cop_entity(
+    uid: str,
+    expected_version_clock: int,
+    actor: str | None = None,
+) -> dict:
+    """TAK 風格 soft-delete：標 stale=now + bump version_clock，**不 hard delete**。
+
+    TAK CoT 沒有「刪除」訊息——要移除一顆 entity 是送一筆 stale 已過期的 event，
+    訂閱端據此把它從畫面移除。本函式對齊此語意：把 stale 設為當下（list 預設
+    filter `stale > now` 會立即排除），同時 +1 version_clock 讓這次「刪除」也走
+    WS broadcast 通知其他 client（PR-D）。歷史 row 保留，可 audit / 回放。
+
+    走 update_cop_entity_cas → 同樣受樂觀鎖保護：expected_version_clock 對不上
+    回 conflict（不會盲刪別人剛改過的 entity）。回傳契約同 update_cop_entity_cas。
+    """
+    now = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return update_cop_entity_cas(uid, expected_version_clock, {"stale": now}, actor)
 
 
 # ── cop_entity_tracks ────────────────────────────────────────────────────────
@@ -170,10 +273,10 @@ def insert_cop_link(link: CoPEntityLink) -> int:
 
 
 def list_cop_links(
-    src_uid:    str | None = None,
+    src_uid: str | None = None,
     target_uid: str | None = None,
-    relation:   str | None = None,
-    limit:      int = 1000,
+    relation: str | None = None,
+    limit: int = 1000,
 ) -> list[dict]:
     """雙向查詢 entity 關係（給定 src 或 target 任一邊）。
 
@@ -219,16 +322,18 @@ def _row_to_entity_dict(row) -> dict:
         except (json.JSONDecodeError, TypeError) as e:
             _log.warning(
                 "cop_entities.visible_to JSON corrupt for uid=%s; fail-closed to []",
-                d.get("uid"), exc_info=e,
+                d.get("uid"),
+                exc_info=e,
             )
-            d["visible_to"] = []                       # ← fail-closed, not ['all']
+            d["visible_to"] = []  # ← fail-closed, not ['all']
     if d.get("attributes"):
         try:
             d["attributes"] = json.loads(d["attributes"])
         except (json.JSONDecodeError, TypeError) as e:
             _log.warning(
                 "cop_entities.attributes JSON corrupt for uid=%s; using empty dict",
-                d.get("uid"), exc_info=e,
+                d.get("uid"),
+                exc_info=e,
             )
             d["attributes"] = {}
     return d
