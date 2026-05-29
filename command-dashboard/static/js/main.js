@@ -522,10 +522,11 @@ function _loadClassicScript(src) {
   });
 }
 
-// P1-10b 步驟 3：移除 _configureLeafletAssets（Leaflet marker icon path 修正不再需要 —
-// MapLibre 不用 PNG marker、SVG marker 走 EntityLayer 步驟 5 處理）。
-// Leaflet 套件仍 load 因為 map.js 內 entity rendering 路徑尚未 port（步驟 5–10），
-// load 後 L global 存在但 markers 不會被渲染（refreshLeafletMarkers 已 stub）。
+// P1-10b 步驟 11：Leaflet 套件 load 完整移除（step 5-10 已把 polygons/infra/routes/
+// flows/zones/draw/popup/coord_tools/MGRS grid 全 port MapLibre EntityLayer；map.js
+// 內所有 L.* 真實使用已刪）。HTML #leaflet-map id + CSS .leaflet-* 保留為 alias
+// （見 ROADMAP P1-10b 設計決策）。靜態檔 leaflet.min.js / leaflet.min.css /
+// protomaps-leaflet.js / marker-icon{,-2x}.png / marker-shadow.png 由本 PR 一併移除。
 
 // ══════════════════════════════════════════════════════════════
 // 啟動
@@ -536,12 +537,6 @@ function _loadClassicScript(src) {
   await _loadClassicScript('/static/lib/maplibre-gl.js').catch(() => null);
   await _loadClassicScript('/static/lib/pmtiles.js').catch(() => null);
   await _waitForGlobal('maplibregl').catch(() => null);
-
-  // Leaflet（過渡期保留，步驟 11 與 leaflet.min.css / protomaps-leaflet.js / marker PNG
-  // 一併刪除。entity rendering 路徑 port 完之前 L global 仍被 map.js 部分 dead code 引用）
-  await _loadClassicScript('/static/lib/leaflet.min.js').catch(() => null);
-  await _loadClassicScript('/static/lib/protomaps-leaflet.js').catch(() => null);
-  await _waitForGlobal('L').catch(() => null);
 
   // 1. 版號
   await _loadVersion();

@@ -448,14 +448,15 @@ describe('C1-F commander modules', () => {
     expect(mainSource).toMatch(/if \(!canAccessMapObjects\(\)\) break;/);
     expect(mainSource).toMatch(/applyMapRoleUiGuards\(\)/);
     expect(mainSource).toMatch(/zone && canAccessMapObjects\(\)/);
-    expect(mapSource.match(/if \(!canAccessMapObjects\(\)\) return;/g)?.length).toBeGreaterThanOrEqual(12);
+    expect(mapSource.match(/if \(!canAccessMapObjects\(\)\) return;/g)?.length).toBeGreaterThanOrEqual(10);
     expect(mapSource).toMatch(/export function applyMapRoleUiGuards\(\)/);
     expect(mapSource).toMatch(/const objectTools = canAccessMapObjects\(\)/);
     expect(mapSource).toMatch(/id="btn-poly-draw"/);
     expect(mapSource).toMatch(/id="btn-route-draw"/);
     expect(mapSource).toMatch(/id="btn-flow-add"/);
     expect(mapSource).toMatch(/marker\.addEventListener\('click', \(\) => {\s+if \(!canAccessMapObjects\(\)\) return;/);
-    expect(mapSource).toMatch(/marker\.on\('click', e => {\s+L\.DomEvent\.stopPropagation\(e\);\s+if \(!canAccessMapObjects\(\)\) return;/);
+    // P1-10b 步驟 11：Leaflet legacy marker click handler (含 L.DomEvent) 已刪；
+    // MapLibre zone click 由 entity_layer.js 的 onZoneClick handler 處理（auth guard 已備）
     expect(mapSource).toMatch(/export function showZoneDetail\(zone\) {\s+if \(!canAccessMapObjects\(\)\) return;/);
     expect(mapSource).toMatch(/export function openL4Detail\(unitId, tableName, index\) {\s+if \(!canAccessMapObjects\(\)\) return;/);
     expect(mapSource).toMatch(/export function _startPolyDraw\(\) {\s+if \(!canAccessMapObjects\(\)\) return;/);
@@ -519,14 +520,15 @@ describe('C1-F commander modules', () => {
     expect(html).not.toMatch(/CMD_VERSION/);
     expect(main).toMatch(/\/api\/version/);
     expect(main).toMatch(/cmd_version/);
-    // P1-10b 步驟 2-3：HTML 加 maplibre-gl.css（leaflet.min.css 過渡期仍掛，步驟 11 刪）；
-    // main.js loader 換 maplibre + pmtiles；_configureLeafletAssets + marker PNG 已移除
-    expect(html).toMatch(/href="\/static\/lib\/leaflet\.min\.css"/);
+    // P1-10b 步驟 11：leaflet.min.css 已移除；MapLibre 為唯一 map CSS / JS source。
+    expect(html).not.toMatch(/href="\/static\/lib\/leaflet\.min\.css"/);
     expect(html).toMatch(/href="\/static\/lib\/maplibre-gl\.css"/);
     expect(main).toMatch(/\/static\/lib\/maplibre-gl\.js/);
     expect(main).toMatch(/\/static\/lib\/pmtiles\.js/);
     expect(main).toMatch(/_waitForGlobal\('maplibregl'\)/);
     expect(main).not.toMatch(/_configureLeafletAssets\(\)/);
+    expect(main).not.toMatch(/\/static\/lib\/leaflet\.min\.js/);
+    expect(main).not.toMatch(/\/static\/lib\/protomaps-leaflet\.js/);
     expect(main).not.toMatch(/delete window\.L\.Icon\.Default/);
   });
 
