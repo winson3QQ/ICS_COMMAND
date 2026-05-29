@@ -817,6 +817,20 @@
         "minimizedReason": "",
         "reactionGroups": [],
         "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/29#issuecomment-4572192842"
+      },
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "✅ 更新:branch `feat/issue-29-pr-g1-cutover`(含 step 1 `ba5e046`)**已 push 到 GitHub + Codeberg**。前一則「local-only 未 push」警告已解除——下個 session 換機器也拿得到。從 step 2(adapter)續。",
+        "createdAt": "2026-05-29T07:45:48Z",
+        "id": "IC_kwDOSnBjpc8AAAABEIZLPQ",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/29#issuecomment-4572203837"
       }
     ],
     "createdAt": "2026-05-29T01:30:20Z",
@@ -825,7 +839,7 @@
     "number": 29,
     "state": "OPEN",
     "title": "feat(map): real-time multi-user map_config sync (β)",
-    "updatedAt": "2026-05-29T07:44:40Z",
+    "updatedAt": "2026-05-29T07:45:48Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/29"
   }
 ]
