@@ -691,6 +691,20 @@
         "minimizedReason": "",
         "reactionGroups": [],
         "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/29#issuecomment-4570063389"
+      },
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## 🔖 Session handoff — 下個 session START HERE（2026-05-29）\n\n### 起手指令\n```bash\n./status.sh\ngh issue view 29            # 讀本 issue：完整 per-entity plan + 重定向 comment\n```\n\n### 當前狀態\n- main repo 在 `main` @ `bf216af`，working tree 乾淨，**三邊（local/GitHub/Codeberg）同步**\n- β 已 **重定向**：整檔 version（#31/#32 已 close）→ **per-entity cop_entities（TAK CoT）**\n- 完整 plan 在本 issue 上一則 comment（store 收斂表 / per-entity CAS / WS / 7 PR 拆分 / risk register）\n\n### 下一步：從 PR-A 動工（硬前置）\n**PR-A — schema + repo CAS（純後端，~0.5d，零 UX 風險）**\n1. `core/database.py`：migration `m014` — `cop_entities` ALTER ADD `updated_by` / `updated_at`（用既有 `_add_column_if_missing` helper）\n2. `repositories/cop_entity_repo.py`：加\n   - `update_cop_entity_cas(uid, expected_version_clock, patch, actor)` → 單句 `UPDATE ... SET ..., version_clock=version_clock+1 WHERE uid=? AND version_clock=?`（SQLite row-level atomic，**不需 asyncio.Lock**）；rowcount==0 → 再 get 判 notfound vs conflict\n   - `delete_cop_entity(uid, expected_version_clock)` → TAK soft-delete（mark_stale + bump version_clock，不 hard delete）\n3. 單測：concurrent CAS 一勝一敗 / soft-delete 設 stale + bump / notfound\n\n之後序：A → (B routers/cop.py ∥ C normalize_manual) → D WebSocket → E 前端 cop_stream → F migration → G cleanup\n\n### Salvage 來源（從 closed branch 撈）\n- `feat/issue-29-beta-phase1-etag`（#31 closed）：`--workers 1` systemd pin / XSS validator `_validate_map_config_strings` / CAS+409+ETag pattern\n- `feat/issue-29-beta-phase2-client`（#32 closed）：`_isSaving` / 409 UX handler 模式\n- 這兩 branch **不要刪**（salvage 參考）\n\n### 待清理 / 注意\n- `fix/issue-24-operator-map-rbac` branch 已 stale（issue #24 closed，被 PR #25/#26 取代）— 可刪\n- migration（PR-F）blast radius 最大 → dry-run default + deterministic uid 可重跑\n- `--workers 1`（WS registry 依賴）必須在 PR-D 帶入\n\n### 本 session 已完成（merged to main）\n- PR #25 MGRS persist / PR #26 issue#24 α / PR #28 P1-13 map_config 分離 / PR #30 P1-10b step 11\n- ROADMAP：P1-13 ✅、P1-10b 10/14、P1-12b scope 擴張、新增 P1-14、bundling 決策\n- Issue #24 closed（α/C 解，β → #29）；Issue #27 closed（P1-13）\n\n### 開放 issue\n- **#29**（β per-entity，本 issue，plan ready，待動工 PR-A）\n- **#19**（P1-10b，10/14，剩 step 12-14：unit tests 收尾 / CSP smoke / Lighthouse benchmark）\n\n🤖 Handoff via Claude Opus 4.8 (1M context)\n",
+        "createdAt": "2026-05-29T03:01:54Z",
+        "id": "IC_kwDOSnBjpc8AAAABEGXZEg",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/29#issuecomment-4570077458"
       }
     ],
     "createdAt": "2026-05-29T01:30:20Z",
@@ -699,7 +713,7 @@
     "number": 29,
     "state": "OPEN",
     "title": "feat(map): real-time multi-user map_config sync (β)",
-    "updatedAt": "2026-05-29T02:57:54Z",
+    "updatedAt": "2026-05-29T03:01:54Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/29"
   }
 ]
