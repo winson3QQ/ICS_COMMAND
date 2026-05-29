@@ -890,5 +890,41 @@
     "title": "fix(ci): doc_sync_check 跳過 gitignored runtime 路徑（解 main 既有紅 gate）",
     "updatedAt": "2026-05-29T03:42:16Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/34"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "## ROADMAP item\n\nissue #29 **PR-B**（序 A→(B∥C)→D→E→F→G；A 已 merge）。把 PR-A 的 repo 層 CAS 暴露成 REST。\n- Refs #29\n\n## What changed\n\n`routers/cop.py`（新）：\n| Method | Path | 行為 |\n|---|---|---|\n| GET | `/api/cop/entities` | 列出（預設過濾 stale）|\n| GET | `/api/cop/entities/{uid}` | 取單顆 + `ETag: W/\"<version_clock>\"` |\n| POST | `/api/cop/entities` | 手動建立 → 201 + ETag |\n| PUT | `/api/cop/entities/{uid}` | 樂觀鎖更新（需 `If-Match`）|\n| DELETE | `/api/cop/entities/{uid}` | TAK soft-delete（需 `If-Match`）|\n\n- **If-Match / ETag**：ETag = `version_clock`。PUT/DELETE 缺 If-Match → **428**；版本對不上 → **409 + `server_entity`**（讓 client merge，不採 412）；成功 version_clock +1。\n- **POST 強制 `source=manual`**（不信任 client 來源宣告）；uid / 時間戳 / how 未帶則 server 兜底。\n- **DELETE = soft-delete**（標 stale + bump，不 hard delete）。\n- **RBAC**：走既有 `auth_middleware` + `allowed_roles_for()` 集中政策 —— GET→READ_ROLES、寫→WRITE_ROLES（皆預設分支，**未改 role_enum.py**）。actor 取自 `request.state.session`。\n- **XSS（altitude）**：把 `routers/map.py` 私有的 `_validate_map_config_strings` 抽到 **`core/input_safety.py`** 共用，map_config 與 cop 兩寫入路徑共用單一 validator（issue #24 sink 防護；未來補 regex 只改一處）。\n\n## DoD checklist\n\n- [x] Tests added（`tests/integration/test_cop_router.py`，20 case）\n- [x] `pytest` green（全套 **504 passed**）\n- [x] ruff clean、`doc_sync_check` exit 0\n- [ ] 規格書：對外新增 `/api/cop/*` API —— 規格書更新留待 issue #29 收尾（PR-G）統一補（API 仍在演進，B→E 之間 shape 可能微調）\n\n## §8 Human Verification Script\n\n> 後端 API 層，可用 curl / `/docs` 戳，**尚無 GUI**（GUI 在 PR-E）。\n\n\\`\\`\\`bash\ncd command-dashboard && PYTHONPATH=src uvicorn main:app --port 8099 &   # 起 server\nTOKEN=$(curl -s localhost:8099/api/auth/login -H 'Content-Type: application/json' -d '{\"username\":\"admin\",\"pin\":\"<first-run-pin>\"}' | jq -r .session_id)\nH=\"-H X-Session-Token:$TOKEN\"\n\n# 1. 建立 → 201 + ETag\ncurl -si localhost:8099/api/cop/entities $H -H 'Content-Type: application/json' \\\n  -d '{\"type\":\"a-f-G-U-C\",\"lat\":25.03,\"lon\":121.56,\"callsign\":\"ALPHA\"}' | grep -iE 'HTTP|etag'\n# 預期：HTTP 201 + ETag: W/\"1\"，且回傳 source=manual\n\n# 2. PUT 缺 If-Match → 428；帶正確 → 200 version_clock=2\nUID=<上一步回傳 uid>\ncurl -s -o /dev/null -w '%{http_code}\\n' -X PUT localhost:8099/api/cop/entities/$UID $H -d '{\"callsign\":\"BRAVO\"}'   # 428\ncurl -s -X PUT localhost:8099/api/cop/entities/$UID $H -H 'If-Match: 1' -d '{\"callsign\":\"BRAVO\"}' | jq .version_clock # 2\n\n# 3. 用過期 If-Match: 1 → 409 + server_entity\ncurl -s -X PUT localhost:8099/api/cop/entities/$UID $H -H 'If-Match: 1' -d '{\"callsign\":\"X\"}' | jq '.detail, .server_entity.version_clock'\n\n# 4. XSS reject → 422\ncurl -s -o /dev/null -w '%{http_code}\\n' localhost:8099/api/cop/entities $H -d '{\"type\":\"a\",\"lat\":1,\"lon\":1,\"callsign\":\"<script>\"}'  # 422\n\\`\\`\\`\n（自動化等價驗證見 `tests/integration/test_cop_router.py`，CI 已跑。）\n\n## Out of scope\n\n- `normalize_manual`（stub→CoPEntity）→ **PR-C**（與本 PR 平行）。\n- WebSocket broadcast → PR-D；前端 `cop_stream.js` + 編輯改打這些 endpoint → **PR-E**（首個 GUI 可驗點）。\n- 規格書 / migration cutover → PR-F/G。\n\n## Notes for reviewer\n\n- 最該看：`update_entity` 的 409 路徑用 `JSONResponse` 顯式帶 header（HTTPException 不會帶我注入的 `response` header）。\n- POST 強制 `source=manual` 是刻意的安全姿態：ingress/tak 來源走各自 router，manual endpoint 不得偽造。\n- map.py 重構（移除本地 validator 改 import 共用）由既有 `tests/security/test_rbac_issue24.py`（12 case）回歸保護，已綠。\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+    "closedAt": null,
+    "comments": [
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## Review gates（CA 跑過）\n\n- **/code-review**：1 actionable finding — DELETE 成功路徑漏 ETag header（PUT-ok / 409 都有）→ 已修（commit 26d94a3）+ 補 test。其餘候選（If-Match 寬鬆解析、source 強制覆蓋、_MAX_BODY_BYTES 重複）經查皆 benign / 刻意設計。\n- **/security-review**：無 ≥8 信心漏洞。AuthZ（middleware 預設 GET→READ_ROLES、寫→WRITE_ROLES，observer 寫 403 已測）/ SQL（PRAGMA 白名單）/ XSS（兩寫入路徑共用 validator）/ source 強制 / If-Match int-parse 全數 mitigated。\n- 一個 **follow-up（非本 PR）**：WRITE-role user 可在 POST 帶 `exercise_id` / `visible_to`（mass-assignment）。現行模型下不可利用（無 read-side exercise 強制），但 **P1-14 exercise scoping 落地時需補 read-side 檢查**。已記於 issue #29。\n\n全套 504 passed、ruff clean、doc_sync exit 0。",
+        "createdAt": "2026-05-29T04:34:41Z",
+        "id": "IC_kwDOSnBjpc8AAAABEG4XzQ",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/35#issuecomment-4570617805"
+      }
+    ],
+    "createdAt": "2026-05-29T04:15:48Z",
+    "headRefName": "feat/issue-29-pr-b-cop-router",
+    "labels": [],
+    "mergedAt": null,
+    "number": 35,
+    "state": "OPEN",
+    "title": "feat(cop): issue#29 PR-B — /api/cop/* CRUD + If-Match 樂觀鎖 HTTP 層",
+    "updatedAt": "2026-05-29T04:34:41Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/35"
   }
 ]
