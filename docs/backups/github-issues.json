@@ -733,6 +733,20 @@
         "minimizedReason": "",
         "reactionGroups": [],
         "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/29#issuecomment-4570653563"
+      },
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## ✅ PR-D merged → 進 PR-E（前端，close-verify 點）\n\n- **PR #36**（squash → main \\`415b80c\\`）：WebSocket per-entity 即時推播 + in-process CopHub。security-review 3 findings 全修（IP/UA binding、READ_ROLES gate、Sec-WebSocket-Protocol token）。514 passed。\n- 進度：**A✅ → B✅ → (C skip) → D✅ → E（進行中）→ F → G**。\n\n### PR-E（前端 cop_stream + per-entity merge + 編輯改打 cop API）\n這是 issue 開頭「多人即時同步」第一個**畫面可驗**的 PR。含原 plan 的 6 防護在 per-entity 模型下的對應：\n- WS client 連 `/api/cop/ws/updates`（subprotocol token）+ per-uid last-write-wins merge（version_clock）\n- 操作員編輯（畫/拖/刪）改打 `/api/cop/entities`（POST/PUT/DELETE + If-Match）取代整檔 map_config\n- in-flight / 編輯中保護：本地正在拖/編輯的 entity 不被 incoming WS update 覆蓋（對應舊 plan _isSaving / _isUserBusy）\n- 重連全量 GET resync（merge idempotent）\n- logout / page-hide cleanup（關 WS）\n\n**驗收方式**：兩個 browser（admin + operator）同場，一邊畫/拖 entity → 另一邊不 reload 即時更新；並發編輯不丟資料（對照 58bb5d4 教訓）。完成後交付使用者親自 dogfood。\n\n🤖 via Claude Opus 4.8",
+        "createdAt": "2026-05-29T05:01:30Z",
+        "id": "IC_kwDOSnBjpc8AAAABEHDbfw",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/29#issuecomment-4570798975"
       }
     ],
     "createdAt": "2026-05-29T01:30:20Z",
@@ -741,7 +755,7 @@
     "number": 29,
     "state": "OPEN",
     "title": "feat(map): real-time multi-user map_config sync (β)",
-    "updatedAt": "2026-05-29T04:39:11Z",
+    "updatedAt": "2026-05-29T05:01:30Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/29"
   }
 ]

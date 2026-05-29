@@ -936,7 +936,7 @@
     },
     "baseRefName": "main",
     "body": "## ROADMAP item\nissue #29 **PR-D**（序 A✅→B✅→(C skip)→**D**→E→F→G）。讓 per-entity 變更即時廣播 —— PR-E 前端「多人即時同步」的關鍵前置。\n- Refs #29\n\n## What changed\n- **`services/realtime_hub.py`**（新）：in-process `CopHub` —— 單 worker broadcaster set，exercise filter、死連線容錯（per-send timeout + 就地剔除）、`close_all` for lifespan。\n- **`routers/cop.py`**：`@router.websocket(\"/ws/updates\")` server→client 單向 push `{op, uid, version_clock, entity}`；`create`/`update`/`delete` 成功後 `await _broadcast(...)`。\n- **`main.py`** lifespan shutdown → `cop_hub.close_all()`。\n- **`systemd/ics-command.service`、`start_pi.sh`** 加 `--workers 1`（in-process hub 需單 worker；scale-out 走 Redis/Wave 7）；`start_mac.sh` `--reload` 本就單 process（補註解）。\n\n## 安全（security-review 三項已修）\n1. **session binding 不降級**：WS `check_session(token, request=websocket, ...)` → 套用與 HTTP 相同 IP/UA binding（修 request=None 會跳過 binding 的 hijack 降級）。\n2. **role gate**：WS 須 `is_role_allowed(sess, READ_ROLES)`（與 GET 同政策，擋 unknown/降級 role）。\n3. **token 不入 access-log**：token 走 `Sec-WebSocket-Protocol`（`ics.session.<token>`）而非 query param → 不進 uvicorn/nginx request URL。\n\n## DoD checklist\n- [x] Tests added（`tests/unit/test_realtime_hub.py` 5 + `tests/integration/test_cop_ws.py` 5）\n- [x] `pytest` green（**514 passed**）/ ruff clean / doc_sync exit 0\n- [ ] 規格書：WS API 規格留 PR-G 統一補\n\n## §8 Human Verification Script\n> 後端 WS 層，可用 websocat / 瀏覽器 devtools 戳；端到端 GUI 在 PR-E。\n\\`\\`\\`bash\ncd command-dashboard && PYTHONPATH=src uvicorn main:app --port 8099 &\nTOKEN=$(curl -s localhost:8099/api/auth/login -H 'Content-Type: application/json' -d '{\"username\":\"admin\",\"pin\":\"<pin>\"}' | jq -r .session_id)\n# WS 連線（token 走 subprotocol）；另開一個 terminal POST 一筆 entity，觀察 WS 收到 op=create\nwebsocat -H= ws://localhost:8099/api/cop/ws/updates --protocol \"ics-cop-v1,ics.session.$TOKEN\"\n# 預期：先收 {\"op\":\"hello\"}；對端 POST /api/cop/entities 後收 {\"op\":\"create\",\"uid\":...,\"version_clock\":1,\"entity\":{...}}\n\\`\\`\\`\n（自動化等價見 tests/integration/test_cop_ws.py，CI 已跑。）\n\n## Out of scope / known follow-ups\n- **visible_to / exercise read-side 強制**：WS 廣播與 HTTP 讀路徑「都」未依 visible_to / exercise 過濾（一致，非 PR-D 引入）→ **P1-14 exercise scoping** 落地時補（已記 issue #29）。\n- 前端 `cop_stream.js` + per-entity merge + 編輯改打 cop API → **PR-E**。\n\n## Notes for reviewer\n- WS 為 server→client push only；endpoint 仍 loop `receive_text()` 純為偵測斷線（`finally` 保證 `cop_hub.disconnect`）。\n- 單 worker 是硬需求：多 worker 各自獨立 hub → 跨 worker 漏幀（已在 service docstring + run 設定註解標明）。\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
-    "closedAt": null,
+    "closedAt": "2026-05-29T04:58:05Z",
     "comments": [
       {
         "author": {
@@ -956,11 +956,11 @@
     "createdAt": "2026-05-29T04:56:46Z",
     "headRefName": "feat/issue-29-pr-d-cop-ws",
     "labels": [],
-    "mergedAt": null,
+    "mergedAt": "2026-05-29T04:58:05Z",
     "number": 36,
-    "state": "OPEN",
+    "state": "MERGED",
     "title": "feat(cop): issue#29 PR-D — COP entity WebSocket 即時推播 + in-process hub",
-    "updatedAt": "2026-05-29T04:56:47Z",
+    "updatedAt": "2026-05-29T04:58:05Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/36"
   }
 ]
