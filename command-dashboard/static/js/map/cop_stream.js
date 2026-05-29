@@ -59,6 +59,20 @@ export function createCopStream(deps) {
   let _reconnectTimer = null;
   let _visible = true;
   let _stopped = false;
+  // 渲染委派（PR-G1）：map.js 註冊 onChange 後 → cop_stream 不再自建 marker，
+  // 由 map.js 用 EntityLayer 渲染；未註冊（PR-E standalone）則 fallback 自建 marker。
+  let _onChange = null;
+  let _renderDelegated = false;
+
+  function _emitChange() {
+    if (_onChange) {
+      try {
+        _onChange();
+      } catch {
+        /* 訂閱者重繪錯誤不影響 merge */
+      }
+    }
+  }
 
   // ── merge 核心（純邏輯，可單測）──────────────────────────────────────────
 
@@ -107,22 +121,29 @@ export function createCopStream(deps) {
     const existing = _byUid.get(entity.uid);
     if (existing) {
       existing.entity = entity;
-      existing.marker.setLngLat([entity.lon, entity.lat]);
+      if (existing.marker) existing.marker.setLngLat([entity.lon, entity.lat]);
+      _emitChange();
       return;
     }
-    const marker = new MarkerCtor({ draggable: canWrite() });
-    marker.setLngLat([entity.lon, entity.lat]);
-    if (marker.addTo && _visible) marker.addTo(map);
+    // 委派模式：只存資料、不自建 marker（map.js 用 EntityLayer 渲染）
+    let marker = null;
+    if (!_renderDelegated) {
+      marker = new MarkerCtor({ draggable: canWrite() });
+      marker.setLngLat([entity.lon, entity.lat]);
+      if (marker.addTo && _visible) marker.addTo(map);
+    }
     const rec = { entity, marker };
     _byUid.set(entity.uid, rec);
-    _wireMarkerDrag(rec);
+    if (marker) _wireMarkerDrag(rec);
+    _emitChange();
   }
 
   function _renderRemove(uid) {
     const rec = _byUid.get(uid);
     if (!rec) return;
-    if (rec.marker.remove) rec.marker.remove();
+    if (rec.marker && rec.marker.remove) rec.marker.remove();
     _byUid.delete(uid);
+    _emitChange();
   }
 
   function _wireMarkerDrag(rec) {
@@ -312,7 +333,9 @@ export function createCopStream(deps) {
 
   function setVisible(visible) {
     _visible = visible;
+    // 委派模式下 marker 為 null（由 map.js 的 EntityLayer 控制顯示）→ 跳過
     for (const { marker } of _byUid.values()) {
+      if (!marker) continue;
       if (visible) {
         if (marker.addTo) marker.addTo(map);
       } else if (marker.remove) {
@@ -337,6 +360,27 @@ export function createCopStream(deps) {
     };
   }
 
+  /** map.js 註冊重繪 callback → 進入委派模式（cop_stream 不再自建 marker）。 */
+  function onChange(cb) {
+    _onChange = cb;
+    _renderDelegated = true;
+  }
+
+  /** 取某 kind 的 entity 陣列（map.js 渲染用）。kind 取自 attributes.kind。 */
+  function getEntitiesByKind(kind) {
+    const out = [];
+    for (const { entity } of _byUid.values()) {
+      if (entity.attributes && entity.attributes.kind === kind) out.push(entity);
+    }
+    return out;
+  }
+
+  /** 取單顆 entity（編輯器讀 version_clock 用）。 */
+  function getEntity(uid) {
+    const rec = _byUid.get(uid);
+    return rec ? rec.entity : null;
+  }
+
   return {
     connect,
     stop,
@@ -345,6 +389,9 @@ export function createCopStream(deps) {
     deleteEntity,
     setVisible,
     toggleVisible,
+    onChange,
+    getEntitiesByKind,
+    getEntity,
     // 測試 hook
     _onMessage,
     _applyEntity,

@@ -224,3 +224,40 @@ describe("resync", () => {
     expect(stream._byUid.has("old")).toBe(true);
   });
 });
+
+// ── 渲染委派 seam（PR-G1：map.js 接管渲染）─────────────────────────────────
+
+describe("render delegation seam", () => {
+  test("onChange 註冊後不自建 marker、且每次變更觸發 callback", () => {
+    const { stream } = makeStream();
+    let fires = 0;
+    stream.onChange(() => {
+      fires += 1;
+    });
+    stream._applyEntity(E("a", 1));
+    stream._applyEntity(E("a", 2)); // update
+    stream._applyDelete("a", 3);
+    expect(fires).toBe(3);
+    // 委派模式：rec.marker 為 null（map.js 負責畫）
+    stream._applyEntity(E("b", 1));
+    expect(stream._byUid.get("b").marker).toBe(null);
+  });
+
+  test("getEntitiesByKind 依 attributes.kind 過濾", () => {
+    const { stream } = makeStream();
+    stream.onChange(() => {});
+    stream._applyEntity(E("z1", 1, { attributes: { kind: "zone" } }));
+    stream._applyEntity(E("r1", 1, { attributes: { kind: "route" } }));
+    stream._applyEntity(E("z2", 1, { attributes: { kind: "zone" } }));
+    expect(stream.getEntitiesByKind("zone").map((e) => e.uid).sort()).toEqual(["z1", "z2"]);
+    expect(stream.getEntitiesByKind("route").map((e) => e.uid)).toEqual(["r1"]);
+    expect(stream.getEntitiesByKind("polygon")).toEqual([]);
+  });
+
+  test("getEntity 回傳單顆 entity / null", () => {
+    const { stream } = makeStream();
+    stream._applyEntity(E("a", 7));
+    expect(stream.getEntity("a").version_clock).toBe(7);
+    expect(stream.getEntity("nope")).toBe(null);
+  });
+});
