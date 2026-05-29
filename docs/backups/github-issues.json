@@ -719,6 +719,20 @@
         "minimizedReason": "",
         "reactionGroups": [],
         "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/29#issuecomment-4570304049"
+      },
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## ✅ PR-B merged → 跳過 PR-C → 進 PR-D\n\n- **PR #35**（squash → main \\`c2b4d3d\\`）：`/api/cop/*` CRUD + If-Match 樂觀鎖（428/409/404）+ XSS validator 抽共用（core/input_safety.py）+ RBAC（middleware 預設）。code-review 1 finding（DELETE ETag）已修；security-review 無 ≥8 漏洞。504 passed。\n- **Follow-up（記錄待 P1-14）**：POST 可帶 `exercise_id`/`visible_to`（mass-assignment），現行模型不可利用，但 exercise scoping 落地時需補 read-side 強制。\n\n### PR-C（normalize_manual）→ 跳過（決策）\nPR-B 的 `POST /api/cop/entities`（source 強制 manual）**已涵蓋「手動建立 entity」的實際需求**。stub `normalize_manual` 原本只服務「舊版 manual 表單帶 lat/lon → entity」，而該觸發條件（地理表單）**目前不存在**。硬做 = 對未成形格式寫程式。決策：**跳過，待真有地理表單再補**（stub 契約保留）。不擋任何下游。\n\n### 下一步：PR-D（WebSocket per-entity broadcast）\n序調整為 **A✅ → B✅ → (C skip) → D → E → F → G**。D 是讓「多人即時同步」在畫面上可見的關鍵前置。\n\n🤖 via Claude Opus 4.8",
+        "createdAt": "2026-05-29T04:39:11Z",
+        "id": "IC_kwDOSnBjpc8AAAABEG6jew",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/29#issuecomment-4570653563"
       }
     ],
     "createdAt": "2026-05-29T01:30:20Z",
@@ -727,7 +741,7 @@
     "number": 29,
     "state": "OPEN",
     "title": "feat(map): real-time multi-user map_config sync (β)",
-    "updatedAt": "2026-05-29T03:46:41Z",
+    "updatedAt": "2026-05-29T04:39:11Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/29"
   }
 ]
