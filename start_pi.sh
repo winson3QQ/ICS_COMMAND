@@ -46,9 +46,11 @@ if [ "$need_venv" = true ]; then
 fi
 
 echo "[啟動] FastAPI :8000 ..."
+# --workers 1：COP 即時推播為 in-process broadcaster（issue #29 PR-D），多 worker 漏幀
 .venv/bin/uvicorn main:app --app-dir src \
   --host 0.0.0.0 \
   --port 8000 \
+  --workers 1 \
   > /tmp/ics_command.log 2>&1 &
 COMMAND_PID=$!
 echo "[OK] PID $COMMAND_PID"

@@ -45,6 +45,7 @@ if [ "$need_venv" = true ]; then
 fi
 
 echo "[啟動] FastAPI :8000 ..."
+# --reload 本就單 process（隱含 workers=1）→ 滿足 COP in-process hub 需求（issue #29 PR-D）
 .venv/bin/uvicorn main:app --app-dir src \
   --host 0.0.0.0 \
   --port 8000 \
