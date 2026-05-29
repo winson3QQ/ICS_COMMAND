@@ -1,5 +1,4 @@
 import json
-import re
 import sqlite3
 from pathlib import Path
 
@@ -7,52 +6,17 @@ from fastapi import APIRouter, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, Response
 
 from core.config import MAP_CONFIG_PATH, MBTILES_DIR, SRC_DIR, STATIC_DIR
+from core.input_safety import validate_no_unsafe_strings
 from services import map_config_store
 
 router = APIRouter(tags=["map"])
 
 _CERT_PATH = SRC_DIR.parent.parent / "certs" / "rootCA.pem"
 
-# map_config schema 防護（issue #24 security review）
-# 背景：α PR 把 POST /api/map_config 從 COMMAND_ROLES 開放給 WRITE_ROLES（operator）後，
-# 前端 renderer（map.js innerHTML / Leaflet bindTooltip / cop.js openModal title）的
-# 既有 HTML sink 變成 operator → commander/sysadmin 提權路徑：operator 在 zone.label / id
-# / sub / event_code / flow.label 等字串裡注入 `<img onerror=...>` → 上層 role 載入地圖時
-# 被執行。Recursive 走 JSON 把所有 string value 過 HTML-unsafe 字元白名單。
-#
-# 策略選擇：recursive validator 而非 Pydantic schema —
-# (1) map_config 既有結構鬆散（legacy image/label 欄位、未來會加新 entity 類型）
-# (2) 攻擊面只在 string content，不在 structure
-# (3) 未來新增 sink 自動被保護，不需要再回頭補 schema
-_UNSAFE_CHAR_RE = re.compile(r"[<>`{}]|&#|&\w+;|javascript:|data:|vbscript:", re.IGNORECASE)
-_MAX_STRING_LEN = 512
+# map_config POST body 大小上限（route-level）。
+# 逐字串 XSS / 長度檢查（issue #24 提權防護）已抽到 core.input_safety.validate_no_unsafe_strings，
+# 與 cop entity 寫入路徑共用單一 source of truth（issue #29 PR-B）。
 _MAX_BODY_BYTES = 256 * 1024  # 256 KB — 一份正常 map_config 約 2-10 KB，給足 polygon/route
-
-
-def _validate_map_config_strings(obj: object, path: str = "$") -> None:
-    """遞迴檢查所有 string value 不含 HTML / JS context-escape 危險字元。
-    違反 → 422 reject，aw aw 不寫入 disk。"""
-    if isinstance(obj, str):
-        if len(obj) > _MAX_STRING_LEN:
-            raise HTTPException(
-                422,
-                f"map_config: 字串過長（{len(obj)} > {_MAX_STRING_LEN}）at {path}",
-            )
-        if _UNSAFE_CHAR_RE.search(obj):
-            raise HTTPException(
-                422,
-                f"map_config: 含 HTML / JS 危險字元 at {path}：{obj[:50]!r}",
-            )
-    elif isinstance(obj, dict):
-        for key, value in obj.items():
-            # key 也要驗（雖然極少被 render，但同樣可能流入 sink）
-            if isinstance(key, str) and _UNSAFE_CHAR_RE.search(key):
-                raise HTTPException(422, f"map_config: 危險 key at {path}：{key!r}")
-            _validate_map_config_strings(value, f"{path}.{key}")
-    elif isinstance(obj, list):
-        for i, item in enumerate(obj):
-            _validate_map_config_strings(item, f"{path}[{i}]")
-    # numbers, booleans, None → 安全，pass
 
 
 def _get_tile_db(name: str) -> Path:
@@ -154,8 +118,8 @@ async def save_map_config(request: Request):
         body = json.loads(raw)
     except json.JSONDecodeError as e:
         raise HTTPException(400, f"無效 JSON：{e}") from e
-    # XSS hardening — 詳見模組頂 _validate_map_config_strings 註釋
-    _validate_map_config_strings(body)
+    # XSS hardening — 見 core.input_safety.validate_no_unsafe_strings（issue #24 / #29 PR-B）
+    validate_no_unsafe_strings(body, label="map_config")
     # P1-13：寫 data/map_config.json（atomic write）取代直寫 static/
     map_config_store.write_atomic(body)
     return {"ok": True, "path": str(MAP_CONFIG_PATH)}
