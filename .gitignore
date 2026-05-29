@@ -13,6 +13,11 @@ venv/
 *.db.gz
 data/backups/
 
+# P1-13 (issue #27)：map_config runtime 檔在 data/，user data 邊界，不入版控；
+# factory default 走 static/map_config.seed.json（tracked）+ startup ensure() 兜底
+command-dashboard/data/map_config.json
+command-dashboard/data/map_config.json.tmp
+
 # Node
 node_modules/
 dist/

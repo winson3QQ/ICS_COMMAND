@@ -2,7 +2,7 @@
  * map.js — 指揮情境圖模組（C1-F CSP 模組化）
  *
  * 職責：
- *   - 載入 /static/map_config.json
+ *   - 載入 /api/map_config（P1-13 起，原 /static/map_config.json）
  *   - 管理站內靜態圖與站外 MapLibre 地圖切換（P1-10b 起，原 Leaflet）
  *   - 渲染基本節點 / 事件 marker
  *   - 提供 main.js 事件委派所需的地圖操作函式
@@ -192,22 +192,17 @@ export function initMap(deps = {}) {
 }
 
 async function _loadMapConfig() {
-  // cache-bust：reset DB / 拖曳 / 新增 marker 後 saveMapConfig 才寫回靜態檔案，
-  // 但 /static/map_config.json 預設無 Cache-Control，瀏覽器會用啟發式快取
-  // 導致 location.reload() 後仍讀到舊版本（殘留事件 marker）
+  // P1-13（issue #27）：改打 GET /api/map_config（取代直讀 /static/map_config.json）。
+  // - 後端從 data/map_config.json 讀，不存在則 fallback static/map_config.seed.json
+  // - Response 帶 Cache-Control: no-store，瀏覽器不再需要 ?t= cache-bust
+  // - 走 authFetch 跟 POST 同一條 auth chain（雖然 GET 目前未掛 require_role，
+  //   未來收緊也可用）
   //
-  // **不要 fallback 空殼**（issue #24 code-review 衍生）：原本 catch 後設 _mapConfig
-  // 為 `{ maps: { indoor: { zones: [] }, outdoor: { zones: [] } } }`，會造成 feedback loop：
-  // (1) server reload / 短暫 5xx → fetch 失敗 → _mapConfig 變空殼
-  // (2) user 任何動作觸發 saveMapConfig → 把空殼寫回 disk
-  // (3) 下次 hard reload → disk 已空 → 全部消失
-  // 留 _mapConfig=null 讓 saveMapConfig 的 `if (!_mapConfig) return;` guard 護住 disk，
-  // user 看到的是「載入失敗」而不是「資料消失」，可手動 reload 救回。P1-13 上線後此段
-  // 將完全重寫（走 /api/map_config + seed 兜底）。
+  // **不要 fallback 空殼**（issue #24 code-review 衍生）：若 _mapConfig 在 fetch 失敗時
+  // 被設成空殼 + user 後續觸發 saveMapConfig → 把空殼寫上 disk → 演習資料全失。改為
+  // fetch 失敗時 _mapConfig=null，靠 saveMapConfig 的 null guard 護住 disk。
   try {
-    const resp = await fetch(API_BASE + '/static/map_config.json?t=' + Date.now(), {
-      cache: 'no-store',
-    });
+    const resp = await authFetch(API_BASE + '/api/map_config');
     if (!resp.ok) {
       console.warn(`[map.js] map_config 載入失敗（HTTP ${resp.status}），_mapConfig 保持 null，本地動作不會洗 disk`);
     } else {

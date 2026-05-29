@@ -55,10 +55,15 @@ async def lifespan(app: FastAPI):
     ensure_initial_admin_token()
     ensure_default_admin_pin()
     cleanup_expired_sessions()  # 清除上次遺留的過期 session
+    # P1-13（issue #27）：首次啟動 / fresh deploy 把 seed 複製到 runtime；
+    # 已存在則 no-op。避免 first GET /api/map_config 抓不到檔。
+    from services import map_config_store
+
+    map_config_store.ensure()
     yield
 
 
-init_logging()   # C1-D：structlog 初始化，在 app 建立前呼叫
+init_logging()  # C1-D：structlog 初始化，在 app 建立前呼叫
 
 app = FastAPI(
     title="ICS 指揮部 API",
@@ -87,10 +92,24 @@ if STATIC_DIR.exists():
 
 # ── 路由 ──────────────────────────────────────────────────────────────────────
 for router in (
-    auth.router, auth.session_router, snapshots.router, events.router, decisions.router,
-    admin.router, backups.router, ingress.router, sync.router, manual.router,
-    dashboard.router, config_router.router, map.router,
-    exercises.router, ttx.router, ai.router, tak.router, security.router,
+    auth.router,
+    auth.session_router,
+    snapshots.router,
+    events.router,
+    decisions.router,
+    admin.router,
+    backups.router,
+    ingress.router,
+    sync.router,
+    manual.router,
+    dashboard.router,
+    config_router.router,
+    map.router,
+    exercises.router,
+    ttx.router,
+    ai.router,
+    tak.router,
+    security.router,
 ):
     app.include_router(router)
 
@@ -106,5 +125,3 @@ def index():
     <p><a href="/docs" style="color:#90b8e8">/docs — Swagger UI</a></p>
     <p><a href="/api/health" style="color:#90b8e8">/api/health</a></p>
     </body></html>"""
-
-

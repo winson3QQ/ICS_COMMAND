@@ -6,7 +6,8 @@ from pathlib import Path
 from fastapi import APIRouter, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, Response
 
-from core.config import MBTILES_DIR, SRC_DIR, STATIC_DIR
+from core.config import MAP_CONFIG_PATH, MBTILES_DIR, SRC_DIR, STATIC_DIR
+from services import map_config_store
 
 router = APIRouter(tags=["map"])
 
@@ -126,6 +127,20 @@ def serve_pmtiles(filename: str, request: Request):
     )
 
 
+@router.get("/api/map_config", tags=["system"])
+def get_map_config():
+    """讀 runtime（data/map_config.json）；不存在則 fallback seed。
+    P1-13：前端從直讀 /static/map_config.json 改打這條，讀寫對稱。
+    """
+    body = map_config_store.read()
+    return Response(
+        content=json.dumps(body, ensure_ascii=False),
+        media_type="application/json",
+        # runtime 檔頻繁變動，瀏覽器不准 cache（前端原本用 ?t=timestamp cache-bust 改 API 後集中於此）
+        headers={"Cache-Control": "no-store"},
+    )
+
+
 @router.post("/api/map_config", tags=["system"])
 async def save_map_config(request: Request):
     # body 大小硬上限（防 disk fill；α PR operator 開放後不該毫無防護地讓任何 writer 灌資料）
@@ -141,9 +156,9 @@ async def save_map_config(request: Request):
         raise HTTPException(400, f"無效 JSON：{e}") from e
     # XSS hardening — 詳見模組頂 _validate_map_config_strings 註釋
     _validate_map_config_strings(body)
-    config_path = STATIC_DIR / "map_config.json"
-    config_path.write_text(json.dumps(body, ensure_ascii=False, indent=2), encoding="utf-8")
-    return {"ok": True, "path": str(config_path)}
+    # P1-13：寫 data/map_config.json（atomic write）取代直寫 static/
+    map_config_store.write_atomic(body)
+    return {"ok": True, "path": str(MAP_CONFIG_PATH)}
 
 
 @router.post("/api/map/upload-image", tags=["system"])

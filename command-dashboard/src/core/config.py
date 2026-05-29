@@ -6,14 +6,21 @@ import os
 from pathlib import Path
 
 # ── 路徑 ──────────────────────────────────
-SRC_DIR     = Path(__file__).parent.parent
-BASE_DIR    = SRC_DIR.parent
-DATA_DIR    = BASE_DIR / "data"
-STATIC_DIR  = BASE_DIR / "static"
+SRC_DIR = Path(__file__).parent.parent
+BASE_DIR = SRC_DIR.parent
+DATA_DIR = BASE_DIR / "data"
+STATIC_DIR = BASE_DIR / "static"
 MBTILES_DIR = STATIC_DIR / "tiles"
 
 _ics_db_path_env = os.getenv("ICS_DB_PATH")
 DB_PATH: Path = Path(_ics_db_path_env) if _ics_db_path_env else DATA_DIR / "ics.db"
+
+# ── map_config（P1-13 seed/runtime 分離）──────────────────────────────
+# SEED：tracked，factory default（issue/PR snapshot 期間維持版本控管）
+# PATH：gitignored，runtime 實檔（user data 邊界，未來進 P1-12b backup + P1-12c SQLCipher 加密邊界）
+# Startup 時 ensure()：PATH 不存在 → copy SEED 過去；POST 寫 PATH（atomic write）
+MAP_CONFIG_SEED: Path = STATIC_DIR / "map_config.seed.json"
+MAP_CONFIG_PATH: Path = DATA_DIR / "map_config.json"
 
 # 磁碟剩餘百分比低於此值 → degraded（黃燈）
 HEALTH_DISK_DEGRADED_PCT_THRESHOLD: float = float(os.getenv("HEALTH_DISK_DEGRADED_PCT_THRESHOLD", "20"))
@@ -27,7 +34,7 @@ WARNING_THRESHOLD_SECONDS: int = int(os.getenv("ICS_WARNING_THRESHOLD_SECONDS", 
 # 注意：PinLock（UI 層 idle 鎖定）是獨立機制，與此 server-side timeout 無關
 
 # ── App ───────────────────────────────────
-APP_VERSION = "2.1.0"   # Issue #24 + #26：deploy/setup.sh + ics service + /api/health 增強 + 4-role RBAC；PR#25 + PR#27
+APP_VERSION = "2.1.0"  # Issue #24 + #26：deploy/setup.sh + ics service + /api/health 增強 + 4-role RBAC；PR#25 + PR#27
 
 # CMD_VERSION：前端 UI 功能版本（Wave 里程碑，不同於後端 SemVer APP_VERSION）
 # 兩軌版本命名，不可混用（見 CLAUDE.md 版號規則）
@@ -39,9 +46,7 @@ CMD_VERSION: str = os.getenv("CMD_VERSION", "v0.12.14")
 # 保留 middleware 是為未來 TTX Orchestrator（C5-A 獨立服務）與 Tier 3 開放 API（C5-E）預留。
 # 部署時由 /etc/ics/command.env 的 ALLOWED_ORIGINS 覆寫；預設只開本機（dev）。
 _default_origins = "http://localhost:8000,http://127.0.0.1:8000,https://localhost,https://127.0.0.1"
-ALLOWED_ORIGINS: list[str] = [
-    o.strip() for o in os.getenv("ALLOWED_ORIGINS", _default_origins).split(",") if o.strip()
-]
+ALLOWED_ORIGINS: list[str] = [o.strip() for o in os.getenv("ALLOWED_ORIGINS", _default_origins).split(",") if o.strip()]
 
 # ── 安全標頭（C1-B）────────────────────────
 # CSP_MODE: "report-only"（觀察期）→ "enforce"（正式擋）
@@ -53,17 +58,19 @@ ENABLE_SECURITY_HEADERS: bool = os.getenv("ENABLE_SECURITY_HEADERS", "true").low
 
 # ── 認證豁免路由 ──────────────────────────
 # (method, path) 完整匹配
-AUTH_EXEMPT_EXACT: frozenset[tuple[str, str]] = frozenset({
-    ("POST", "/api/auth/login"),
-    ("GET",  "/api/status"),
-    ("GET",  "/docs"),
-    ("GET",  "/openapi.json"),
-    ("GET",  "/"),
-    # CSP violation report：瀏覽器自動 POST，不帶 session token
-    ("POST", "/api/security/csp-report"),
-    # 版本資訊：前端啟動時 fetch，不含敏感資訊，無需認證（C1-F Q1）
-    ("GET",  "/api/version"),
-})
+AUTH_EXEMPT_EXACT: frozenset[tuple[str, str]] = frozenset(
+    {
+        ("POST", "/api/auth/login"),
+        ("GET", "/api/status"),
+        ("GET", "/docs"),
+        ("GET", "/openapi.json"),
+        ("GET", "/"),
+        # CSP violation report：瀏覽器自動 POST，不帶 session token
+        ("POST", "/api/security/csp-report"),
+        # 版本資訊：前端啟動時 fetch，不含敏感資訊，無需認證（C1-F Q1）
+        ("GET", "/api/version"),
+    }
+)
 
 # path 前綴匹配（任何 method）
 AUTH_EXEMPT_PREFIXES: tuple[str, ...] = (
