@@ -740,5 +740,98 @@
     "title": "refactor(map): map_config seed/runtime 分離（P1-13）+ ROADMAP P1-12b/P1-14 更新",
     "updatedAt": "2026-05-29T01:10:54Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/28"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "## ROADMAP item\n\n- ref [P1-10b #19](https://github.com/winson3QQ/ICS_COMMAND/issues/19) **步驟 11/14** (清死碼 + Leaflet API sweep)\n- Step 12 unit tests 已 align（commander_modules.test.js 更新）\n- Step 13 CSP smoke 待 dogfood verify（leaflet.min.css 404 不再 fire violation）\n\n## What changed\n\nstep 5-10 故意把 Leaflet code 留著當安全網，**plan 預定 step 11 一次清掉**。本 PR 執行此 plan。\n\n### map.js 2436 → 2185 行（-251）\n\n| 移除 | 行數 |\n|---|---|\n| `refreshLeafletMarkers` Leaflet legacy path（L.marker + bindTooltip + L.DomEvent + addTo） | ~100 |\n| `_renderPolygons` / `_renderInfra` / `_renderRoutes` / `_renderFlows` 4 條 Leaflet legacy fallback | ~80 |\n| `_napsgIcon` / `_infraIcon` / `_arrowIcon` 三個 L.divIcon 工廠（caller 都已刪） | ~70 |\n| `_renderZones` / `_openEventPopup` 內的 `typeof maplibregl undefined` guard | ~2 |\n\n### main.js boot\n\n不再 load Leaflet：\n\n```diff\n- await _loadClassicScript('/static/lib/leaflet.min.js')\n- await _loadClassicScript('/static/lib/protomaps-leaflet.js')\n- await _waitForGlobal('L')\n```\n\n### 靜態檔（git rm）\n\n- `static/lib/leaflet.min.js`\n- `static/lib/leaflet.min.css`\n- `static/lib/protomaps-leaflet.js`\n- `static/lib/marker-icon.png` / `marker-icon-2x.png` / `marker-shadow.png`\n\n### HTML\n\n刪 `<link rel='stylesheet' href='/static/lib/leaflet.min.css'>`。\n\n### Tests\n\n`commander_modules.test.js` 更新：\n- `leaflet.min.css` 改 `expect.not.toMatch`\n- 加 `leaflet.min.js` / `protomaps-leaflet.js` 不再 load 的負向斷言\n- 刪 `observer_cannot_access_map_objects` 內 L.DomEvent marker click handler 的 expectation\n\n## 保留（plan 預定 as alias）\n\n| 物件 | 保留原因 |\n|---|---|\n| HTML id `#leaflet-map` | MapLibre container 用此 id 為 alias，rename 成本高 |\n| CSS `.leaflet-*` 規則 | Plan 明示 keep as alias |\n| 變數 `_leafletMap` / `_leafletMarkers` | 歷史命名，rename 跨檔影響大；註釋已標明實為 MapLibre instance |\n| 公開函式 `refreshLeafletMarkers` / 等 | cop.js 等舊 caller 還在用，public API |\n\n## DoD checklist\n\n- [x] Tests added / updated（vitest 155 / pytest 467）\n- [x] `pytest` green（467 passed）\n- [x] `npm test` green（155 passed）\n- [x] doc_sync ✓\n- [ ] 規格書更新（P1-10b 整批等 step 14 結束一起寫）\n- [ ] ROADMAP item 對應 sub-item 完成（11/14，本 PR 後 13/14；剩 step 14 + step 13 dogfood verify）\n\n## §8 Human Verification Script\n\n```bash\n# Step 1: 重啟 server\n./start_mac.sh\n\n# Step 2: 開 dashboard + DevTools console + Network tab\n# 預期：\n#   - console 無 'L is not defined' / 'leaflet.min.css 404'\n#   - Network 看不到 /static/lib/leaflet* 任何請求\n#   - 無新 CSP violation（report-only 模式）\n\n# Step 3: 站外切站內、再切回來\n# 預期：tab 切換無 console error，地圖容器正常\n\n# Step 4: 畫 polygon / route / 新事件 marker\n# 預期：跟之前行為一致（label / chevron / hover / drag 都正常）\n\n# Step 5: 既有節點（指揮部 / 醫療組 / 收容組 等）顯示正常\n# 預期：圖示與顏色與 main 上一版一致\n\n# Step 6: tests\ncd command-dashboard\nnpm test            # 155 passed\n.venv/bin/python -m pytest --tb=no    # 467 passed\n```\n\n## Out of scope / known limitations\n\n- **Step 13 CSP enforce mode** — 仍 report-only；P1-10h 才正式 enforce\n- **Step 14 Lighthouse + 1000 entity FPS benchmark** — 下個 PR\n- **dogfood verify 發現 node_type 對映可能有 edge case**（事件建立 categorization）— 已 spawn 給 user verify，與本 PR scope 解耦；若確認是 step 11 regression 則 follow-up PR\n\n## Notes for reviewer\n\n- 改動跨層但每層 surgical：純機械刪除 + 早返 guard 收尾，邏輯不變\n- vitest 自動抓住一個 expectation 對齊不到的地方（L.DomEvent marker click handler），已 update\n- map.js 累積成長 2436 → 2185（-251 / -10.3%），程式碼健康度往正確方向走\n- 無 backend 改動\n",
+    "closedAt": "2026-05-29T02:00:11Z",
+    "comments": [],
+    "createdAt": "2026-05-29T01:59:44Z",
+    "headRefName": "feat/issue-19-step-11-13-cleanup",
+    "labels": [],
+    "mergedAt": "2026-05-29T02:00:11Z",
+    "number": 30,
+    "state": "MERGED",
+    "title": "refactor(map): P1-10b step 11 — Leaflet API sweep + dead code 清除（13/14）",
+    "updatedAt": "2026-05-29T02:00:33Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/30"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "## ROADMAP item\n\n- ref #29 **β Phase 1/4**（Server ETag + 409 + asyncio.Lock）\n- Phase 2-4（client / WS / Playwright）後續 PR\n\n## What changed\n\nβ 第一階段，**純 backend**，feature flag 護航 → 舊 client 零影響。為 multi-user realtime sync 鋪 server-side concurrency 基礎。\n\n### 機制：version 樂觀鎖 + compare-and-swap\n\n`map_config.json` 加 integer `version`。POST 走 CAS（在 process-wide `asyncio.Lock` 內 read→check→write atomic）→ 根治 commit `58bb5d4` race 的 server 端版本（兩並發 POST 都讀 v17、都過 check、都寫 v18 → 後者靜默覆蓋）。\n\n### 改動\n\n| 檔 | 內容 |\n|---|---|\n| `services/map_config_store.py` | `_write_lock` + `compare_and_swap(expected, body, actor)` + version 注入（read 補 0 for legacy，已有不覆寫）|\n| `routers/map.py` | GET 加 `ETag: W/\"<v>\"` + HEAD method；POST 解析 If-Match（寬鬆無 header → current version；strict 無 → 428；衝突 → 409 + server_body）|\n| `core/config.py` | `MAP_CONFIG_STRICT_ETAG`（預設 `0` 寬鬆）|\n| `systemd/ics-command.service` | `--workers 1` 顯式 pin + CRITICAL 註解（in-process lock + WS hub 不可多 worker）|\n\n## DoD checklist\n\n- [x] Tests（vitest 155 未動 / pytest 479，+12 β）\n- [x] `pytest` green（479 passed）\n- [x] doc_sync ✓\n- [x] 寬鬆模式預設 → 舊 client 不送 If-Match 仍可寫\n- [x] 並發 CAS 測試（兩 expected=0 → 正好一勝一敗）\n\n## §8 Human Verification Script\n\n```bash\n# 重啟 server（lifespan + router 換了）\nPID=$(lsof -ti tcp:8000); kill $PID; ./start_mac.sh\n\n# A. 回歸：GUI 畫 polygon/route/拖 marker → refresh 都在（寬鬆模式透明）\n# B. 觀察 version：\n#    - DevTools Network → GET /api/map_config response 有 ETag: W/\"<n>\"\n#    - POST response body {ok, version, path}，每存一次 version+1\n#    - cat data/map_config.json → version / updated_by / updated_at\n# C. 409（需 curl，GUI 不送 If-Match）：\ncurl -X POST .../api/map_config -H 'If-Match: W/\"0\"' -d '{...}'  # 預期 409 version_conflict\n```\n\n## Out of scope（後續 phase）\n\n- **Phase 2**: client If-Match + 409 handle + `_isSaving` + `_isUserBusy`（純 frontend）\n- **Phase 3**: WebSocket push + polling fallback + nginx /ws/ location\n- **Phase 4**: Playwright multi-context stress test\n\n## Notes for reviewer\n\n- 寬鬆模式（預設）下 POST 不送 If-Match 仍走 CAS（用 disk current version 當 expected）→ last-write 相容 + 正確 bump + 並發保護。Strict 模式（flag=1）才強制 If-Match，留待 Phase 2 client 改好後翻\n- `asyncio.Lock` 內叫 sync `read()` 會短暫阻塞 event loop（map_config <256KB，Pi 毫秒級，可接受；plan 標明可 run_in_executor 但 Phase 1 不強求）\n- 動工前做了 reality check（nginx config / session schema / onAuthChange 位置等），結果記在 commit message\n",
+    "closedAt": "2026-05-29T02:57:56Z",
+    "comments": [
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "Close：β 從整檔 version 樂觀鎖**重定向**為 per-entity cop_entities（TAK CoT），見 [#29 重定向 comment](https://github.com/winson3QQ/ICS_COMMAND/issues/29)。整檔粒度在「多人同操一份地圖」下任何並發都假衝突，違反「用成熟標準不自己重刻」原則。Salvage：`--workers 1` pin / XSS validator / CAS+409 pattern 移進新 per-entity PR。`compare_and_swap` 縮 scope 給底圖設定。Branch 留作 salvage 參考。",
+        "createdAt": "2026-05-29T02:57:55Z",
+        "id": "IC_kwDOSnBjpc8AAAABEGWidw",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/31#issuecomment-4570063479"
+      }
+    ],
+    "createdAt": "2026-05-29T02:23:28Z",
+    "headRefName": "feat/issue-29-beta-phase1-etag",
+    "labels": [],
+    "mergedAt": null,
+    "number": 31,
+    "state": "CLOSED",
+    "title": "feat(map): β Phase 1 — map_config version 樂觀鎖 + server CAS（issue #29）",
+    "updatedAt": "2026-05-29T02:57:56Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/31"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "feat/issue-29-beta-phase1-etag",
+    "body": "## ROADMAP item\n\n- ref #29 **β Phase 2/4**（Client If-Match + 409 handle + `_isSaving`）\n- **Stacked on [#31](https://github.com/winson3QQ/ICS_COMMAND/pull/31)（Phase 1）** — base 設為 `feat/issue-29-beta-phase1-etag`，待 Phase 1 merge 後 retarget main\n\n## What changed\n\n純 frontend。client 開始帶 If-Match 並處理 409 衝突。\n\n### saveMapConfig 改造（map.js）\n\n| 改動 | 作用 |\n|---|---|\n| module 級 `_isSaving` 旗標 | in-flight POST 時重入 skip（dedupe）；Phase 3 remote update 查此旗標避免拿 stale 覆蓋飛行中的本地修改（commit 58bb5d4 client 防護）|\n| POST 帶 `If-Match: W/\"<version>\"` | server CAS（version 從 `_mapConfig.version`，GET 已載入）|\n| 409 → `_handleMapConfigConflict` | 拿 `server_body` 覆蓋本地 + re-render + 紅字「他人已更新，請重做」→ throw（Phase 2 minimal：last-write-loses）|\n| 成功 → `_mapConfig.version = result.version` | bump，下次 save 帶新 etag（不然第二次必 409）|\n| try/finally | `_isSaving` 一定還原 |\n\n### _evPopupSubmit rollback 強化\n\n`pop()` → **id-targeted splice**。409 時 `_mapConfig` 被換成 `server_body`，原 `pop()` 會誤刪 server 最後一個 zone。`findIndex` by id：server 沒這 zone → -1 no-op；沒換 → 找到移除。\n\n## DoD checklist\n\n- [x] vitest 156（+1 source-assertion test）\n- [x] pytest 479（未動 backend）\n- [x] doc_sync ✓\n\n## §8 Human Verification Script\n\n```bash\n# 前置：Phase 1 已 merge（或本 branch 含 Phase 1 commits）\nPID=$(lsof -ti tcp:8000); kill $PID; ./start_mac.sh\n\n# A. 單 user 正常：畫 polygon → DevTools Network → POST 帶 If-Match: W/\"<n>\"\n#    response version+1；再畫 → If-Match 帶新 version（不會 409）\n# B. 衝突模擬（兩 tab 同 user / 或 curl 先搶存）：\n#    tab1 畫 A、tab2 畫 B（tab2 version 已過時）→ tab2 存 → 紅字「⚠ 版本衝突」\n#    + 畫面刷新成 server 狀態\n# C. 事件建立遇衝突：event 落 DB 但 map 衝突 → zone 不會誤刪 server zone（splice by id）\n```\n\n## 刻意未做（保守）\n\n- **`MAP_CONFIG_STRICT_ETAG` 維持 0（寬鬆）**：不在本 PR 翻 1。dogfood 確認 client\n  一定送 If-Match 後才獨立 commit 翻 strict（避免漏網路徑全 428）\n- **`_isUserBusy` 移 Phase 3**：只在 remote update consumer 存在時有意義，避免 dead code\n\n## Out of scope\n\n- Phase 3: WebSocket push + polling fallback + `_isUserBusy` + nginx `/ws/`\n- Phase 4: Playwright multi-context stress test\n",
+    "closedAt": "2026-05-29T02:57:58Z",
+    "comments": [
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "Close：隨 #31 重定向（client 整檔 If-Match 是錯粒度）。`_isSaving` / 409 UX 模式移到 per-entity PR-E。見 [#29 重定向 comment](https://github.com/winson3QQ/ICS_COMMAND/issues/29)。",
+        "createdAt": "2026-05-29T02:57:58Z",
+        "id": "IC_kwDOSnBjpc8AAAABEGWjBg",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/32#issuecomment-4570063622"
+      }
+    ],
+    "createdAt": "2026-05-29T02:28:52Z",
+    "headRefName": "feat/issue-29-beta-phase2-client",
+    "labels": [],
+    "mergedAt": null,
+    "number": 32,
+    "state": "CLOSED",
+    "title": "feat(map): β Phase 2 — client If-Match + 409 衝突處理 + _isSaving（issue #29）",
+    "updatedAt": "2026-05-29T02:57:58Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/32"
   }
 ]

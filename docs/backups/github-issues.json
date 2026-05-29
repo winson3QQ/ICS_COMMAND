@@ -677,6 +677,20 @@
         "minimizedReason": "",
         "reactionGroups": [],
         "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/29#issuecomment-4569788543"
+      },
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## 方向重定向（2026-05-29）：整檔 version → per-entity cop_entities（TAK CoT）\n\nDogfood 討論釐清需求後，#29 從「整檔 map_config.json version 樂觀鎖」**根本重定向**為「per-entity 協作編輯，收斂到 cop_entities（TAK CoT 模型）」。\n\n### 為什麼重定向\n\n| 原則（user 拍板）| 推論 |\n|---|---|\n| 演習 = 單一共享 COP、多人同操一份 → 並發是常態 | 整檔 version → 任何並發存都假衝突（即使改不同物件）→ 體感災難 |\n| 用業界成熟做法、不自己重刻、未來對接 TAK 不重工 | cop_entities（per-row SQL + `version_clock`）是 per-entity 同步天然地基；在 map_config JSON blob 手刻 per-entity version = 重刻 → 排除 |\n| 同步含所有既有 entity（zone/route/event/polygon/flow/infra）| 全量收斂 |\n\n### 關鍵事實（reality-checked）\n\n- `cop_entities` 表（P1-03 凍結）**已是 TAK CoT 模型**：`uid` PK / `version_clock INTEGER`（per-entity 樂觀鎖已預埋）/ `stale` / `source CHECK(manual,pi-node,tak,waveink)` / `exercise_id` / `attributes` JSON\n- `cop_entity_links` 表已存在（flow = link）\n- 前端 `entity_layer.js` 的 `zoneToFeature` **已為 cop_entities 設計**（讀 uid/source/affiliation/severity，註解寫「對 P2-04 鋪路」）→ 渲染層影響最小\n- manual 編輯 + P2-04 `normalize_cot` 走**同一 store/broadcast/render** → **TAK 接上去零重工**（達成 user 要求）\n\n### Store 收斂決策\n\n| 資料 | 去處 |\n|---|---|\n| zones / events / infra（點）| cop_entities（單 lat/lon + uid + version_clock）|\n| polygons / routes（多點）| cop_entities CoT drawing type（`u-d-f`/`u-d-r`），頂點存 `attributes.vertices`，centroid 當 lat/lon（**TAK 就這樣存 shape，不自創 geometry 表**）|\n| flows（兩點連線）| `cop_entity_links`（src/relation/target）|\n| 底圖設定（image/label/圖層預設）| 留 `map_config.json`（非 entity，單人改即可）|\n\n### Per-entity 樂觀鎖（比整檔簡單）\n\n`UPDATE cop_entities SET ..., version_clock=version_clock+1 WHERE uid=? AND version_clock=?`\n→ SQLite row-level atomic，**連 asyncio.Lock 都不用**。A 改 entity① / B 改 entity② = 不同 row = 零競爭；只有同 uid 才 409。\n\n### WebSocket per-entity broadcast（TAK pub/sub）\n\nentity 變更 → server broadcast `{op, uid, version_clock, entity}` → client per-uid merge（last-write-wins by version_clock，monotone idempotent，reconnect replay 安全）+ stale TTL 自動移除 + per-entity polling 兜底。**取代 commit 58bb5d4 的整檔 5s poll**。\n\n### #31 / #32 處置\n\n**Close 兩個**（整檔粒度 = 被「不重刻」原則否決）。Salvage：`--workers 1` pin / XSS validator / CAS+409+`_isSaving` UX 模式 → 移到新 per-entity PR。`map_config_store.compare_and_swap` 縮 scope 給底圖設定（單一可編輯單元，整檔鎖正確）。\n\n### PR 拆分（~7.5 天，全量）\n\n| PR | 內容 | 估時 |\n|---|---|---|\n| A | m014 schema（+updated_by/at）+ cop_entity_repo `update_cas`/soft-delete + 單測 | 0.5d |\n| B | `routers/cop.py`（GET/POST/PUT/DELETE + If-Match/409/428 + XSS validator port + RBAC）| 1d |\n| C | `normalize_manual` 實作（stub → CoPEntity）| 0.5d |\n| D | WebSocket `cop_ws` + broadcast + handshake auth + exercise_id filter（含 `--workers 1` salvage）| 1.5d |\n| E | 前端 `cop_stream.js` + per-entity merge + render adapter（polygon vertices→latlngs）+ 編輯改 PUT | 2d |\n| F | migration script（map_config entities → cop_entities，deterministic uid 可重跑）+ cutover | 1d |\n| G | cleanup（close #31/#32、map_config CAS 縮底圖、docs、ROADMAP）| 0.5d |\n\n序：A → (B∥C) → D → E → F → G。A 硬前置。\n\n### 白送的紅利\n\n- **P1-14**（exercise scoping）：cop_entities 已有 exercise_id → 本 plan 直接交付 cop-entity 部分\n- **P2-04**（TAK CoT 整合）：同 store/broadcast/render → normalize_cot 實作完即顯示，零重工\n\n### Scope 邊界\n\n- IN：per-entity version_clock / CoT type 對齊 / WS pub-sub / stale TTL / exercise scoping / soft-delete(stale event)\n- OUT：CRDT/OT 字元級 merge（TAK 也不做）/ polygon 頂點級協作（TAK 視 shape 為 atomic last-write）/ 跨 Pi federation（Wave 7）/ 多 worker Redis（Wave 7）\n\n### Risk register（對照 commit 58bb5d4）\n\n- 整檔 clobber race → per-entity SQL CAS 根除\n- 多 worker 破 WS registry → `--workers 1` pin + 啟動 assert（未來水平擴張需 Redis，Wave 7）\n- WS handshake 繞過 HTTP auth middleware → handshake 內顯式驗 session token\n- XSS via attributes/label（issue #24 vector）→ XSS validator port 到 cop endpoints\n- migration 重跑重複建 → deterministic uid `mapcfg:zone:<id>` + upsert + dry-run default\n- WS reconnect 掉幀 → 重連全量 GET resync（version_clock merge idempotent）\n\n🤖 Plan via /plan subagent (reality-checked) + Claude Opus 4.8 (1M context)\n",
+        "createdAt": "2026-05-29T02:57:54Z",
+        "id": "IC_kwDOSnBjpc8AAAABEGWiHQ",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/29#issuecomment-4570063389"
       }
     ],
     "createdAt": "2026-05-29T01:30:20Z",
@@ -685,7 +699,7 @@
     "number": 29,
     "state": "OPEN",
     "title": "feat(map): real-time multi-user map_config sync (β)",
-    "updatedAt": "2026-05-29T01:49:01Z",
+    "updatedAt": "2026-05-29T02:57:54Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/29"
   }
 ]
