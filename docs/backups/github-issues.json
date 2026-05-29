@@ -536,7 +536,7 @@
       "name": ""
     },
     "body": "## 撞到的現象\n\n3 個帳號 dogfood：1 admin + 2 operator。Operator 帳號在地圖上畫 zone / route / polygon，**畫完視覺看得到**，但 **refresh 後消失**。Admin 帳號正常持久化。\n\n額外：operator A 的變更（即使 admin 操作的）**不會自動反映**到 operator B 的螢幕，必須手動 reload 才看得到。\n\n## Root cause\n\n### Frontend / backend RBAC 不一致\n\n| Layer | `POST /api/map_config` 允許角色 |\n|---|---|\n| Backend ([role_enum.py:92-93](command-dashboard/src/auth/role_enum.py#L92)) | `COMMAND_ROLES` = sysadmin + commander |\n| Frontend ([auth.js:77](command-dashboard/static/js/auth.js#L77)) `canAccessMapObjects()` | sysadmin + commander + **operator** |\n\n### 失敗序列（operator）\n\n1. 通過前端 RBAC → 看得到「畫 polygon ▱」「畫 route ↗」工具\n2. 畫完 → `_savePolygon` push 進 local `_mapConfig` → 視覺立刻看得到\n3. `saveMapConfig` → `POST /api/map_config` → backend 回 **403**\n4. `authFetch` 只攔 401，403 silent 流過（[auth.js:208-213](command-dashboard/static/js/auth.js#L208)）\n5. `saveMapConfig` 也不檢查 `resp.ok` → user 無感知\n6. Refresh → 抓 server 上原始 map_config → 繪製不存在 → 消失\n\n### 缺 live sync\n\n`_mapConfig` 在 `initMap()` 載一次，之後只被本地 mutation 改寫。其他 user push 進來的更新**沒有任何機制觸發本地 re-fetch**，必須手動 location.reload。\n\n## 設計決策（per 指揮所 ops 實況）\n\n指揮組不只指揮官，操作會由**多名操作員**完成。operator 應該可以畫 zone/route/polygon、移動事件、建事件。\n- `/api/map_config` 應放給 `WRITE_ROLES`（sysadmin + commander + operator）\n- `/api/map/upload-image`（換底圖）維持 `COMMAND_ROLES` — 屬於 config 不該 frontline 改\n\n## 修法 plan\n\n### 1. Backend RBAC widen\n[role_enum.py](command-dashboard/src/auth/role_enum.py)：拆兩個 case\n```python\nif path == \"/api/map_config\":\n    return WRITE_ROLES         # ← operator 可寫\nif path == \"/api/map/upload-image\":\n    return COMMAND_ROLES       # ← 維持\n```\n\n### 2. Frontend error handling\n`saveMapConfig` + 其他 mutating authFetch 加 `resp.ok` check + warn，防未來 RBAC 收緊時又 silent fail。\n\n### 3. Live sync — `pollMapConfig()`\n- map.js export `pollMapConfig()`：cache-bust fetch → hash diff → replace `_mapConfig` + `refreshLeafletMarkers()`\n- `initMap` `setInterval(pollMapConfig, 5000)` 沿用 ws.js 5s 節拍\n- Skip 條件：draw mode active / form modal 開啟（避免吞掉 user 在編輯的暫存）\n- Logout 時 `clearInterval`\n\n## 已知限制（out of scope，另開 follow-up issue）\n\n**Last-write-wins concurrent edit race**：A 與 B 同時編輯時後存覆蓋先存。本 PR 5s poll 縮短 stale window 但沒解。正解要 ETag/version 樂觀鎖 + 自動 merge — 待規劃。\n\n## Events 檢查（順帶確認）\n\n| Endpoint | RBAC for operator | OK? |\n|---|---|---|\n| POST /api/events | WRITE_ROLES (fallthrough) | ✅ |\n| PATCH /api/events/{id} | WRITE_ROLES (fallthrough) | ✅ |\n| POST /api/events/{id}/notes | WRITE_ROLES (fallthrough) | ✅ |\n\nEvents 相關早就 OK，operator 建 event / 拖 event / 寫處置紀錄都能持久。\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
-    "closedAt": null,
+    "closedAt": "2026-05-29T01:30:19Z",
     "comments": [
       {
         "author": {
@@ -579,15 +579,29 @@
         "minimizedReason": "",
         "reactionGroups": [],
         "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/24#issuecomment-4562563169"
+      },
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## 收尾（2026-05-29）\n\n原 issue 問題（refresh 消失 / RBAC 不一致 / silent fail）已完整解決：\n\n| 子問題 | PR | Commit |\n|---|---|---|\n| Step 1 MGRS toggle persist | [#25](https://github.com/winson3QQ/ICS_COMMAND/pull/25) | `b8ed5de` |\n| α — Backend RBAC widen + saveMapConfig 防 silent fail | [#26](https://github.com/winson3QQ/ICS_COMMAND/pull/26) | `146dbcf` |\n| α 後 code-review 5 findings + Security HIGH XSS hardening | [#26](https://github.com/winson3QQ/ICS_COMMAND/pull/26) | 同上 |\n| UX polish（flyTo / pulse / closed event disabled / countdown freeze）| [#26](https://github.com/winson3QQ/ICS_COMMAND/pull/26) | 同上 |\n| C — operator 看到 admin polygon render 不出來 | 隨 α 順手解 | `_loadMapConfig` 不 fallback 空殼 |\n| β 前置 — `map_config.json` seed/runtime 分離 | [#28](https://github.com/winson3QQ/ICS_COMMAND/pull/28) | `f4775d9` |\n\n## β（即時跨 account 同步）→ 新 issue 接手\n\nβ 屬不同架構議題（WebSocket / poll / ETag 設計選擇 + multi-session stress test infra），開新 issue 重新 scope。前置 P1-13 已完成，可動工。\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+        "createdAt": "2026-05-29T01:30:17Z",
+        "id": "IC_kwDOSnBjpc8AAAABEGARsg",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/24#issuecomment-4569698738"
       }
     ],
     "createdAt": "2026-05-28T03:19:30Z",
     "labels": [],
     "milestone": null,
     "number": 24,
-    "state": "OPEN",
+    "state": "CLOSED",
     "title": "Operator 角色畫 zone/route 後 refresh 消失（RBAC frontend/backend 不一致 + 缺 live sync）",
-    "updatedAt": "2026-05-28T09:25:42Z",
+    "updatedAt": "2026-05-29T01:30:19Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/24"
   },
   {
@@ -638,5 +652,25 @@
     "title": "refactor(map): split map_config into tracked seed + gitignored runtime (P1-13, P1-12 prep)",
     "updatedAt": "2026-05-29T01:10:34Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/27"
+  },
+  {
+    "assignees": [],
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "body": "## ROADMAP item\n\nDogfood follow-up（非 ROADMAP item，但與 P1-12b/P1-14 設計有交集）。\n\n承接 [issue #24](https://github.com/winson3QQ/ICS_COMMAND/issues/24) 的 β 部分 — 原 issue α / C 已 close。\n\n## 問題\n\n當前 map_config / events / decisions 等 user-data 寫入後，**只有當下發起變更的 client 立即看到**；其他 logged-in clients（同台機器、不同 browser / 不同 user）必須手動 hard reload 才會抓到最新狀態。\n\n實際 ops 痛點：\n- Admin 在指揮台畫 zone → operator 在前線 tablet 看不到，要等 operator 主動 reload\n- Operator A 拖事件 marker 到新位置 → operator B 螢幕還在舊位置，誤判\n- 演習中無法多人同時編輯地圖（會互相覆寫，且不知道對方改了什麼）\n\n## 前置（status）\n\n| 前置 | 狀態 |\n|---|---|\n| α — operator 能寫 map_config | ✅ [PR #26](https://github.com/winson3QQ/ICS_COMMAND/pull/26) |\n| P1-13 — map_config seed/runtime 分離 + atomic write | ✅ [PR #28](https://github.com/winson3QQ/ICS_COMMAND/pull/28) |\n| Multi-session stress test infra（Playwright multi-browser-context）| ⏳ 待建立，本 issue scope 內 |\n\n## 歷史教訓 — 不可重蹈\n\n[Commit `58bb5d4`](https://github.com/winson3QQ/ICS_COMMAND/commit/58bb5d4)（已 revert）曾嘗試 5s polling sync，**洗光 disk** 演習資料：\n\n1. T=0：User mutate → `saveMapConfig` POST 飛行中（~50-200ms）\n2. T=0.01：poll 計時恰好觸發 → fetch disk → 拿到 POST 前 stale 狀態\n3. hash diff → `_mapConfig = stale` → 本地新增物件蒸發\n4. T=0.15：POST 落地 disk\n5. T=0.30：下次 saveMapConfig 送 stale local → disk 被洗回 stale\n\n→ β 設計必須包含 **in-flight write protection**（最少 \\`_isSaving\\` flag + post-fetch double-check + server ETag 樂觀鎖）。\n\n## 設計選項（待 plan）\n\n| 機制 | 優 | 缺 | 適合性 |\n|---|---|---|---|\n| **WebSocket push** | 即時、頻寬省、可雙向 | server 需 broadcast、Nginx WS upgrade、connection state mgmt | 高（自然解 race，但 infra 投入較大）|\n| **Long polling + ETag** | 邏輯簡單、無 WS infra | 仍是 polling、需 ETag schema | 中（介於 short poll 與 WS）|\n| **Short polling + ETag** | 最少改 server | 仍會踩 race 雷（需嚴格 in-flight guard）| 低（除非極簡需求）|\n| **Hybrid（WS + poll 兜底）** | 最 robust | 兩套都要做 | 高（演習場域對網路不可靠的容忍）|\n\n## 必須含的防護\n\n不論選哪種機制：\n\n1. **`_isSaving` flag in client** — POST in-flight 時 skip 任何 incoming update（poll 結果 / WS push 都不准）\n2. **Post-fetch double-check** — fetch 回來再確認 `_isSaving` 仍 false 才 apply\n3. **Server-side atomic write** — 已備（P1-13 \\`write_atomic\\`）\n4. **Server-side ETag / version 樂觀鎖** — POST 帶 `If-Match: <last-known-etag>`，不符就 409 + 回最新版本讓 client merge\n5. **Draw mode / modal 開啟時 skip update** — 不打斷 user 編輯\n6. **Logout / page hide 時 cleanup** — clear interval / close WS\n\n## §8 Human Verification Script（草稿）\n\n```bash\n# multi-session stress test — push 前必須跑過\n# 3 browser contexts（admin / commander / operator）各自 10 polygon 不丟\n# 連續拖 20 次 label 不漂位\n# 跨 user 編輯不打架\nplaywright test tests/e2e/multi_session_sync.spec.ts\n```\n\n實作 Playwright multi-context harness 是 β 的 prep work。\n\n## DoD\n\n- [ ] 設計文件 `docs/design/realtime_sync.md` 含機制選擇 rationale\n- [ ] Server ETag 或 version 欄位（schema migration if needed）\n- [ ] Client `_isSaving` flag + ETag header + retry on 409\n- [ ] WS / poll 機制實作（依設計選擇）\n- [ ] Playwright multi-session stress test 寫成（push 前必跑）\n- [ ] Code-review 過\n- [ ] Security-review 過（特別注意 token 在 WS 中如何 propagate）\n- [ ] Dogfood：3 user 同時改不丟資料\n\n## Out of scope\n\n- Multi-machine sync（跨 Pi 站台）→ Wave 7+ Pi federation\n- Conflict resolution 跨多 entity 類型（events / decisions）→ 後續 issue\n- CRDT / OT 級別自動 merge → 過度複雜，本 issue 不做\n\n## Related\n\n- 前驅：issue #24 closed（α / C 解）\n- 設計交集：[P1-12b L2「重置回出廠」](../blob/main/docs/ROADMAP.md) 同樣需要「server 是 SoT」的假設\n- 風險紀錄：commit \\`58bb5d4\\` 已 revert 的歷史\n",
+    "closedAt": null,
+    "comments": [],
+    "createdAt": "2026-05-29T01:30:20Z",
+    "labels": [],
+    "milestone": null,
+    "number": 29,
+    "state": "OPEN",
+    "title": "feat(map): real-time multi-user map_config sync (β)",
+    "updatedAt": "2026-05-29T01:30:20Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/29"
   }
 ]
