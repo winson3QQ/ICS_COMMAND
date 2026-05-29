@@ -22,6 +22,12 @@ DB_PATH: Path = Path(_ics_db_path_env) if _ics_db_path_env else DATA_DIR / "ics.
 MAP_CONFIG_SEED: Path = STATIC_DIR / "map_config.seed.json"
 MAP_CONFIG_PATH: Path = DATA_DIR / "map_config.json"
 
+# β（issue #29）Phase 1：map_config ETag 樂觀鎖嚴格模式。
+#   "0"（預設）→ 寬鬆：POST 不送 If-Match 仍接受（用 current version 寫，舊 client 相容）
+#   "1"        → 嚴格：POST 必送 If-Match，缺 → 428；version 不符 → 409
+# 漸進上線：Phase 1 預設 off（純觀察 version 是否正確遞增），Phase 2 client 改好後翻 1。
+MAP_CONFIG_STRICT_ETAG: bool = os.getenv("MAP_CONFIG_STRICT_ETAG", "0") == "1"
+
 # 磁碟剩餘百分比低於此值 → degraded（黃燈）
 HEALTH_DISK_DEGRADED_PCT_THRESHOLD: float = float(os.getenv("HEALTH_DISK_DEGRADED_PCT_THRESHOLD", "20"))
 # DB 查詢延遲超過此值（ms）→ degraded（黃燈）

@@ -4,10 +4,19 @@ import sqlite3
 from pathlib import Path
 
 from fastapi import APIRouter, File, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 
-from core.config import MAP_CONFIG_PATH, MBTILES_DIR, SRC_DIR, STATIC_DIR
+from core.config import MAP_CONFIG_PATH, MAP_CONFIG_STRICT_ETAG, MBTILES_DIR, SRC_DIR, STATIC_DIR
 from services import map_config_store
+
+# β（issue #29）Phase 1：ETag weak validator pattern。用 weak（W/）因 nginx gzip 後
+# strong ETag 會被破壞；version 是內容語意版本，weak 語意正確。
+_ETAG_RE = re.compile(r'W/"(\d+)"')
+
+
+def _etag(version: int) -> str:
+    return f'W/"{version}"'
+
 
 router = APIRouter(tags=["map"])
 
@@ -127,17 +136,20 @@ def serve_pmtiles(filename: str, request: Request):
     )
 
 
-@router.get("/api/map_config", tags=["system"])
+@router.api_route("/api/map_config", methods=["GET", "HEAD"], tags=["system"])
 def get_map_config():
     """讀 runtime（data/map_config.json）；不存在則 fallback seed。
     P1-13：前端從直讀 /static/map_config.json 改打這條，讀寫對稱。
+    β Phase 1：response 帶 `ETag: W/"<version>"`，前端 poll fallback 可用 HEAD
+    比對 version 省 bytes。
     """
     body = map_config_store.read()
+    version = body.get("version", 0) if isinstance(body, dict) else 0
     return Response(
         content=json.dumps(body, ensure_ascii=False),
         media_type="application/json",
         # runtime 檔頻繁變動，瀏覽器不准 cache（前端原本用 ?t=timestamp cache-bust 改 API 後集中於此）
-        headers={"Cache-Control": "no-store"},
+        headers={"Cache-Control": "no-store", "ETag": _etag(version)},
     )
 
 
@@ -156,9 +168,46 @@ async def save_map_config(request: Request):
         raise HTTPException(400, f"無效 JSON：{e}") from e
     # XSS hardening — 詳見模組頂 _validate_map_config_strings 註釋
     _validate_map_config_strings(body)
-    # P1-13：寫 data/map_config.json（atomic write）取代直寫 static/
-    map_config_store.write_atomic(body)
-    return {"ok": True, "path": str(MAP_CONFIG_PATH)}
+
+    # β（issue #29）Phase 1：version 樂觀鎖。
+    # If-Match: W/"<n>" 解析。strict 模式缺 header → 428；寬鬆模式缺 header → 用
+    # current version 當 expected（等同 last-write，舊 client 相容），但仍走 CAS
+    # 確保 version 正確遞增 + 並發保護。
+    if_match = request.headers.get("If-Match", "")
+    m = _ETAG_RE.search(if_match)
+    if m:
+        expected = int(m.group(1))
+    elif MAP_CONFIG_STRICT_ETAG:
+        raise HTTPException(428, "Precondition Required: 缺 If-Match header（map_config strict ETag 模式）")
+    else:
+        # 寬鬆模式：用 disk 上 current version 當 expected → CAS 必過，等同 last-write，
+        # 但仍正確 bump version（觀察期讓舊 client 平滑運作）。
+        current = map_config_store.read()
+        expected = current.get("version", 0) if isinstance(current, dict) else 0
+
+    actor = ""
+    sess = getattr(request.state, "session", None)
+    if isinstance(sess, dict):
+        actor = sess.get("username", "")
+
+    ok, result = await map_config_store.compare_and_swap(expected, body, actor)
+    if not ok:
+        server_version = result.get("version", 0)
+        return JSONResponse(
+            status_code=409,
+            content={
+                "error": "version_conflict",
+                "server_version": server_version,
+                "your_version": expected,
+                "server_body": result,
+            },
+            headers={"ETag": _etag(server_version)},
+        )
+    new_version = result.get("version", 0)
+    return JSONResponse(
+        {"ok": True, "version": new_version, "path": str(MAP_CONFIG_PATH)},
+        headers={"ETag": _etag(new_version)},
+    )
 
 
 @router.post("/api/map/upload-image", tags=["system"])
