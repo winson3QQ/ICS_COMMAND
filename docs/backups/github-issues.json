@@ -789,6 +789,20 @@
         "minimizedReason": "",
         "reactionGroups": [],
         "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/29#issuecomment-4571676919"
+      },
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## 🔖 Session handoff — 下個 session START HERE（cutover）\n\n### 現況\n- **main @ `8ca2d34`**：PR-A/B/D/E 全 merged（per-entity CAS → REST+If-Match → WebSocket hub → 前端即時 overlay），dogfood 驗證通過。三邊（local/GitHub/Codeberg）同步。\n- **branch `feat/issue-29-pr-g1-cutover`**：含 **G1a step 1（未 commit）** — `cop_stream.js` 加渲染委派 seam：`onChange(cb)`（map.js 訂閱 → cop_stream 不自建 marker、變純資料層）+ `getEntitiesByKind(kind)` + `getEntity(uid)`。+3 vitest（共 14 全綠）、syntax OK。**這份 WIP 尚未 commit，在 worktree working tree。**\n\n### 決策（已定）\n- 增量 cutover：**G1a = zone(節點)+route+polygon** / **G1b = event**（與 /api/events 糾纏）/ G2 = flow+infra / H = 清理+close。\n- **不做 migration，從 0 開始**（舊 map_config 物件棄置不讀；底圖設定留 map_config）。\n- 分類：`attributes.kind`（zone/event/route/polygon）+ CoT 相容 `type`（u-d-r/u-d-f/2525 點型，為 TAK 預留）。\n- 頂點：route/polygon 的 latlngs → `attributes.vertices`；centroid → lat/lon；label → callsign。\n- TAK：雙向 / command 唯讀 TAK + 可見性開關，實作留 P2-04，但 type/source/origin_node_id 現在就對齊（loop-prevention：source=tak 不回推）。\n- backend 幾乎不動（POST/PUT 的 attributes escape-hatch + 自由 type 已夠）。\n\n### 下一步：G1a step 2 起\n2. **adapter**：`copEntityToZone/Route/Polygon(entity)` → 既有 `*ToFeature` 吃的 shape（讀 `attributes.vertices`→latlngs、`attributes.color/label_anchor`、callsign→label）。\n3. **渲染改線**（map.js）：`_renderZones`(1434)/`_renderRoutes`(1372)/`_renderPolygons`(1304) 改從 `_copStream.getEntitiesByKind(...)` 取（取代讀 `_mapConfig`），並用 `_copStream.onChange(()=>重繪三層)` 觸發即時。\n4. **編輯器改線** → `/api/cop/*`（POST/PUT/DELETE + If-Match）：\n   - polygon：`_savePolygon`(1742)/`_deletePolygon`(1765)/label drag `_polyLabelMgr`(1325)\n   - route：`_saveRoute`(1945)/`_deleteRoute`(1968)/label drag `_routeLabelMgr`(1391)\n   - zone 節點：node 建立/拖/刪（非 event 那條）\n   - 用 `getEntity(uid).version_clock` 帶 If-Match；409 採 server_entity。\n5. vitest（adapter + 編輯器 mock）+ 兩瀏覽器 dogfood（A 畫 zone/route/polygon → B 即時看到）。\n6. PR-E 的 `＋標記` MVP 與 cop_stream 自建 marker 路徑：G1a 上線後可退役（或留到 PR-H）。\n\n### 渲染 shape 參考（entity_layer.js）\n`zoneToNodeFeature(zone,opts)`→Point(238) / `routeToFeature`(392)+`routeLabelToFeature`(370)+`routeMidLngLat`(346) / `polygonToFeature`(322)+`polygonLabelToFeature`(300)+`polygonCentroid`(275)。render 改線時複用,只換資料來源。\n\n🤖 Handoff via Claude Opus 4.8",
+        "createdAt": "2026-05-29T06:51:53Z",
+        "id": "IC_kwDOSnBjpc8AAAABEH7cMQ",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/29#issuecomment-4571716657"
       }
     ],
     "createdAt": "2026-05-29T01:30:20Z",
@@ -797,7 +811,7 @@
     "number": 29,
     "state": "OPEN",
     "title": "feat(map): real-time multi-user map_config sync (β)",
-    "updatedAt": "2026-05-29T06:47:12Z",
+    "updatedAt": "2026-05-29T06:51:53Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/29"
   }
 ]
