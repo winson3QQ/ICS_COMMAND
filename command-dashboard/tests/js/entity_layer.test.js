@@ -19,6 +19,8 @@ import {
   routeLabelToFeature,
   infraToFeature,
   flowToFeature,
+  copEntityToRoute,
+  copEntityToPolygon,
 } from '../../static/js/map/entity_layer.js';
 
 /** Mock MapLibre Map：記錄所有 addSource/addLayer/setData 呼叫 */
@@ -452,5 +454,73 @@ describe('polygonLabelToFeature / routeLabelToFeature kind="label" 標記', () =
       latlngs: [[24, 121], [25, 122]],
     });
     expect(f.properties.kind).toBeUndefined();
+  });
+});
+
+describe('copEntityToRoute / copEntityToPolygon adapter（PR-G1a cutover）', () => {
+  test('copEntityToRoute 把 cop_entity → routeToFeature 吃的 shape', () => {
+    const ent = {
+      uid: 'manual:r1',
+      callsign: '北側主疏散',
+      version_clock: 3,
+      attributes: {
+        kind: 'route',
+        vertices: [[24.8, 121.0], [24.9, 121.1]],
+        color: '#56d364',
+        route_type: 'primary',
+        dash: false,
+        label_anchor: [24.85, 121.05],
+      },
+    };
+    const shape = copEntityToRoute(ent);
+    expect(shape.id).toBe('manual:r1');
+    expect(shape.label).toBe('北側主疏散');
+    expect(shape.latlngs).toEqual([[24.8, 121.0], [24.9, 121.1]]);
+    expect(shape.route_type).toBe('primary');
+    expect(shape.label_anchor).toEqual([24.85, 121.05]);
+    // 接 routeToFeature → 合法 LineString
+    const f = routeToFeature(shape);
+    expect(f.geometry.type).toBe('LineString');
+    expect(f.properties.id).toBe('manual:r1');
+    expect(f.properties.label).toBe('北側主疏散');
+  });
+
+  test('copEntityToPolygon 把 cop_entity → polygonToFeature 吃的 shape', () => {
+    const ent = {
+      uid: 'manual:p1',
+      callsign: '北側管制區',
+      attributes: {
+        kind: 'polygon',
+        vertices: [[24.8, 121.0], [24.8, 121.1], [24.9, 121.05]],
+        color: '#e05555',
+        poly_type: 'control',
+        dash: true,
+      },
+    };
+    const shape = copEntityToPolygon(ent);
+    expect(shape.id).toBe('manual:p1');
+    expect(shape.poly_type).toBe('control');
+    expect(shape.dash).toBe(true);
+    expect(shape.label_anchor).toBeUndefined(); // 沒設 label_anchor → undefined
+    const f = polygonToFeature(shape);
+    expect(f.geometry.type).toBe('Polygon');
+    expect(f.properties.color).toBe('#e05555');
+  });
+
+  test('vertices 缺 / 非陣列 / null entity → 回 null', () => {
+    expect(copEntityToRoute(null)).toBeNull();
+    expect(copEntityToPolygon(null)).toBeNull();
+    expect(copEntityToRoute({ uid: 'x', attributes: {} })).toBeNull();
+    expect(copEntityToPolygon({ uid: 'x', attributes: { vertices: 'nope' } })).toBeNull();
+    expect(copEntityToRoute({ uid: 'x' })).toBeNull(); // 無 attributes
+  });
+
+  test('callsign 缺 → label 空字串；color 缺 → 預設色', () => {
+    const r = copEntityToRoute({ uid: 'r', attributes: { vertices: [[0, 0], [1, 1]] } });
+    expect(r.label).toBe('');
+    expect(r.color).toBe('#58a6ff');
+    const p = copEntityToPolygon({ uid: 'p', attributes: { vertices: [[0, 0], [1, 0], [1, 1]] } });
+    expect(p.label).toBe('');
+    expect(p.color).toBe('#888888');
   });
 });

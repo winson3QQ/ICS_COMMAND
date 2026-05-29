@@ -21,6 +21,11 @@ const WS_SUBPROTOCOL = "ics-cop-v1";
 const RECONNECT_BASE_MS = 1000;
 const RECONNECT_MAX_MS = 30000;
 
+// 委派給 map.js EntityLayer 渲染的 kind（PR-G1a cutover）。其餘（無 kind 的 ＋標記
+// MVP）仍由 cop_stream 自建 marker。zone 已列入為 G1b/未來 cutover 預留，目前 map.js
+// 只渲染 route/polygon，但列在此不影響——map.js 沒取的 kind 在委派模式下就單純不顯示。
+const _DELEGATED_KINDS = new Set(["zone", "route", "polygon"]);
+
 /**
  * @param {object} deps
  *  - map: MapLibre map（需 getCenter()；marker 用）
@@ -59,8 +64,12 @@ export function createCopStream(deps) {
   let _reconnectTimer = null;
   let _visible = true;
   let _stopped = false;
-  // 渲染委派（PR-G1）：map.js 註冊 onChange 後 → cop_stream 不再自建 marker，
-  // 由 map.js 用 EntityLayer 渲染；未註冊（PR-E standalone）則 fallback 自建 marker。
+  // 渲染委派（PR-G1a）：map.js 註冊 onChange 後進入委派模式。委派為 **kind-aware**：
+  //   - attributes.kind ∈ _DELEGATED_KINDS（zone/route/polygon）→ cop_stream 不自建
+  //     marker，由 map.js 用 EntityLayer 從 getEntitiesByKind() 取資料渲染（cutover）。
+  //   - 無 kind 的 entity（PR-E ＋標記 MVP，type a-f-G-U-C）→ 仍由 cop_stream 自建
+  //     marker（MVP 留到 PR-H 才退役，G1a 期間不破壞既有行為）。
+  // 未註冊（PR-E standalone）→ fallback 全部自建 marker。
   let _onChange = null;
   let _renderDelegated = false;
 
@@ -72,6 +81,11 @@ export function createCopStream(deps) {
         /* 訂閱者重繪錯誤不影響 merge */
       }
     }
+  }
+
+  /** 此 entity 是否由 map.js 委派渲染（→ cop_stream 不自建 marker）。 */
+  function _isDelegated(entity) {
+    return _renderDelegated && !!entity.attributes && _DELEGATED_KINDS.has(entity.attributes.kind);
   }
 
   // ── merge 核心（純邏輯，可單測）──────────────────────────────────────────
@@ -125,9 +139,10 @@ export function createCopStream(deps) {
       _emitChange();
       return;
     }
-    // 委派模式：只存資料、不自建 marker（map.js 用 EntityLayer 渲染）
+    // 委派模式（kind-aware）：被委派的 kind 只存資料、不自建 marker（map.js 渲染）；
+    // 無 kind 的 ＋標記 MVP 仍自建 marker。
     let marker = null;
-    if (!_renderDelegated) {
+    if (!_isDelegated(entity)) {
       marker = new MarkerCtor({ draggable: canWrite() });
       marker.setLngLat([entity.lon, entity.lat]);
       if (marker.addTo && _visible) marker.addTo(map);
@@ -182,11 +197,14 @@ export function createCopStream(deps) {
     }
   }
 
-  /** 在地圖中心放一顆新 COP 標記（POST）。 */
-  async function placeAtCenter(fields = {}) {
+  /**
+   * 建立一顆 entity（POST）。body 至少需 { type, lat, lon }，可帶 callsign / attributes。
+   * 回傳建立後的 entity（含 server 兜底的 uid / version_clock）；失敗回 null。
+   * 本地立即 upsert（WS 廣播也會到，version_clock LWW 冪等不重複）。
+   * map 物件（route/polygon）走這條：attributes.kind + vertices + color 等由 caller 帶。
+   */
+  async function createEntity(body = {}) {
     if (!canWrite()) return null;
-    const c = map.getCenter();
-    const body = { type: "a-f-G-U-C", lat: c.lat, lon: c.lng, ...fields };
     const resp = await authFetch(`${apiBase}/api/cop/entities`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -194,9 +212,15 @@ export function createCopStream(deps) {
     });
     if (!resp.ok) return null;
     const entity = await resp.json();
-    // 本地立即 upsert（WS 廣播也會到，version_clock LWW 冪等不重複）
     _renderUpsert(entity);
     return entity;
+  }
+
+  /** 在地圖中心放一顆新 COP 標記（PR-E ＋標記 MVP；走 createEntity）。 */
+  async function placeAtCenter(fields = {}) {
+    if (!canWrite()) return null;
+    const c = map.getCenter();
+    return createEntity({ type: "a-f-G-U-C", lat: c.lat, lon: c.lng, ...fields });
   }
 
   /** 更新一顆 entity（PUT + If-Match）。409 → 採 server 現值。 */
@@ -386,6 +410,8 @@ export function createCopStream(deps) {
     stop,
     resync,
     placeAtCenter,
+    createEntity,
+    updateEntity: _putEntity,
     deleteEntity,
     setVisible,
     toggleVisible,

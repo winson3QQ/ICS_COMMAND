@@ -68,6 +68,7 @@ import {
   admRemoveMapImage, _cancelNodePlace, _cancelEventPin,
   applyMapRoleUiGuards,
   _toggleLayer, _closeLayerPanel,
+  setCopStream,
 } from './map.js';
 
 const API_BASE = location.origin;
@@ -95,6 +96,9 @@ async function _initCopStream() {
     canWrite: () => canAccessMapObjects(),
     MarkerCtor: window.maplibregl.Marker,
   });
+  // PR-G1a：把 stream 交給 map.js → 訂閱 onChange 即時重繪 route/polygon 兩層，
+  // 並讓 cop_stream 進入 kind-aware 委派模式（route/polygon 不自建 marker）。
+  setCopStream(_copStream);
   _copStream.connect();
 }
 

@@ -154,6 +154,40 @@ describe("REST writes", () => {
     expect(fetchCalls[0].opts.method).toBe("POST");
   });
 
+  test("createEntity POST 帶 attributes/kind + 本地 upsert（map 物件 cutover 用）", async () => {
+    const created = E("route:1", 1, { callsign: "北線", attributes: { kind: "route" } });
+    const { stream, fetchCalls } = makeStream({ fetchImpl: () => _resp(201, created) });
+    const ent = await stream.createEntity({
+      type: "b-m-r",
+      lat: 24.8,
+      lon: 121,
+      callsign: "北線",
+      attributes: { kind: "route", vertices: [[24.8, 121], [24.9, 121.1]], color: "#56d364" },
+    });
+    expect(ent.uid).toBe("route:1");
+    expect(stream.getEntitiesByKind("route").map((e) => e.uid)).toEqual(["route:1"]);
+    const body = JSON.parse(fetchCalls[0].opts.body);
+    expect(body.attributes.kind).toBe("route");
+    expect(body.attributes.vertices.length).toBe(2);
+  });
+
+  test("updateEntity PUT 帶 If-Match（label_anchor 改寫 attributes）", async () => {
+    let put = null;
+    const { stream } = makeStream({
+      fetchImpl: (url, opts) => {
+        if (opts && opts.method === "PUT") {
+          put = opts;
+          return _resp(200, E("p1", 4, { attributes: { kind: "polygon", label_anchor: [1, 2] } }));
+        }
+        return _resp(200, {});
+      },
+    });
+    stream._applyEntity(E("p1", 3, { attributes: { kind: "polygon" } }));
+    await stream.updateEntity("p1", { attributes: { kind: "polygon", label_anchor: [1, 2] } });
+    expect(put.headers["If-Match"]).toBe("3");
+    expect(stream.getEntity("p1").version_clock).toBe(4);
+  });
+
   test("observer（canWrite=false）placeAtCenter no-op", async () => {
     const { stream, authFetch } = makeStream({ canWrite: () => false });
     const ent = await stream.placeAtCenter();
@@ -228,7 +262,7 @@ describe("resync", () => {
 // ── 渲染委派 seam（PR-G1：map.js 接管渲染）─────────────────────────────────
 
 describe("render delegation seam", () => {
-  test("onChange 註冊後不自建 marker、且每次變更觸發 callback", () => {
+  test("onChange 每次變更觸發 callback", () => {
     const { stream } = makeStream();
     let fires = 0;
     stream.onChange(() => {
@@ -238,9 +272,25 @@ describe("render delegation seam", () => {
     stream._applyEntity(E("a", 2)); // update
     stream._applyDelete("a", 3);
     expect(fires).toBe(3);
-    // 委派模式：rec.marker 為 null（map.js 負責畫）
-    stream._applyEntity(E("b", 1));
-    expect(stream._byUid.get("b").marker).toBe(null);
+  });
+
+  test("kind-aware：被委派 kind 不自建 marker、無 kind 的 ＋標記 MVP 仍自建", () => {
+    const { stream } = makeStream();
+    stream.onChange(() => {});
+    // 被委派 kind（route/polygon）→ map.js 渲染，cop_stream marker 為 null
+    stream._applyEntity(E("r1", 1, { attributes: { kind: "route" } }));
+    expect(stream._byUid.get("r1").marker).toBe(null);
+    stream._applyEntity(E("p1", 1, { attributes: { kind: "polygon" } }));
+    expect(stream._byUid.get("p1").marker).toBe(null);
+    // 無 kind 的 ＋標記 MVP（type a-f-G-U-C）→ 委派模式下仍自建 marker（留到 PR-H 退役）
+    stream._applyEntity(E("mvp", 1));
+    expect(stream._byUid.get("mvp").marker).not.toBe(null);
+  });
+
+  test("未訂閱（standalone）→ 即使有 kind 也 fallback 自建 marker", () => {
+    const { stream } = makeStream();
+    stream._applyEntity(E("r1", 1, { attributes: { kind: "route" } }));
+    expect(stream._byUid.get("r1").marker).not.toBe(null);
   });
 
   test("getEntitiesByKind 依 attributes.kind 過濾", () => {

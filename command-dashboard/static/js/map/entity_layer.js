@@ -406,6 +406,51 @@ export function routeToFeature(route) {
   };
 }
 
+// ── cop_entity → route/polygon shape adapter（issue #29 PR-G1a cutover）──────
+//
+// cutover 後 route/polygon 不再讀 map_config，改從 cop_entities 取（即時同步）。
+// 但渲染複用既有 routeToFeature / polygonToFeature —— 它們吃 map_config-shape
+// （{ id, latlngs, color, route_type|poly_type, label, dash, label_anchor }）。
+// 本 adapter 把 cop_entity 轉成那個 shape，換資料來源不換渲染：
+//   - uid               → id（feature.properties.id；click / drag 用它回查 cop entity）
+//   - attributes.vertices → latlngs（[[lat,lng],...]；繪製時存進去的頂點）
+//   - attributes.color / route_type|poly_type / dash / label_anchor → 同名欄位
+//   - callsign          → label（cutover 時 label 存 callsign，對齊 CoT contact）
+//
+// vertices 缺 / 非陣列 → 回 null（下游 routeToFeature/polygonToFeature 也會再擋一次）。
+
+/** cop_entity（attributes.kind='route'）→ routeToFeature 吃的 route-shape。 */
+export function copEntityToRoute(entity) {
+  if (entity == null) return null;
+  const attrs = entity.attributes || {};
+  if (!Array.isArray(attrs.vertices)) return null;
+  return {
+    id: entity.uid ?? null,
+    latlngs: attrs.vertices,
+    color: attrs.color ?? '#58a6ff',
+    route_type: attrs.route_type ?? null,
+    label: entity.callsign ?? '',
+    dash: !!attrs.dash,
+    label_anchor: Array.isArray(attrs.label_anchor) ? attrs.label_anchor : undefined,
+  };
+}
+
+/** cop_entity（attributes.kind='polygon'）→ polygonToFeature 吃的 polygon-shape。 */
+export function copEntityToPolygon(entity) {
+  if (entity == null) return null;
+  const attrs = entity.attributes || {};
+  if (!Array.isArray(attrs.vertices)) return null;
+  return {
+    id: entity.uid ?? null,
+    latlngs: attrs.vertices,
+    color: attrs.color ?? '#888888',
+    poly_type: attrs.poly_type ?? null,
+    label: entity.callsign ?? '',
+    dash: !!attrs.dash,
+    label_anchor: Array.isArray(attrs.label_anchor) ? attrs.label_anchor : undefined,
+  };
+}
+
 /**
  * infra-shaped object → GeoJSON Point Feature。
  * map_config.maps.outdoor.infrastructure schema：{ id, lat, lng, infra_type, label }
