@@ -381,13 +381,24 @@ export function renderMapOverlay() {
 export function setCopStream(stream) {
   _copStream = stream;
   if (!stream) return;
-  stream.onChange(() => {
+  // onChange 在「每一筆」entity upsert/remove 都觸發；resync N 筆會連發 N 次。用 rAF
+  // 合併成「每幀最多一次」重繪兩層，避免 N 次 getEntitiesByKind 全掃 + setData。
+  stream.onChange(_scheduleCopRender);
+  // 注入時可能 cop_stream 已有資料（先 connect 後 setCopStream）→ 補繪一次
+  _scheduleCopRender();
+}
+
+let _copRenderScheduled = false;
+function _scheduleCopRender() {
+  if (_copRenderScheduled) return;
+  _copRenderScheduled = true;
+  const run = () => {
+    _copRenderScheduled = false;
     _renderRoutes();
     _renderPolygons();
-  });
-  // 注入時可能 cop_stream 已有資料（先 connect 後 setCopStream）→ 立即補繪一次
-  _renderRoutes();
-  _renderPolygons();
+  };
+  if (typeof requestAnimationFrame !== 'undefined') requestAnimationFrame(run);
+  else setTimeout(run, 0);
 }
 
 export function refreshLeafletMarkers() {
@@ -1373,15 +1384,36 @@ function _renderPolygons() {
 /**
  * 改寫某 cop map 物件（route/polygon）的 label_anchor → PUT /api/cop（帶 If-Match）。
  * backend PUT 對 attributes 是整包覆寫，故先讀現值再合併（anchor=null → 刪除該欄位）。
+ * 回傳 Promise<boolean>（true=成功）；caller（reset 走 modal）可據此提示失敗。
  */
 function _putCopLabelAnchor(uid, anchor) {
-  if (!_copStream) return;
+  if (!_copStream) return Promise.resolve(false);
   const ent = _copStream.getEntity(uid);
-  if (!ent) return;
+  if (!ent) return Promise.resolve(false);
   const attrs = { ...(ent.attributes || {}) };
   if (anchor) attrs.label_anchor = anchor;
   else delete attrs.label_anchor;
-  _copStream.updateEntity(uid, { attributes: attrs });
+  return _copStream.updateEntity(uid, { attributes: attrs });
+}
+
+/**
+ * 地圖操作失敗時的即時提示（沿用 _evPopupSubmit 的 coord-panel ✗ 樣式）。
+ * cop 寫入（建立/刪除/標籤）失敗不再 silent —— 至少讓 operator 知道要重試。
+ */
+function _flashMapMsg(text, ms = 4000) {
+  const panel = el('map-coord-panel');
+  if (!panel) return;
+  panel.style.display = 'flex';
+  panel.innerHTML = `<span style="color:#f85149">${_escapeHtml(text)}</span>`;
+  setTimeout(() => _refreshCoordPanel(), ms);
+}
+
+/** 在表單 modal 內顯示錯誤（沿用 flow-err 樣式）。textContent → 無 XSS。 */
+function _showFormErr(id, text) {
+  const e = el(id);
+  if (!e) return;
+  e.textContent = text;
+  e.style.display = 'block';
 }
 
 function _polyCentroid(latlngs) {
@@ -1783,6 +1815,7 @@ export function _openPolyForm(latlngs) {
   html += `<div style="margin-bottom:16px;"><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:4px;">類型</label>`;
   html += `<select id="poly-type" style="${SEL}">${typeOpts}</select></div>`;
   html += `<div style="font-size:10px;color:var(--text3);margin-bottom:16px;">${latlngs.length} 個頂點</div>`;
+  html += `<div id="poly-err" style="display:none;font-size:11px;color:var(--red);margin-bottom:10px;"></div>`;
   html += `<div style="display:flex;gap:8px;">`;
   html += `<button data-action="closeModal" style="flex:1;padding:8px;background:transparent;border:1px solid var(--border);color:var(--text2);border-radius:6px;cursor:pointer;font-family:var(--mono);">取消</button>`;
   html += `<button data-action="savePolygon" style="flex:2;padding:8px;background:var(--green);color:#fff;border:none;border-radius:6px;font-weight:700;cursor:pointer;font-family:var(--mono);">儲存</button>`;
@@ -1800,27 +1833,34 @@ export async function _savePolygon() {
   // PR-G1a cutover：建立 cop_entity（attributes.kind='polygon'）取代 push 進 _mapConfig。
   // centroid 當 entity lat/lon（地圖物件位置），頂點存 attributes.vertices，label→callsign。
   const [lat, lng] = _polyCentroid(latlngs);
-  _pendingPolyLatlngs = null;
-  await _copStream.createEntity({
+  const created = await _copStream.createEntity({
     type: POLY_COT_TYPE,
     lat,
     lon: lng,
     callsign: name,
     attributes: { kind: 'polygon', vertices: latlngs, color: def.color, poly_type: typeKey, dash: def.dash },
   });
+  if (!created) {
+    // 失敗不 silent：保留 modal + _pendingPolyLatlngs 讓 operator 直接重試
+    _showFormErr('poly-err', '儲存失敗（權限或連線問題），請重試');
+    return;
+  }
+  _pendingPolyLatlngs = null;
   _deps.closeModal?.();
   // 建立後 createEntity 內部 upsert + onChange 已重繪；此處不需再手動 render。
 }
 
 export async function _deletePolygon(id) {
   if (!_copStream || !id) return;
-  await _copStream.deleteEntity(id);
+  const ok = await _copStream.deleteEntity(id);
   _deps.closeModal?.();
+  if (!ok) _flashMapMsg('✗ 範圍刪除失敗，請重試');
 }
 
 export async function _resetPolyLabelAnchor(id) {
-  _putCopLabelAnchor(id, null);
+  const ok = await _putCopLabelAnchor(id, null);
   _deps.closeModal?.();
+  if (!ok) _flashMapMsg('✗ 重設標籤位置失敗，請重試');
 }
 
 // 設施新增（_openInfraForm / _startInfraPlace / _saveInfraPosition）— 暫未實作
@@ -1979,6 +2019,7 @@ export function _openRouteForm(latlngs) {
   html += `<div style="margin-bottom:16px;"><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:4px;">類型</label>`;
   html += `<select id="route-type-sel" style="${SEL}">${typeOpts}</select></div>`;
   html += `<div style="font-size:10px;color:var(--text3);margin-bottom:16px;">${latlngs.length} 個節點</div>`;
+  html += `<div id="route-err" style="display:none;font-size:11px;color:var(--red);margin-bottom:10px;"></div>`;
   html += `<div style="display:flex;gap:8px;">`;
   html += `<button data-action="closeModal" style="flex:1;padding:8px;background:transparent;border:1px solid var(--border);color:var(--text2);border-radius:6px;cursor:pointer;font-family:var(--mono);">取消</button>`;
   html += `<button data-action="saveRoute" style="flex:2;padding:8px;background:var(--green);color:#fff;border:none;border-radius:6px;font-weight:700;cursor:pointer;font-family:var(--mono);">儲存</button>`;
@@ -1995,26 +2036,32 @@ export async function _saveRoute() {
   const def = ROUTE_TYPES[typeKey];
   // PR-G1a cutover：建立 cop_entity（attributes.kind='route'）。中點當 entity lat/lon。
   const mid = routeMidLngLat({ latlngs }) || [latlngs[0][1], latlngs[0][0]]; // [lng,lat]
-  _pendingRouteLatlngs = null;
-  await _copStream.createEntity({
+  const created = await _copStream.createEntity({
     type: ROUTE_COT_TYPE,
     lat: mid[1],
     lon: mid[0],
     callsign: name,
     attributes: { kind: 'route', vertices: latlngs, color: def.color, route_type: typeKey, dash: def.dash },
   });
+  if (!created) {
+    _showFormErr('route-err', '儲存失敗（權限或連線問題），請重試');
+    return;
+  }
+  _pendingRouteLatlngs = null;
   _deps.closeModal?.();
 }
 
 export async function _deleteRoute(id) {
   if (!_copStream || !id) return;
-  await _copStream.deleteEntity(id);
+  const ok = await _copStream.deleteEntity(id);
   _deps.closeModal?.();
+  if (!ok) _flashMapMsg('✗ 路線刪除失敗，請重試');
 }
 
 export async function _resetRouteLabelAnchor(id) {
-  _putCopLabelAnchor(id, null);
+  const ok = await _putCopLabelAnchor(id, null);
   _deps.closeModal?.();
+  if (!ok) _flashMapMsg('✗ 重設標籤位置失敗，請重試');
 }
 export function _cancelNodePlace() {}
 export function _cancelEventPin() {}

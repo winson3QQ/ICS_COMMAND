@@ -183,9 +183,33 @@ describe("REST writes", () => {
       },
     });
     stream._applyEntity(E("p1", 3, { attributes: { kind: "polygon" } }));
-    await stream.updateEntity("p1", { attributes: { kind: "polygon", label_anchor: [1, 2] } });
+    const ok = await stream.updateEntity("p1", { attributes: { kind: "polygon", label_anchor: [1, 2] } });
     expect(put.headers["If-Match"]).toBe("3");
     expect(stream.getEntity("p1").version_clock).toBe(4);
+    expect(ok).toBe(true); // 成功回 true（編輯器據此決定是否提示失敗）
+  });
+
+  test("失敗回傳：createEntity 非 ok → null；update/delete → false（不再 silent）", async () => {
+    // POST 403 → createEntity 回 null
+    const s1 = makeStream({ fetchImpl: () => _resp(403, {}) });
+    expect(await s1.stream.createEntity({ type: "b-m-r", lat: 1, lon: 2 })).toBe(null);
+    // PUT 409 → updateEntity 回 false（並採 server_entity）
+    const s2 = makeStream({
+      fetchImpl: (url, opts) =>
+        opts?.method === "PUT" ? _resp(409, { server_entity: E("a", 9) }) : _resp(200, {}),
+    });
+    s2.stream._applyEntity(E("a", 3));
+    expect(await s2.stream.updateEntity("a", { callsign: "x" })).toBe(false);
+    // DELETE 500 → deleteEntity 回 false
+    const s3 = makeStream({
+      fetchImpl: (url, opts) => (opts?.method === "DELETE" ? _resp(500, {}) : _resp(200, {})),
+    });
+    s3.stream._applyEntity(E("b", 1));
+    expect(await s3.stream.deleteEntity("b")).toBe(false);
+    // 成功 DELETE → true
+    const s4 = makeStream({ fetchImpl: () => _resp(200, { status: "deleted" }) });
+    s4.stream._applyEntity(E("c", 1));
+    expect(await s4.stream.deleteEntity("c")).toBe(true);
   });
 
   test("observer（canWrite=false）placeAtCenter no-op", async () => {

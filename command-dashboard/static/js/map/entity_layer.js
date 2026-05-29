@@ -419,36 +419,34 @@ export function routeToFeature(route) {
 //
 // vertices 缺 / 非陣列 → 回 null（下游 routeToFeature/polygonToFeature 也會再擋一次）。
 
-/** cop_entity（attributes.kind='route'）→ routeToFeature 吃的 route-shape。 */
-export function copEntityToRoute(entity) {
+/**
+ * 共用：cop_entity → route/polygon 共通 shape（兩者只差「型別欄位名」與預設色）。
+ * @param {string} typeField 'route_type' | 'poly_type'
+ * @param {string} defaultColor 缺 color 時的預設
+ */
+function _copEntityToMapObject(entity, typeField, defaultColor) {
   if (entity == null) return null;
   const attrs = entity.attributes || {};
   if (!Array.isArray(attrs.vertices)) return null;
   return {
     id: entity.uid ?? null,
     latlngs: attrs.vertices,
-    color: attrs.color ?? '#58a6ff',
-    route_type: attrs.route_type ?? null,
+    color: attrs.color ?? defaultColor,
+    [typeField]: attrs[typeField] ?? null,
     label: entity.callsign ?? '',
     dash: !!attrs.dash,
     label_anchor: Array.isArray(attrs.label_anchor) ? attrs.label_anchor : undefined,
   };
 }
 
+/** cop_entity（attributes.kind='route'）→ routeToFeature 吃的 route-shape。 */
+export function copEntityToRoute(entity) {
+  return _copEntityToMapObject(entity, 'route_type', '#58a6ff');
+}
+
 /** cop_entity（attributes.kind='polygon'）→ polygonToFeature 吃的 polygon-shape。 */
 export function copEntityToPolygon(entity) {
-  if (entity == null) return null;
-  const attrs = entity.attributes || {};
-  if (!Array.isArray(attrs.vertices)) return null;
-  return {
-    id: entity.uid ?? null,
-    latlngs: attrs.vertices,
-    color: attrs.color ?? '#888888',
-    poly_type: attrs.poly_type ?? null,
-    label: entity.callsign ?? '',
-    dash: !!attrs.dash,
-    label_anchor: Array.isArray(attrs.label_anchor) ? attrs.label_anchor : undefined,
-  };
+  return _copEntityToMapObject(entity, 'poly_type', '#888888');
 }
 
 /**

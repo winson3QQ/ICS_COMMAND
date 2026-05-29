@@ -21,10 +21,11 @@ const WS_SUBPROTOCOL = "ics-cop-v1";
 const RECONNECT_BASE_MS = 1000;
 const RECONNECT_MAX_MS = 30000;
 
-// 委派給 map.js EntityLayer 渲染的 kind（PR-G1a cutover）。其餘（無 kind 的 ＋標記
-// MVP）仍由 cop_stream 自建 marker。zone 已列入為 G1b/未來 cutover 預留，目前 map.js
-// 只渲染 route/polygon，但列在此不影響——map.js 沒取的 kind 在委派模式下就單純不顯示。
-const _DELEGATED_KINDS = new Set(["zone", "route", "polygon"]);
+// 委派給 map.js EntityLayer 渲染的 kind（PR-G1a cutover）。其餘 kind（含無 kind 的
+// ＋標記 MVP）仍由 cop_stream 自建 marker —— 這條是「安全 fallback」：未被 map.js 接管
+// 的 kind 至少還有 marker 可見，不會無聲消失。**只列 map.js 真的會渲染的 kind**，
+// 否則被委派卻沒人畫 = 隱形（zone 等待 G1b 接好 _renderZones 渲染後再加回此 set）。
+const _DELEGATED_KINDS = new Set(["route", "polygon"]);
 
 /**
  * @param {object} deps
@@ -223,10 +224,11 @@ export function createCopStream(deps) {
     return createEntity({ type: "a-f-G-U-C", lat: c.lat, lon: c.lng, ...fields });
   }
 
-  /** 更新一顆 entity（PUT + If-Match）。409 → 採 server 現值。 */
+  /** 更新一顆 entity（PUT + If-Match）。回傳 true=成功，false=失敗（含 409）。
+   *  409 → 採 server 現值（回 false，caller 可提示衝突 / 失敗）。 */
   async function _putEntity(uid, patch) {
     const rec = _byUid.get(uid);
-    if (!rec || !canWrite()) return;
+    if (!rec || !canWrite()) return false;
     const expected = rec.entity.version_clock;
     return _withSaving(uid, async () => {
       const resp = await authFetch(`${apiBase}/api/cop/entities/${encodeURIComponent(uid)}`, {
@@ -236,17 +238,20 @@ export function createCopStream(deps) {
       });
       if (resp.ok) {
         _renderUpsert(await resp.json());
-      } else if (resp.status === 409) {
+        return true;
+      }
+      if (resp.status === 409) {
         const data = await resp.json();
         if (data && data.server_entity) _renderUpsert(data.server_entity); // 對齊 server，避免本地漂位
       }
+      return false;
     });
   }
 
-  /** 刪除一顆 entity（DELETE + If-Match，soft-delete）。 */
+  /** 刪除一顆 entity（DELETE + If-Match，soft-delete）。回傳 true=成功，false=失敗。 */
   async function deleteEntity(uid) {
     const rec = _byUid.get(uid);
-    if (!rec || !canWrite()) return;
+    if (!rec || !canWrite()) return false;
     const expected = rec.entity.version_clock;
     return _withSaving(uid, async () => {
       const resp = await authFetch(`${apiBase}/api/cop/entities/${encodeURIComponent(uid)}`, {
@@ -255,10 +260,13 @@ export function createCopStream(deps) {
       });
       if (resp.ok) {
         _renderRemove(uid);
-      } else if (resp.status === 409) {
+        return true;
+      }
+      if (resp.status === 409) {
         const data = await resp.json();
         if (data && data.server_entity) _renderUpsert(data.server_entity);
       }
+      return false;
     });
   }
 
