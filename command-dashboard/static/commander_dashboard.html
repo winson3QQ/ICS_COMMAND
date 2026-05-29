@@ -900,6 +900,12 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(
       </div>
       <div class="toolbar-sep"></div>
       <div id="map-tools"></div>
+      <!-- COP 即時層（issue #29 PR-E）：toggle 顯示 + operator 放置標記 -->
+      <div class="toolbar-sep"></div>
+      <button id="cop-toggle-btn" class="map-btn active" data-action="copToggle"
+        title="COP 即時層顯示／隱藏">◉ COP</button>
+      <button id="cop-place-btn" class="map-btn" data-action="copPlace"
+        title="在地圖中心放置 COP 標記（拖移=更新，雙擊=刪除）">＋標記</button>
     </div>
     <div id="edit-coords"></div>
     <img id="map-img" src="" alt="地圖載入中">

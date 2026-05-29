@@ -22,6 +22,7 @@ import {
   unlockPinLock, setModalHandlers,
   canAccessMapObjects, canCreateEvents, canUseRealModeControls,
   startSessionStatusPolling, continueSessionFromWarning, logoutFromSessionWarning,
+  getToken, authFetch, onAuthChange,
 } from './auth.js';
 import {
   setPollActive, setSessionType, getSessionType, forcePoll,
@@ -71,6 +72,46 @@ import {
 
 const API_BASE = location.origin;
 const POLL_INTERVAL = 5000;
+
+// ── COP 即時同步（issue #29 PR-E）──────────────────────────────────────────
+// 與既有 map_config 圖層疊加；operator 用 /api/cop/* 建立/拖/刪，WS 廣播即時同步。
+let _copStream = null;
+
+async function _initCopStream() {
+  if (_copStream) {
+    _copStream.connect();
+    return;
+  }
+  const [{ createCopStream }, core] = await Promise.all([
+    import('./map/cop_stream.js'),
+    import('./map/maplibre_core.js'),
+  ]);
+  const map = core.getMap && core.getMap();
+  if (!map || !window.maplibregl) return; // 地圖尚未就緒則略過（下次 auth 事件再試）
+  _copStream = createCopStream({
+    map,
+    getToken,
+    authFetch,
+    canWrite: () => canAccessMapObjects(),
+    MarkerCtor: window.maplibregl.Marker,
+  });
+  _copStream.connect();
+}
+
+// auth 生命週期：logout / lock 關 WS + 清 marker；login / unlock (重)連（防護 6）
+// login/unlock 走 _initCopStream（含「首次 init 曾因地圖未就緒失敗」的重試路徑），
+// 不只 connect —— 否則初次 getMap() 為 null 時將永遠連不上。
+onAuthChange((type) => {
+  if (type === 'logout' || type === 'lock') {
+    if (_copStream) _copStream.stop();
+  } else if (type === 'login' || type === 'unlock') {
+    _initCopStream();
+  }
+});
+// 分頁關閉 / reload 前 cleanup
+window.addEventListener('beforeunload', () => {
+  if (_copStream) _copStream.stop();
+});
 
 // ══════════════════════════════════════════════════════════════
 // 全局 click 事件委派（取代所有 inline onclick=）
@@ -207,6 +248,20 @@ document.addEventListener('click', function (e) {
     case 'toggleMgrsGrid': _toggleMgrsGrid(); break;
     case 'toggleLayerPanel': _toggleLayerPanel(); break;
     case 'toggleLayer': _toggleLayer(btn.dataset.layer); break;
+    case 'copToggle': {
+      // 切換 COP 即時層顯示
+      if (_copStream) {
+        const on = _copStream.toggleVisible();
+        btn.classList.toggle('active', on);
+      }
+      break;
+    }
+    case 'copPlace': {
+      // 在地圖中心放一顆 COP 標記（operator+）
+      if (!canAccessMapObjects()) break;
+      if (_copStream) _copStream.placeAtCenter();
+      break;
+    }
     case 'closeLayerPanel': _closeLayerPanel(); break;
     case 'openMapConfigPanel': openMapConfigPanel(); break;
     case 'closeMapConfigPanel': closeMapConfigPanel(); break;
@@ -573,6 +628,8 @@ function _loadClassicScript(src) {
       setPollActive(true);
       poll();
       setInterval(() => poll(), POLL_INTERVAL);
+      // COP 即時同步：地圖就緒後連 WS（issue #29 PR-E）
+      _initCopStream();
 
       // 恢復上次開啟的事件 modal
       setTimeout(() => {
