@@ -775,6 +775,20 @@
         "minimizedReason": "",
         "reactionGroups": [],
         "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/29#issuecomment-4571639750"
+      },
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## G1 再拆：G1a（zone+route+polygon）/ G1b（event）\n\nevent 與 /api/events（severity/status/notes/deadline）+ 拖移雙寫 + orphan/modal 糾纏最深，拆出獨立 G1b 降風險。\n\n- **PR-G1a** — cutover zone(節點) + route + polygon（純地圖物件，共用頂點 adapter）\n- **PR-G1b** — event（位置 → cop_entity，保留 /api/events PATCH + note 連動）\n- PR-G2 — flow + infra ／ PR-H — 清理 + close #29\n\n設計鎖定：分類用 attributes.kind + CoT 相容 type；頂點存 attributes.vertices、centroid 當 lat/lon；cop_stream 加 getEntitiesByKind+onChange，map.js 渲染改從 cop_stream 取（replace map_config）；編輯器改打 /api/cop/*。backend 幾乎不動（attributes escape-hatch + type 自由字串已夠）。\n\n🤖 via Claude Opus 4.8",
+        "createdAt": "2026-05-29T06:47:12Z",
+        "id": "IC_kwDOSnBjpc8AAAABEH5A9w",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/29#issuecomment-4571676919"
       }
     ],
     "createdAt": "2026-05-29T01:30:20Z",
@@ -783,7 +797,7 @@
     "number": 29,
     "state": "OPEN",
     "title": "feat(map): real-time multi-user map_config sync (β)",
-    "updatedAt": "2026-05-29T06:41:31Z",
+    "updatedAt": "2026-05-29T06:47:12Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/29"
   }
 ]
