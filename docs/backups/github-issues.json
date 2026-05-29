@@ -404,6 +404,20 @@
         "minimizedReason": "",
         "reactionGroups": [],
         "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/19#issuecomment-4552442651"
+      },
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## 狀態更新（2026-05-29，session pause comment 之過時資訊更正）\n\n上次 session pause comment（2026-05-28，留「step 8 WIP / #21 blocking」）已過時：\n\n| 過時資訊 | 實況 |\n|---|---|\n| step 8 🚧 WIP / #21 blocking | ❌ — PR #22 已 merge 含 step 8 完整 fix；#21 root cause 為 stale browser state，hard reload 即解，issue 已 CLOSED 於 2026-05-27 |\n| 8/14 done | ❌ — **10/14 done** |\n\n## 實際進度\n\n| Step | 狀態 |\n|---|---|\n| 1-9 | ✅ done (PR #22 `d3e9386` ~ `418a65a`) |\n| 10 | ✅ done (PR #23 `1344913` `ee1a843` — coord_tools + MGRS grid + 後續 code-review fixes) |\n| **11** | ⏳ pending — 清死碼 + Leaflet API sweep |\n| **12** | ⏳ pending — unit tests 收尾 |\n| **13** | ⏳ pending — CSP smoke（與 P1-10h 互動）|\n| **14** | ⏳ pending — Lighthouse + 1000 entity FPS benchmark |\n\n## Code-base 實況（不對齊原 plan 假設）\n\n| ROADMAP 原數 | 實況 |\n|---|---|\n| map.js 1972 行 | **2436 行** |\n| 126 Leaflet refs | **69 refs**（大多為 alias / legacy fallback / 註釋） |\n| 5 子檔計畫 | **7 子檔已存在**（plan 5 + event_drag + label_markers）|\n\n## Code-base 實況確認指令\n\n```bash\n./status.sh\nwc -l command-dashboard/static/js/map.js\nls command-dashboard/static/js/map/\n```\n\n## 推薦下次 session 起手\n\n從 **step 11（清死碼 + Leaflet API sweep）**開始。69 Leaflet refs 大多是 alias / legacy；可以做：\n1. `_leafletMap` / `_leafletMarkers` rename 為 `_map` / `_markers`（或留 alias 但加 deprecation 註釋）\n2. 砍 `refreshLeafletMarkers` 的 Leaflet legacy fallback path（lines 416-468 + 1487/1542/1607/1660 layerGroup paths）— 確認 MapLibre path 是唯一活路\n3. 砍未使用的 `L.` 真實呼叫（L.marker / L.DomEvent / L.layerGroup）\n4. HTML `#leaflet-map` ID + CSS `.leaflet-*` 保留（plan 預定的 alias，不動）\n\n預估 step 11-14 合計 **2-3 天**。\n\n## 與 P2 銜接\n\nP1-10b 完成後 Phase 1 進入 P1-10c-h 收尾階段，之後 P1-12 + P1-14（已合併規劃）即可進入 P2 TAK 整合。\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+        "createdAt": "2026-05-29T01:22:18Z",
+        "id": "IC_kwDOSnBjpc8AAAABEF-Y2Q",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/19#issuecomment-4569667801"
       }
     ],
     "createdAt": "2026-05-26T08:48:30Z",
@@ -412,7 +426,7 @@
     "number": 19,
     "state": "OPEN",
     "title": "P1-10b: MapLibre GL JS 全替換（移除 Leaflet）",
-    "updatedAt": "2026-05-27T07:33:52Z",
+    "updatedAt": "2026-05-29T01:22:18Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/19"
   },
   {
