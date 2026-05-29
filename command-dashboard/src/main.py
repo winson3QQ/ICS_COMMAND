@@ -62,6 +62,10 @@ async def lifespan(app: FastAPI):
 
     map_config_store.ensure()
     yield
+    # shutdown：關閉所有 COP WS 連線（issue #29 PR-D in-process hub）
+    from services.realtime_hub import cop_hub
+
+    await cop_hub.close_all()
 
 
 init_logging()  # C1-D：structlog 初始化，在 app 建立前呼叫

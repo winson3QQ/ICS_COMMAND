@@ -30,13 +30,17 @@ import sqlite3
 import uuid
 from datetime import UTC, datetime, timedelta
 
-from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi import APIRouter, HTTPException, Request, Response, WebSocket
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
+from starlette.websockets import WebSocketDisconnect
 
+from auth.role_enum import READ_ROLES, is_role_allowed
+from auth.service import check_session
 from core.input_safety import validate_no_unsafe_strings
 from repositories import cop_entity_repo
 from schemas.cop import CoPEntity
+from services.realtime_hub import cop_hub
 
 router = APIRouter(prefix="/api/cop", tags=["COP"])
 
@@ -92,6 +96,20 @@ def _conflict_response(server_entity: dict) -> JSONResponse:
         status_code=409,
         content={"detail": "version conflict", "server_entity": server_entity},
         headers={"ETag": _etag(server_entity["version_clock"])},
+    )
+
+
+async def _broadcast(op: str, entity: dict) -> None:
+    """寫操作成功後 push 給 WS 訂閱者（PR-D）。op ∈ create / update / delete。
+    依 entity 的 exercise_id filter；broadcast 內部已對死連線容錯，不會拋。"""
+    await cop_hub.broadcast(
+        {
+            "op": op,
+            "uid": entity["uid"],
+            "version_clock": entity["version_clock"],
+            "entity": entity,
+        },
+        exercise_id=entity.get("exercise_id"),
     )
 
 
@@ -160,6 +178,7 @@ async def create_entity(request: Request, response: Response):
     except sqlite3.IntegrityError as e:
         raise HTTPException(409, f"uid 已存在：{entity.uid}") from e
 
+    await _broadcast("create", created)
     response.headers["ETag"] = _etag(created["version_clock"])
     return created
 
@@ -188,12 +207,13 @@ async def update_entity(uid: str, request: Request, response: Response):
         raise HTTPException(404, f"entity 不存在：{uid}")
     if result["status"] == "conflict":
         return _conflict_response(result["entity"])
+    await _broadcast("update", result["entity"])
     response.headers["ETag"] = _etag(result["entity"]["version_clock"])
     return result["entity"]
 
 
 @router.delete("/entities/{uid}")
-def delete_entity(uid: str, request: Request, response: Response):
+async def delete_entity(uid: str, request: Request, response: Response):
     """TAK soft-delete：標 stale=now + bump version_clock（不 hard delete）。"""
     expected = _parse_if_match(request)
     result = cop_entity_repo.delete_cop_entity(uid, expected, actor=_actor(request))
@@ -202,6 +222,8 @@ def delete_entity(uid: str, request: Request, response: Response):
         raise HTTPException(404, f"entity 不存在：{uid}")
     if result["status"] == "conflict":
         return _conflict_response(result["entity"])
+    # delete 也廣播（op=delete）：訂閱端據此把 entity 從畫面移除（TAK 語意）
+    await _broadcast("delete", result["entity"])
     # 與 PUT-ok / 409 一致：成功也回 ETag（soft-delete 後的新 version_clock）
     response.headers["ETag"] = _etag(result["entity"]["version_clock"])
     return {
@@ -209,3 +231,70 @@ def delete_entity(uid: str, request: Request, response: Response):
         "uid": uid,
         "version_clock": result["entity"]["version_clock"],
     }
+
+
+# ── WebSocket：per-entity 即時推播（PR-D）────────────────────────────────────
+
+# WS close code（4xxx = application-defined）
+_WS_UNAUTHORIZED = 4401
+_WS_BAD_REQUEST = 4400
+
+# token 走 Sec-WebSocket-Protocol 而非 query param —— 避免 session token 進
+# uvicorn / nginx access-log 的 request URL（security-review PR-D Vuln 4）。
+# client offer ["ics-cop-v1", "ics.session.<token>"]；server 只 echo 常數協定（不含 token）。
+_WS_SUBPROTOCOL = "ics-cop-v1"
+_WS_TOKEN_PREFIX = "ics.session."
+
+
+def _ws_token(websocket: WebSocket) -> str | None:
+    """從 offered subprotocols 取 session token（不讀 query param）。"""
+    for proto in websocket.scope.get("subprotocols", []):
+        if proto.startswith(_WS_TOKEN_PREFIX):
+            return proto[len(_WS_TOKEN_PREFIX) :]
+    return None
+
+
+@router.websocket("/ws/updates")
+async def cop_ws_updates(websocket: WebSocket):
+    """訂閱 COP entity 變更。server→client 單向 push `{op, uid, version_clock, entity}`。
+
+    auth：http middleware 不跑 WS scope，故此處顯式驗 session —— 且傳入 websocket
+    讓 check_session 套用與 HTTP 相同的 IP / UA binding（不可降級成 unbound）。token
+    走 Sec-WebSocket-Protocol（見 _ws_token）。role 須在 READ_ROLES（與 GET 同政策）。
+    exercise filter 走 query param `?exercise_id=<N?>`（非機密）。
+    斷線 / 重連策略：client 重連後應 GET /api/cop/entities 全量 resync（version_clock
+    merge idempotent），不在 WS 內補發歷史。
+    """
+    token = _ws_token(websocket)
+    if not token:
+        await websocket.close(code=_WS_UNAUTHORIZED)
+        return
+    # request=websocket → 與 HTTP 相同的 session IP/UA binding（Vuln 1 修正）
+    sess, failure = check_session(token, request=websocket, touch=False)
+    if failure or sess is None:
+        await websocket.close(code=_WS_UNAUTHORIZED)
+        return
+    # role 須可讀（與 allowed_roles_for GET → READ_ROLES 一致；擋 unknown/降級 role）
+    if not is_role_allowed(sess, READ_ROLES):
+        await websocket.close(code=_WS_UNAUTHORIZED)
+        return
+
+    raw_ex = websocket.query_params.get("exercise_id")
+    try:
+        exercise_id = int(raw_ex) if raw_ex not in (None, "") else None
+    except ValueError:
+        await websocket.close(code=_WS_BAD_REQUEST)
+        return
+
+    # echo 常數協定（不含 token）；client 必須 offer 它，否則 handshake 不成立
+    await websocket.accept(subprotocol=_WS_SUBPROTOCOL)
+    conn = await cop_hub.connect(websocket, exercise_id)
+    try:
+        await websocket.send_json({"op": "hello", "exercise_id": exercise_id})
+        # server→client push only；仍 loop receive 以偵測斷線（client 不需送任何東西）
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        pass
+    finally:
+        await cop_hub.disconnect(conn)

@@ -12,7 +12,10 @@ Type=simple
 User=ics
 Group=ics
 WorkingDirectory=/home/ics/ics-command/command-dashboard
-ExecStart=/home/ics/ics-command/command-dashboard/.venv/bin/uvicorn main:app --app-dir src --host 0.0.0.0 --port 8000
+# --workers 1 必須保留：COP 即時推播是 in-process broadcaster（issue #29 PR-D，
+# services/realtime_hub.py）。多 worker 下各自獨立 hub → WS 廣播跨 worker 漏幀。
+# 水平擴張需改 Redis pub/sub（Wave 7 federation），屆時才可拿掉此 pin。
+ExecStart=/home/ics/ics-command/command-dashboard/.venv/bin/uvicorn main:app --app-dir src --host 0.0.0.0 --port 8000 --workers 1
 
 # Defaults 先設，再讓 EnvironmentFile 覆寫（systemd: 後者覆寫前者）
 # Site-specific 設定走 EnvironmentFile（前綴 `-` 表示檔案不存在不 fail）
