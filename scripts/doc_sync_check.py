@@ -8,11 +8,30 @@
 """
 
 import re
+import subprocess
 import sys
 from pathlib import Path
 
 BASE = Path(__file__).resolve().parent.parent
 WARNINGS: list[str] = []
+
+
+def _is_gitignored(ref: str) -> bool:
+    """ref 指向 .gitignore 涵蓋的 runtime / derived 路徑（如 data/ 下的 runtime 檔、
+    badge.png）時，刻意不在 git 內是正確的，不算 doc drift。
+
+    對應 CLAUDE.md〈User Data 邊界〉：data/ 為 gitignored runtime，啟動時由
+    static/<name>.seed.<ext> 兜底生成 —— doc 記錄這條路徑是對的，checker 不該誤報。
+    """
+    try:
+        r = subprocess.run(
+            ["git", "-C", str(BASE), "check-ignore", "-q", ref],
+            capture_output=True,
+            check=False,
+        )
+        return r.returncode == 0
+    except OSError:
+        return False
 
 
 def warn(msg: str):
@@ -76,8 +95,14 @@ def check_doc(doc_path: Path):
         if is_roadmap:
             continue  # ROADMAP 是 planning，未來檔案不算 drift
         # 三種解析：相對 doc、相對 repo root、相對 command-dashboard/src
-        candidates = [doc_dir / ref, BASE / ref, BASE / "command-dashboard" / "src" / ref]
+        candidates = [
+            doc_dir / ref,
+            BASE / ref,
+            BASE / "command-dashboard" / "src" / ref,
+        ]
         if not any(c.exists() for c in candidates):
+            if _is_gitignored(ref):
+                continue  # gitignored runtime / derived 路徑，doc 記錄正確（見 _is_gitignored）
             warn(f"{doc_path.relative_to(BASE)} 引用不存在的路徑：{ref}")
 
 
@@ -85,9 +110,7 @@ def check_doc(doc_path: Path):
 # 2. ROADMAP 點名的具體 router / service / repo 檔案要存在
 # ─────────────────────────────────────────────────────────────
 # 例如 ROADMAP 寫 `routers/pi_push.py` 應對應 command-dashboard/src/routers/pi_push.py
-ROADMAP_CODE_REF = re.compile(
-    r"`(routers/[a-z_]+\.py|services/[a-z_]+\.py|repositories/[a-z_]+\.py)`"
-)
+ROADMAP_CODE_REF = re.compile(r"`(routers/[a-z_]+\.py|services/[a-z_]+\.py|repositories/[a-z_]+\.py)`")
 SRC_ROOT = BASE / "command-dashboard" / "src"
 
 
@@ -103,9 +126,9 @@ def check_roadmap_code_refs():
         if not full.exists():
             # phase 後續才生的檔案（依 ROADMAP 規劃）不算 drift
             future_files = {
-                "ingress.py",            # P1-02
-                "tak_service.py",        # P2-02
-                "waveink_service.py",    # P3-03
+                "ingress.py",  # P1-02
+                "tak_service.py",  # P2-02
+                "waveink_service.py",  # P3-03
             }
             if full.name in future_files:
                 continue
