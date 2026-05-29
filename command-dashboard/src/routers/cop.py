@@ -193,7 +193,7 @@ async def update_entity(uid: str, request: Request, response: Response):
 
 
 @router.delete("/entities/{uid}")
-def delete_entity(uid: str, request: Request):
+def delete_entity(uid: str, request: Request, response: Response):
     """TAK soft-delete：標 stale=now + bump version_clock（不 hard delete）。"""
     expected = _parse_if_match(request)
     result = cop_entity_repo.delete_cop_entity(uid, expected, actor=_actor(request))
@@ -202,6 +202,8 @@ def delete_entity(uid: str, request: Request):
         raise HTTPException(404, f"entity 不存在：{uid}")
     if result["status"] == "conflict":
         return _conflict_response(result["entity"])
+    # 與 PUT-ok / 409 一致：成功也回 ETag（soft-delete 後的新 version_clock）
+    response.headers["ETag"] = _etag(result["entity"]["version_clock"])
     return {
         "status": "deleted",
         "uid": uid,

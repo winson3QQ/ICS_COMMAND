@@ -172,6 +172,7 @@ def test_delete_soft_removes_from_default_list_but_row_persists(client):
     assert r.status_code == 200, r.text
     assert r.json()["status"] == "deleted"
     assert r.json()["version_clock"] == 2
+    assert r.headers.get("etag") == 'W/"2"'  # 成功 delete 也回 ETag（與 PUT 一致）
 
     # 預設 list 不見
     listed = client.get("/api/cop/entities", headers=h).json()["entities"]
