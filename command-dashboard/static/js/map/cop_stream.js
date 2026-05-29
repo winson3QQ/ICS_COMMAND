@@ -21,6 +21,12 @@ const WS_SUBPROTOCOL = "ics-cop-v1";
 const RECONNECT_BASE_MS = 1000;
 const RECONNECT_MAX_MS = 30000;
 
+// 委派給 map.js EntityLayer 渲染的 kind（PR-G1a cutover）。其餘 kind（含無 kind 的
+// ＋標記 MVP）仍由 cop_stream 自建 marker —— 這條是「安全 fallback」：未被 map.js 接管
+// 的 kind 至少還有 marker 可見，不會無聲消失。**只列 map.js 真的會渲染的 kind**，
+// 否則被委派卻沒人畫 = 隱形（zone 等待 G1b 接好 _renderZones 渲染後再加回此 set）。
+const _DELEGATED_KINDS = new Set(["route", "polygon"]);
+
 /**
  * @param {object} deps
  *  - map: MapLibre map（需 getCenter()；marker 用）
@@ -59,6 +65,29 @@ export function createCopStream(deps) {
   let _reconnectTimer = null;
   let _visible = true;
   let _stopped = false;
+  // 渲染委派（PR-G1a）：map.js 註冊 onChange 後進入委派模式。委派為 **kind-aware**：
+  //   - attributes.kind ∈ _DELEGATED_KINDS（zone/route/polygon）→ cop_stream 不自建
+  //     marker，由 map.js 用 EntityLayer 從 getEntitiesByKind() 取資料渲染（cutover）。
+  //   - 無 kind 的 entity（PR-E ＋標記 MVP，type a-f-G-U-C）→ 仍由 cop_stream 自建
+  //     marker（MVP 留到 PR-H 才退役，G1a 期間不破壞既有行為）。
+  // 未註冊（PR-E standalone）→ fallback 全部自建 marker。
+  let _onChange = null;
+  let _renderDelegated = false;
+
+  function _emitChange() {
+    if (_onChange) {
+      try {
+        _onChange();
+      } catch {
+        /* 訂閱者重繪錯誤不影響 merge */
+      }
+    }
+  }
+
+  /** 此 entity 是否由 map.js 委派渲染（→ cop_stream 不自建 marker）。 */
+  function _isDelegated(entity) {
+    return _renderDelegated && !!entity.attributes && _DELEGATED_KINDS.has(entity.attributes.kind);
+  }
 
   // ── merge 核心（純邏輯，可單測）──────────────────────────────────────────
 
@@ -107,22 +136,30 @@ export function createCopStream(deps) {
     const existing = _byUid.get(entity.uid);
     if (existing) {
       existing.entity = entity;
-      existing.marker.setLngLat([entity.lon, entity.lat]);
+      if (existing.marker) existing.marker.setLngLat([entity.lon, entity.lat]);
+      _emitChange();
       return;
     }
-    const marker = new MarkerCtor({ draggable: canWrite() });
-    marker.setLngLat([entity.lon, entity.lat]);
-    if (marker.addTo && _visible) marker.addTo(map);
+    // 委派模式（kind-aware）：被委派的 kind 只存資料、不自建 marker（map.js 渲染）；
+    // 無 kind 的 ＋標記 MVP 仍自建 marker。
+    let marker = null;
+    if (!_isDelegated(entity)) {
+      marker = new MarkerCtor({ draggable: canWrite() });
+      marker.setLngLat([entity.lon, entity.lat]);
+      if (marker.addTo && _visible) marker.addTo(map);
+    }
     const rec = { entity, marker };
     _byUid.set(entity.uid, rec);
-    _wireMarkerDrag(rec);
+    if (marker) _wireMarkerDrag(rec);
+    _emitChange();
   }
 
   function _renderRemove(uid) {
     const rec = _byUid.get(uid);
     if (!rec) return;
-    if (rec.marker.remove) rec.marker.remove();
+    if (rec.marker && rec.marker.remove) rec.marker.remove();
     _byUid.delete(uid);
+    _emitChange();
   }
 
   function _wireMarkerDrag(rec) {
@@ -161,11 +198,14 @@ export function createCopStream(deps) {
     }
   }
 
-  /** 在地圖中心放一顆新 COP 標記（POST）。 */
-  async function placeAtCenter(fields = {}) {
+  /**
+   * 建立一顆 entity（POST）。body 至少需 { type, lat, lon }，可帶 callsign / attributes。
+   * 回傳建立後的 entity（含 server 兜底的 uid / version_clock）；失敗回 null。
+   * 本地立即 upsert（WS 廣播也會到，version_clock LWW 冪等不重複）。
+   * map 物件（route/polygon）走這條：attributes.kind + vertices + color 等由 caller 帶。
+   */
+  async function createEntity(body = {}) {
     if (!canWrite()) return null;
-    const c = map.getCenter();
-    const body = { type: "a-f-G-U-C", lat: c.lat, lon: c.lng, ...fields };
     const resp = await authFetch(`${apiBase}/api/cop/entities`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -173,15 +213,22 @@ export function createCopStream(deps) {
     });
     if (!resp.ok) return null;
     const entity = await resp.json();
-    // 本地立即 upsert（WS 廣播也會到，version_clock LWW 冪等不重複）
     _renderUpsert(entity);
     return entity;
   }
 
-  /** 更新一顆 entity（PUT + If-Match）。409 → 採 server 現值。 */
+  /** 在地圖中心放一顆新 COP 標記（PR-E ＋標記 MVP；走 createEntity）。 */
+  async function placeAtCenter(fields = {}) {
+    if (!canWrite()) return null;
+    const c = map.getCenter();
+    return createEntity({ type: "a-f-G-U-C", lat: c.lat, lon: c.lng, ...fields });
+  }
+
+  /** 更新一顆 entity（PUT + If-Match）。回傳 true=成功，false=失敗（含 409）。
+   *  409 → 採 server 現值（回 false，caller 可提示衝突 / 失敗）。 */
   async function _putEntity(uid, patch) {
     const rec = _byUid.get(uid);
-    if (!rec || !canWrite()) return;
+    if (!rec || !canWrite()) return false;
     const expected = rec.entity.version_clock;
     return _withSaving(uid, async () => {
       const resp = await authFetch(`${apiBase}/api/cop/entities/${encodeURIComponent(uid)}`, {
@@ -191,17 +238,20 @@ export function createCopStream(deps) {
       });
       if (resp.ok) {
         _renderUpsert(await resp.json());
-      } else if (resp.status === 409) {
+        return true;
+      }
+      if (resp.status === 409) {
         const data = await resp.json();
         if (data && data.server_entity) _renderUpsert(data.server_entity); // 對齊 server，避免本地漂位
       }
+      return false;
     });
   }
 
-  /** 刪除一顆 entity（DELETE + If-Match，soft-delete）。 */
+  /** 刪除一顆 entity（DELETE + If-Match，soft-delete）。回傳 true=成功，false=失敗。 */
   async function deleteEntity(uid) {
     const rec = _byUid.get(uid);
-    if (!rec || !canWrite()) return;
+    if (!rec || !canWrite()) return false;
     const expected = rec.entity.version_clock;
     return _withSaving(uid, async () => {
       const resp = await authFetch(`${apiBase}/api/cop/entities/${encodeURIComponent(uid)}`, {
@@ -210,10 +260,13 @@ export function createCopStream(deps) {
       });
       if (resp.ok) {
         _renderRemove(uid);
-      } else if (resp.status === 409) {
+        return true;
+      }
+      if (resp.status === 409) {
         const data = await resp.json();
         if (data && data.server_entity) _renderUpsert(data.server_entity);
       }
+      return false;
     });
   }
 
@@ -312,7 +365,9 @@ export function createCopStream(deps) {
 
   function setVisible(visible) {
     _visible = visible;
+    // 委派模式下 marker 為 null（由 map.js 的 EntityLayer 控制顯示）→ 跳過
     for (const { marker } of _byUid.values()) {
+      if (!marker) continue;
       if (visible) {
         if (marker.addTo) marker.addTo(map);
       } else if (marker.remove) {
@@ -337,14 +392,40 @@ export function createCopStream(deps) {
     };
   }
 
+  /** map.js 註冊重繪 callback → 進入委派模式（cop_stream 不再自建 marker）。 */
+  function onChange(cb) {
+    _onChange = cb;
+    _renderDelegated = true;
+  }
+
+  /** 取某 kind 的 entity 陣列（map.js 渲染用）。kind 取自 attributes.kind。 */
+  function getEntitiesByKind(kind) {
+    const out = [];
+    for (const { entity } of _byUid.values()) {
+      if (entity.attributes && entity.attributes.kind === kind) out.push(entity);
+    }
+    return out;
+  }
+
+  /** 取單顆 entity（編輯器讀 version_clock 用）。 */
+  function getEntity(uid) {
+    const rec = _byUid.get(uid);
+    return rec ? rec.entity : null;
+  }
+
   return {
     connect,
     stop,
     resync,
     placeAtCenter,
+    createEntity,
+    updateEntity: _putEntity,
     deleteEntity,
     setVisible,
     toggleVisible,
+    onChange,
+    getEntitiesByKind,
+    getEntity,
     // 測試 hook
     _onMessage,
     _applyEntity,

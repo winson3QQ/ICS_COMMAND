@@ -39,6 +39,8 @@ import {
   routeLabelToFeature,
   flowToFeature,
   zoneToNodeFeature,
+  copEntityToRoute,
+  copEntityToPolygon,
   bakeTextSdf,
   bakeArrowSdf,
 } from './map/entity_layer.js';
@@ -76,6 +78,10 @@ function _escapeHtml(s) {
 
 let _deps = {};
 let _mapConfig = null;
+// issue #29 PR-G1a：route / polygon cutover 進 cop_entities（即時同步）。map.js 不擁有
+// cop_stream（生命週期在 main.js），透過 setCopStream() 注入參考；render 從它取資料、
+// 編輯器改打 /api/cop/*。zone（節點）/ 事件 / infra / flow 仍走 _mapConfig（事件留 G1b）。
+let _copStream = null;
 let _currentMap = 'indoor';
 // _leafletMap：歷史命名，P1-10b 後實為 maplibregl.Map instance（透過 maplibre_core 取得）。
 // 為避免大爆炸 rename，過渡期保留變數名；mapInitialized 旗標更可靠。
@@ -179,6 +185,14 @@ const ROUTE_TYPES = {
   secondary: { label: '次要路線', color: '#e3b341', dash: true },
   emergency: { label: '緊急通道', color: '#e05555', dash: false },
 };
+
+// issue #29 PR-G1a cutover：route / polygon 寫進 cop_entities 時帶的 CoT 相容 type
+// （為 P2-04 TAK 雙向預留 —— backend type 為自由字串，TAK 真正落地時再精修）。
+//   route  → b-m-r   CoT「route」（含 link 頂點的多段線）
+//   polygon→ u-d-f   CoT/TAK drawing「free-form」封閉圖形
+// kind 另存 attributes.kind（getEntitiesByKind 過濾用），與 type 解耦。
+const ROUTE_COT_TYPE = 'b-m-r';
+const POLY_COT_TYPE = 'u-d-f';
 
 const FLOW_TYPES = {
   casualty:   { label: '傷患後送', color: '#e05555' },
@@ -353,6 +367,38 @@ export function renderMapOverlay() {
     });
     overlay.appendChild(marker);
   }
+}
+
+/**
+ * 注入 cop_stream 參考（main.js _initCopStream 建好後呼叫）。
+ *
+ * 訂閱 onChange → cop_entities 任何變更（本地寫 / WS 廣播 / resync）都即時重繪
+ * route + polygon 兩層；同時 onChange 讓 cop_stream 進入 kind-aware 委派模式
+ * （route/polygon 不自建 marker，交由本檔 EntityLayer 渲染）。
+ *
+ * 對所有角色都訂閱（含 observer）：canWrite 只管編輯，讀 / 即時同步人人有份。
+ */
+export function setCopStream(stream) {
+  _copStream = stream;
+  if (!stream) return;
+  // onChange 在「每一筆」entity upsert/remove 都觸發；resync N 筆會連發 N 次。用 rAF
+  // 合併成「每幀最多一次」重繪兩層，避免 N 次 getEntitiesByKind 全掃 + setData。
+  stream.onChange(_scheduleCopRender);
+  // 注入時可能 cop_stream 已有資料（先 connect 後 setCopStream）→ 補繪一次
+  _scheduleCopRender();
+}
+
+let _copRenderScheduled = false;
+function _scheduleCopRender() {
+  if (_copRenderScheduled) return;
+  _copRenderScheduled = true;
+  const run = () => {
+    _copRenderScheduled = false;
+    _renderRoutes();
+    _renderPolygons();
+  };
+  if (typeof requestAnimationFrame !== 'undefined') requestAnimationFrame(run);
+  else setTimeout(run, 0);
 }
 
 export function refreshLeafletMarkers() {
@@ -1242,7 +1288,8 @@ function _findById(arr, id) {
 function _onPolygonClick(e) {
   if (!canAccessMapObjects()) return;
   const id = e.features?.[0]?.properties?.id;
-  const poly = _findById(_mapConfig?.maps?.outdoor?.polygons, id);
+  // PR-G1a：polygon 已 cutover 進 cop_entities，從 cop_stream 回查（id = entity uid）。
+  const poly = copEntityToPolygon(_copStream?.getEntity(id));
   if (!poly) return;
   const typeLabel = POLY_TYPES[poly.poly_type]?.label || poly.poly_type;
   const desc = `${typeLabel}　${poly.latlngs.length} 個頂點`;
@@ -1263,7 +1310,8 @@ function _onInfraClick(e) {
 function _onRouteClick(e) {
   if (!canAccessMapObjects()) return;
   const id = e.features?.[0]?.properties?.id;
-  const route = _findById(_mapConfig?.maps?.outdoor?.routes, id);
+  // PR-G1a：route 已 cutover 進 cop_entities，從 cop_stream 回查（id = entity uid）。
+  const route = copEntityToRoute(_copStream?.getEntity(id));
   if (!route) return;
   const typeLabel = ROUTE_TYPES[route.route_type]?.label || route.route_type;
   const desc = `${typeLabel}　${route.latlngs.length} 個節點`;
@@ -1310,26 +1358,62 @@ function _renderPolygons() {
     _polyLabelMgr?.clear();
     return;
   }
+  // PR-G1a cutover：資料來源從 _mapConfig 改為 cop_entities（attributes.kind='polygon'），
+  // 經 copEntityToPolygon adapter 轉成 polygonToFeature 吃的 shape，渲染管線不變。
+  const polys = (_copStream?.getEntitiesByKind('polygon') || [])
+    .map(copEntityToPolygon)
+    .filter(Boolean);
   // 每個 polygon 產出 2 個 feature 餵同 source：
   //   1. Polygon geometry（fill / stroke layer 渲染）
   //   2. Point geometry（centroid，label layer 渲染 — 解 MapLibre 跨 tile 多
   //      centroid 導致 label 重複的 bug，filter geometry-type=Point）
-  const polys = _mapConfig?.maps?.outdoor?.polygons || [];
   const features = [
     ...polys.map(polygonToFeature).filter(Boolean),
     ...polys.map(polygonLabelToFeature).filter(Boolean),
   ];
   _polygonLayer.update(features);
-  // Step 8：sync HTML drag handles 給有 label 的 polygon
+  // Step 8：sync HTML drag handles 給有 label 的 polygon。label_anchor 改動 → PUT cop
+  // （attributes 整包覆寫，故先取現值合併）。WS 廣播回來 → onChange 自動重繪。
   if (_polyLabelMgr) {
-    _polyLabelMgr.sync(polys, async (id, latlng) => {
-      const p = polys.find((x) => x.id === id);
-      if (!p) return;
-      p.label_anchor = [latlng.lat, latlng.lng];
-      await saveMapConfig();
-      _renderPolygons();
+    _polyLabelMgr.sync(polys, (id, latlng) => {
+      _putCopLabelAnchor(id, [latlng.lat, latlng.lng]);
     }, polygonCentroid);
   }
+}
+
+/**
+ * 改寫某 cop map 物件（route/polygon）的 label_anchor → PUT /api/cop（帶 If-Match）。
+ * backend PUT 對 attributes 是整包覆寫，故先讀現值再合併（anchor=null → 刪除該欄位）。
+ * 回傳 Promise<boolean>（true=成功）；caller（reset 走 modal）可據此提示失敗。
+ */
+function _putCopLabelAnchor(uid, anchor) {
+  if (!_copStream) return Promise.resolve(false);
+  const ent = _copStream.getEntity(uid);
+  if (!ent) return Promise.resolve(false);
+  const attrs = { ...(ent.attributes || {}) };
+  if (anchor) attrs.label_anchor = anchor;
+  else delete attrs.label_anchor;
+  return _copStream.updateEntity(uid, { attributes: attrs });
+}
+
+/**
+ * 地圖操作失敗時的即時提示（沿用 _evPopupSubmit 的 coord-panel ✗ 樣式）。
+ * cop 寫入（建立/刪除/標籤）失敗不再 silent —— 至少讓 operator 知道要重試。
+ */
+function _flashMapMsg(text, ms = 4000) {
+  const panel = el('map-coord-panel');
+  if (!panel) return;
+  panel.style.display = 'flex';
+  panel.innerHTML = `<span style="color:#f85149">${_escapeHtml(text)}</span>`;
+  setTimeout(() => _refreshCoordPanel(), ms);
+}
+
+/** 在表單 modal 內顯示錯誤（沿用 flow-err 樣式）。textContent → 無 XSS。 */
+function _showFormErr(id, text) {
+  const e = el(id);
+  if (!e) return;
+  e.textContent = text;
+  e.style.display = 'block';
 }
 
 function _polyCentroid(latlngs) {
@@ -1378,7 +1462,10 @@ function _renderRoutes() {
     _routeLabelMgr?.clear();
     return;
   }
-  const routes = _mapConfig?.maps?.outdoor?.routes || [];
+  // PR-G1a cutover：資料來源從 _mapConfig 改為 cop_entities（attributes.kind='route'）。
+  const routes = (_copStream?.getEntitiesByKind('route') || [])
+    .map(copEntityToRoute)
+    .filter(Boolean);
   // 每個 route 產出 LineString（line/arrow layer 渲染）+ Point（label layer 渲染，
   // 支援 label_anchor override 給 drag handle 移動後的新位置）。
   const features = [
@@ -1386,14 +1473,10 @@ function _renderRoutes() {
     ...routes.map(routeLabelToFeature).filter(Boolean),
   ];
   _routeLayer.update(features);
-  // Step 8：sync route label drag handles
+  // Step 8：sync route label drag handles。label_anchor 改動 → PUT cop（同 polygon）。
   if (_routeLabelMgr) {
-    _routeLabelMgr.sync(routes, async (id, latlng) => {
-      const r = routes.find((x) => x.id === id);
-      if (!r) return;
-      r.label_anchor = [latlng.lat, latlng.lng];
-      await saveMapConfig();
-      _renderRoutes();
+    _routeLabelMgr.sync(routes, (id, latlng) => {
+      _putCopLabelAnchor(id, [latlng.lat, latlng.lng]);
     }, routeMidLngLat);
   }
 }
@@ -1732,6 +1815,7 @@ export function _openPolyForm(latlngs) {
   html += `<div style="margin-bottom:16px;"><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:4px;">類型</label>`;
   html += `<select id="poly-type" style="${SEL}">${typeOpts}</select></div>`;
   html += `<div style="font-size:10px;color:var(--text3);margin-bottom:16px;">${latlngs.length} 個頂點</div>`;
+  html += `<div id="poly-err" style="display:none;font-size:11px;color:var(--red);margin-bottom:10px;"></div>`;
   html += `<div style="display:flex;gap:8px;">`;
   html += `<button data-action="closeModal" style="flex:1;padding:8px;background:transparent;border:1px solid var(--border);color:var(--text2);border-radius:6px;cursor:pointer;font-family:var(--mono);">取消</button>`;
   html += `<button data-action="savePolygon" style="flex:2;padding:8px;background:var(--green);color:#fff;border:none;border-radius:6px;font-weight:700;cursor:pointer;font-family:var(--mono);">儲存</button>`;
@@ -1744,39 +1828,39 @@ export async function _savePolygon() {
   const name = (document.getElementById('poly-name')?.value || '').trim();
   const typeKey = document.getElementById('poly-type')?.value || 'ops';
   const latlngs = _pendingPolyLatlngs;
-  if (!name || !latlngs) return;
+  if (!name || !latlngs || !_copStream) return;
   const def = POLY_TYPES[typeKey];
-  const poly = {
-    id: 'poly_' + Date.now(),
-    label: name,
-    poly_type: typeKey,
-    color: def.color,
-    dash: def.dash,
-    latlngs,
-  };
-  if (!_mapConfig.maps.outdoor.polygons) _mapConfig.maps.outdoor.polygons = [];
-  _mapConfig.maps.outdoor.polygons.push(poly);
+  // PR-G1a cutover：建立 cop_entity（attributes.kind='polygon'）取代 push 進 _mapConfig。
+  // centroid 當 entity lat/lon（地圖物件位置），頂點存 attributes.vertices，label→callsign。
+  const [lat, lng] = _polyCentroid(latlngs);
+  const created = await _copStream.createEntity({
+    type: POLY_COT_TYPE,
+    lat,
+    lon: lng,
+    callsign: name,
+    attributes: { kind: 'polygon', vertices: latlngs, color: def.color, poly_type: typeKey, dash: def.dash },
+  });
+  if (!created) {
+    // 失敗不 silent：保留 modal + _pendingPolyLatlngs 讓 operator 直接重試
+    _showFormErr('poly-err', '儲存失敗（權限或連線問題），請重試');
+    return;
+  }
   _pendingPolyLatlngs = null;
-  await saveMapConfig();
   _deps.closeModal?.();
-  _renderPolygons();
+  // 建立後 createEntity 內部 upsert + onChange 已重繪；此處不需再手動 render。
 }
 
 export async function _deletePolygon(id) {
-  if (!_mapConfig?.maps?.outdoor?.polygons || !id) return;
-  _mapConfig.maps.outdoor.polygons = _mapConfig.maps.outdoor.polygons.filter(p => p.id !== id);
-  await saveMapConfig();
+  if (!_copStream || !id) return;
+  const ok = await _copStream.deleteEntity(id);
   _deps.closeModal?.();
-  _renderPolygons();
+  if (!ok) _flashMapMsg('✗ 範圍刪除失敗，請重試');
 }
 
 export async function _resetPolyLabelAnchor(id) {
-  const poly = (_mapConfig?.maps?.outdoor?.polygons || []).find(p => p.id === id);
-  if (!poly) return;
-  delete poly.label_anchor;
-  await saveMapConfig();
+  const ok = await _putCopLabelAnchor(id, null);
   _deps.closeModal?.();
-  _renderPolygons();
+  if (!ok) _flashMapMsg('✗ 重設標籤位置失敗，請重試');
 }
 
 // 設施新增（_openInfraForm / _startInfraPlace / _saveInfraPosition）— 暫未實作
@@ -1935,6 +2019,7 @@ export function _openRouteForm(latlngs) {
   html += `<div style="margin-bottom:16px;"><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:4px;">類型</label>`;
   html += `<select id="route-type-sel" style="${SEL}">${typeOpts}</select></div>`;
   html += `<div style="font-size:10px;color:var(--text3);margin-bottom:16px;">${latlngs.length} 個節點</div>`;
+  html += `<div id="route-err" style="display:none;font-size:11px;color:var(--red);margin-bottom:10px;"></div>`;
   html += `<div style="display:flex;gap:8px;">`;
   html += `<button data-action="closeModal" style="flex:1;padding:8px;background:transparent;border:1px solid var(--border);color:var(--text2);border-radius:6px;cursor:pointer;font-family:var(--mono);">取消</button>`;
   html += `<button data-action="saveRoute" style="flex:2;padding:8px;background:var(--green);color:#fff;border:none;border-radius:6px;font-weight:700;cursor:pointer;font-family:var(--mono);">儲存</button>`;
@@ -1947,39 +2032,36 @@ export async function _saveRoute() {
   const name = (document.getElementById('route-name')?.value || '').trim();
   const typeKey = document.getElementById('route-type-sel')?.value || 'primary';
   const latlngs = _pendingRouteLatlngs;
-  if (!name || !latlngs) return;
+  if (!name || !latlngs || !_copStream) return;
   const def = ROUTE_TYPES[typeKey];
-  const route = {
-    id: 'route_' + Date.now(),
-    route_type: typeKey,
-    label: name,
-    color: def.color,
-    dash: def.dash,
-    latlngs,
-  };
-  if (!_mapConfig.maps.outdoor.routes) _mapConfig.maps.outdoor.routes = [];
-  _mapConfig.maps.outdoor.routes.push(route);
+  // PR-G1a cutover：建立 cop_entity（attributes.kind='route'）。中點當 entity lat/lon。
+  const mid = routeMidLngLat({ latlngs }) || [latlngs[0][1], latlngs[0][0]]; // [lng,lat]
+  const created = await _copStream.createEntity({
+    type: ROUTE_COT_TYPE,
+    lat: mid[1],
+    lon: mid[0],
+    callsign: name,
+    attributes: { kind: 'route', vertices: latlngs, color: def.color, route_type: typeKey, dash: def.dash },
+  });
+  if (!created) {
+    _showFormErr('route-err', '儲存失敗（權限或連線問題），請重試');
+    return;
+  }
   _pendingRouteLatlngs = null;
-  await saveMapConfig();
   _deps.closeModal?.();
-  _renderRoutes();
 }
 
 export async function _deleteRoute(id) {
-  if (!_mapConfig?.maps?.outdoor?.routes || !id) return;
-  _mapConfig.maps.outdoor.routes = _mapConfig.maps.outdoor.routes.filter(r => r.id !== id);
-  await saveMapConfig();
+  if (!_copStream || !id) return;
+  const ok = await _copStream.deleteEntity(id);
   _deps.closeModal?.();
-  _renderRoutes();
+  if (!ok) _flashMapMsg('✗ 路線刪除失敗，請重試');
 }
 
 export async function _resetRouteLabelAnchor(id) {
-  const route = (_mapConfig?.maps?.outdoor?.routes || []).find(r => r.id === id);
-  if (!route) return;
-  delete route.label_anchor;
-  await saveMapConfig();
+  const ok = await _putCopLabelAnchor(id, null);
   _deps.closeModal?.();
-  _renderRoutes();
+  if (!ok) _flashMapMsg('✗ 重設標籤位置失敗，請重試');
 }
 export function _cancelNodePlace() {}
 export function _cancelEventPin() {}
