@@ -833,5 +833,41 @@
     "title": "feat(map): β Phase 2 — client If-Match + 409 衝突處理 + _isSaving（issue #29）",
     "updatedAt": "2026-05-29T02:57:58Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/32"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "## ROADMAP item\n\nissue #29（β realtime sync — per-entity cop_entities / TAK CoT 重定向）的 **PR-A**：schema + repo CAS。整個 per-entity 同步鏈的硬前置。序：**A → (B∥C) → D → E → F → G**。\n\n- Refs #29（不 close issue，A 只是第一塊）\n\n## What changed\n\n- **m014 migration**：`cop_entities` ALTER ADD `updated_by` / `updated_at`（per-entity CAS 的 audit 落點；version_clock 已於 m013 預埋）。\n- **`update_cop_entity_cas(uid, expected_version_clock, patch, actor)`**：單句 `UPDATE ... SET ..., version_clock=version_clock+1 WHERE uid=? AND version_clock=?`，SQLite row-level atomic、**不需 asyncio.Lock**。回 `{\"status\": \"ok\"|\"conflict\"|\"notfound\", \"entity\": ...}` 供 PR-B router 對映 200/409/404。\n- **`delete_cop_entity(uid, expected_version_clock, actor)`**：TAK soft-delete（標 stale=now + bump version_clock，不 hard delete），走同一 CAS path → 一樣受樂觀鎖保護。\n\n從根本根除 commit `58bb5d4`（已 revert）的整檔 last-write-wins clobber：A 改 entity① / B 改 entity② 是不同 row = 零競爭，只有同 uid 才 409。\n\n## DoD checklist\n\n- [x] Tests added / updated（新 `test_cop_entity_cas.py` 15 case）\n- [x] `pytest` green（全套 484 passed）\n- [ ] `npm test` green（無 JS 改動，N/A）\n- [ ] 規格書更新（PR-A 純底層、無對外介面變更；對外 API schema 留 PR-B）\n- [x] ROADMAP 對應 sub-item（issue #29 PR-A）\n\n## §8 Human Verification Script\n\n> PR-A 純後端、**無 GUI 可驗**。驗證形式 = unit test（per PROCESS.md 純後端 PR 慣例）。\n\n\\`\\`\\`bash\ncd command-dashboard\npython3 -m pytest tests/unit/test_cop_entity_cas.py -v -p no:warnings\n# 預期：15 passed —— 並發一勝一敗 / conflict 時 DB 不動 / soft-delete 過濾但 row 保留 / injection 拒絕\n\npython3 -m pytest tests/security/test_rbac_issue26.py::test_migrations_reach_m014_and_down_helpers_exist -v -p no:warnings\n# 預期：1 passed —— migration 已 bump 到 m014 且 down-helper 齊備\n\npython3 -m pytest -q -p no:warnings\n# 預期：484 passed —— 無 regression\n\\`\\`\\`\n\n## Out of scope / known limitations\n\n- 對外 HTTP endpoint（GET/POST/PUT/DELETE + If-Match/409/428）→ **PR-B**\n- WebSocket broadcast → PR-D；前端接線（首個 GUI 可驗點）→ **PR-E**\n- 回傳契約用 dict status 而非 raise exception：conflict 是正常並發結果（非錯誤），且需把 DB 現值一起回給 caller 當 409 server_body。\n\n## Notes for reviewer\n\n- 特別看 `update_cop_entity_cas` 的 **column 白名單**（patch 的 key 直接拼進 SQL `set_clause`，靠 PRAGMA table_info 白名單 + `_CAS_PROTECTED_COLS` 擋 injection 與 managed 欄位偽造）。\n- WAL 二次連線可見性：UPDATE 後在 `with` 區塊外才 `get_cop_entity`（沿用 PR #16 的修法）。\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+    "closedAt": null,
+    "comments": [
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## §8 test evidence（CA 跑過）\n\n```\n$ python3 -m pytest tests/unit/test_cop_entity_cas.py -q\n.................                                                        [100%]\n```\n\n全套：``\n\n下一步：/code-review + /security-review → doc_sync_check → merge。",
+        "createdAt": "2026-05-29T03:23:44Z",
+        "id": "IC_kwDOSnBjpc8AAAABEGdnlQ",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/33#issuecomment-4570179477"
+      }
+    ],
+    "createdAt": "2026-05-29T03:22:50Z",
+    "headRefName": "feat/issue-29-pr-a-cop-cas",
+    "labels": [],
+    "mergedAt": null,
+    "number": 33,
+    "state": "OPEN",
+    "title": "feat(cop): issue#29 PR-A — cop_entities per-entity 樂觀鎖 + soft-delete",
+    "updatedAt": "2026-05-29T03:23:44Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/33"
   }
 ]
