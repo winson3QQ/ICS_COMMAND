@@ -831,6 +831,20 @@
         "minimizedReason": "",
         "reactionGroups": [],
         "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/29#issuecomment-4572203837"
+      },
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## ✅ PR-G1a 開 PR — route/polygon cutover 進 cop_entities\n\n**PR [#38](https://github.com/winson3QQ/ICS_COMMAND/pull/38)**（base `main` ← `feat/issue-29-pr-g1-cutover`，4 commits，建議 squash）。\n\nroute/polygon 已接上 per-entity 即時同步管線（畫了別人不 reload 即時看到）—— 解本 issue 原始痛點之一。\n\n### 進度\n- A✅ B✅ (C skip) D✅ E✅ **G1a✅（本 PR，待 merge）**\n- 管線：schema CAS → REST + If-Match → WebSocket → 前端 cop_stream → **route/polygon 渲染 + 編輯改線**\n\n### Scope（已確認）\n只 cutover **route + polygon**。zone 節點 = 5 個固定常駐編組（維持現狀、無建立 UI）；事件 zone 留 **G1b**；flow+infra 留 **G2**；清理+close 留 **H**。不做 migration、從 0 開始。\n\n### 設計落地\n- 分類 `attributes.kind`（route/polygon）+ CoT 相容 type（route=`b-m-r` / polygon=`u-d-f`，P2-04 TAK 預留）；頂點 `attributes.vertices`、centroid→lat/lon、label→callsign。\n- cop_stream 委派改 **kind-aware**：route/polygon 委派 map.js EntityLayer；無 kind 的 ＋標記 MVP 仍自建 marker（PR-H 退役）。\n- 編輯器走 `/api/cop/*`（POST/PUT/DELETE + If-Match，PUT attributes 整包覆寫故先合併）；失敗有提示。\n- backend 未動。\n\n### 驗證\n178 vitest 全綠 · lint clean · doc_sync_check ✓ · /code-review（high，4 findings 全修：失敗 silent→提示、resync O(N) 重繪→rAF 合併、zone 委派陷阱→收斂、adapter 去重）· /security-review 0 vuln · 兩瀏覽器 dogfood PASS（A 畫→B 即時、拖 label、刪除、並發不丟、＋標記回歸）· 規格書同步。\n\n### 三邊同步\nlocal / GitHub / Codeberg @ `3047eb6`。\n\n**本 issue 不關**：待 G1b（event）/ G2（flow+infra）/ H（清理）完成。\n\n🤖 via Claude Opus 4.8",
+        "createdAt": "2026-05-29T08:49:23Z",
+        "id": "IC_kwDOSnBjpc8AAAABEI8GZQ",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/29#issuecomment-4572776037"
       }
     ],
     "createdAt": "2026-05-29T01:30:20Z",
@@ -839,7 +853,7 @@
     "number": 29,
     "state": "OPEN",
     "title": "feat(map): real-time multi-user map_config sync (β)",
-    "updatedAt": "2026-05-29T07:45:48Z",
+    "updatedAt": "2026-05-29T08:49:23Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/29"
   }
 ]

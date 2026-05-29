@@ -983,5 +983,26 @@
     "title": "feat(cop): issue#29 PR-E — 前端 COP 即時同步層（疊加 marker + cop_stream）",
     "updatedAt": "2026-05-29T06:14:35Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/37"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "## 摘要\n\n把 legacy `map_config` 的 **route / polygon** cutover 進 `cop_entities`，讓它們也走 per-entity 即時同步管線（畫了別人不 reload 即時看到）—— 解 [#29](https://github.com/winson3QQ/ICS_COMMAND/issues/29) 原始痛點之一。\n\n承 PR-A/B/D/E（schema CAS → REST + If-Match → WebSocket hub → 前端 cop_stream），本 PR 把 route/polygon 接上該管線。\n\n## Scope（與使用者確認）\n\n- **只 cutover route + polygon**。\n- **zone 節點** = 5 個固定常駐編組（收/醫/指/前/安），建立/拖/刪 UI 在 P1-10b port 時已 stub、無進入點 → 維持現狀（仍從 map_config seed 渲染）。\n- **事件 zone** 與 `/api/events` 糾纏，留 **G1b**；flow+infra 留 **G2**；清理+close 留 **H**。\n- **不做 migration、從 0 開始**：舊 map_config routes/polygons 棄置不讀（底圖設定仍留 map_config）。\n\n## 改動\n\n- **entity_layer.js**：`copEntityToRoute` / `copEntityToPolygon` adapter（`attributes.vertices`→latlngs、`callsign`→label、color/type/dash/label_anchor 對映；共用 `_copEntityToMapObject`），渲染複用既有 `*ToFeature`。\n- **cop_stream.js**：委派改 **kind-aware** —— route/polygon 委派 map.js 渲染、不自建 marker；無 kind 的 PR-E ＋標記 MVP 仍自建（留 PR-H 退役）。加公開 `createEntity` / `updateEntity`（回傳成功/失敗），`placeAtCenter` 重構走 `createEntity`。\n- **map.js**：`_renderRoutes`/`_renderPolygons` 改從 `_copStream.getEntitiesByKind()` 取；`setCopStream()` 注入 + 訂閱 onChange（rAF 合併重繪）；編輯器 `_savePolygon`/`_saveRoute`/`_delete*`/label-drag/`_reset*Anchor` 改打 `/api/cop/*`（type route=`b-m-r`/polygon=`u-d-f`、centroid→lat/lon、頂點存 `attributes.vertices`、PUT attributes 整包覆寫故先合併）；失敗有提示（表單錯誤列 / coord-panel ✗）。\n- **main.js**：`_initCopStream` 建好 stream 後呼 `setCopStream`。\n- **docs**：規格書〈疊加圖層〉+〈attributes JSON 約定〉同步。\n\n## 驗證\n\n- ✅ **178 vitest 全綠**（cop_stream / entity_layer 新測：委派 / adapter / createEntity / updateEntity / 失敗回傳契約）\n- ✅ **lint clean**（殘留 3 個 `no-undef` 為 pre-existing）\n- ✅ **doc_sync_check** 通過\n- ✅ **/code-review**（high）：4 findings 全修（失敗 silent → 提示、resync O(N) 重繪 → rAF 合併、`zone` 委派陷阱 → 收斂、adapter 去重）\n- ✅ **/security-review**：無新漏洞（backend `validate_no_unsafe_strings` 既有防護涵蓋；modal 走 textContent）\n- ✅ **兩瀏覽器 dogfood**：A 畫 route/polygon → B 即時看到、拖 label、刪除、並發不丟；＋標記 MVP 回歸正常\n- backend 未動\n\n## 不 close issue\n\nRefs #29（G1b / G2 / H 待續）。建議 **squash merge**。\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+    "closedAt": null,
+    "comments": [],
+    "createdAt": "2026-05-29T08:49:03Z",
+    "headRefName": "feat/issue-29-pr-g1-cutover",
+    "labels": [],
+    "mergedAt": null,
+    "number": 38,
+    "state": "OPEN",
+    "title": "feat(cop): issue#29 PR-G1a — route/polygon cutover 進 cop_entities（即時同步）",
+    "updatedAt": "2026-05-29T08:49:03Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/38"
   }
 ]
