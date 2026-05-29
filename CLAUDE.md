@@ -119,6 +119,18 @@ git config core.hooksPath .githooks
 - `docs/compliance/` — NIST / ASVS / ISO 對照、policies、threat model
 - `systemd/` — Linux 服務檔（ics-command / ics-backup）
 
+## User Data 邊界（P1-13 起確立）
+
+| 位置 | 角色 | git tracked? | 操作邊界 |
+|---|---|---|---|
+| `command-dashboard/data/` | **runtime / user data**（演習場域資料、DB、map_config 等）| ❌ gitignored | P1-12b backup GUI 操作對象；P1-12c SQLCipher 加密邊界 |
+| `command-dashboard/static/` | **factory default / 程式靜態資源**（seed、HTML、JS、CSS、icons）| ✅ tracked | 版本控管，release 隨 code 走 |
+| `command-dashboard/src/` | code | ✅ tracked | — |
+
+**紅線**：runtime 寫入物**不得**放在 `static/`（會造成 working tree dirty / 切 branch 洗資料 / snapshot script 把 user data commit）。P1-13 落地 `command-dashboard/static/map_config.seed.json`（factory default）+ `command-dashboard/data/map_config.json`（runtime）為這條規則的第一個 enforcement。後續新增的 runtime 檔（user uploads、cache、derived data）一律走 `data/`。
+
+對應的 factory default 機制：`static/<name>.seed.<ext>` (tracked) + `data/<name>.<ext>` (gitignored) + startup ensure() 從 seed 兜底。
+
 ## 與 ICS_DMAS 的關係
 
 本 repo 為 ICS_DMAS 在 2026-05-25 拆分出的指揮部單體版本。原 repo 仍保留三組件完整架構（shelter PWA / medical PWA / command）。當共用元件（server/、command-dashboard/）有改動時，需評估是否回饋上游 ICS_DMAS。

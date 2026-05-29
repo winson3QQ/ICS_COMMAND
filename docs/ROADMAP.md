@@ -47,7 +47,8 @@
 | P1-10 | **地圖 UX baseline 升級**：見下方〈P1-10 細項展開〉。改採 **MapLibre GL JS + PMTiles + dark ops theme + SVG marker + 等寬字體**，全替換 Leaflet（不走 `leaflet-maplibre-gl` 折衷路線，避免 P2 二次手術），預埋 P2 TAK + MIL-STD-2525 渲染接點 |
 | ✅ P1-11 | **Commander Dashboard UI 移除 PWA-specific 元素**：見下方〈P1-11 範圍〉。配合 P1-04 backend federation infra 保留決策，UI 層拿掉「收容/醫療」固定二元呈現，**改為 Option B 整刪**（dogfood 中決議；P2 TAK / P3 WaveInk 接入再重蓋）。源於 P1-01 dogfood 跑 dashboard 時的截圖盤點 — 完成於 [#4](https://github.com/winson3QQ/ICS_COMMAND/pull/4) `23dee14`（2026-05-26）|
 | P1-12 | **統一 key management + At-rest 加密 + Backup GUI**：FIDO2-derived 主密鑰 + HKDF 衍生子鑰，統一 backup encryption + live DB at-rest encryption（SQLCipher）+ 未來簽章用途。詳見下方〈P1-12 範圍〉 |
-| P1-13 | **`map_config.json` seed/runtime 分離（user-data boundary 建立，P1-12 prep）**：現況 `command-dashboard/static/map_config.json` 被 git tracked 又被 server runtime 寫入，造成 (a) 工作樹永遠 dirty、(b) 切 branch 洗掉 user zone/route、(c) snapshot script 把 user data 當 code commit、(d) 上線後場域 / 演習資料活在版控（違反 user data 邊界）。改為 `static/map_config.seed.json`（tracked，factory default）+ `data/map_config.json`（gitignored，runtime），讀寫對稱走 `GET/POST /api/map_config`，startup hook + migration script 兜底既有部署。**建議先於 P1-12b/c 完成**（`data/` 是 backup + SQLCipher 操作邊界）。源於 issue #24 dogfood 副發現（2026-05-28）。**Plan 已備**（4.5h / 半天）|
+| ⏳ P1-13 | **`map_config.json` seed/runtime 分離（user-data boundary 建立，P1-12 prep）**：現況 `command-dashboard/static/map_config.json` 被 git tracked 又被 server runtime 寫入，造成 (a) 工作樹永遠 dirty、(b) 切 branch 洗掉 user zone/route、(c) snapshot script 把 user data 當 code commit、(d) 上線後場域 / 演習資料活在版控（違反 user data 邊界）。改為 `static/map_config.seed.json`（tracked，factory default）+ `data/map_config.json`（gitignored，runtime），讀寫對稱走 `GET/POST /api/map_config`，startup hook + migration script 兜底既有部署。**建議先於 P1-12b/c 完成**（`data/` 是 backup + SQLCipher 操作邊界）。源於 issue #24 dogfood 副發現（2026-05-28）。— 進行中於 [#27](https://github.com/winson3QQ/ICS_COMMAND/issues/27) branch `refactor/issue-27-map-config-seed-runtime`|
+| P1-14 | **Exercise data scoping — events / map_config 加 exercise 綁定**（2026-05-28 dogfood 衍生）：當前 events / map_config / exercises 三者孤立沒外鍵關聯，導致「fresh deploy 後 map 復原成 seed 但 events 表還留上場演習的 8 筆」這種資訊孤兒狀態（dogfood 親見）。修法：(a) events 表加 `exercise_id` 外鍵 + `created_at` < exercise.started_at 的 backfill 策略；(b) map_config.json 的 `evt_*` zone 在 archive 時跟著 exercise 一起歸檔（搬到 backup tarball，不留在 live data/）；(c) GET endpoints 預設只回**當前 active exercise** 的 events / zones（admin override 可看歷史）；(d) UI 加「演習名稱」chip 在 header 強提示 user「現在在看哪場」。需先有 P1-12b 才能驗 reset 流程；建議 P1-12b 完成後接著做。**Out of scope 排除**：跨演習資料 cross-reference / 演習 fork / 多演習並行；那些屬 Wave 6+ 規劃 |
 
 ### Definition of Done
 
@@ -208,13 +209,64 @@ master key (32 bytes，僅 process memory)
 - Fallback opt-in：env file mode 保留作 dev / no-FIDO2 場景，警示明顯
 - 依賴：`python-fido2` (BSD, Yubico)、`libfido2` (BSD-2)、`cryptography` (Apache 2.0)。**全非中國**
 
-**P1-12b：Backup 加密 + GUI 按鈕**（1-2 天）
+**P1-12b：Backup / Restore 加密 + GUI**（2-3 天，**scope 從原本「backup DB」擴張到「整個 `data/` user-data 邊界」+ 三層觸發 + restore**，2026-05-28 修訂）
 
-- backup_db.py 改吃 `BACKUP_KEY` env var（由 P1-12a unlock script 提供，HKDF child[0]）
-- 移除舊 `BACKUP_ENCRYPTION_KEY` env file 路徑（migration script 把舊 backup 用舊 key 解再用新 key 重加密）
-- 新增 `POST /api/admin/backup` endpoint（admin role-only），呼叫 backup_db.py，回 `{backup_file, sha256, size_mb}` + signed download URL（短 TTL）
-- Admin panel 加「立即備份」按鈕 + 進度動畫 + 下載
-- 測試：admin role OK / operator role 403 / 內容可解 / migration 完整
+#### Scope 擴張 rationale
+
+P1-13 確立 `data/` = user-data 邊界後（CLAUDE.md 紅線），backup 應該涵蓋整個 `data/`（含 `ics.db` + `map_config.json` + 未來 user uploads / derived data），而不是 DB-only。原本 1-2 天估時擴成 2-3 天。
+
+#### 三層 backup 觸發模型
+
+| 層 | 觸發 | 目的 | 性質 |
+|---|---|---|---|
+| **L1 手動** | Admin 按「立即備份」按鈕 | 隨時 checkpoint（午休 / 換班 / 不安心 / debug 前） | user-driven，無語意 |
+| **L2 演習結束** | `POST /api/exercises/{id}/archive` 自動觸發 | 「這個 backup = 演習 X 收尾完整狀態」 | 系統 ceremony，**有語意 + metadata** |
+| **L3 防呆** | server shutdown lifespan / `POST /api/admin/reset-db` 之前自動觸發 | 不可逆操作前的最後一道保險 | 系統 enforce，**user 看不到但救得回來** |
+
+#### 細項
+
+- `backup_service.py` 擴張為 `user_data_backup_service.py`（或保留名稱、擴大職責）：tar `data/` 整包（含 ics.db / map_config.json / 未來檔），排除 `data/backups/` 自己防遞迴
+- `backup_db.py` CLI 保留作相容入口（內部呼叫新 service）；新增 `backup_user_data.py` 主入口
+- `BACKUP_KEY` env var（由 P1-12a unlock script 提供，HKDF child[0]）；移除舊 `BACKUP_ENCRYPTION_KEY` 路徑（migration script 把舊 backup 用舊 key 解再用新 key 重加密）
+- `POST /api/admin/backup`（admin role-only）：回 `{backup_file, sha256, size_mb, manifest}`，manifest 列出 backup 含哪些檔讓 restore 可選擇性恢復；附 signed download URL（短 TTL）
+- L2 整合：`/api/exercises/{id}/archive` 處理流：archive 前先呼叫 backup → backup filename 含 exercise_id + name + ended_at（例 `backup-exercise-3-2026-05-28-1830-收容醫療演練.tar.gz.enc`）→ manifest 含 exercise metadata（從 exercises 表抓）→ 寫 audit log `EXERCISE_ENDED_BACKUP exercise_id=3 backup_sha256=...` → UI 顯示「Backup 完成」+ 下載按鈕 + 可選「重置回出廠（下場演習）」
+- **「重置回出廠（下場演習）」明確定義**（2026-05-28 dogfood 觀察）：必須**同時**清 events + map_config + archive 當前演習，三件**不可分**。理由：當前架構下 events / map_config / exercises 三者沒外鍵關聯（見 P1-14），只清 map_config 不清 events 會造成「右側欄留上場 events、地圖看不到對應 marker」的資訊孤兒；user 認知污染、ops 沒意義。具體執行：(1) 觸發 backup（L2 路徑）→ (2) `UPDATE exercises SET status='archived', ended_at=now() WHERE status='active'` → (3) **`DELETE FROM events`**（或加 `archived_at` 欄 soft-delete，看 P1-14 決定）→ (4) `rm data/map_config.json` → (5) 下次 `_loadMapConfig` 觸發 startup ensure() 從 seed 復原。Audit log `EXERCISE_RESET_TO_FACTORY exercise_id=3 events_cleared=42 map_config_reset=true`
+- L3 hook：
+  - lifespan shutdown 攔 SIGTERM 跑 backup（best-effort，超時 30 s 放行）
+  - `/api/admin/reset-db` 強制先 backup（`force=true` 才能跳過，audit 記 `FORCE_RESET_NO_BACKUP`），失敗則 409
+- Admin panel：「立即備份」按鈕 + 進度動畫 + 下載；上下方列出歷史 backup（含 manifest 預覽）
+
+#### Restore（新加）
+
+```
+[admin panel] → [備份管理]
+  📤 還原備份
+  [選擇檔案] backup-exercise-3-2026-05-15.tar.gz.enc
+  ⚠ 將覆蓋當前資料。系統會先自動備份當前狀態為
+     'pre-restore-{timestamp}.tar.gz.enc'
+  [Manifest 預覽：exercise_id=3 / ended_at=2026-05-15 18:30 / 含 ics.db (3 MB) + map_config.json (8 KB)]
+  [☐ 我了解，繼續還原]   [取消]
+```
+
+- `POST /api/admin/restore`（admin role-only）：上傳 tar.gz.enc + key unlock
+- **自動 backup current 為 `pre-restore-{ts}`**（pre-flight 防呆，相當於 L3 第三條 hook）
+- 解密 + 驗 manifest → 顯示給 user 確認 → 替換 `data/` + restart
+- audit log `DATA_RESTORED from={file} pre_restore_backup={pre_ts}`
+- 限制：當前 `status='active'` 的演習不允許 restore（避免覆蓋進行中場次，需先 archive 或強制終止）
+- 失敗情境：解密失敗 / manifest schema 不符 / disk 空間不足 → 不動 current data + 清 tmp + 回 errored response
+
+#### 測試
+
+- admin role 200 / operator role 403（backup + restore 雙路）
+- backup 內容可解 + manifest 對得上
+- migration（舊 backup 升 key 後仍能還原）
+- L2：archive 觸發 backup 寫到指定路徑 + filename 帶 exercise metadata
+- L3：reset-db 沒帶 force 必先 backup；SIGTERM 觸發 shutdown backup
+- restore：pre-restore-{ts} 自動產生；active exercise 拒 restore（409）；解密失敗不動 current
+
+#### 與未來 Wave 6 時間軸 replay 的分工
+
+P1-12b 解的是「**結束時的完整快照**」+ 「**全或無 restore**」場景。Wave 6 才解「**演習中任一時間點**」+ 「**雙視窗對比**」場景（snapshot_repo 累積 COP entity state，UI 時間軸 scrub）。兩者不衝突；P1-12b 是 ops 紀律基本盤，Wave 6 是複盤金本位。
 
 **P1-12c：Live DB at-rest 加密（SQLCipher）**（4-7 天）
 
@@ -239,7 +291,7 @@ master key (32 bytes，僅 process memory)
 #### P1-12 整體 DoD
 
 - [ ] **P1-12a**: FIDO2 enroll + unlock + HKDF 三 script 上線；多 token 冗餘可用；rescue 紙本 SOP 完成
-- [ ] **P1-12b**: Backup 改用 derived key；GUI 按鈕可用（admin role-only）；migration script 過 既有 backup
+- [ ] **P1-12b**: Backup 改用 derived key + 涵蓋整個 `data/`；三層觸發（L1 手動 / L2 演習結束 / L3 防呆）；Restore + 自動 pre-restore-{ts} 防呆；admin role-only GUI；migration script 過既有 backup
 - [ ] **P1-12c**: SQLCipher live DB 加密；既有明文 DB migrate 完成；pytest 全綠（含 DB key inject）；Pi 500 效能 benchmark 不超 +20% latency
 - [ ] **Unified key management 文件**：`docs/security/key-management.md` 含架構圖 + enroll SOP + rescue SOP + rotate SOP
 - [ ] **Threat model 更新**：`docs/compliance/threat_model.md` 加 at-rest encryption 章節
@@ -254,10 +306,25 @@ master key (32 bytes，僅 process memory)
 #### 工時總計
 
 - P1-12a：4-6 天
-- P1-12b：1-2 天
+- P1-12b：2-3 天（2026-05-28 修訂：scope 擴張到整個 `data/` + 三層觸發 + restore）
 - P1-12c：4-7 天
 - 文件 + threat model + 演練：1-2 天
 - **總計**：10-17 天（不可並行做，依序）
+
+#### Bundling 決策（2026-05-28，dogfood 衍生）
+
+P1-12b 與 P1-14 因架構重疊度高（重置 SOP / backup manifest / archive 行為 / UI 面板），建議**合併為單一 sub-phase「P1-12b+14：Exercise lifecycle data management」**（4-5 天，省 2 天 vs 序列做）。
+
+| 重疊維度 | 影響 |
+|---|---|
+| 重置 workflow | P1-12b reset SOP 必須跟 P1-14 events scoping 同時設計，否則先做 P1-12b 用 `DELETE FROM events` 粗暴清，P1-14 來補時要 refactor |
+| Backup manifest schema | P1-14 events 跟 exercise 綁定後 manifest 才能寫「這 backup 屬於 exercise X」；分兩次做 schema 改兩次 |
+| Archive 行為 | P1-12b L2 archive backup 涵蓋 events 歸檔；P1-14 events FK 讓歸檔 query 乾淨；兩者天生綁定 |
+| Admin GUI | 「演習管理」面板自然容納 backup 按鈕 + restore + 演習名稱 chip + 結束按鈕 |
+
+排程：**P1-12a 之後 / P1-12c 之前**。P1-12a 仍是前置（backup 加密 key 來自 HKDF child[0]）。
+
+Phase 1 內部建議順序：P1-10 全部完成 → P1-12a → **P1-12b+14 合併** → P1-12c。
 
 ---
 

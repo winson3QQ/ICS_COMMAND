@@ -3,26 +3,7 @@
     "indoor": {
       "image": null,
       "label": "站內",
-      "zones": [
-        {
-          "id": "zone_shelter",
-          "label": "收容組",
-          "sub": "B 棟",
-          "x_pct": 94.7,
-          "y_pct": 85.5,
-          "node_type": "shelter",
-          "icon": "pin"
-        },
-        {
-          "id": "zone_medical",
-          "label": "醫療組",
-          "sub": "A 棟",
-          "x_pct": 94.9,
-          "y_pct": 73.9,
-          "node_type": "medical",
-          "icon": "pin"
-        }
-      ],
+      "zones": [],
       "flows": []
     },
     "outdoor": {
