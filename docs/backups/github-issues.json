@@ -662,7 +662,7 @@
       "name": ""
     },
     "body": "## ROADMAP item\n\nDogfood follow-up（非 ROADMAP item，但與 P1-12b/P1-14 設計有交集）。\n\n承接 [issue #24](https://github.com/winson3QQ/ICS_COMMAND/issues/24) 的 β 部分 — 原 issue α / C 已 close。\n\n## 問題\n\n當前 map_config / events / decisions 等 user-data 寫入後，**只有當下發起變更的 client 立即看到**；其他 logged-in clients（同台機器、不同 browser / 不同 user）必須手動 hard reload 才會抓到最新狀態。\n\n實際 ops 痛點：\n- Admin 在指揮台畫 zone → operator 在前線 tablet 看不到，要等 operator 主動 reload\n- Operator A 拖事件 marker 到新位置 → operator B 螢幕還在舊位置，誤判\n- 演習中無法多人同時編輯地圖（會互相覆寫，且不知道對方改了什麼）\n\n## 前置（status）\n\n| 前置 | 狀態 |\n|---|---|\n| α — operator 能寫 map_config | ✅ [PR #26](https://github.com/winson3QQ/ICS_COMMAND/pull/26) |\n| P1-13 — map_config seed/runtime 分離 + atomic write | ✅ [PR #28](https://github.com/winson3QQ/ICS_COMMAND/pull/28) |\n| Multi-session stress test infra（Playwright multi-browser-context）| ⏳ 待建立，本 issue scope 內 |\n\n## 歷史教訓 — 不可重蹈\n\n[Commit `58bb5d4`](https://github.com/winson3QQ/ICS_COMMAND/commit/58bb5d4)（已 revert）曾嘗試 5s polling sync，**洗光 disk** 演習資料：\n\n1. T=0：User mutate → `saveMapConfig` POST 飛行中（~50-200ms）\n2. T=0.01：poll 計時恰好觸發 → fetch disk → 拿到 POST 前 stale 狀態\n3. hash diff → `_mapConfig = stale` → 本地新增物件蒸發\n4. T=0.15：POST 落地 disk\n5. T=0.30：下次 saveMapConfig 送 stale local → disk 被洗回 stale\n\n→ β 設計必須包含 **in-flight write protection**（最少 \\`_isSaving\\` flag + post-fetch double-check + server ETag 樂觀鎖）。\n\n## 設計選項（待 plan）\n\n| 機制 | 優 | 缺 | 適合性 |\n|---|---|---|---|\n| **WebSocket push** | 即時、頻寬省、可雙向 | server 需 broadcast、Nginx WS upgrade、connection state mgmt | 高（自然解 race，但 infra 投入較大）|\n| **Long polling + ETag** | 邏輯簡單、無 WS infra | 仍是 polling、需 ETag schema | 中（介於 short poll 與 WS）|\n| **Short polling + ETag** | 最少改 server | 仍會踩 race 雷（需嚴格 in-flight guard）| 低（除非極簡需求）|\n| **Hybrid（WS + poll 兜底）** | 最 robust | 兩套都要做 | 高（演習場域對網路不可靠的容忍）|\n\n## 必須含的防護\n\n不論選哪種機制：\n\n1. **`_isSaving` flag in client** — POST in-flight 時 skip 任何 incoming update（poll 結果 / WS push 都不准）\n2. **Post-fetch double-check** — fetch 回來再確認 `_isSaving` 仍 false 才 apply\n3. **Server-side atomic write** — 已備（P1-13 \\`write_atomic\\`）\n4. **Server-side ETag / version 樂觀鎖** — POST 帶 `If-Match: <last-known-etag>`，不符就 409 + 回最新版本讓 client merge\n5. **Draw mode / modal 開啟時 skip update** — 不打斷 user 編輯\n6. **Logout / page hide 時 cleanup** — clear interval / close WS\n\n## §8 Human Verification Script（草稿）\n\n```bash\n# multi-session stress test — push 前必須跑過\n# 3 browser contexts（admin / commander / operator）各自 10 polygon 不丟\n# 連續拖 20 次 label 不漂位\n# 跨 user 編輯不打架\nplaywright test tests/e2e/multi_session_sync.spec.ts\n```\n\n實作 Playwright multi-context harness 是 β 的 prep work。\n\n## DoD\n\n- [ ] 設計文件 `docs/design/realtime_sync.md` 含機制選擇 rationale\n- [ ] Server ETag 或 version 欄位（schema migration if needed）\n- [ ] Client `_isSaving` flag + ETag header + retry on 409\n- [ ] WS / poll 機制實作（依設計選擇）\n- [ ] Playwright multi-session stress test 寫成（push 前必跑）\n- [ ] Code-review 過\n- [ ] Security-review 過（特別注意 token 在 WS 中如何 propagate）\n- [ ] Dogfood：3 user 同時改不丟資料\n\n## Out of scope\n\n- Multi-machine sync（跨 Pi 站台）→ Wave 7+ Pi federation\n- Conflict resolution 跨多 entity 類型（events / decisions）→ 後續 issue\n- CRDT / OT 級別自動 merge → 過度複雜，本 issue 不做\n\n## Related\n\n- 前驅：issue #24 closed（α / C 解）\n- 設計交集：[P1-12b L2「重置回出廠」](../blob/main/docs/ROADMAP.md) 同樣需要「server 是 SoT」的假設\n- 風險紀錄：commit \\`58bb5d4\\` 已 revert 的歷史\n",
-    "closedAt": null,
+    "closedAt": "2026-05-29T10:06:34Z",
     "comments": [
       {
         "author": {
@@ -851,9 +851,9 @@
     "labels": [],
     "milestone": null,
     "number": 29,
-    "state": "OPEN",
+    "state": "CLOSED",
     "title": "feat(map): real-time multi-user map_config sync (β)",
-    "updatedAt": "2026-05-29T08:49:23Z",
+    "updatedAt": "2026-05-29T10:06:34Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/29"
   }
 ]
