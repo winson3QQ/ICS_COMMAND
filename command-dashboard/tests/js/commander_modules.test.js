@@ -434,6 +434,27 @@ describe('C1-F commander modules', () => {
     expect(mapSource).not.toMatch(/_EVENT_TYPES\[zone\.event_code\]/);
   });
 
+  test('beta_phase2_saveMapConfig_etag_concurrency', () => {
+    // β（issue #29）Phase 2：client If-Match + 409 handle + _isSaving 旗標 SoT。
+    const mapSource = file('static/js/map.js');
+    // If-Match header 帶 W/"<version>"
+    expect(mapSource).toMatch(/'If-Match':\s*etag/);
+    expect(mapSource).toMatch(/const etag = `W\/"\$\{_mapConfig\.version \?\? 0\}"`/);
+    // _isSaving in-flight 旗標
+    expect(mapSource).toMatch(/let _isSaving = false/);
+    expect(mapSource).toMatch(/if \(_isSaving\) \{/);
+    expect(mapSource).toMatch(/_isSaving = true/);
+    expect(mapSource).toMatch(/_isSaving = false/);
+    // 409 衝突 handler
+    expect(mapSource).toMatch(/resp\.status === 409/);
+    expect(mapSource).toMatch(/function _handleMapConfigConflict/);
+    // 成功後 bump 本地 version
+    expect(mapSource).toMatch(/_mapConfig\.version = result\.version/);
+    // _evPopupSubmit rollback 改 id-targeted splice（不用 pop，避免 409 replace 後誤刪 server zone）
+    expect(mapSource).toMatch(/_zones\.findIndex\(\(z\) => z\.id === zone\.id\)/);
+    expect(mapSource).not.toMatch(/_mapConfig\.maps\.outdoor\.zones\.pop\(\)/);
+  });
+
   test('observer_cannot_access_map_objects', () => {
     const authSource = file('static/js/auth.js');
     const mainSource = file('static/js/main.js');

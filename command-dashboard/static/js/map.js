@@ -558,7 +558,15 @@ async function _evPopupSubmit(typeKey, ctx) {
     try {
       await saveMapConfig();
     } catch (e) {
-      _mapConfig.maps.outdoor.zones.pop();
+      // β Phase 2：rollback 改用 id-targeted splice（不用 pop）。理由：saveMapConfig
+      // 遇 409 衝突會把 _mapConfig 整顆換成 server_body，此時 pop() 會誤刪 server 的
+      // 最後一個 zone。findIndex by id：若 _mapConfig 已換（server 沒這 zone）→ -1 no-op
+      // （正確，server 本來就沒有）；若沒換（網路錯誤）→ 找到並移除（正確 rollback）。
+      const _zones = _mapConfig?.maps?.outdoor?.zones;
+      if (Array.isArray(_zones)) {
+        const _idx = _zones.findIndex((z) => z.id === zone.id);
+        if (_idx >= 0) _zones.splice(_idx, 1);
+      }
       console.warn('[map.js] _evPopupSubmit: zone push 已 rollback，事件落 DB 但 map 無 marker', e);
       const panel = el('map-coord-panel');
       if (panel) {
@@ -636,28 +644,80 @@ export function closeMapConfigPanel() {
   el('map-config-overlay')?.style.setProperty('display', 'none');
 }
 
+// β（issue #29）Phase 2：in-flight save 旗標。POST 飛行中時 skip 重入（同 user
+// 連點兩次 dedupe），且未來 Phase 3 的 remote update（WS/poll）會查這旗標避免拿
+// stale 覆蓋飛行中的本地修改（正是 commit 58bb5d4 race 的 client 防護）。
+let _isSaving = false;
+
 export async function saveMapConfig() {
   if (!_mapConfig) return;
-  // 防 silent fail：authFetch 只攔 401，403/5xx 會 silently 流過。
-  // **失敗必須 throw** — 不能 silently return，否則 caller 的 await chain 跑下去會把後續
-  // side effects（PATCH /api/events / alert 成功 / UI ✓ 已儲存 / orphan event push）
-  // 全部執行，造成 DB / disk / in-memory 三方分歧（issue #24 code-review 5 findings）。
-  let resp;
+  // 同一 save 飛行中，第二次呼叫 skip（dedupe）。caller 多半 await，正常不重入；
+  // 但保險：避免兩個 in-flight POST 帶同 version 互撞。
+  if (_isSaving) {
+    console.debug('[map.js] saveMapConfig: 已有 in-flight save，skip');
+    return;
+  }
+  _isSaving = true;
   try {
-    resp = await authFetch(API_BASE + '/api/map_config', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(_mapConfig),
-    });
-  } catch (e) {
-    console.warn('[map.js] saveMapConfig 網路錯誤，map_config 未上 disk', e);
-    throw e;
+    // β Phase 2：帶 If-Match: W/"<version>" → server CAS。version 從 _mapConfig 取，
+    // _loadMapConfig（GET）已把 server 的 version 載進來，save 成功後下面 bump。
+    const etag = `W/"${_mapConfig.version ?? 0}"`;
+    // 防 silent fail（issue #24）：失敗必須 throw，caller await chain 才能短路後續 side effects。
+    let resp;
+    try {
+      resp = await authFetch(API_BASE + '/api/map_config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'If-Match': etag },
+        body: JSON.stringify(_mapConfig),
+      });
+    } catch (e) {
+      console.warn('[map.js] saveMapConfig 網路錯誤，map_config 未上 disk', e);
+      throw e;
+    }
+    // β Phase 2：409 version_conflict → 別人先存了。拿 server_body 覆蓋本地 + 提示
+    // user 重做（Phase 2 minimal：last-write-loses，不自動 merge）。
+    if (resp.status === 409) {
+      let conflict = null;
+      try { conflict = await resp.json(); } catch { /* ignore parse */ }
+      _handleMapConfigConflict(conflict);
+      throw new Error('saveMapConfig CONFLICT（version 過時，已載入 server 版本）');
+    }
+    if (!resp.ok) {
+      const msg = `saveMapConfig 失敗（HTTP ${resp.status}），本地變動未上 disk，refresh 會消失`;
+      console.warn('[map.js]', msg);
+      throw new Error(msg);
+    }
+    // 成功 → bump 本地 version，下次 save 帶新 etag（不然永遠送舊 version → 第二次必 409）
+    try {
+      const result = await resp.json();
+      if (result && typeof result.version === 'number') {
+        _mapConfig.version = result.version;
+      }
+    } catch { /* 舊 server 可能不回 version；忽略，維持寬鬆相容 */ }
+  } finally {
+    _isSaving = false;
   }
-  if (!resp.ok) {
-    const msg = `saveMapConfig 失敗（HTTP ${resp.status}），本地變動未上 disk，refresh 會消失`;
-    console.warn('[map.js]', msg);
-    throw new Error(msg);
+}
+
+// β（issue #29）Phase 2：409 衝突處理。server_body 是 server 當前完整 map_config
+// （含較新 version）。直接覆蓋本地 + re-render，並提示 user「你的變更沒存上，已載入
+// 最新，請重做」。Phase 2 不做 auto-merge（last-write-loses）。
+function _handleMapConfigConflict(conflict) {
+  const serverBody = conflict?.server_body;
+  if (serverBody && typeof serverBody === 'object') {
+    _mapConfig = serverBody;
+    refreshLeafletMarkers();
   }
+  const panel = el('map-coord-panel');
+  if (panel) {
+    panel.style.display = 'flex';
+    const sv = conflict?.server_version ?? '?';
+    panel.innerHTML =
+      `<span style="color:#f85149">⚠ 版本衝突</span>` +
+      `<span style="color:#8b949e;margin-left:8px">他人已更新（v${sv}），畫面已刷新，請重做你的變更</span>`;
+    setTimeout(() => _refreshCoordPanel(), 6000);
+  }
+  console.warn('[map.js] map_config 版本衝突，已載入 server 版本，本地變更需重做');
 }
 
 export function togglePinEditMode() {
