@@ -2,7 +2,7 @@
  * map.js — 指揮情境圖模組（C1-F CSP 模組化）
  *
  * 職責：
- *   - 載入 /static/map_config.json
+ *   - 載入 /api/map_config（P1-13 起，原 /static/map_config.json）
  *   - 管理站內靜態圖與站外 MapLibre 地圖切換（P1-10b 起，原 Leaflet）
  *   - 渲染基本節點 / 事件 marker
  *   - 提供 main.js 事件委派所需的地圖操作函式

@@ -37,13 +37,20 @@ _EMPTY_SHELL: dict[str, Any] = {
 
 
 def ensure(
-    path: Path = MAP_CONFIG_PATH,
-    seed: Path = MAP_CONFIG_SEED,
+    path: Path | None = None,
+    seed: Path | None = None,
 ) -> Path:
     """Startup 階段呼叫。runtime path 不存在 → 從 seed 複製過去（idempotent）。
 
     參數允許覆寫是為了 unit test 用 tmp_path 隔離真實檔案系統。
+    **預設 None + 內部讀模組級常數** — 不直接用 default arg 是因為 default
+    在 function def 時就 bind，pytest conftest monkeypatch 模組屬性後仍指向
+    原始 Path，造成 isolate fixture 失效（PR #28 code-review HIGH 1）。
     """
+    if path is None:
+        path = MAP_CONFIG_PATH
+    if seed is None:
+        seed = MAP_CONFIG_SEED
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.exists():
         log.debug("[map_config_store] runtime exists, skip ensure: %s", path)
@@ -66,14 +73,18 @@ def ensure(
 
 
 def read(
-    path: Path = MAP_CONFIG_PATH,
-    seed: Path = MAP_CONFIG_SEED,
+    path: Path | None = None,
+    seed: Path | None = None,
 ) -> dict[str, Any]:
     """GET /api/map_config：讀 runtime；讀失敗再 fallback seed；都失敗回空殼。
 
     永遠回 dict（不 raise），這樣 GET 不會 500，frontend 拿到空殼也能 render
     （比 NPE 好）。詳細錯誤走 log。
     """
+    if path is None:
+        path = MAP_CONFIG_PATH
+    if seed is None:
+        seed = MAP_CONFIG_SEED
     for candidate, label in [(path, "runtime"), (seed, "seed")]:
         try:
             if candidate.exists():
@@ -91,17 +102,33 @@ def read(
 
 def write_atomic(
     body: dict[str, Any],
-    path: Path = MAP_CONFIG_PATH,
+    path: Path | None = None,
 ) -> None:
-    """POST /api/map_config：write to .tmp → os.replace 為原子操作。
+    """POST /api/map_config：write to .tmp → fsync → os.replace → fsync parent dir。
 
-    crash mid-write 不會留下半檔（issue #24 dogfood 撞過：runtime 中斷 → 空檔，
+    防 crash mid-write 半檔（issue #24 dogfood 撞過：runtime 中斷 → 空檔，
     next read 就以為使用者把所有東西刪光）。
+
+    fsync 完整鏈（PR #28 code-review MEDIUM 3）：os.replace 只保證 rename
+    metadata atomic；power loss 仍可能 metadata 已 commit 但 inode 內容是
+    空 / 截斷。對 Pi 拔電場景必須加 (1) tmp fsync (2) parent dir fsync。
     """
+    if path is None:
+        path = MAP_CONFIG_PATH
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(
-        json.dumps(body, ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
+    # 用 os.open + write + fsync + close 確保 inode 內容 persist 到 disk
+    payload = json.dumps(body, ensure_ascii=False, indent=2).encode("utf-8")
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o644)
+    try:
+        os.write(fd, payload)
+        os.fsync(fd)
+    finally:
+        os.close(fd)
     os.replace(tmp, path)  # 原子 — POSIX rename 保證同 filesystem 內 atomic
+    # fsync 父目錄讓 rename 也 persist（不然 power loss 後 rename 可能消失）
+    dir_fd = os.open(str(path.parent), os.O_RDONLY)
+    try:
+        os.fsync(dir_fd)
+    finally:
+        os.close(dir_fd)

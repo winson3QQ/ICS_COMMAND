@@ -169,13 +169,6 @@ def test_migration_idempotent_no_op_when_runtime_exists(tmp_path: Path, monkeypa
     fake_old.write_text(json.dumps({"should_not_overwrite": True}))
 
     # 直接呼 migrate() 函式（避免 subprocess env path 麻煩）
-    monkeypatch.setattr(
-        "command-dashboard.scripts.migrate_map_config".replace("-", "_").split(".")[-1]
-        if False
-        else "scripts.migrate_map_config",
-        None,
-        raising=False,
-    )
     # 用 inline import 配合 monkeypatch 蓋常數
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
     try:

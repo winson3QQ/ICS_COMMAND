@@ -147,14 +147,25 @@ ensure_app_accessible() {
   # app source 和 venv：ics 需要 read+execute 才能執行 Python
   chmod -R o+rX "${COMMAND_DASHBOARD_DIR}/src"   2>/dev/null || true
   chmod -R o+rX "${COMMAND_DASHBOARD_DIR}/.venv" 2>/dev/null || true
-  # map_config.json 由 app 在執行期寫入。
-  # P1-09 security-review fix: 不用 chmod o+w（world-writable 讓任何 local user 能繞過
-  # POST /api/map_config auth 直接改 tile URL → 指揮官瀏覽器抓 attacker 來源）。
-  # 改 chown 給 ${INSTALL_USER}，仍保留 developer 對 repo 的 ownership，但 map_config.json
-  # 由 ics 獨占。git pull 仍能更新（git 看 inode 不看 owner）。
-  touch "${COMMAND_DASHBOARD_DIR}/static/map_config.json" 2>/dev/null || true
-  chown "${INSTALL_USER}:${INSTALL_GROUP}" "${COMMAND_DASHBOARD_DIR}/static/map_config.json"
-  chmod 0640 "${COMMAND_DASHBOARD_DIR}/static/map_config.json"
+  # P1-13（issue #27）：map_config runtime 檔搬到 data/，舊 static/ 位置已不再使用。
+  # data/ 是 user-data 邊界（gitignored），systemd 起的 app 必須有寫權；建目錄 + chown。
+  # （舊 static/map_config.json 路徑的 touch/chown 已移除；存在的 legacy 檔 git pull 後
+  # 也不會被讀，但若 fresh deploy 從 main pull 已沒這檔，純清乾淨。）
+  mkdir -p "${COMMAND_DASHBOARD_DIR}/data"
+  chown "${INSTALL_USER}:${INSTALL_GROUP}" "${COMMAND_DASHBOARD_DIR}/data"
+  chmod 0750 "${COMMAND_DASHBOARD_DIR}/data"
+  # map_config.json 由 lifespan ensure() 從 seed 自動產生；只要 data/ 有寫權即可。
+  # 若已存在（既有部署 migrate 過來）也 chown 一下確保 systemd 後續寫得進去。
+  if [[ -f "${COMMAND_DASHBOARD_DIR}/data/map_config.json" ]]; then
+    chown "${INSTALL_USER}:${INSTALL_GROUP}" "${COMMAND_DASHBOARD_DIR}/data/map_config.json"
+    chmod 0640 "${COMMAND_DASHBOARD_DIR}/data/map_config.json"
+  fi
+  # Legacy 清理：若舊 static/map_config.json 還存在（舊部署），印警告但不刪
+  # （user 自行決定保留作備份 / 或執行 migration script 後手動清）
+  if [[ -f "${COMMAND_DASHBOARD_DIR}/static/map_config.json" ]]; then
+    echo "[setup] WARN: legacy ${COMMAND_DASHBOARD_DIR}/static/map_config.json 仍存在"
+    echo "[setup]       P1-13 已搬到 data/；可跑 \`python3 ${COMMAND_DASHBOARD_DIR}/scripts/migrate_map_config.py\` 後手動刪除"
+  fi
   echo "[setup] app path traversable by ${INSTALL_USER}: ${REPO_ROOT}"
 }
 
