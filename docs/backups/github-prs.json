@@ -1130,5 +1130,26 @@
     "title": "feat(map): 預設站外底圖 + MGRS 網格 on",
     "updatedAt": "2026-06-01T07:25:18Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/48"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "## 問題\n每次登入後地圖空白（無節點/網格），要 cmd-shift-R 才出現（close #49）。\n\n## 根因\nboot（登入前）就 `GET /api/map_config` → 401 → `_mapConfig=null` → entity layers 從未建立；登入後不重抓。\n\n## 修法\n- `reloadMapConfig()` + `onEnterDashboard` 登入後呼叫（帶 token → 200）。\n- `_ensureEntityLayers` defer 後補 render。\n- eslint globals 補既存 lint 錯。\n\n## 測試\n`reloadMapConfig_refetches_after_login_401`；全 JS **178 passed**、eslint 全綠；實機驗證正常登入直接顯示。\n\nCloses #49\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+    "closedAt": "2026-06-01T09:35:47Z",
+    "comments": [],
+    "createdAt": "2026-06-01T09:35:43Z",
+    "headRefName": "fix/issue-49-map-config-login-race",
+    "labels": [],
+    "mergedAt": "2026-06-01T09:35:47Z",
+    "number": 50,
+    "state": "MERGED",
+    "title": "fix(map): 登入後重抓 map_config — 解地圖空白要 cmd-shift-R",
+    "updatedAt": "2026-06-01T09:35:47Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/50"
   }
 ]
