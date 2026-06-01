@@ -82,7 +82,8 @@ let _mapConfig = null;
 // cop_stream（生命週期在 main.js），透過 setCopStream() 注入參考；render 從它取資料、
 // 編輯器改打 /api/cop/*。zone（節點）/ 事件 / infra / flow 仍走 _mapConfig（事件留 G1b）。
 let _copStream = null;
-let _currentMap = 'indoor';
+// 預設站外（MapLibre 戶外地圖）+ 網格 on：演習主視圖是戶外態勢圖，開站即看到帶網格的站外圖。
+let _currentMap = 'outdoor';
 // _leafletMap：歷史命名，P1-10b 後實為 maplibregl.Map instance（透過 maplibre_core 取得）。
 // 為避免大爆炸 rename，過渡期保留變數名；mapInitialized 旗標更可靠。
 let _leafletMap = null;
@@ -109,11 +110,12 @@ let _pinEditMode = false;
 let _coordDisplayMode = 'mgrs';  // 'mgrs' | 'wgs84'
 // MGRS 格線開關跨 refresh 保留（issue #24 step 1）：用 sessionStorage 持久化，
 // 與既有 _mapView / _currentMap 等狀態的 storage 慣例一致。
-let _mgrsGridVisible = sessionStorage.getItem('_mgrsGridVisible') === '1';
+// 預設 on：沒按過 → 顯示網格；使用者明確關（存 '0'）才隱藏。跨 refresh 持久化。
+let _mgrsGridVisible = sessionStorage.getItem('_mgrsGridVisible') !== '0';
 // PR-G1b：events 從 zones 拆出獨立可見性 —— 事件圖釘與永久節點同走 _zoneLayer，但分別
 // 由 _layerVis.zones（節點）/ _layerVis.events（事件）控制，feature-level 過濾（取消勾「節點」
 // 不再連帶把事件藏掉）。
-const _layerVis = { zones: true, events: true, polygons: true, infra: true, routes: true, mgrs: false };
+const _layerVis = { zones: true, events: true, polygons: true, infra: true, routes: true, mgrs: _mgrsGridVisible };
 
 const _HSINCHU_CENTER = [24.8283, 121.0149];
 const _HSINCHU_ZOOM = 15;
@@ -227,7 +229,7 @@ async function _loadMapConfig() {
   // switchMap 不論載入成功與否都跑（map tab UI / Leaflet container 要初始化）；
   // 載入失敗時 _mapConfig=null，switchMap 內部 `_mapConfig?.maps?.[..]` optional chaining
   // 已保護，不會 NPE，但畫面上 zones / markers 就會空白 — user 可手動 reload 救回。
-  switchMap(sessionStorage.getItem('_currentMap') || 'indoor');
+  switchMap(sessionStorage.getItem('_currentMap') || 'outdoor');
 }
 
 export function getMapConfig() {
