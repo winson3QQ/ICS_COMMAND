@@ -113,6 +113,52 @@ python3 scripts/roadmap_issue_sync.py    # 週期 / phase 結尾跑
 
 ---
 
+## Worktree 衛生（每個 session 照辦）
+
+> 背景：Code session 常在 `git worktree`（`.claude/worktrees/<name>/`）裡開工。每個 worktree 共享 `.git`，但 **working tree 與 `command-dashboard/data/` 各自獨立**。`data/` 是 gitignored runtime 資料，**不隨 git 走、不繼承主 repo**。
+
+### 隔離事實（先理解再操作）
+
+| 項目 | 主 repo | 各 worktree |
+|---|---|---|
+| `command-dashboard/data/ics.db`（帳號 / first-run 狀態）| 你的正式資料 | **各自一份**，多半是空/半空 DB |
+| `command-dashboard/data/map_config.json` | 正式 | 各自一份 |
+| code（tracked 檔）| — | 共享 `.git`，branch 隔離 |
+
+`DATA_DIR` 由程式碼檔案位置（`__file__`）推導，所以「從哪個 worktree 起 server，就讀寫那個 worktree 的 `data/`」。
+
+### 常見陷阱：worktree 起的 server，地圖「只剩底圖能動」
+
+**症狀**：登入後地圖底圖可縮放/平移，但畫 zone / route / 拖事件 / 任何寫入都失效。
+**根因**：worktree 的空 DB **first-run 首次設定沒完成** → `first_run_gate` 對所有 `/api/*` 回 **423 Locked**；底圖走 `/static/`（白名單）所以照動，其餘全擋。
+**判定**：`curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8000/api/map_config` → 423 即中獎。
+**解法**（擇一）：
+1. 從**主 repo** 起 server（`cd <主 repo> && ./start_mac.sh`），用已完成 first-run 的正式 DB。
+2. 在該 worktree DB 完成 first-run：用 `~/.ics/first_run_token` 的初始 PIN 登入 admin → 改 PIN（`POST /api/auth/change-initial-pin`）→ gate 解除。
+
+### Merge 後清理 worktree
+
+merge 進 main 後，worktree 已無獨有的 tracked 內容（獨有的只剩可丟棄的 `data/`），**可安全移除**。規則：
+
+1. **用 `git worktree remove <path>`，不要 `rm -rf`** —— `rm` 會留下 `.git/worktrees/` metadata 殘骸，變成孤兒登記。
+2. **砍前確認**：該 worktree branch 已 merge 進 main（`git rev-list --count main..<branch>` = 0）且 `git status --porcelain` 乾淨。**有未提交/未 merge 的工作不准砍**。
+3. **不能砍自己所在的 worktree** —— 先 `cd` 回主 repo 再 remove。
+4. **清孤兒登記**：`git worktree prune`（掃掉已被 `rm` 掉但登記還在的）。
+
+```bash
+# 標準清理流程(在主 repo 跑)
+cd <主 repo>
+git worktree list                                   # 先看現況
+git -C <wt> status --porcelain                       # 確認乾淨
+git rev-list --count main..<branch>                  # 確認 = 0(已 merge)
+git worktree remove .claude/worktrees/<name>         # 安全砍
+git worktree prune                                   # 清孤兒
+```
+
+> git 操作仍遵守 CLAUDE.md：**等 Human 明確指示才動**。本節是「怎麼判斷可砍 + 怎麼砍對」，不是授權自動砍。
+
+---
+
 ## CLAUDE.md 的角色
 
 CLAUDE.md 是 **policy SoT**（紅線、語言、git 規則、版號規則）。
