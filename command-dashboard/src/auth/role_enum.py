@@ -89,11 +89,13 @@ def allowed_roles_for(method: str, path: str) -> frozenset[str] | None:
         return SYSADMIN_ONLY
     if path.startswith("/api/config/"):
         return READ_ROLES if method == "GET" else COMMAND_ROLES
-    # 拆 case：map_config 是 operator 日常操作（畫 zone / route / 拖事件位置），
-    # 必須開放給 WRITE_ROLES；upload-image 屬於系統設定（更換底圖），維持 COMMAND_ROLES。
-    # 源於 issue #24 dogfood：operator 改動 POST 被 403，frontend 不檢 resp.ok 形成 silent fail。
+    # 拆 case：map_config 寫入（POST）是 operator 日常操作（畫 zone / route / 拖事件位置），
+    # 開放給 WRITE_ROLES；但 GET（看地圖）必須含 observer，否則觀察員登入後 _loadMapConfig
+    # 吃 403、地圖整片載不出。故分 method：GET → READ_ROLES、寫入 → WRITE_ROLES。
+    # upload-image 屬系統設定（更換底圖），維持 COMMAND_ROLES。
+    # 源於 issue #24 dogfood（operator POST 被 403 silent fail）+ observer 看不到地圖（後續發現）。
     if path == "/api/map_config":
-        return WRITE_ROLES
+        return READ_ROLES if method == "GET" else WRITE_ROLES
     if path == "/api/map/upload-image":
         return COMMAND_ROLES
     if path.startswith("/api/ai/recommendations/"):
