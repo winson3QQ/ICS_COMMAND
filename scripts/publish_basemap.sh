@@ -57,15 +57,18 @@ fi
 if [ -n "${CODEBERG_TOKEN:-}" ]; then
   echo "[Codeberg] release $TAG @ $BM_CB_REPO"
   api="$BM_CB_BASE/api/v1/repos/$BM_CB_REPO"
-  rid="$(curl -fsS -H "Authorization: token $CODEBERG_TOKEN" "$api/releases/tags/$TAG" 2>/dev/null \
+  # token 走 --config + process substitution（printf 為 bash builtin）→ 不進 argv、不落磁碟，
+  # 避免本機他人由 /proc/<pid>/cmdline 讀到 write-scoped token（review #62 security MED）。
+  _cb_hdr() { printf 'header = "Authorization: token %s"\n' "$CODEBERG_TOKEN"; }
+  rid="$(curl -fsS --config <(_cb_hdr) "$api/releases/tags/$TAG" 2>/dev/null \
         | "$PY" -c 'import json,sys;print(json.load(sys.stdin).get("id",""))' 2>/dev/null || true)"
   if [ -z "$rid" ]; then
-    rid="$(curl -fsS -X POST -H "Authorization: token $CODEBERG_TOKEN" -H "Content-Type: application/json" \
+    rid="$(curl -fsS -X POST --config <(_cb_hdr) -H "Content-Type: application/json" \
           -d "{\"tag_name\":\"$TAG\",\"name\":\"Basemap $VERSION\",\"body\":\"taiwan.pmtiles ($VERSION) sha256=$SHA. ODbL © OpenStreetMap contributors.\"}" \
           "$api/releases" | "$PY" -c 'import json,sys;print(json.load(sys.stdin)["id"])')"
   fi
   [ -n "$rid" ] || _die "Codeberg release id 取得失敗"
-  curl -fsS -X POST -H "Authorization: token $CODEBERG_TOKEN" \
+  curl -fsS -X POST --config <(_cb_hdr) \
     -F "attachment=@$FILE;filename=$ASSET" \
     "$api/releases/$rid/assets?name=$ASSET" >/dev/null
   echo "[Codeberg] ✓"

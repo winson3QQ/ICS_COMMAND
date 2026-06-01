@@ -49,6 +49,8 @@ let _basemapTheme = sessionStorage.getItem('_basemapTheme') || DEFAULT_BASEMAP_T
 let _pmtilesProtocolRegistered = false;
 // 目前 basemap 佔用的 layer id（用於主題切換時精準移除底圖層，不動 overlay 層）。
 let _basemapLayerIds = [];
+// 主題切換 in-flight 旗標（防快速連點重入 / 重複 fetch）。
+let _themeSwitching = false;
 
 /** 註冊 MapLibre 的 pmtiles:// protocol（idempotent）。回傳是否成功（pmtiles.js 是否已載入）。*/
 function _ensurePmtilesProtocol() {
@@ -86,35 +88,44 @@ export function getBasemapTheme() {
  */
 export async function setBasemapTheme(theme) {
   if (!_map || !BASEMAP_STYLES[theme]) return false;
-  if (!_ensurePmtilesProtocol()) return false;   // 無 pmtiles 無法載底圖
+  if (_themeSwitching) return false;              // in-flight 防重入（review #62 MED）
+  if (!_ensurePmtilesProtocol()) return false;    // 無 pmtiles 無法載底圖
+  _themeSwitching = true;
   const map = _map;
-  let style;
   try {
-    style = await fetch(basemapStyleUrl(theme)).then((r) => r.json());
+    const style = await fetch(basemapStyleUrl(theme)).then((r) => r.json());
+    const newIds = (style.layers || []).map((l) => l.id);
+    // 要移除的現有底圖層 id：已追蹤則用追蹤值；首次切換（'load' 尚未填追蹤值）退而用
+    // **新 style 的 layer id**（兩主題 layer id 結構相同 → 等同目前底圖層）。
+    // **絕不**用 getStyle().layers（含 overlay）當 fallback——否則會誤刪 overlay
+    //（review 後快速連點實測抓到的 regression）。
+    const removeIds = _basemapLayerIds.length ? _basemapLayerIds : newIds;
+    for (const id of removeIds) {
+      if (map.getLayer(id)) map.removeLayer(id);
+    }
+    // 2. 確保底圖 source 在（pmtiles source 共用；缺才補）
+    for (const [sid, sdef] of Object.entries(style.sources || {})) {
+      if (!map.getSource(sid)) map.addSource(sid, sdef);
+    }
+    // 3. 插入點 = 目前最底層（即最底 overlay），讓底圖層落在所有 overlay 之下
+    const remaining = map.getStyle().layers;
+    const beforeId = remaining.length ? remaining[0].id : undefined;
+    // 4. 依序加回另一主題的底圖層（在 beforeId 之下，保持底圖在最底）
+    _basemapLayerIds = [];
+    for (const layer of style.layers || []) {
+      if (map.getLayer(layer.id)) map.removeLayer(layer.id);  // 防護：id 已存在先移除（race/重入）
+      map.addLayer(layer, beforeId);
+      _basemapLayerIds.push(layer.id);
+    }
+    _basemapTheme = theme;
+    sessionStorage.setItem('_basemapTheme', theme);
+    return true;
   } catch (e) {
-    console.error('[maplibre_core] 載入 basemap style 失敗', e);
+    console.error('[maplibre_core] 切換 basemap 主題失敗', e);
     return false;
+  } finally {
+    _themeSwitching = false;
   }
-  // 1. 移除現有底圖層
-  for (const id of _basemapLayerIds) {
-    if (map.getLayer(id)) map.removeLayer(id);
-  }
-  // 2. 確保底圖 source 在（pmtiles source 共用；缺才補）
-  for (const [sid, sdef] of Object.entries(style.sources || {})) {
-    if (!map.getSource(sid)) map.addSource(sid, sdef);
-  }
-  // 3. 插入點 = 目前最底層（即最底 overlay），讓底圖層落在所有 overlay 之下
-  const remaining = map.getStyle().layers;
-  const beforeId = remaining.length ? remaining[0].id : undefined;
-  // 4. 依序加回另一主題的底圖層（在 beforeId 之下，保持底圖在最底）
-  _basemapLayerIds = [];
-  for (const layer of style.layers || []) {
-    map.addLayer(layer, beforeId);
-    _basemapLayerIds.push(layer.id);
-  }
-  _basemapTheme = theme;
-  sessionStorage.setItem('_basemapTheme', theme);
-  return true;
 }
 
 let _map = null;
@@ -233,13 +244,16 @@ export function initMaplibre(containerId, callbacks = {}) {
   // 容器尺寸變動補 resize（取代 Leaflet invalidateSize）
   setTimeout(() => _map.resize(), 0);
 
-  // P1-10c 主題切換：記錄初始 basemap 佔用的 layer id（供 setBasemapTheme 精準移除，
-  // 不誤刪 overlay）。兩主題 layer id 結構相同，取初始主題即可。
+  // P1-10c 主題切換：初始 style 載入後，從 live map 記錄 basemap 佔用的 layer id
+  // （供 setBasemapTheme 精準移除，不誤刪 overlay）。此 once('load') 在 map.js
+  // _ensureEntityLayers 的 load handler 之前註冊（initMaplibre 先跑），故此刻 overlay
+  // 尚未加入，getStyle().layers 恰為純 basemap 層。
+  // 改從 live map 取（取代先前獨立 fetch）— 消除「fetch 未回前就切主題 → addLayer
+  // 撞重複 id」的 race（review #62 HIGH）。
   if (havePmtiles) {
-    fetch(basemapStyleUrl(_basemapTheme))
-      .then((r) => r.json())
-      .then((s) => { _basemapLayerIds = (s.layers || []).map((l) => l.id); })
-      .catch(() => {});
+    _map.once('load', () => {
+      _basemapLayerIds = _map.getStyle().layers.map((l) => l.id);
+    });
   }
 
   return _map;

@@ -72,7 +72,9 @@ acquire() {
   local cb_url="$BM_CB_BASE/$BM_CB_REPO/releases/download/$BM_TAG/$BM_ASSET"
   echo "[取得] Codeberg release：$cb_url"
   if [ -n "${CODEBERG_TOKEN:-}" ]; then
-    curl -fL --retry 3 -H "Authorization: token $CODEBERG_TOKEN" -o "$TMP" "$cb_url" \
+    # token 走 --config + process substitution（printf 為 bash builtin）→ 不進 argv、不落磁碟，
+    # 避免本機他人由 /proc/<pid>/cmdline 讀到 token（review #62 security MED）。
+    curl -fL --retry 3 --config <(printf 'header = "Authorization: token %s"\n' "$CODEBERG_TOKEN") -o "$TMP" "$cb_url" \
       || _die "Codeberg 下載失敗（private 需正確 CODEBERG_TOKEN）"
   else
     curl -fL --retry 3 -o "$TMP" "$cb_url" \

@@ -23,10 +23,15 @@ _die() { echo "✗ $*" >&2; exit 1; }
 mf_get() {
   "$PY" - "$MANIFEST" "$1" <<'PYEOF'
 import json, sys
-m = json.load(open(sys.argv[1], encoding="utf-8"))
-cur = m
-for part in sys.argv[2].split("."):
-    cur = cur[part]
+try:
+    m = json.load(open(sys.argv[1], encoding="utf-8"))
+    cur = m
+    for part in sys.argv[2].split("."):
+        cur = cur[part]
+except (KeyError, TypeError):
+    sys.stderr.write("manifest 缺欄位：%s\n" % sys.argv[2]); sys.exit(1)
+except Exception as e:  # JSON 壞 / 檔讀不到
+    sys.stderr.write("manifest 解析失敗：%s\n" % e); sys.exit(1)
 print(cur)
 PYEOF
 }
