@@ -1009,5 +1009,25 @@
     "title": "P1-10c 實作（步驟 1-3）: pmtiles protocol + dark/muted-day style + 底圖點亮",
     "updatedAt": "2026-06-01T13:52:56Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/55"
+  },
+  {
+    "assignees": [],
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "body": "## 現象（dogfood，2026-06-01，P1-10c 底圖驗證時發現）\n\n接上真實底圖後 zoom out 到一定程度（約 zoom < 6），**MGRS 格線逐漸消失 / 不易出現**。中高 zoom（如 zoom 7，台灣滿版）正常。\n\n## 根因（已定位）\n\n`static/js/map/coord_tools.js` `redraw()`：\n1. **單一 UTM zone 投影**：格線用畫面中心的 `zn = ctr.zoneNum`（台灣=zone 51，中央經線 123°E）計算。zoom out 後視野橫跨多個 UTM zone，離中央經線越遠 `utmToLatLng(zn, …)` 越失真 → 點變非有限值 → 被 `if (!Number.isFinite…) continue`（line ~465）跳過 → 格線消失。\n2. **間距上限 100km**：`mgrsGridSpacing` `levels=[1…100000]`，無比 100km 更粗的 GZD 層。\n\n## 性質：既有限制，非 P1-10c regression\n\n- `coord_tools.js` 未被 P1-10c（#55）改動；此邏輯自 P1-10b step 10（#19）即如此。\n- **code 自身 docstring（coord_tools.js:272-274）已明載**：「GZD 6° 經度帶 / 8° 緯度帶 boundary 渲染（zoom < 6 才有意義）」**留 P2 處理**。\n- 底圖點亮只是讓 operator 有縮放參照、自然 zoom out，把這個既有 gap 顯出來。\n\n## 範圍：P2-05\n\nROADMAP **P2-05** 明載「MGRS grid 一併於本項實作」。低 zoom / 跨 UTM zone / GZD 帶的完整 grid 屬該項。修法方向（依 CLAUDE.md「平台慣例優先、一定有先例」對齊 ATAK/TAK）：\n- 多 UTM zone 感知（跨 zone 邊界分段算，不靠單一 zn 外推）\n- 新增 GZD 6°×8° 帶層作為 < 100km 之上的粗層\n- 低 zoom 用 GZD 帶取代 100km，避免整片消失\n\n## 暫態\n\n中高 zoom 操作不受影響；P2-05 前低 zoom 可暫視為「看全局用底圖、判讀座標時 zoom in」。\n",
+    "closedAt": null,
+    "comments": [],
+    "createdAt": "2026-06-01T14:05:18Z",
+    "labels": [],
+    "milestone": null,
+    "number": 56,
+    "state": "OPEN",
+    "title": "MGRS 格線低 zoom（<6）/ 跨 UTM zone 消失 — 補多 zone + GZD 帶（P2-05）",
+    "updatedAt": "2026-06-01T14:05:18Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/56"
   }
 ]
