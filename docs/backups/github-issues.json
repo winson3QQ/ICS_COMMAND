@@ -1079,15 +1079,15 @@
       "name": ""
     },
     "body": "## 來源\nP1-10c（#57/#59/#61）merge 後補做 /code-review + /security-review（先前漏跑 PROCESS.md step 6-7）。\n\n## 修（本 issue）\n- **HIGH（code）**：主題切換 init race。`_basemapLayerIds` 由獨立 async fetch 填，若使用者在 fetch 完成前點 ☀/☾，removeLayer 迴圈空轉、addLayer 撞「layer already exists」（兩 style 69 個 id 相同）→ 切換中斷。改：① 移除冗餘 fetch，改在 map 'load' 後從 live map 取 basemap layer id；② addLayer 前加 `if getLayer(id) removeLayer` 防護。\n- **MED（code）**：無 in-flight guard → 快速連點會重入/重複 fetch。加 `_themeSwitching` 旗標。\n- **MED（code）**：`_basemap_lib.sh` mf_get 缺 key 時噴 python traceback。改友善錯誤。\n- **MED（security）**：`CODEBERG_TOKEN` 走 `curl -H` argv → 本機其他使用者可由 /proc/<pid>/cmdline 讀到（publish 為 write-scoped token）。改用 `curl --config <(...)` 不走 argv。\n\n## 另開 follow-up（pre-existing，非 P1-10c 引入）\n- LOW：`config.py` 的 `/api/map/tiles/` exempt prefix 是 dead（實際路由 `/tiles/...` 無 prefix）→ 對齊或移除。\n- LOW：`/tiles/pmtiles/{filename}` 缺 `resolve()` 容器內檢查（path traversal 硬化）。\n- LOW：CSP enforce 確認 connect-src/worker-src 涵蓋 pmtiles/style（屬 P1-10h）。\n- LOW：vendored pmtiles.js SHA 僅文件釘版，無 runtime/CI 驗。\n",
-    "closedAt": null,
+    "closedAt": "2026-06-01T15:42:26Z",
     "comments": [],
     "createdAt": "2026-06-01T15:30:35Z",
     "labels": [],
     "milestone": null,
     "number": 62,
-    "state": "OPEN",
+    "state": "CLOSED",
     "title": "P1-10c review fixes: 主題切換 init race(HIGH) + token argv 曝露(MED) + 2 MED",
-    "updatedAt": "2026-06-01T15:30:35Z",
+    "updatedAt": "2026-06-01T15:42:26Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/62"
   }
 ]

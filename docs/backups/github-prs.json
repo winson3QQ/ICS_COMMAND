@@ -1277,5 +1277,26 @@
     "title": "feat(map): P1-10c 步驟 4 — dark↔muted-day 主題切換（#60）",
     "updatedAt": "2026-06-01T15:23:17Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/61"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "Closes #62. post-merge /code-review + /security-review（補跑 PROCESS.md step 6-7）發現的修正。\n\n## 修\n- **HIGH（code）主題切換 init race**：原 `_basemapLayerIds` 由獨立 async fetch 填，未回前點切換 → removeLayer 空轉、addLayer 撞重複 id。改：移除冗餘 fetch（'load' 後從 live map 記）、要移除的 id 用「追蹤值 / 首次用新 style 的 layer id」（**不**用 getStyle().layers 以免誤刪 overlay）、+ in-flight guard + addLayer 前防護。\n- **MED（security）token argv 曝露**：`CODEBERG_TOKEN` 改走 `curl --config <(printf...)`（builtin，不進 argv/磁碟），provision + publish 共 4 處。\n- **MED（code）mf_get**：缺 manifest key 改友善錯誤 + exit 1。\n\n## §8 驗證（真實 Chrome）\nimperative + **快速連點**：dark↔muted-day overlay 每次存活且最上層、in-flight guard 擋第二次並發、layer 數穩定(70)、0 error。**修正過程中自己抓到一個 regression**（fallback 用 getStyle().layers 會刪 overlay）並修掉、再驗通過。vitest 178 passed；eslint clean；bash -n OK；doc_sync exit 0。\n\n## pre-existing LOW（非本批引入，建議另開 follow-up）\n- config.py `/api/map/tiles/` dead exempt prefix（實際路由 /tiles/ 無 prefix）\n- /tiles/pmtiles/{filename} 缺 resolve() 容器檢查（path traversal 硬化）\n- CSP enforce 確認 connect-src/worker-src（屬 P1-10h）\n- vendored pmtiles.js SHA 僅文件釘版，無 runtime/CI 驗",
+    "closedAt": "2026-06-01T15:42:24Z",
+    "comments": [],
+    "createdAt": "2026-06-01T15:37:23Z",
+    "headRefName": "fix/p1-10c-review",
+    "labels": [],
+    "mergedAt": "2026-06-01T15:42:24Z",
+    "number": 63,
+    "state": "MERGED",
+    "title": "fix(map+deploy): P1-10c review 修正 — 主題切換 race(HIGH) + token argv 曝露(MED)（#62）",
+    "updatedAt": "2026-06-01T15:42:27Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/63"
   }
 ]
