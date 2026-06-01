@@ -292,8 +292,12 @@ export class MgrsGrid {
   constructor(map, opts = {}) {
     if (!map) throw new Error('MgrsGrid: map required');
     this.map = map;
+    // 顏色為 dark 底圖預設；muted-day（淺底）對比不足，由 applyTheme() 換成深色系。
     this.primaryColor = opts.primaryColor ?? 'rgba(150, 200, 255, 0.45)';
     this.secondaryColor = opts.secondaryColor ?? 'rgba(150, 200, 255, 0.18)';
+    this.labelColor = opts.labelColor ?? '#e6edf3';
+    this.haloColor = opts.haloColor ?? '#0d1117';
+    this.designatorColor = opts.designatorColor ?? 'rgba(180, 215, 255, 0.55)';
     this.primaryWidth = opts.primaryWidth ?? 1.5;
     this.secondaryWidth = opts.secondaryWidth ?? 1;
     this.labelLeftPx = opts.labelLeftPx ?? 24;
@@ -377,8 +381,8 @@ export class MgrsGrid {
           ],
         },
         paint: {
-          'text-color': '#e6edf3',
-          'text-halo-color': '#0d1117',
+          'text-color': this.labelColor,
+          'text-halo-color': this.haloColor,
           'text-halo-width': 1.5,
           'text-opacity': 0.85,
         },
@@ -402,13 +406,37 @@ export class MgrsGrid {
           'text-letter-spacing': 0.1,
         },
         paint: {
-          'text-color': 'rgba(180, 215, 255, 0.55)',  // 偏淡藍白，與 grid line 同調但更亮
-          'text-halo-color': '#0d1117',
+          'text-color': this.designatorColor,  // 與 grid line 同調但更亮（dark）/ 更深（day）
+          'text-halo-color': this.haloColor,
           'text-halo-width': 2,
         },
       });
     }
     this._installed = true;
+  }
+
+  /**
+   * 依底圖主題換 grid 配色（P1-10c 步驟 4 dogfood）。
+   * dark 底圖用淺藍 + 淺字深 halo；muted-day 淺底用深藍 + 深字淺 halo，確保對比。
+   * grid 非 affiliation/severity 色，doctrine 允許單一 muted 藍作 grid 識別色。
+   * 在 layer 安裝前呼叫只更新 instance 欄位（供 _install 取用）；安裝後呼叫同步 live paint。
+   * @param {string} theme 'dark' | 'muted-day'
+   */
+  applyTheme(theme) {
+    const day = theme === 'muted-day';
+    this.primaryColor    = day ? 'rgba(30, 64, 120, 0.62)' : 'rgba(150, 200, 255, 0.45)';
+    this.secondaryColor  = day ? 'rgba(30, 64, 120, 0.30)' : 'rgba(150, 200, 255, 0.18)';
+    this.labelColor      = day ? '#14213d' : '#e6edf3';
+    this.haloColor       = day ? 'rgba(255, 255, 255, 0.9)' : '#0d1117';
+    this.designatorColor = day ? 'rgba(30, 64, 120, 0.7)' : 'rgba(180, 215, 255, 0.55)';
+    const m = this.map;
+    const set = (id, prop, val) => { if (m.getLayer(id)) m.setPaintProperty(id, prop, val); };
+    set('mgrs-grid-lines-primary', 'line-color', this.primaryColor);
+    set('mgrs-grid-lines-secondary', 'line-color', this.secondaryColor);
+    set('mgrs-grid-labels', 'text-color', this.labelColor);
+    set('mgrs-grid-labels', 'text-halo-color', this.haloColor);
+    set('mgrs-grid-designators', 'text-color', this.designatorColor);
+    set('mgrs-grid-designators', 'text-halo-color', this.haloColor);
   }
 
   /** 顯示 / 隱藏 grid。隱藏時 source 清空（節省 GPU） */

@@ -47,6 +47,8 @@ const BASEMAP_STYLES = {
 const DEFAULT_BASEMAP_THEME = 'dark';
 let _basemapTheme = sessionStorage.getItem('_basemapTheme') || DEFAULT_BASEMAP_THEME;
 let _pmtilesProtocolRegistered = false;
+// 目前 basemap 佔用的 layer id（用於主題切換時精準移除底圖層，不動 overlay 層）。
+let _basemapLayerIds = [];
 
 /** 註冊 MapLibre 的 pmtiles:// protocol（idempotent）。回傳是否成功（pmtiles.js 是否已載入）。*/
 function _ensurePmtilesProtocol() {
@@ -66,6 +68,53 @@ export function basemapStyleUrl(theme) {
 /** 目前 basemap 主題（'dark' | 'muted-day'）。*/
 export function getBasemapTheme() {
   return _basemapTheme;
+}
+
+/**
+ * 切換 basemap 主題（dark ↔ muted-day）。
+ *
+ * 設計（不走 map.setStyle）：setStyle 會丟棄所有 runtime overlay（EntityLayers /
+ * MGRS grid / draw tools / event popup / drag handles）+ 其 listener，重建成本高且
+ * 易漏。改為**只抽換底圖層**——移除目前 basemap layer、把另一主題的 basemap layer
+ * 重新加在 overlay 之下（beforeId = 最底 overlay），overlay 完全不動。
+ *
+ * 兩主題共用同一 pmtiles source（同檔），layer id 由 @protomaps/basemaps 決定，
+ * 結構相同、僅 paint 不同；以實際加入的 id 追蹤，跨主題差異也安全。
+ *
+ * @param {string} theme 'dark' | 'muted-day'
+ * @returns {Promise<boolean>} 是否切換成功
+ */
+export async function setBasemapTheme(theme) {
+  if (!_map || !BASEMAP_STYLES[theme]) return false;
+  if (!_ensurePmtilesProtocol()) return false;   // 無 pmtiles 無法載底圖
+  const map = _map;
+  let style;
+  try {
+    style = await fetch(basemapStyleUrl(theme)).then((r) => r.json());
+  } catch (e) {
+    console.error('[maplibre_core] 載入 basemap style 失敗', e);
+    return false;
+  }
+  // 1. 移除現有底圖層
+  for (const id of _basemapLayerIds) {
+    if (map.getLayer(id)) map.removeLayer(id);
+  }
+  // 2. 確保底圖 source 在（pmtiles source 共用；缺才補）
+  for (const [sid, sdef] of Object.entries(style.sources || {})) {
+    if (!map.getSource(sid)) map.addSource(sid, sdef);
+  }
+  // 3. 插入點 = 目前最底層（即最底 overlay），讓底圖層落在所有 overlay 之下
+  const remaining = map.getStyle().layers;
+  const beforeId = remaining.length ? remaining[0].id : undefined;
+  // 4. 依序加回另一主題的底圖層（在 beforeId 之下，保持底圖在最底）
+  _basemapLayerIds = [];
+  for (const layer of style.layers || []) {
+    map.addLayer(layer, beforeId);
+    _basemapLayerIds.push(layer.id);
+  }
+  _basemapTheme = theme;
+  sessionStorage.setItem('_basemapTheme', theme);
+  return true;
 }
 
 let _map = null;
@@ -183,6 +232,15 @@ export function initMaplibre(containerId, callbacks = {}) {
 
   // 容器尺寸變動補 resize（取代 Leaflet invalidateSize）
   setTimeout(() => _map.resize(), 0);
+
+  // P1-10c 主題切換：記錄初始 basemap 佔用的 layer id（供 setBasemapTheme 精準移除，
+  // 不誤刪 overlay）。兩主題 layer id 結構相同，取初始主題即可。
+  if (havePmtiles) {
+    fetch(basemapStyleUrl(_basemapTheme))
+      .then((r) => r.json())
+      .then((s) => { _basemapLayerIds = (s.layers || []).map((l) => l.id); })
+      .catch(() => {});
+  }
 
   return _map;
 }

@@ -27,6 +27,8 @@ import {
   clearCoordPin as _clearCoordPinCore,
   getCoordPinLatLng as _getCoordPinLatLng,
   hasCoordPin as _hasCoordPin,
+  setBasemapTheme as _setBasemapTheme,
+  getBasemapTheme as _getBasemapTheme,
 } from './map/maplibre_core.js';
 import {
   EntityLayer,
@@ -336,7 +338,30 @@ export function applyMapRoleUiGuards() {
   tools.innerHTML =
     `<button class="map-btn" id="btn-layer-panel" data-action="toggleLayerPanel" title="圖層面板" style="font-size:14px;">☰</button>
      ${objectTools}
-     <button class="map-btn" id="btn-mgrs-grid"  data-action="toggleMgrsGrid"  title="MGRS 格線" style="font-size:13px;">⊞</button>`;
+     <button class="map-btn" id="btn-mgrs-grid"  data-action="toggleMgrsGrid"  title="MGRS 格線" style="font-size:13px;">⊞</button>
+     <button class="map-btn${_getBasemapTheme() === 'muted-day' ? ' active' : ''}" id="btn-theme-day"   data-action="setBasemapTheme" data-theme="muted-day" title="白天底圖（淺灰）" style="font-size:13px;">☀</button>
+     <button class="map-btn${_getBasemapTheme() === 'dark' ? ' active' : ''}" id="btn-theme-night" data-action="setBasemapTheme" data-theme="dark"      title="夜間底圖（深）"   style="font-size:13px;">☾</button>`;
+}
+
+/** 同步日/夜分段鈕高亮（segmented，active 標目前主題；對齊站內/站外 tab 慣例）。*/
+function _syncThemeButtons(theme) {
+  el('btn-theme-day')?.classList.toggle('active', theme === 'muted-day');
+  el('btn-theme-night')?.classList.toggle('active', theme === 'dark');
+}
+
+/**
+ * 選擇 basemap 主題（segmented：☀ muted-day / ☾ dark，直接選非 toggle）。
+ * 走 maplibre_core.setBasemapTheme 的「只抽換底圖層」路徑，overlay（節點/範圍/路線/
+ * 事件/MGRS）完全不動。
+ */
+export function setBasemapTheme(theme) {
+  if (theme !== 'dark' && theme !== 'muted-day') return;
+  if (_getBasemapTheme() === theme) { _syncThemeButtons(theme); return; }
+  _setBasemapTheme(theme).then((ok) => {
+    if (!ok) return;
+    _syncThemeButtons(theme);
+    _mgrsGrid?.applyTheme(theme);   // grid 配色跟著底圖主題走（淺底改深色，避免淺藍糊掉）
+  });
 }
 
 export function renderMapOverlay() {
@@ -1121,6 +1146,7 @@ function _ensureEntityLayers() {
   // Step 10：MGRS grid — 透過 MgrsGrid 抽象走 MapLibre GeoJSON source + line/symbol
   // layer。Toggle 走 setVisible()，redraw() 在 moveend 自動 trigger。
   _mgrsGrid = new MgrsGrid(map);
+  _mgrsGrid.applyTheme(_getBasemapTheme());   // 依目前底圖主題定 grid 配色（淺底用深色，對比）
   // 跨 refresh 持久化（issue #24 step 1）：sessionStorage 載到的 _mgrsGridVisible
   // 若是 true，map style ready 後立刻 restore 視覺 — 用 _drawMgrsGrid 統一路徑
   // 同步 button .active class 給 toolbar 顯示對的狀態。

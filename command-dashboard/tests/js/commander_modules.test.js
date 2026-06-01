@@ -166,6 +166,20 @@ describe('C1-F commander modules', () => {
     expect(coreSource).toMatch(/basemap-muted-day\.json/);         // muted-day style
     expect(coreSource).toMatch(/background-color': '#0d1117'/);    // fallback empty dark 仍保留
     expect(coreSource).toMatch(/maplibregl\.Map/);
+    // P1-10c 步驟 4：dark↔muted-day 主題切換 —— 走「只抽換底圖層」（removeLayer + addLayer，
+    // 不 setStyle，overlay 不動）；map.js 提供 toggleBasemapTheme + 工具列按鈕 + main.js 委派。
+    expect(coreSource).toMatch(/export async function setBasemapTheme/);
+    expect(coreSource).toMatch(/removeLayer/);                     // 抽換底圖層（非 setStyle）
+    // segmented 日/夜分段鈕（☀ muted-day / ☾ dark），active 標目前主題（對齊站內/站外）
+    expect(source).toMatch(/export function setBasemapTheme/);
+    expect(source).toMatch(/data-action="setBasemapTheme"/);
+    expect(source).toMatch(/data-theme="dark"/);
+    expect(source).toMatch(/data-theme="muted-day"/);
+    const mainSrc = file('static/js/main.js');
+    expect(mainSrc).toMatch(/case 'setBasemapTheme':/);            // 委派接線
+    // MGRS grid 配色隨主題（淺底用深色，避免淺藍糊掉）
+    expect(source).toMatch(/applyTheme/);
+    expect(file('static/js/map/coord_tools.js')).toMatch(/applyTheme\(theme\)/);
   });
 
   test('reloadMapConfig_refetches_after_login_401', async () => {
