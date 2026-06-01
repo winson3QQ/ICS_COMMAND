@@ -1193,5 +1193,26 @@
     "title": "docs(roadmap): P1-10c 底圖來源/build recipe 落定 + reality check（#52）",
     "updatedAt": "2026-06-01T13:26:13Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/53"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "純文件 PR。把實際 build 出的 taiwan.pmtiles（路徑 A，go-pmtiles extract，235.5MB，schema v4.14.9，SHA256 2C57A5B2…）的 provenance 填進 POLICY.md，並在 schema 相容紅線補上具體版本。檔本身 gitignored 不入版控。Refs #52。",
+    "closedAt": "2026-06-01T13:35:09Z",
+    "comments": [],
+    "createdAt": "2026-06-01T13:34:58Z",
+    "headRefName": "docs/p1-10c-pmtiles-provenance",
+    "labels": [],
+    "mergedAt": "2026-06-01T13:35:09Z",
+    "number": 54,
+    "state": "MERGED",
+    "title": "docs(design): P1-10c taiwan.pmtiles 首次 build provenance 留痕（#52）",
+    "updatedAt": "2026-06-01T13:35:12Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/54"
   }
 ]
