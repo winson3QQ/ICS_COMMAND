@@ -177,6 +177,9 @@ describe('C1-F commander modules', () => {
     expect(source).toMatch(/data-theme="muted-day"/);
     const mainSrc = file('static/js/main.js');
     expect(mainSrc).toMatch(/case 'setBasemapTheme':/);            // 委派接線
+    // MGRS grid 配色隨主題（淺底用深色，避免淺藍糊掉）
+    expect(source).toMatch(/applyTheme/);
+    expect(file('static/js/map/coord_tools.js')).toMatch(/applyTheme\(theme\)/);
   });
 
   test('reloadMapConfig_refetches_after_login_401', async () => {

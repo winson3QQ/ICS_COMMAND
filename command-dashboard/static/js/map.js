@@ -357,7 +357,11 @@ function _syncThemeButtons(theme) {
 export function setBasemapTheme(theme) {
   if (theme !== 'dark' && theme !== 'muted-day') return;
   if (_getBasemapTheme() === theme) { _syncThemeButtons(theme); return; }
-  _setBasemapTheme(theme).then((ok) => { if (ok) _syncThemeButtons(theme); });
+  _setBasemapTheme(theme).then((ok) => {
+    if (!ok) return;
+    _syncThemeButtons(theme);
+    _mgrsGrid?.applyTheme(theme);   // grid 配色跟著底圖主題走（淺底改深色，避免淺藍糊掉）
+  });
 }
 
 export function renderMapOverlay() {
@@ -1142,6 +1146,7 @@ function _ensureEntityLayers() {
   // Step 10：MGRS grid — 透過 MgrsGrid 抽象走 MapLibre GeoJSON source + line/symbol
   // layer。Toggle 走 setVisible()，redraw() 在 moveend 自動 trigger。
   _mgrsGrid = new MgrsGrid(map);
+  _mgrsGrid.applyTheme(_getBasemapTheme());   // 依目前底圖主題定 grid 配色（淺底用深色，對比）
   // 跨 refresh 持久化（issue #24 step 1）：sessionStorage 載到的 _mgrsGridVisible
   // 若是 true，map style ready 後立刻 restore 視覺 — 用 _drawMgrsGrid 統一路徑
   // 同步 button .active class 給 toolbar 顯示對的狀態。
