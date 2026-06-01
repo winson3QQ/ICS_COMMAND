@@ -170,10 +170,13 @@ describe('C1-F commander modules', () => {
     // 不 setStyle，overlay 不動）；map.js 提供 toggleBasemapTheme + 工具列按鈕 + main.js 委派。
     expect(coreSource).toMatch(/export async function setBasemapTheme/);
     expect(coreSource).toMatch(/removeLayer/);                     // 抽換底圖層（非 setStyle）
-    expect(source).toMatch(/export function toggleBasemapTheme/);
-    expect(source).toMatch(/data-action="toggleBasemapTheme"/);    // 工具列切換鈕
+    // segmented 日/夜分段鈕（☀ muted-day / ☾ dark），active 標目前主題（對齊站內/站外）
+    expect(source).toMatch(/export function setBasemapTheme/);
+    expect(source).toMatch(/data-action="setBasemapTheme"/);
+    expect(source).toMatch(/data-theme="dark"/);
+    expect(source).toMatch(/data-theme="muted-day"/);
     const mainSrc = file('static/js/main.js');
-    expect(mainSrc).toMatch(/case 'toggleBasemapTheme':/);         // 委派接線
+    expect(mainSrc).toMatch(/case 'setBasemapTheme':/);            // 委派接線
   });
 
   test('reloadMapConfig_refetches_after_login_401', async () => {

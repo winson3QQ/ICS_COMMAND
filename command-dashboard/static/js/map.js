@@ -339,20 +339,25 @@ export function applyMapRoleUiGuards() {
     `<button class="map-btn" id="btn-layer-panel" data-action="toggleLayerPanel" title="圖層面板" style="font-size:14px;">☰</button>
      ${objectTools}
      <button class="map-btn" id="btn-mgrs-grid"  data-action="toggleMgrsGrid"  title="MGRS 格線" style="font-size:13px;">⊞</button>
-     <button class="map-btn" id="btn-basemap-theme" data-action="toggleBasemapTheme" title="日/夜底圖切換" style="font-size:13px;">${_getBasemapTheme() === 'dark' ? '☾' : '☀'}</button>`;
+     <button class="map-btn${_getBasemapTheme() === 'muted-day' ? ' active' : ''}" id="btn-theme-day"   data-action="setBasemapTheme" data-theme="muted-day" title="白天底圖（淺灰）" style="font-size:13px;">☀</button>
+     <button class="map-btn${_getBasemapTheme() === 'dark' ? ' active' : ''}" id="btn-theme-night" data-action="setBasemapTheme" data-theme="dark"      title="夜間底圖（深）"   style="font-size:13px;">☾</button>`;
+}
+
+/** 同步日/夜分段鈕高亮（segmented，active 標目前主題；對齊站內/站外 tab 慣例）。*/
+function _syncThemeButtons(theme) {
+  el('btn-theme-day')?.classList.toggle('active', theme === 'muted-day');
+  el('btn-theme-night')?.classList.toggle('active', theme === 'dark');
 }
 
 /**
- * 切換 basemap 主題（dark ↔ muted-day）。走 maplibre_core.setBasemapTheme 的「只抽換
- * 底圖層」路徑，overlay（節點/範圍/路線/事件/MGRS）完全不動。按鈕字形反映目前主題。
+ * 選擇 basemap 主題（segmented：☀ muted-day / ☾ dark，直接選非 toggle）。
+ * 走 maplibre_core.setBasemapTheme 的「只抽換底圖層」路徑，overlay（節點/範圍/路線/
+ * 事件/MGRS）完全不動。
  */
-export function toggleBasemapTheme() {
-  const next = _getBasemapTheme() === 'dark' ? 'muted-day' : 'dark';
-  _setBasemapTheme(next).then((ok) => {
-    if (!ok) return;
-    const btn = el('btn-basemap-theme');
-    if (btn) btn.textContent = next === 'dark' ? '☾' : '☀';
-  });
+export function setBasemapTheme(theme) {
+  if (theme !== 'dark' && theme !== 'muted-day') return;
+  if (_getBasemapTheme() === theme) { _syncThemeButtons(theme); return; }
+  _setBasemapTheme(theme).then((ok) => { if (ok) _syncThemeButtons(theme); });
 }
 
 export function renderMapOverlay() {
