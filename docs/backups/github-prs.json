@@ -1086,7 +1086,7 @@
     "number": 44,
     "state": "MERGED",
     "title": "fix(rbac): observer 可 GET /api/map_config（看地圖）",
-    "updatedAt": "2026-06-01T06:45:11Z",
+    "updatedAt": "2026-06-01T06:46:07Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/44"
   }
 ]
