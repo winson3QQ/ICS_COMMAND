@@ -1235,5 +1235,26 @@
     "title": "feat(map): P1-10c 步驟 1-3 — 接上 taiwan.pmtiles 底圖（dark/muted-day）（#55）",
     "updatedAt": "2026-06-01T14:05:55Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/57"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "Closes #58. 底圖 taiwan.pmtiles 為 gitignored deploy artifact，採 TAK 式整備側載。\n\n## 內容\n- `command-dashboard/basemap.manifest.json`（tracked 單一真相：version+sha256+release_tag+雙 release 來源）\n- `scripts/provision_basemap.sh`：讀 manifest → GitHub→Codeberg release download / `--from USB`（air-gap）→ SHA256 驗證 → atomic 放置；已現行則跳過\n- `scripts/publish_basemap.sh`：發佈者上傳 GitHub+Codeberg release + 更新 manifest 供 PR\n- `scripts/preflight_basemap.sh`：出場守門（檔在且 SHA==manifest 才 exit 0）\n- `scripts/_basemap_lib.sh`：共用（manifest 讀取 / 跨平台 SHA256）\n- `start_pi.sh`/`start_mac.sh`：啟動接 preflight（TAK 式：不擋 server、缺底圖大聲警告）\n- `.gitattributes`：*.sh eol=lf（防 Windows CRLF 破 shebang）\n- POLICY.md：整備/發佈/air-gap/多機同步 SOP\n\n## 模型\n單一真相在 git（manifest sha）→ 換版走 PR 序列化「現行版本」→ 多台主力機不分歧；場域零信任（佈署機不碰 GitHub，USB/母映像）；完整性內建（取得一律驗 SHA 不符拒裝）。\n\n## §8 驗證（Windows git-bash）\n- preflight ✓；provision 已現行→跳過 ✓\n- SHA mismatch → 拒裝且不動既有檔 ✓；`--from` 正常檔 → 成功 ✓\n- 腳本 LF（python binary 確認）+ 100755 可執行 ✓\n- doc_sync_check exit 0\n\n## 不在本 PR\n- 前端「底圖未整備」in-app 橫幅（follow-up）\n- **首次 release 上傳**：由發佈者在主力機跑 `publish_basemap.sh`（需 `gh` + `CODEBERG_TOKEN`），再 PR manifest。本 PR 只建機制。",
+    "closedAt": "2026-06-01T14:44:58Z",
+    "comments": [],
+    "createdAt": "2026-06-01T14:43:40Z",
+    "headRefName": "feat/issue-58-basemap-provisioning",
+    "labels": [],
+    "mergedAt": "2026-06-01T14:44:58Z",
+    "number": 59,
+    "state": "MERGED",
+    "title": "feat(deploy): 底圖整備/側載基建 — manifest + provision/publish/preflight（#58）",
+    "updatedAt": "2026-06-01T14:45:01Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/59"
   }
 ]

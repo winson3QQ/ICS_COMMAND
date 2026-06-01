@@ -1039,15 +1039,15 @@
       "name": ""
     },
     "body": "## 目的\n\nP1-10c 收尾的「底圖整備/側載」基礎建設。底圖 `taiwan.pmtiles` 為 gitignored deploy artifact（235MB），不進 git；改用業界（TAK 式）做法：**整備時側載 + 版控 manifest 當單一真相 + 場域離線零信任**。\n\n源於 #55 dogfood 討論（換機器/部署無底圖、場域無網、多台主力開發機）。\n\n## 模型\n\n- 單一真相 = 版控的 `basemap.manifest.json`（version + sha256 + release_tag + urls）。換版走 PR 改 manifest，merge 序列化「現行版本」，多台機器不分歧。\n- 正本放 GitHub + Codeberg **雙 release**（對齊 C 方案雙 remote）。\n- 場域/佈署機**不碰 GitHub**（USB / 母映像）；只有開發機/整備機在基地有網時 download。upload 只有發佈者偶爾做。\n- 同步底圖 = `git pull`（拿最新 manifest）+ `provision_basemap.sh`（比對 SHA，不符重抓）。\n\n## 交付\n\n1. `command-dashboard/basemap.manifest.json`（tracked 版本錨點）\n2. `scripts/provision_basemap.sh`（讀 manifest → 雙 release download / `--from USB` → SHA 驗證 → atomic 放置；已最新則跳過）\n3. `scripts/publish_basemap.sh`（上傳 GitHub+Codeberg release + 產生新 manifest 供 PR）\n4. `scripts/preflight_basemap.sh`（出場守門：檔在且 SHA == manifest 才 0）\n5. `start_pi.sh` / `start_mac.sh` 接 preflight（TAK 式：不擋 server，缺底圖大聲警告 + 地圖空白 fallback）\n6. POLICY.md：發佈 / 整備 / air-gap / 多機同步 SOP\n\n## 不在本批\n\n- 前端「底圖未整備」in-app 明顯橫幅（follow-up；start preflight 已提供 operational 層的大聲信號）\n- 實際首次 release 上傳（由發佈者在主力機跑 publish；需 Codeberg token）\n",
-    "closedAt": null,
+    "closedAt": "2026-06-01T14:45:00Z",
     "comments": [],
     "createdAt": "2026-06-01T14:32:37Z",
     "labels": [],
     "milestone": null,
     "number": 58,
-    "state": "OPEN",
+    "state": "CLOSED",
     "title": "P1-10c 收尾: 底圖整備/側載基建（manifest + provision/publish/preflight + 雙 release）",
-    "updatedAt": "2026-06-01T14:32:37Z",
+    "updatedAt": "2026-06-01T14:45:00Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/58"
   }
 ]
