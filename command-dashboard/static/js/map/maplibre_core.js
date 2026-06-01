@@ -21,7 +21,7 @@ const HSINCHU_CENTER = [121.0149, 24.8283];  // [lng, lat]（MapLibre 順序）
 const HSINCHU_ZOOM = 15;
 const LONG_PRESS_MS = 650;
 
-// 暫時的 empty dark style — P1-10c 才接真實 PMTiles
+// Fallback empty dark style — pmtiles.js 未載入時退而求其次（底圖不顯示，僅深色背景）。
 // glyphs URL：P1-10b 步驟 7 階段 3b vendor Noto Sans Regular（OFL，~6.8MB / 256 pbf）
 // 為了 polygon / route / flow / infra 的 text-field labels 可顯示中文。
 const EMPTY_DARK_STYLE = {
@@ -36,6 +36,37 @@ const EMPTY_DARK_STYLE = {
     },
   ],
 };
+
+// P1-10c：兩套 Protomaps basemap style（dark=black flavor / muted-day=grayscale flavor）。
+// style.json 由 @protomaps/basemaps v5.7.2 產生，source 走 pmtiles:///tiles/pmtiles/taiwan.pmtiles，
+// 對齊 taiwan.pmtiles schema（source-layer 已驗證對得上，見 docs/design/POLICY.md）。
+const BASEMAP_STYLES = {
+  dark: '/static/styles/basemap-dark.json',
+  'muted-day': '/static/styles/basemap-muted-day.json',
+};
+const DEFAULT_BASEMAP_THEME = 'dark';
+let _basemapTheme = sessionStorage.getItem('_basemapTheme') || DEFAULT_BASEMAP_THEME;
+let _pmtilesProtocolRegistered = false;
+
+/** 註冊 MapLibre 的 pmtiles:// protocol（idempotent）。回傳是否成功（pmtiles.js 是否已載入）。*/
+function _ensurePmtilesProtocol() {
+  if (_pmtilesProtocolRegistered) return true;
+  if (!window.pmtiles || !window.maplibregl) return false;
+  const protocol = new window.pmtiles.Protocol();
+  window.maplibregl.addProtocol('pmtiles', protocol.tile);
+  _pmtilesProtocolRegistered = true;
+  return true;
+}
+
+/** 取得指定主題的 basemap style URL（未知主題 fallback 預設）。*/
+export function basemapStyleUrl(theme) {
+  return BASEMAP_STYLES[theme] || BASEMAP_STYLES[DEFAULT_BASEMAP_THEME];
+}
+
+/** 目前 basemap 主題（'dark' | 'muted-day'）。*/
+export function getBasemapTheme() {
+  return _basemapTheme;
+}
 
 let _map = null;
 let _coordPin = null;
@@ -57,12 +88,22 @@ export function initMaplibre(containerId, callbacks = {}) {
   if (!container) return null;
   if (_map) return _map;
 
+  // P1-10c：先註冊 pmtiles protocol（style 的 source url 用 pmtiles://），再建 map。
+  // pmtiles.js 未載入時 fallback empty dark style（底圖不顯示，但 entity layer 仍可運作）。
+  const havePmtiles = _ensurePmtilesProtocol();
+  if (!havePmtiles) {
+    console.warn('[maplibre_core] pmtiles.js 未載入，basemap fallback empty dark style（底圖不顯示）');
+  }
+  const initialStyle = havePmtiles ? basemapStyleUrl(_basemapTheme) : EMPTY_DARK_STYLE;
+
   _map = new window.maplibregl.Map({
     container: containerId,
-    style: EMPTY_DARK_STYLE,
+    style: initialStyle,
     center: HSINCHU_CENTER,
     zoom: HSINCHU_ZOOM,
-    attributionControl: false,        // 之後 P1-10c 加 Protomaps attribution
+    // ODbL：basemap source 的 attribution（© OpenStreetMap contributors）由 style 提供，
+    // compact 控制項顯示於右下角（i 圖示展開）。
+    attributionControl: { compact: true },
     doubleClickZoom: false,           // 雙擊放 coord pin，不縮放
     pitchWithRotate: false,
     dragRotate: false,                // 戰術 2D，不旋轉

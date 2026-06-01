@@ -239,10 +239,11 @@ P1-10c 提供 2 套：
 | style | `@protomaps/basemaps` npm `namedFlavor()` 產 MapLibre style JSON |
 | flavor 對應 | `dark` → 夜間 ops 預設；`muted-day` → 用 `grayscale`（舊版沿用）或 `light`，擇 desaturated 較佳者 |
 
-**相容性紅線（必記）**：PMTiles 的 schema 版本必須與 `@protomaps/basemaps` style 版本**對齊**——
-兩者釘同一個 `@protomaps/basemaps` 版本，否則 source-layer 名對不上 → 底圖空白。
-**現況**：首次 build 的 `taiwan.pmtiles` 為 **Protomaps Basemap schema v4.14.9**（見下方 Provenance），
-故 style 端 `@protomaps/basemaps` 應釘 **v4 線**對應版本。
+**相容性紅線（必記）**：PMTiles 的 source-layer 必須與 `@protomaps/basemaps` style 引用的 source-layer **對齊**，
+否則底圖空白。**已驗證（2026-06-01）**：tileset metadata 的 `version 4.14.9` 是 **tileset 內部計數器，不是 npm 版本**；
+npm `@protomaps/basemaps` **無 v4 線、現行為 5.x**。實測 **5.7.2** 產生的 style 引用 source-layer
+（boundaries/buildings/earth/landuse/places/roads/water）**全部存在於** `taiwan.pmtiles`（missing=none），故采 **5.7.2**。
+（先前 PR #54 誤寫「釘 v4 線」，本 PR 更正。）
 
 ### Build recipe — 路徑 A（採用，pmtiles extract 切片）
 
@@ -272,6 +273,23 @@ java -jar protomaps-basemaps-with-deps.jar --osm-path=taiwan-latest.osm.pbf
 # 輸出 planet.pmtiles → rename taiwan.pmtiles
 ```
 
+### Style 產生 recipe（`static/styles/basemap-*.json`，tracked）
+
+兩套 basemap style 由 `@protomaps/basemaps` **5.7.2** 產生（factory asset，可重現）：
+
+| style 檔 | flavor | 用途 |
+|---|---|---|
+| `static/styles/basemap-dark.json` | `black`（data-viz 深色，對標 ROADMAP T1 `?theme=black`）| 夜間 ops 預設 |
+| `static/styles/basemap-muted-day.json` | `grayscale`（data-viz 淺灰）| 白天演練 |
+
+產生方式（node）：`layers('protomaps', namedFlavor(<flavor>), { lang: 'zh-Hant' })`，外包
+`{version:8, glyphs:'/static/fonts/glyphs/{fontstack}/{range}.pbf', sources:{protomaps:{type:'vector',
+url:'pmtiles:///tiles/pmtiles/taiwan.pmtiles', attribution:'© OpenStreetMap contributors'}}}`。
+**字體 coerce**：只 vendor 了 Noto Sans Regular，故產生後把 style 內所有 `Noto Sans Medium/Italic`
+字串改回 `Noto Sans Regular`（離線下不缺字）。**選 data-viz flavor（black/grayscale）而非 general-purpose
+（dark/light）的理由**：data-viz flavor 無 POI icon → 不需 sprite（全離線）＋ 符合 doctrine「符號是焦點、
+底圖是背景」。兩檔均通過 `@maplibre/maplibre-gl-style-spec` validateStyleMin。
+
 ### 供應鏈紅線確認（CLAUDE.md，全部非中國 ✓）
 
 | 元件 | 維護者 / 國 | License |
@@ -297,7 +315,7 @@ tool         : go-pmtiles v1.30.3
 cmd          : pmtiles extract <source> taiwan.pmtiles --bbox=119.3,21.7,122.2,25.4 --maxzoom=15 --download-threads=8
 bbox         : 119.3,21.7,122.2,25.4（本島 + 澎湖，不含金馬 — 2026-06-01 定案）
 maxzoom      : 15
-schema       : Protomaps Basemap v4.14.9（planetiler 0.10.2）→ style 釘 @protomaps/basemaps v4 線
+schema       : tileset v4.14.9（planetiler 0.10.2）；style 端 @protomaps/basemaps 5.7.2（source-layer 已驗證對齊）
 size         : 235.5 MB（51,294 tiles，clustered=true，verify OK）
 SHA256       : 2C57A5B2A4ECAF8630E6AD00EC5C3EEA0E638BDF56D08E9A411B6E78C9B34659
 ```

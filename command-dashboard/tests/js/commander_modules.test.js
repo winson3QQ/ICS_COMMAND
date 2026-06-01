@@ -158,9 +158,13 @@ describe('C1-F commander modules', () => {
     expect(source).toMatch(/_napsgIcon/);
     expect(source).toMatch(/_renderPolygons/);
     expect(source).toMatch(/_renderRoutes/);
-    // P1-10c PMTiles 接上前 grayscale 底圖暫拿掉（empty dark style 在 maplibre_core.js 內）
+    // P1-10c：maplibre_core 接上真實 PMTiles 底圖 —— 註冊 pmtiles:// protocol + 載入 basemap style，
+    // pmtiles.js 未載入時 fallback 至 empty dark style（#0d1117 背景）。
     const coreSource = file('static/js/map/maplibre_core.js');
-    expect(coreSource).toMatch(/background-color': '#0d1117'/);
+    expect(coreSource).toMatch(/addProtocol\('pmtiles'/);          // 註冊 pmtiles protocol
+    expect(coreSource).toMatch(/basemap-dark\.json/);              // 真實 basemap style（dark）
+    expect(coreSource).toMatch(/basemap-muted-day\.json/);         // muted-day style
+    expect(coreSource).toMatch(/background-color': '#0d1117'/);    // fallback empty dark 仍保留
     expect(coreSource).toMatch(/maplibregl\.Map/);
   });
 
