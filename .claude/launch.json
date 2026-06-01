@@ -4,6 +4,9 @@
     {
       "name": "dashboard",
       "runtimeExecutable": "command-dashboard/.venv/bin/python",
+      "env": {
+        "ICS_DB_PATH": "/Users/3qq/.ics/dev/ics.db"
+      },
       "runtimeArgs": [
         "-m", "uvicorn",
         "main:app",
