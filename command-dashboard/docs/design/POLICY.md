@@ -222,6 +222,93 @@ P1-10c 提供 2 套：
 
 ---
 
+## 底圖資料來源與 build recipe（P1-10c，2026-06-01 落定）
+
+> 背景：`taiwan.pmtiles` 在舊 Leaflet 部署即存在（被 `protomaps-leaflet` 以 `flavor: 'grayscale'` 引用），
+> 但**從未進版控、也沒留 build recipe**，fresh clone 一律缺檔、無法 audit 也無法重建。本節補上這塊缺口。
+
+### 採用體系（事實）
+
+| 項目 | 值 |
+|---|---|
+| 引擎 | MapLibre GL JS v4.7.1 + `pmtiles.js` v4.4.1（見上方 Vendor pinning）|
+| 底圖檔 | `command-dashboard/static/tiles/taiwan.pmtiles` |
+| 存放政策 | **gitignored deploy artifact**（`.gitignore` 已排除 `command-dashboard/static/tiles/`）；**不進 git**，隨部署帶 |
+| serving | 同源 `GET /tiles/pmtiles/{filename}`（含 HTTP Range），見 `src/routers/map.py` |
+| schema | **Protomaps basemaps schema**（OSM + Natural Earth 衍生）|
+| style | `@protomaps/basemaps` npm `namedFlavor()` 產 MapLibre style JSON |
+| flavor 對應 | `dark` → 夜間 ops 預設；`muted-day` → 用 `grayscale`（舊版沿用）或 `light`，擇 desaturated 較佳者 |
+
+**相容性紅線（必記）**：PMTiles 的 schema 版本必須與 `@protomaps/basemaps` style 版本**對齊**——
+兩者釘同一個 `@protomaps/basemaps` 版本，否則 source-layer 名對不上 → 底圖空白。
+
+### Build recipe — 路徑 A（採用，pmtiles extract 切片）
+
+單一 binary、HTTP Range 只抓台灣那塊（不下整顆 ~120GB planet）、原生 Windows 可跑、~15-30 分鐘出檔：
+
+```bash
+# 工具：go-pmtiles（BSD + ODbL，Protomaps / Brandon Liu, US；Win/Mac/Linux 單一 binary）
+pmtiles extract https://<protomaps-planet-build-URL@釘日期>.pmtiles taiwan.pmtiles \
+  --bbox=119.3,21.7,122.2,25.4 \
+  --maxzoom=15
+# 來源：Protomaps daily planet build（maps.protomaps.com/builds，OSM/ODbL）
+# 輸出：約 200-400MB（z0-15）；--maxzoom=14 約砍半
+```
+
+**bbox 涵蓋台灣本島 + 澎湖。⚠ 金門（~118.2-118.5°E）/ 馬祖（~26.2°N）未含**——
+若演習場域含金馬，改 `--bbox=118.1,21.7,122.3,26.4`。
+
+### Build recipe — 路徑 B（fallback，planetiler 自 build）
+
+要「完全可重現、不依賴 Protomaps 線上主機、精準裁到台灣」時改走這條（代價：需 JDK 21 + Maven）：
+
+```bash
+# 來源：Geofabrik taiwan-latest.osm.pbf（~309MB，每日，ODbL，Geofabrik GmbH 德國）
+#   https://download.geofabrik.de/asia/taiwan-latest.osm.pbf
+# 工具：planetiler（Apache 2.0，OnTheGoMap / Michael Barry, US）+ protomaps/basemaps profile（BSD-3）
+java -jar protomaps-basemaps-with-deps.jar --osm-path=taiwan-latest.osm.pbf
+# 輸出 planet.pmtiles → rename taiwan.pmtiles
+```
+
+### 供應鏈紅線確認（CLAUDE.md，全部非中國 ✓）
+
+| 元件 | 維護者 / 國 | License |
+|---|---|---|
+| go-pmtiles / basemaps / `@protomaps/basemaps` | Protomaps LLC，Brandon Liu（US）| BSD-3（code）/ ODbL（資料）|
+| planetiler | OnTheGoMap / Michael Barry（US）| Apache 2.0 |
+| Geofabrik 台灣 extract | Geofabrik GmbH（德國 Karlsruhe）| ODbL 1.0 |
+| OSM 原始資料 | OpenStreetMap Contributors（全球）| ODbL 1.0 |
+| Natural Earth（低 zoom）| NACIS（US）| Public Domain |
+
+**Attribution 義務（ODbL，必做）**：地圖需可見標註 **© OpenStreetMap contributors**
+（對應 `static/js/map/maplibre_core.js` 目前 `attributionControl:false` 的 TODO）。
+
+### Provenance 留痕（每次 build 後補）
+
+每次重 build 必須在本節釘：planet build 日期 **或** Geofabrik pbf 日期、`--bbox`、`--maxzoom`、
+`@protomaps/basemaps` 版本、輸出檔 BLAKE3 hash。否則此檔再次失去可重現性。
+
+```
+build 日期：<填>   bbox：<填>   maxzoom：<填>   basemaps 版本：<填>
+taiwan.pmtiles BLAKE3：<填>
+```
+
+### 釐清：mini-taiwan 不是底圖來源（避免再次誤認）
+
+[mini-taiwan-learning-project](https://github.com/ianlkl11234s/mini-taiwan-learning-project) 是 **P1-10b 渲染架構**的
+借鏡來源（見 [issue #19](https://github.com/winson3QQ/ICS_COMMAND/issues/19) 的 7 條：EntityLayer / SDF / 4-layer
+state stack / text-halo / symbol-sort-key / LOD / 效能 checklist），**不是底圖資料來源**——
+該專案底圖用 Mapbox 線上圖磚 + token，ICS 已明確拒絕（違反「PMTiles 離線」紅線）。
+
+### 新舊差異（為何換引擎，非底圖好看）
+
+底圖資料 / schema 新舊**幾乎相同**（同 `taiwan.pmtiles`、同 Protomaps schema）；質變在**引擎**：
+Leaflet/Canvas（CPU）→ MapLibre/WebGL（GPU）。換引擎是為了解鎖 SDF icon + 資料驅動上色 +
+4-layer state stack——P2 TAK + MIL-STD-2525 符號渲染的必要條件（Leaflet 做不到，不換 = P2 重工）。
+**推論（高信心）**：舊 `taiwan.pmtiles` 可直接給 MapLibre 用，但若 schema 版本與新 style 對不上則需重 build。
+
+---
+
 ## 維護規則
 
 ### 改 WaveInk 對應 token
