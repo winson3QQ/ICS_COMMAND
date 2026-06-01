@@ -45,6 +45,16 @@ if [ "$need_venv" = true ]; then
   .venv/bin/pip install -q -r requirements.txt
 fi
 
+# 底圖整備檢查（TAK 式：不擋啟動；缺底圖大聲警告，地圖會空白、其他面板照常）
+if ! bash "$REPO/scripts/preflight_basemap.sh"; then
+  echo ""
+  echo "⚠⚠⚠  底圖未整備或版本不符 — 地圖將顯示空白底圖（事件/COP/節點照常）  ⚠⚠⚠"
+  echo "    下場前請在有網/有 USB 的整備階段執行其一："
+  echo "      ./scripts/provision_basemap.sh                   # 從 release 下載"
+  echo "      ./scripts/provision_basemap.sh --from <USB路徑>   # air-gap"
+  echo ""
+fi
+
 echo "[啟動] FastAPI :8000 ..."
 # --workers 1：COP 即時推播為 in-process broadcaster（issue #29 PR-D），多 worker 漏幀
 .venv/bin/uvicorn main:app --app-dir src \

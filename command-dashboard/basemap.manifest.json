@@ -1,0 +1,15 @@
+{
+  "_comment": "底圖 deploy artifact 的單一真相（版控）。換版：build → publish → PR 改本檔的 version+sha256。provision/preflight/publish 腳本皆讀此檔。詳見 docs/design/POLICY.md。",
+  "name": "taiwan",
+  "target": "command-dashboard/static/tiles/taiwan.pmtiles",
+  "version": "20260601",
+  "sha256": "2c57a5b2a4ecaf8630e6ad00ec5c3eea0e638bdf56d08e9a411b6e78c9b34659",
+  "size_bytes": 246931870,
+  "release_tag": "basemap-20260601",
+  "release_asset": "taiwan-20260601.pmtiles",
+  "sources": {
+    "github_repo": "winson3QQ/ICS_COMMAND",
+    "codeberg_repo": "winson3QQ/ICS_COMMAND",
+    "codeberg_base": "https://codeberg.org"
+  }
+}

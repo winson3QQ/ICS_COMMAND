@@ -290,6 +290,24 @@ url:'pmtiles:///tiles/pmtiles/taiwan.pmtiles', attribution:'© OpenStreetMap con
 （dark/light）的理由**：data-viz flavor 無 POI icon → 不需 sprite（全離線）＋ 符合 doctrine「符號是焦點、
 底圖是背景」。兩檔均通過 `@maplibre/maplibre-gl-style-spec` validateStyleMin。
 
+### 整備 / 發佈 / 多機同步 SOP（P1-10c 收尾，issue #58）
+
+底圖是 gitignored deploy artifact，採 TAK 式「整備側載」：**正本放 GitHub + Codeberg 雙 release，版控的 `command-dashboard/basemap.manifest.json` 是單一真相**（version + sha256 + release_tag）。
+
+| 角色 | 動作 | 指令 |
+|---|---|---|
+| **發佈者**（你，重 build 時，偶爾）| build → 上傳雙 release → 更新 manifest | `CODEBERG_TOKEN=… ./scripts/publish_basemap.sh --version <YYYYMMDD>` → **PR manifest + POLICY provenance** |
+| **每台開發/整備機**（有網基地）| 拉現行版本 | `git pull` → `./scripts/provision_basemap.sh`（讀 manifest → 雙 release 下載 → SHA 驗證 → atomic 放置；已現行則跳過）|
+| **air-gap 場域機** | 不碰 GitHub | `./scripts/provision_basemap.sh --from /mnt/usb/taiwan-<ver>.pmtiles`，或燒進母映像 |
+| **任何機器啟動前** | 出場守門 | `./scripts/preflight_basemap.sh`（檔在且 SHA==manifest 才 exit 0）；`start_pi.sh`/`start_mac.sh` 已自動呼叫 |
+
+**設計要點**：
+- **單一真相在 git**（manifest 的 sha256），不是「某台機器上那顆檔」。換版必走 PR 改 manifest，merge 序列化「現行版本」→ **多台主力機不分歧**。
+- **多機同步** = `git pull`（拿最新 manifest）+ `provision_basemap.sh`（比對 SHA，不符自動重抓）。
+- **場域零信任**：佈署機不需 GitHub 認證、不需網路；GitHub 認證只落在發佈者/開發機。
+- **整備強制 + 開機檢查**：preflight 是「可下場」資格檢查；start 腳本走 **TAK 式（不擋 server、缺底圖大聲警告 + 地圖空白 fallback）**，「一定要有」的保證落在 preflight 守門 + 母映像，而非場域臨時生檔（離線無法生檔）。
+- **完整性內建**：取得來源（release / URL / USB）一律驗 SHA256 == manifest，不符拒裝，防半截/竄改/拿錯版。
+
 ### 供應鏈紅線確認（CLAUDE.md，全部非中國 ✓）
 
 | 元件 | 維護者 / 國 | License |
