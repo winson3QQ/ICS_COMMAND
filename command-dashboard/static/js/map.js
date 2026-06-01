@@ -169,15 +169,16 @@ const _EVENT_GROUPS = {
 // 故由 main.js 載入後呼叫本函式套用（就地 mutate 保 ref；EventPopup 持有的 ref 同步）。
 export function applyEventTaxonomy(tax) {
   if (!tax || !Array.isArray(tax.events) || !Array.isArray(tax.groups)) return false;
+  const unsafe = (k) => k === '__proto__' || k === 'constructor' || k === 'prototype';
   for (const k of Object.keys(_EVENT_TYPES)) delete _EVENT_TYPES[k];
   for (const ev of tax.events) {
-    if (!ev || !ev.key) continue;
+    if (!ev || !ev.key || unsafe(ev.key)) continue;  // 防原型污染（review #69）
     const { key, ...rest } = ev;
     _EVENT_TYPES[key] = rest;
   }
   for (const k of Object.keys(_EVENT_GROUPS)) delete _EVENT_GROUPS[k];
   for (const g of tax.groups) {
-    if (g && g.key) _EVENT_GROUPS[g.key] = g.label;
+    if (g && g.key && !unsafe(g.key)) _EVENT_GROUPS[g.key] = g.label;
   }
   return true;
 }
