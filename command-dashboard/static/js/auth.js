@@ -995,6 +995,15 @@ export async function admSaveEdit(username) {
       body: JSON.stringify({role: newRole}),
     });
   }
+  // 顯示名稱：原本讀了 newDname 卻沒送出（dead input）。改為實際 PUT，並接後端 422（XSS / 過長）。
+  if (newDname !== undefined && newDname !== null) {
+    const r = await authFetch(API_BASE + '/api/admin/accounts/' + username + '/display-name', {
+      method:'PUT',
+      headers,
+      body: JSON.stringify({display_name: newDname}),
+    });
+    if (r && !r.ok) { alert('顯示名稱更新失敗（含不允許字元或超過 64 字）'); return; }
+  }
   admLoadAccounts();
 }
 

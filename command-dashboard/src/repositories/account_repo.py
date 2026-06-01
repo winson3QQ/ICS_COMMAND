@@ -12,7 +12,6 @@ from core.database import get_conn
 
 from ._helpers import audit, hash_pin, now_utc, verify_pin
 
-
 LOCKOUT_THRESHOLD = 5
 LOCKOUT_DURATION_MIN = 15
 
@@ -138,6 +137,20 @@ def update_account_role(
     return cur.rowcount > 0
 
 
+def update_account_display_name(username: str, display_name: str, operator: str) -> bool:
+    now = now_utc()
+    with get_conn() as conn:
+        cur = conn.execute(
+            """UPDATE accounts
+                  SET display_name=?, updated_at=?
+                WHERE username=? AND COALESCE(status, 'active') != 'archived'""",
+            (display_name, now, username),
+        )
+    if cur.rowcount:
+        audit(operator, None, "account_display_name_updated", "accounts", username, {"display_name": display_name})
+    return cur.rowcount > 0
+
+
 def delete_account(username: str, operator: str) -> bool:
     now = now_utc()
     with get_conn() as conn:
@@ -179,9 +192,9 @@ def verify_login(username: str, pin: str) -> tuple[dict | None, str]:
             new_count = (d.get("failed_login_count") or 0) + 1
             locked_until = None
             if new_count >= LOCKOUT_THRESHOLD:
-                locked_until = (
-                    datetime.now(UTC) + timedelta(minutes=LOCKOUT_DURATION_MIN)
-                ).strftime("%Y-%m-%dT%H:%M:%SZ")
+                locked_until = (datetime.now(UTC) + timedelta(minutes=LOCKOUT_DURATION_MIN)).strftime(
+                    "%Y-%m-%dT%H:%M:%SZ"
+                )
             conn.execute(
                 "UPDATE accounts SET failed_login_count=?, locked_until=? WHERE username=?",
                 (new_count, locked_until, username),
