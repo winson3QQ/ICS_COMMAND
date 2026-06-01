@@ -949,5 +949,25 @@
     "title": "feat(map): 預設站外底圖 + MGRS 網格 on（演習主視圖）",
     "updatedAt": "2026-06-01T07:24:35Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/47"
+  },
+  {
+    "assignees": [],
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "body": "## 現象\n每次登入後地圖**站外是空的**（無節點、無 MGRS 網格），必須 **cmd-shift-R** 才會出現。\n\n## 根因（diag 實證）\n`map.js` 在 **boot（登入前）** 就 `initMap → _loadMapConfig → GET /api/map_config`，此時尚無 session token → **401** → `_mapConfig=null` → `refreshLeafletMarkers` 第一道 guard bail → entity layers 從未建立。登入後 **map_config 不會重抓**。\n\ncmd-shift-R「有效」只是因為那時已登入過、token 還在 sessionStorage，reload 時 fetch 帶得到 token → 200。\n\n> 與底圖快取 / CSP / canvas 尺寸 / #48 預設站外**皆無關**（debug 過程逐一被 diag 數據排除）。\n\n## 修法\n- `map.js` 新增 `reloadMapConfig()`（重跑 `_loadMapConfig`）。\n- `main.js` `onEnterDashboard`（登入成功後）呼叫 `reloadMapConfig()` → 帶 token 重抓 → 200 → 正常 render。\n- 附帶：`_ensureEntityLayers` 在 style 未載完 defer 建 layer 後，補一次 `refreshLeafletMarkers()`（否則觸發 defer 的那次 render 因 layer 尚未建而全 bail）。\n- 順手補 `eslint.config.js` globals（修掉既存 `cancelAnimationFrame`/`performance`/`WebSocket` lint 錯）。\n\n## 驗收\n- 新增 `reloadMapConfig_refetches_after_login_401` vitest（401 不覆寫 + 200 重抓 + main.js wiring）\n- 全 JS 測試 178 passed、eslint 全綠\n- 實機驗證：正常登入直接顯示節點+網格，不需 cmd-shift-R",
+    "closedAt": null,
+    "comments": [],
+    "createdAt": "2026-06-01T09:34:37Z",
+    "labels": [],
+    "milestone": null,
+    "number": 49,
+    "state": "OPEN",
+    "title": "fix(map): 登入後地圖空白（節點/網格不出現，要 cmd-shift-R）— map_config 在登入前抓 401",
+    "updatedAt": "2026-06-01T09:34:37Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/49"
   }
 ]
