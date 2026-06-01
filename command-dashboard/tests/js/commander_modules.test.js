@@ -164,6 +164,24 @@ describe('C1-F commander modules', () => {
     expect(coreSource).toMatch(/maplibregl\.Map/);
   });
 
+  test('reloadMapConfig_refetches_after_login_401', async () => {
+    // Bug：boot（登入前）GET /api/map_config 回 401 → _mapConfig=null → 地圖空白，
+    // 每次登入要 cmd-shift-R。修法：登入後 onEnterDashboard 呼叫 reloadMapConfig 重抓。
+    const map = await import('../../static/js/map.js');
+    expect(typeof map.reloadMapConfig).toBe('function');
+    // 登入前 401：不得把 {detail:...} 錯誤殼寫進 _mapConfig（沿用 issue#24 的 null guard）
+    globalThis.fetch.mockResolvedValueOnce({ ok: false, status: 401, json: async () => ({ detail: 'unauthorized' }) });
+    await map.reloadMapConfig();
+    expect(map.getMapConfig()).not.toHaveProperty('detail');
+    // 登入後 200：reloadMapConfig 重抓成功並更新
+    const fresh = { maps: { indoor: { zones: [] }, outdoor: { zones: [{ id: 'znew' }] } } };
+    globalThis.fetch.mockResolvedValueOnce({ ok: true, status: 200, json: async () => fresh });
+    await map.reloadMapConfig();
+    expect(map.getMapConfig()).toEqual(fresh);
+    // main.js boot 在 onEnterDashboard 確實呼叫 reloadMapConfig（登入後重抓的 wiring）
+    expect(file('static/js/main.js')).toMatch(/reloadMapConfig\(\)/);
+  });
+
   test('events_crud_renders', async () => {
     const events = await import('../../static/js/events.js');
     expect(events._evTypeLabel({ event_type: 'mci' })).toContain('大量傷亡');

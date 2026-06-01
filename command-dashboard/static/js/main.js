@@ -50,7 +50,7 @@ import {
   _renderZoneModal, setZoneModalTab,
 } from './events.js';
 import {
-  initMap, switchMap, cancelPlaceMode, togglePinEditMode,
+  initMap, reloadMapConfig, switchMap, cancelPlaceMode, togglePinEditMode,
   toggleCsel, _toggleMgrsGrid, _toggleLayerPanel,
   _startPolyDraw, _cancelPolyDraw, _finishPolyDraw,
   _startInfraPlace, _startRouteDraw, _cancelRouteDraw, _finishRouteDraw,
@@ -594,6 +594,9 @@ function _loadClassicScript(src) {
   await authInit({
     onEnterDashboard: () => {
       _applyRoleUiGuards();
+      // 登入後重抓 map_config：boot 時（登入前）的 GET /api/map_config 會 401 → _mapConfig=null
+      // → 地圖空白（節點/網格不出現，要 cmd-shift-R）。登入帶 token 後重抓 → 正常 render。
+      reloadMapConfig();
       startSessionStatusPolling();
       setPollActive(true);
       poll();
