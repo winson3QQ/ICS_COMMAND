@@ -10,6 +10,7 @@ from auth.role_enum import (
 )
 from auth.service import validate_session
 from core.database import get_conn, get_schema_version
+from core.input_safety import validate_no_unsafe_strings
 from repositories._helpers import audit
 from repositories.account_repo import (
     clear_default_pin_flag,
@@ -19,6 +20,7 @@ from repositories.account_repo import (
     get_all_accounts,
     is_valid_account_role,
     suspend_all_accounts,
+    update_account_display_name,
     update_account_pin,
     update_account_role,
     update_account_status,
@@ -35,6 +37,7 @@ from schemas.admin import (
     AccountCreateIn,
     AccountStatusIn,
     AdminPinIn,
+    DisplayNameUpdateIn,
     PiNodeCreateIn,
     PinResetIn,
     RoleUpdateIn,
@@ -123,6 +126,9 @@ def create_acct(body: AccountCreateIn, request: Request):
     _require_commander_new_role_allowed(sess, body.role, body.role_detail)
     if len(body.pin) < 4 or len(body.pin) > 6 or not body.pin.isdigit():
         raise HTTPException(422, "PIN must be 4-6 digits")
+    # display_name 會被 account 列表拼進 innerHTML（auth.js admLoadAccounts）→ XSS sink，落 disk 前擋。
+    if body.display_name:
+        validate_no_unsafe_strings(body.display_name, label="display_name", max_len=64)
     try:
         return create_account(
             body.username,
@@ -176,6 +182,17 @@ def update_role(username: str, body: RoleUpdateIn, request: Request):
         raise HTTPException(422, "role invalid")
     _require_commander_new_role_allowed(sess, body.role, body.role_detail)
     if not update_account_role(username, body.role, sess["username"], body.role_detail):
+        raise HTTPException(404, "account not found")
+    return {"ok": True}
+
+
+@router.put("/accounts/{username}/display-name")
+def update_display_name(username: str, body: DisplayNameUpdateIn, request: Request):
+    sess = _check_account_manager(request)
+    _require_commander_target_allowed(sess, username)
+    # display_name 會被 account 列表拼進 innerHTML（XSS sink）→ 落 disk 前擋。
+    validate_no_unsafe_strings(body.display_name, label="display_name", max_len=64)
+    if not update_account_display_name(username, body.display_name, sess["username"]):
         raise HTTPException(404, "account not found")
     return {"ok": True}
 
