@@ -62,3 +62,13 @@ def test_invalid_body_rejected(client):
     h = _login(client, "sa_tax2", "1234")
     r = client.post("/api/event_taxonomy", json={"version": 1}, headers=h)  # 缺 events/groups
     assert r.status_code == 400, r.text
+
+
+def test_deeply_nested_json_rejected_not_500(client):
+    """深層巢狀 JSON（json.loads 爆 RecursionError）→ 400，不是 500 DoS（review #68 MED）。"""
+    create_account("sa_tax3", "1234", ROLE_SYSADMIN_ZH, "SA3", "sysadmin")
+    h = {**_login(client, "sa_tax3", "1234"), "Content-Type": "application/json"}
+    n = 15000
+    payload = ("[" * n) + ("]" * n)  # ~30KB，遠低於 256KB 上限，但深度爆 recursion
+    r = client.post("/api/event_taxonomy", content=payload, headers=h)
+    assert r.status_code == 400, r.text

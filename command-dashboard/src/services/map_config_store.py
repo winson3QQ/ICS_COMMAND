@@ -88,7 +88,14 @@ def read(
     for candidate, label in [(path, "runtime"), (seed, "seed")]:
         try:
             if candidate.exists():
-                return json.loads(candidate.read_text(encoding="utf-8"))
+                data = json.loads(candidate.read_text(encoding="utf-8"))
+                # 守 dict 契約：valid JSON 但非 dict → 續 fallback（review #68 MED）
+                if isinstance(data, dict):
+                    return data
+                log.warning(
+                    "[map_config_store] %s 非 dict（%s），續 fallback",
+                    label, type(data).__name__,
+                )
         except (OSError, json.JSONDecodeError) as e:
             log.warning(
                 "[map_config_store] 讀 %s 失敗（%s），嘗試下一層 fallback：%s",
@@ -135,5 +142,5 @@ def write_atomic(
             os.fsync(dir_fd)
         finally:
             os.close(dir_fd)
-    except OSError:
-        pass
+    except OSError as e:
+        log.debug("[map_config_store] parent dir fsync 略過/失敗（非致命）：%s", e)

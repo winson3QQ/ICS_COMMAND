@@ -122,10 +122,15 @@ async def save_map_config(request: Request):
         )
     try:
         body = json.loads(raw)
-    except json.JSONDecodeError as e:
+    except (json.JSONDecodeError, RecursionError, ValueError) as e:
+        # RecursionError：深層巢狀 JSON（~20KB 可達）會讓 json.loads 爆 recursion，
+        # 非 JSONDecodeError → 原本會 500（DoS）。一併當無效 JSON 擋（review #68 MED）。
         raise HTTPException(400, f"無效 JSON：{e}") from e
     # XSS hardening — 見 core.input_safety.validate_no_unsafe_strings（issue #24 / #29 PR-B）
-    validate_no_unsafe_strings(body, label="map_config")
+    try:
+        validate_no_unsafe_strings(body, label="map_config")
+    except RecursionError as e:
+        raise HTTPException(400, "結構過深") from e
     # P1-13：寫 data/map_config.json（atomic write）取代直寫 static/
     map_config_store.write_atomic(body)
     return {"ok": True, "path": str(MAP_CONFIG_PATH)}
@@ -153,14 +158,19 @@ async def save_event_taxonomy(request: Request):
         raise HTTPException(413, f"event_taxonomy 過大（{len(raw)} > {_MAX_BODY_BYTES}）")
     try:
         body = json.loads(raw)
-    except json.JSONDecodeError as e:
+    except (json.JSONDecodeError, RecursionError, ValueError) as e:
+        # RecursionError：深層巢狀 JSON → json.loads 爆 recursion（非 JSONDecodeError），
+        # 一併當無效 JSON 擋，避免 500 DoS（review #68 MED；同 /api/map_config）。
         raise HTTPException(400, f"無效 JSON：{e}") from e
     # 結構最小檢查（完整 schema / 參照完整性由編輯器 #66 守門；此處只擋明顯壞資料）
     if not isinstance(body, dict) or not isinstance(body.get("events"), list) \
             or not isinstance(body.get("groups"), list):
         raise HTTPException(400, "event_taxonomy 需含 events[] 與 groups[]")
     # XSS hardening（與 map_config / cop entity 共用單一 source of truth）
-    validate_no_unsafe_strings(body, label="event_taxonomy")
+    try:
+        validate_no_unsafe_strings(body, label="event_taxonomy")
+    except RecursionError as e:
+        raise HTTPException(400, "結構過深") from e
     event_taxonomy_store.write_atomic(body)
     return {"ok": True, "path": str(EVENT_TAXONOMY_PATH)}
 

@@ -65,7 +65,14 @@ def read(path: Path | None = None, seed: Path | None = None) -> dict[str, Any]:
     for candidate, label in [(path, "runtime"), (seed, "seed")]:
         try:
             if candidate.exists():
-                return json.loads(candidate.read_text(encoding="utf-8"))
+                data = json.loads(candidate.read_text(encoding="utf-8"))
+                # 守 dict 契約：valid JSON 但非 dict（如手改成 []）→ 不回，續 fallback
+                if isinstance(data, dict):
+                    return data
+                log.warning(
+                    "[event_taxonomy_store] %s 非 dict（%s），續 fallback",
+                    label, type(data).__name__,
+                )
         except (OSError, json.JSONDecodeError) as e:
             log.warning(
                 "[event_taxonomy_store] 讀 %s 失敗（%s），嘗試下一層：%s",
@@ -99,5 +106,5 @@ def write_atomic(body: dict[str, Any], path: Path | None = None) -> None:
             os.fsync(dir_fd)
         finally:
             os.close(dir_fd)
-    except OSError:
-        pass
+    except OSError as e:
+        log.debug("[event_taxonomy_store] parent dir fsync 略過/失敗（非致命）：%s", e)

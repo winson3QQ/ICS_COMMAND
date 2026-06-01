@@ -75,6 +75,15 @@ def test_read_falls_back_to_seed_then_shell(tmp_path: Path):
     }
 
 
+def test_read_falls_back_when_runtime_not_dict(tmp_path: Path):
+    """valid JSON 但非 dict（手改成 []）→ 不回，續 fallback 到 seed（review #68 MED）。"""
+    seed = tmp_path / "seed.json"
+    runtime = tmp_path / "runtime.json"
+    seed.write_text(json.dumps(_SAMPLE))
+    runtime.write_text("[]", encoding="utf-8")
+    assert event_taxonomy_store.read(path=runtime, seed=seed) == _SAMPLE
+
+
 def test_read_falls_back_when_runtime_malformed(tmp_path: Path):
     seed = tmp_path / "seed.json"
     runtime = tmp_path / "runtime.json"
