@@ -236,6 +236,13 @@ export function getMapConfig() {
   return _mapConfig;
 }
 
+// 登入後重抓 map_config：boot 時（登入前）_loadMapConfig 的 GET /api/map_config 會 401
+// （無 session token）→ _mapConfig=null → 地圖空白。登入成功後由 onEnterDashboard 呼叫本
+// 函式重抓，帶上 token → 200 → 正常 render。issue：每次登入要 cmd-shift-R 才出現節點/網格。
+export function reloadMapConfig() {
+  return _loadMapConfig();
+}
+
 export function switchMap(key) {
   if (key === 'osm') key = 'outdoor';
   _currentMap = key || 'indoor';
@@ -803,7 +810,9 @@ function _ensureEntityLayers() {
   const map = _getMap();
   if (!map) return;
   if (!map.isStyleLoaded()) {
-    map.once('load', () => _ensureEntityLayers());
+    // style 未載完就 defer 建 layer；建完必須補一次 refreshLeafletMarkers，否則當下觸發 defer
+    // 的那次 _render*（layer 還是 null）全 bail → 節點/grid 不出現，要手動 reload 才好。
+    map.once('load', () => { _ensureEntityLayers(); refreshLeafletMarkers(); });
     return;
   }
 
