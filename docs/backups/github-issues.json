@@ -999,15 +999,15 @@
       "name": ""
     },
     "body": "## P1-10c 實作 — 步驟 1-3（底圖點亮）\n\n接續 #52（來源/recipe 落定 + taiwan.pmtiles 已 build）。本批把底圖實際接上 MapLibre 並點亮。\n\n### 完成\n1. **pmtiles:// protocol 註冊**：`maplibre_core.js` `_ensurePmtilesProtocol()`（idempotent），建 map 前註冊。\n2. **兩套 basemap style**：`static/styles/basemap-dark.json`（flavor=black）+ `basemap-muted-day.json`（flavor=grayscale），由 `@protomaps/basemaps` **5.7.2** 產生；source 走 `pmtiles:///tiles/pmtiles/taiwan.pmtiles`、glyphs 走本地 Noto Sans Regular（Medium/Italic coerce 成 Regular，離線不缺字）；選 data-viz flavor（無 POI icon、不需 sprite、符合 doctrine）。\n3. **EMPTY_DARK_STYLE → 真 style**：預設載入 dark；pmtiles.js 未載入時 graceful fallback 至 empty dark。\n4. **attribution**：`attributionControl:{compact:true}`，style source 帶 `© OpenStreetMap contributors`（ODbL）。\n\n### Schema 更正\ntileset metadata `version 4.14.9` 是 tileset 內部計數器，**非 npm 版本**；npm `@protomaps/basemaps` 無 v4、現行 5.x。實測 **5.7.2** style 引用的 source-layer 全部存在於 taiwan.pmtiles（missing=none）→ 采 5.7.2。更正 #54 PR 誤寫的「v4 線」。\n\n### 驗證（§8）\n- `@maplibre/maplibre-gl-style-spec` validateStyleMin：兩 style 皆 VALID\n- source-layer 對齊：missing=none\n- live：`GET /tiles/pmtiles/taiwan.pmtiles` Range → **206 + PMTiles magic（504d5469...）**；style/glyphs 200\n- **browser render（真實 Chrome）**：dark 主題台灣全島渲染、繁中 label 正常、attribution 顯示、**0 MapLibre error**\n- vitest：178 passed（含更新的 maplibre_core 斷言）；eslint clean\n\n### 本批不含（留後續）\n- 步驟 4：dark/muted-day 主題切換 UI + `setStyle` 後 EntityLayer/MGRS 重建\n- muted-day 實機視覺調校\n\n### 留痕\n- 底圖檔 `taiwan.pmtiles` gitignored deploy artifact（build recipe / provenance 見 POLICY.md）\n- style 產生 recipe 已寫進 POLICY.md\n",
-    "closedAt": null,
+    "closedAt": "2026-06-01T14:05:58Z",
     "comments": [],
     "createdAt": "2026-06-01T13:52:56Z",
     "labels": [],
     "milestone": null,
     "number": 55,
-    "state": "OPEN",
+    "state": "CLOSED",
     "title": "P1-10c 實作（步驟 1-3）: pmtiles protocol + dark/muted-day style + 底圖點亮",
-    "updatedAt": "2026-06-01T13:52:56Z",
+    "updatedAt": "2026-06-01T14:05:58Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/55"
   },
   {

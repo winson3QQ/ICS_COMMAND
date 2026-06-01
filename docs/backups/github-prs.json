@@ -1214,5 +1214,26 @@
     "title": "docs(design): P1-10c taiwan.pmtiles 首次 build provenance 留痕（#52）",
     "updatedAt": "2026-06-01T13:35:12Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/54"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "Closes #55. taiwan.pmtiles 接上 MapLibre 並點亮：pmtiles:// protocol 註冊 + dark/muted-day 兩套 @protomaps/basemaps 5.7.2 style + ODbL attribution。schema 更正（5.7.2，非 v4）。\n\n**§8 驗證**：\n- @maplibre/maplibre-gl-style-spec validateStyleMin：兩 style VALID\n- source-layer 對齊 taiwan.pmtiles：missing=none\n- live：GET /tiles/pmtiles/taiwan.pmtiles Range → 206 + PMTiles magic（504d5469…）；style/glyphs 200\n- 真實 Chrome render：dark 台灣全島 + 繁中 label + attribution + 0 MapLibre error（human verified）\n- vitest 178 passed；eslint clean\n\ntaiwan.pmtiles 為 gitignored deploy artifact（build recipe/provenance 見 POLICY.md）。\n\n**留後續**：步驟 4 主題切換 UI + setStyle 後 EntityLayer 重建。\n**dogfood 副發現**：MGRS 低 zoom/跨 UTM zone 格線消失 → 既有限制，已開 #56 掛 P2-05（非本 PR）。",
+    "closedAt": "2026-06-01T14:05:51Z",
+    "comments": [],
+    "createdAt": "2026-06-01T14:05:38Z",
+    "headRefName": "feat/issue-55-p1-10c-basemap",
+    "labels": [],
+    "mergedAt": "2026-06-01T14:05:51Z",
+    "number": 57,
+    "state": "MERGED",
+    "title": "feat(map): P1-10c 步驟 1-3 — 接上 taiwan.pmtiles 底圖（dark/muted-day）（#55）",
+    "updatedAt": "2026-06-01T14:05:55Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/57"
   }
 ]
