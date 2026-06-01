@@ -22,6 +22,10 @@ DB_PATH: Path = Path(_ics_db_path_env) if _ics_db_path_env else DATA_DIR / "ics.
 MAP_CONFIG_SEED: Path = STATIC_DIR / "map_config.seed.json"
 MAP_CONFIG_PATH: Path = DATA_DIR / "map_config.json"
 
+# 事件分類 taxonomy（P1-10d 地基，issue #60/#66）：同 seed/runtime 模式。
+EVENT_TAXONOMY_SEED: Path = STATIC_DIR / "event_taxonomy.seed.json"
+EVENT_TAXONOMY_PATH: Path = DATA_DIR / "event_taxonomy.json"
+
 # 磁碟剩餘百分比低於此值 → degraded（黃燈）
 HEALTH_DISK_DEGRADED_PCT_THRESHOLD: float = float(os.getenv("HEALTH_DISK_DEGRADED_PCT_THRESHOLD", "20"))
 # DB 查詢延遲超過此值（ms）→ degraded（黃燈）
