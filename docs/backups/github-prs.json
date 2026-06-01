@@ -1256,5 +1256,26 @@
     "title": "feat(deploy): 底圖整備/側載基建 — manifest + provision/publish/preflight（#58）",
     "updatedAt": "2026-06-01T14:45:01Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/59"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "Closes #60. P1-10c 收尾：底圖 dark↔muted-day 主題切換。\n\n## 做法（避開 setStyle 風險）\n不走 `map.setStyle`（會丟棄所有 overlay/listener）。改 **只抽換底圖層**：removeLayer 現有 basemap → addLayer 另一主題層於 overlay 之下（beforeId=最底 overlay）。overlay（節點/範圍/路線/事件/MGRS）完全不動。\n\n- `maplibre_core.setBasemapTheme()` + `_basemapLayerIds` 追蹤\n- `map.js toggleBasemapTheme()` + 工具列 ☾/☀ 按鈕 + main.js 委派\n- sessionStorage 持久化主題\n\n## §8 驗證（真實 Chrome，模組層級）\ndark→muted-day→dark 三切換：模擬 overlay circle **每次存活且維持最上層**、layer 數穩定(70)、theme 正確、**0 MapLibre error**。vitest 178 passed（含新斷言：setBasemapTheme/removeLayer/toggleBasemapTheme/data-action/case）；eslint clean；doc_sync exit 0。\n\n## 備註\n- 視覺截圖因 grayscale 重繪一度 timeout，但功能驗證（imperative）已確認；muted-day 細部視覺調校可後續。\n- 完成後 ROADMAP P1-10c 主體（步驟 1-4 + 整備基建）齊備，可評估打 ✅。",
+    "closedAt": "2026-06-01T15:23:14Z",
+    "comments": [],
+    "createdAt": "2026-06-01T14:58:13Z",
+    "headRefName": "feat/issue-60-p1-10c-theme-switch",
+    "labels": [],
+    "mergedAt": "2026-06-01T15:23:14Z",
+    "number": 61,
+    "state": "MERGED",
+    "title": "feat(map): P1-10c 步驟 4 — dark↔muted-day 主題切換（#60）",
+    "updatedAt": "2026-06-01T15:23:17Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/61"
   }
 ]

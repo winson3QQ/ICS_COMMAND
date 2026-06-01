@@ -1059,15 +1059,15 @@
       "name": ""
     },
     "body": "## P1-10c 步驟 4（收尾）\n\ndark ↔ muted-day 主題切換 + `setStyle` 後 entity layer 重建。\n\n### 背景\n`map.setStyle()` 會丟棄所有 runtime 加的 source/layer（EntityLayers、MGRS grid、draw tools、coord pin）。reality check（#52）已預警。需在 style 重載後重建。\n\n### 範圍\n1. `maplibre_core.setBasemapTheme(theme, onReady)`：setStyle + 持久化 sessionStorage + 重註冊 pmtiles protocol；style.load 後回呼。\n2. `map.js` 重建：reset `_entityLayersInstalled` + MgrsGrid installed → `_ensureEntityLayers()` + `refreshLeafletMarkers()` + MGRS redraw + coord pin 還原。\n3. 工具列加主題切換鈕（日/夜）+ data-action 委派。\n4. 測試 + 瀏覽器實測（切換後 entity/節點/grid 不消失）。\n\n### 不在範圍\nmuted-day 細部視覺調校（可後續）；前端「未整備」橫幅（follow-up）。\n",
-    "closedAt": null,
+    "closedAt": "2026-06-01T15:23:16Z",
     "comments": [],
     "createdAt": "2026-06-01T14:48:16Z",
     "labels": [],
     "milestone": null,
     "number": 60,
-    "state": "OPEN",
+    "state": "CLOSED",
     "title": "P1-10c 步驟 4: dark↔muted-day 主題切換 + setStyle 後 entity layer 重建",
-    "updatedAt": "2026-06-01T14:48:16Z",
+    "updatedAt": "2026-06-01T15:23:16Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/60"
   }
 ]
