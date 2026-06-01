@@ -51,7 +51,7 @@ import {
 } from './events.js';
 import {
   initMap, reloadMapConfig, switchMap, cancelPlaceMode, togglePinEditMode,
-  toggleCsel, _toggleMgrsGrid, _toggleLayerPanel,
+  toggleCsel, _toggleMgrsGrid, _toggleLayerPanel, toggleBasemapTheme,
   _startPolyDraw, _cancelPolyDraw, _finishPolyDraw,
   _startInfraPlace, _startRouteDraw, _cancelRouteDraw, _finishRouteDraw,
   _savePolygon, _saveRoute,
@@ -245,6 +245,7 @@ document.addEventListener('click', function (e) {
     case 'togglePinEditMode': togglePinEditMode(); break;
     case 'toggleCsel':     toggleCsel(); break;
     case 'toggleMgrsGrid': _toggleMgrsGrid(); break;
+    case 'toggleBasemapTheme': toggleBasemapTheme(); break;
     case 'toggleLayerPanel': _toggleLayerPanel(); break;
     case 'toggleLayer': _toggleLayer(btn.dataset.layer); break;
     case 'closeLayerPanel': _closeLayerPanel(); break;

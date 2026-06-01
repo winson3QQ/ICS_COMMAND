@@ -166,6 +166,14 @@ describe('C1-F commander modules', () => {
     expect(coreSource).toMatch(/basemap-muted-day\.json/);         // muted-day style
     expect(coreSource).toMatch(/background-color': '#0d1117'/);    // fallback empty dark 仍保留
     expect(coreSource).toMatch(/maplibregl\.Map/);
+    // P1-10c 步驟 4：dark↔muted-day 主題切換 —— 走「只抽換底圖層」（removeLayer + addLayer，
+    // 不 setStyle，overlay 不動）；map.js 提供 toggleBasemapTheme + 工具列按鈕 + main.js 委派。
+    expect(coreSource).toMatch(/export async function setBasemapTheme/);
+    expect(coreSource).toMatch(/removeLayer/);                     // 抽換底圖層（非 setStyle）
+    expect(source).toMatch(/export function toggleBasemapTheme/);
+    expect(source).toMatch(/data-action="toggleBasemapTheme"/);    // 工具列切換鈕
+    const mainSrc = file('static/js/main.js');
+    expect(mainSrc).toMatch(/case 'toggleBasemapTheme':/);         // 委派接線
   });
 
   test('reloadMapConfig_refetches_after_login_401', async () => {

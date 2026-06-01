@@ -27,6 +27,8 @@ import {
   clearCoordPin as _clearCoordPinCore,
   getCoordPinLatLng as _getCoordPinLatLng,
   hasCoordPin as _hasCoordPin,
+  setBasemapTheme as _setBasemapTheme,
+  getBasemapTheme as _getBasemapTheme,
 } from './map/maplibre_core.js';
 import {
   EntityLayer,
@@ -336,7 +338,21 @@ export function applyMapRoleUiGuards() {
   tools.innerHTML =
     `<button class="map-btn" id="btn-layer-panel" data-action="toggleLayerPanel" title="圖層面板" style="font-size:14px;">☰</button>
      ${objectTools}
-     <button class="map-btn" id="btn-mgrs-grid"  data-action="toggleMgrsGrid"  title="MGRS 格線" style="font-size:13px;">⊞</button>`;
+     <button class="map-btn" id="btn-mgrs-grid"  data-action="toggleMgrsGrid"  title="MGRS 格線" style="font-size:13px;">⊞</button>
+     <button class="map-btn" id="btn-basemap-theme" data-action="toggleBasemapTheme" title="日/夜底圖切換" style="font-size:13px;">${_getBasemapTheme() === 'dark' ? '☾' : '☀'}</button>`;
+}
+
+/**
+ * 切換 basemap 主題（dark ↔ muted-day）。走 maplibre_core.setBasemapTheme 的「只抽換
+ * 底圖層」路徑，overlay（節點/範圍/路線/事件/MGRS）完全不動。按鈕字形反映目前主題。
+ */
+export function toggleBasemapTheme() {
+  const next = _getBasemapTheme() === 'dark' ? 'muted-day' : 'dark';
+  _setBasemapTheme(next).then((ok) => {
+    if (!ok) return;
+    const btn = el('btn-basemap-theme');
+    if (btn) btn.textContent = next === 'dark' ? '☾' : '☀';
+  });
 }
 
 export function renderMapOverlay() {
