@@ -919,15 +919,15 @@
       "name": ""
     },
     "body": "## 現象\nadmin 在帳號管理點「編輯」改顯示名稱、按儲存 → **沒有效果**，display_name 不變。\n\n## 根因\n1. **前端**：`auth.js admSaveEdit` 讀了顯示名稱輸入框 `newDname`，但函式只送出 PIN 和 role，**`newDname` 讀完就丟、從未送出**（dead input）。\n2. **後端**：`/api/admin/accounts/{username}` 只有 `/pin`、`/role`、`/status` 端點，**沒有改 display_name 的端點**；display_name 只能在建立時（POST）設定。\n\n## 順帶安全洞\ndisplay_name 會被帳號列表拼進 innerHTML（`auth.js admLoadAccounts`）→ XSS sink。原本 create 路徑**也沒驗** display_name。\n\n## 修法\n- 後端：repo `update_account_display_name` + `PUT /api/admin/accounts/{username}/display-name`（account-manager only）+ `validate_no_unsafe_strings`。\n- create 路徑補同樣的 display_name XSS 驗證。\n- 前端：`admSaveEdit` 實際送出 display_name + 接 422。\n\n## 驗收\n- 新增 `test_account_display_name.py`（功能 / 404 / RBAC / XSS×2 / 正常中文，6 cases）\n- 全套 pytest 綠\n\ndogfood 發現於實機測試。",
-    "closedAt": null,
+    "closedAt": "2026-06-01T07:01:59Z",
     "comments": [],
     "createdAt": "2026-06-01T06:57:16Z",
     "labels": [],
     "milestone": null,
     "number": 45,
-    "state": "OPEN",
+    "state": "CLOSED",
     "title": "fix(account): admin 無法編輯已建帳號的顯示名稱（display_name）",
-    "updatedAt": "2026-06-01T06:57:16Z",
+    "updatedAt": "2026-06-01T07:01:59Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/45"
   }
 ]

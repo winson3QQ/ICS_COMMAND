@@ -1088,5 +1088,26 @@
     "title": "fix(rbac): observer 可 GET /api/map_config（看地圖）",
     "updatedAt": "2026-06-01T06:46:07Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/44"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "## 問題\nadmin 改帳號顯示名稱無效（close #45）：前端 `admSaveEdit` 讀了 `newDname` 卻沒送出；後端也沒有改 display_name 的端點。\n\n## 修法\n- repo `update_account_display_name`（含 audit）\n- `PUT /api/admin/accounts/{username}/display-name`（account-manager only）\n- **安全**：display_name 是帳號列表 innerHTML 的 XSS sink → update + create 兩路徑都加 `validate_no_unsafe_strings`（max_len=64）\n- 前端 `admSaveEdit` 實際送出 display_name + 接 422\n\n## 測試\n`test_account_display_name.py` 6 cases（功能 / 404 / RBAC / XSS×2 / 正常中文）；全套 **527 passed**。\n\nCloses #45\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+    "closedAt": "2026-06-01T07:01:58Z",
+    "comments": [],
+    "createdAt": "2026-06-01T07:01:55Z",
+    "headRefName": "fix/issue-45-account-display-name",
+    "labels": [],
+    "mergedAt": "2026-06-01T07:01:58Z",
+    "number": 46,
+    "state": "MERGED",
+    "title": "fix(account): admin 可編輯 display_name + XSS 驗證",
+    "updatedAt": "2026-06-01T07:01:58Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/46"
   }
 ]
