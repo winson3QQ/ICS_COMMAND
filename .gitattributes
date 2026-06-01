@@ -1,0 +1,12 @@
+# Shell 腳本一律 LF — 部署目標是 Linux/Mac/Pi，CRLF 會讓 shebang 變 /bin/bash^M 而執行失敗。
+# （本 repo 主要在 Mac 開發，但有 Windows 開發機；無此規則時 Windows commit 會帶入 CRLF。）
+*.sh text eol=lf
+
+# Python / JS / 設定檔也統一 LF，跨平台一致
+*.py text eol=lf
+*.js text eol=lf
+*.json text eol=lf
+
+# PMTiles / 圖磚為二進位（且 gitignored），明確標記避免 EOL 處理
+*.pmtiles binary
+*.mbtiles binary
