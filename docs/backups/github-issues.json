@@ -1109,5 +1109,25 @@
     "title": "硬化 follow-up（P1-10c review 衍生，pre-existing LOW）: tile 路由 auth/traversal + CSP + pmtiles.js SHA 驗",
     "updatedAt": "2026-06-01T15:42:50Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/64"
+  },
+  {
+    "assignees": [],
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "body": "## 目標\nadmin 可在 UI 編輯**事件型別 + 群組**(全 CRUD),取代寫死的 `NAPSG_EVENTS`/`NAPSG_GROUPS`。\n\n## 前置（依賴 P1-10d 地基）\nP1-10d 先把 taxonomy 資料化:`static/event_taxonomy.seed.json`(tracked)+ `data/event_taxonomy.json`(runtime,gitignored)+ `GET/POST /api/event_taxonomy` + startup ensure(),並**收斂 events.js / map.js 重複定義**為單一 SoT。本 issue 在地基上做編輯器。\n\n## 範圍（2026-06-02 決策）\n- 事件型別:增 / 刪(soft-delete,保 key 穩定)/ 改(label/icon/abbr/severity/group/defaultAssigned/cot_type)/ 換群組\n- 群組:增 / 刪 / 改名\n- admin-only(RBAC)\n- icon 從內建 NAPSG icon 庫挑(不自畫)\n- 自訂型別必填 CoT bucket(預設 a-u-G;細化 P2-04)\n- severity 級別**固定 3 級**(critical/warning/info),只可指派不可新增級別\n\n## 雷（務必處理）\n- **參照完整性**:既有 events 紀錄用 event_type key → 刪/改名走 soft-delete + key 穩定,不孤兒。\n- 改群組/刪群組時,該群組下事件的 re-assign 策略。\n- 編輯後即時生效:前端讀 config 重渲染(對齊 #29 即時管線)。\n\n## 設計依據\n見 `command-dashboard/docs/design/event-symbology-mapping.md`（P1-10d 設計提案,NAPSG 對齊 + CoT 預備）。\n",
+    "closedAt": null,
+    "comments": [],
+    "createdAt": "2026-06-01T22:40:52Z",
+    "labels": [],
+    "milestone": null,
+    "number": 66,
+    "state": "OPEN",
+    "title": "事件/群組 taxonomy 編輯器（admin CRUD,依賴 P1-10d 資料化地基）",
+    "updatedAt": "2026-06-01T22:40:52Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/66"
   }
 ]

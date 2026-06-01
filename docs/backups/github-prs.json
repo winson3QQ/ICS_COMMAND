@@ -1298,5 +1298,26 @@
     "title": "fix(map+deploy): P1-10c review 修正 — 主題切換 race(HIGH) + token argv 曝露(MED)（#62）",
     "updatedAt": "2026-06-01T15:42:27Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/63"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "P1-10c 標記完成，證據 #57/#59/#61/#63。衍生 #56(P2-05)/#64。純文件。",
+    "closedAt": "2026-06-01T15:44:07Z",
+    "comments": [],
+    "createdAt": "2026-06-01T15:44:03Z",
+    "headRefName": "docs/p1-10c-done",
+    "labels": [],
+    "mergedAt": "2026-06-01T15:44:07Z",
+    "number": 65,
+    "state": "MERGED",
+    "title": "docs(roadmap): P1-10c ✅ 完成",
+    "updatedAt": "2026-06-01T15:44:10Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/65"
   }
 ]
