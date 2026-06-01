@@ -1149,7 +1149,28 @@
     "number": 50,
     "state": "MERGED",
     "title": "fix(map): 登入後重抓 map_config — 解地圖空白要 cmd-shift-R",
-    "updatedAt": "2026-06-01T09:35:47Z",
+    "updatedAt": "2026-06-01T09:36:36Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/50"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "P1-10b 14/14 steps 全完成 → MapLibre 全替換 + EntityLayer 精緻化基底達成 T2 基底。\n\n- steps 1-9 [#22](https://github.com/winson3QQ/ICS_COMMAND/pull/22) / step 10 [#23](https://github.com/winson3QQ/ICS_COMMAND/pull/23) / steps 11-13 [#30](https://github.com/winson3QQ/ICS_COMMAND/pull/30)\n- **step 14：1000-entity FPS benchmark — 真實 Chrome 實測 avg 60.1 / p95 59.9 FPS，遠超 DoD ≥30**（benchmark 為一次性 dev 工具，未進 prod）\n\nCloses #19\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+    "closedAt": "2026-06-01T09:44:05Z",
+    "comments": [],
+    "createdAt": "2026-06-01T09:44:00Z",
+    "headRefName": "docs/issue-19-p1-10b-done",
+    "labels": [],
+    "mergedAt": "2026-06-01T09:44:05Z",
+    "number": 51,
+    "state": "MERGED",
+    "title": "docs(roadmap): P1-10b ✅ 完成（step 14 FPS PASS）",
+    "updatedAt": "2026-06-01T09:44:05Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/51"
   }
 ]
