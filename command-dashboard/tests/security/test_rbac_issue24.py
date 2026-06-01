@@ -74,6 +74,18 @@ def test_observer_cannot_post_map_config(client):
     assert r.status_code == 403
 
 
+def test_observer_can_get_map_config(client):
+    """Observer 必須能 GET 看地圖。
+
+    Bug：GET /api/map_config 被 WRITE_ROLES（不含 observer）一起鎖住 → 觀察員登入後
+    前端 _loadMapConfig 吃 403、地圖整片載不出。修法：GET → READ_ROLES、寫入 → WRITE_ROLES。
+    """
+    create_account("obs_get_map24", "1234", ROLE_OBSERVER_ZH, "Observer Get Map", "observer")
+    token = _login(client, "obs_get_map24", "1234")
+    r = client.get("/api/map_config", headers=_auth_header(token))
+    assert r.status_code == 200, r.text
+
+
 # ── /api/map/upload-image POST（仍限 COMMAND_ROLES）──────────────
 
 
