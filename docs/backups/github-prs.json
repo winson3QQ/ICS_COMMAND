@@ -1107,7 +1107,7 @@
     "number": 46,
     "state": "MERGED",
     "title": "fix(account): admin 可編輯 display_name + XSS 驗證",
-    "updatedAt": "2026-06-01T07:01:58Z",
+    "updatedAt": "2026-06-01T07:02:55Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/46"
   }
 ]
