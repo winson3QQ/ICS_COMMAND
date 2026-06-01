@@ -939,15 +939,15 @@
       "name": ""
     },
     "body": "## 需求\n開站/登入後地圖預設就是**站外（MapLibre 戶外態勢圖）+ MGRS 網格 on**，因為演習主視圖是戶外。原本預設站內、網格 off。\n\n## 修法（static/js/map.js）\n- `_currentMap` 預設 `indoor → outdoor`（module 初值 + boot fallback）\n- `_mgrsGridVisible` 預設 `off → on`：`sessionStorage.getItem('_mgrsGridVisible') !== '0'`（預設開、使用者明確關才關）\n- `_layerVis.mgrs` 跟著 `_mgrsGridVisible`\n\n## 行為\n跨 refresh 持久化保留：使用者手動切站內 / 關網格 → 下次記住其偏好；只有全新（沒按過）才套站外帶網格預設。\n\n## 驗收\n實機驗證（清 cache 重登）：一進去即站外 + 網格、⊞ 按鈕高亮。",
-    "closedAt": null,
+    "closedAt": "2026-06-01T07:24:35Z",
     "comments": [],
     "createdAt": "2026-06-01T07:22:59Z",
     "labels": [],
     "milestone": null,
     "number": 47,
-    "state": "OPEN",
+    "state": "CLOSED",
     "title": "feat(map): 預設站外底圖 + MGRS 網格 on（演習主視圖）",
-    "updatedAt": "2026-06-01T07:22:59Z",
+    "updatedAt": "2026-06-01T07:24:35Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/47"
   }
 ]

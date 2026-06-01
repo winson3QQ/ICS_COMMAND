@@ -1109,5 +1109,26 @@
     "title": "fix(account): admin 可編輯 display_name + XSS 驗證",
     "updatedAt": "2026-06-01T07:02:55Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/46"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "演習主視圖是戶外態勢圖，開站/登入後預設即**站外 + MGRS 網格 on**（原預設站內、網格 off）。\n\n## 改動（static/js/map.js）\n- `_currentMap` 預設 indoor → outdoor\n- `_mgrsGridVisible` 預設 off → on（`!== '0'`，使用者明確關才關）\n- `_layerVis.mgrs` 跟著同步\n\n跨 refresh 持久化保留使用者偏好；只有全新使用者才套預設。\n\n實機驗證（清 cache 重登）：站外 + 網格、⊞ 按鈕高亮 ✅\n\nCloses #47\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+    "closedAt": "2026-06-01T07:24:34Z",
+    "comments": [],
+    "createdAt": "2026-06-01T07:24:31Z",
+    "headRefName": "feat/issue-47-default-outdoor-grid",
+    "labels": [],
+    "mergedAt": "2026-06-01T07:24:34Z",
+    "number": 48,
+    "state": "MERGED",
+    "title": "feat(map): 預設站外底圖 + MGRS 網格 on",
+    "updatedAt": "2026-06-01T07:24:34Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/48"
   }
 ]
