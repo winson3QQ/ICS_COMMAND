@@ -91,9 +91,27 @@ app.middleware("http")(security_headers_middleware)
 # C1-D：correlation_middleware 最後加入 → 最外層執行（LIFO），最先設定 correlation_id
 app.middleware("http")(correlation_middleware)
 
+
 # ── 靜態檔案 ──────────────────────────────────────────────────────────────────
+class _NoCacheJsStaticFiles(StaticFiles):
+    """對 .js 回應強制 Cache-Control: no-store。
+
+    前端 ES module（尤其動態 import，如 cop_stream.js 在登入後才載）若被瀏覽器
+    模組/HTTP 快取住，會出現「新 map.js × 舊 cop_stream.js」的 API 不匹配（issue #29
+    dogfood 撞到，連 cmd+shift+R 都繞不掉）。app 無 build/版號 cache-busting，故 JS
+    一律 no-store：永遠抓最新、根除 stale-module。CSS/字型/圖片不受影響（沿用預設快取）。
+    production 由 nginx（deploy/）服務靜態並自管 header，不走此 mount。
+    """
+
+    async def get_response(self, path, scope):
+        resp = await super().get_response(path, scope)
+        if path.endswith(".js"):
+            resp.headers["Cache-Control"] = "no-store"
+        return resp
+
+
 if STATIC_DIR.exists():
-    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+    app.mount("/static", _NoCacheJsStaticFiles(directory=str(STATIC_DIR)), name="static")
 
 # ── 路由 ──────────────────────────────────────────────────────────────────────
 for router in (
