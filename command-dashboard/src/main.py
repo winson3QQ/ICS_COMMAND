@@ -61,6 +61,10 @@ async def lifespan(app: FastAPI):
     from services import map_config_store
 
     map_config_store.ensure()
+    # P1-10d 地基（issue #60/#66）：事件分類 taxonomy seed → runtime ensure（同模式）
+    from services import event_taxonomy_store
+
+    event_taxonomy_store.ensure()
     yield
     # shutdown：關閉所有 COP WS 連線（issue #29 PR-D in-process hub）
     from services.realtime_hub import cop_hub

@@ -126,9 +126,14 @@ def write_atomic(
     finally:
         os.close(fd)
     os.replace(tmp, path)  # 原子 — POSIX rename 保證同 filesystem 內 atomic
-    # fsync 父目錄讓 rename 也 persist（不然 power loss 後 rename 可能消失）
-    dir_fd = os.open(str(path.parent), os.O_RDONLY)
+    # fsync 父目錄讓 rename 也 persist（不然 power loss 後 rename 可能消失）。
+    # best-effort：Windows 不支援對目錄 fsync（PermissionError）；檔案 fsync + os.replace
+    # 已保證原子性，Windows 開發機吞掉即可（Linux/Pi 部署照常 fsync）。
     try:
-        os.fsync(dir_fd)
-    finally:
-        os.close(dir_fd)
+        dir_fd = os.open(str(path.parent), os.O_RDONLY)
+        try:
+            os.fsync(dir_fd)
+        finally:
+            os.close(dir_fd)
+    except OSError:
+        pass

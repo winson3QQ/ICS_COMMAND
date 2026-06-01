@@ -18,6 +18,10 @@ data/backups/
 command-dashboard/data/map_config.json
 command-dashboard/data/map_config.json.tmp
 
+# P1-10d 地基（#60/#66）：event_taxonomy runtime 檔在 data/，同 user data 邊界
+command-dashboard/data/event_taxonomy.json
+command-dashboard/data/event_taxonomy.json.tmp
+
 # Node
 node_modules/
 dist/

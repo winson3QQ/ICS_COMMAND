@@ -96,6 +96,10 @@ def allowed_roles_for(method: str, path: str) -> frozenset[str] | None:
     # 源於 issue #24 dogfood（operator POST 被 403 silent fail）+ observer 看不到地圖（後續發現）。
     if path == "/api/map_config":
         return READ_ROLES if method == "GET" else WRITE_ROLES
+    # 事件分類 taxonomy（P1-10d 地基，#60/#66）：GET 給 READ_ROLES（前端渲染事件需要）；
+    # 編輯（POST）限 sysadmin（admin 編輯器 #66 決策）。
+    if path == "/api/event_taxonomy":
+        return READ_ROLES if method == "GET" else SYSADMIN_ONLY
     if path == "/api/map/upload-image":
         return COMMAND_ROLES
     if path.startswith("/api/ai/recommendations/"):
