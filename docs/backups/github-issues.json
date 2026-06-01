@@ -979,15 +979,15 @@
       "name": ""
     },
     "body": "## 摘要\n\nP1-10c（PMTiles 台灣底圖 + 戰術底圖 doctrine）動工前 reality check + 底圖來源/build recipe 落定。\n\n## Reality check 發現（對照 ROADMAP 假設）\n\n**已就緒（P1-10b 預埋，降低 scope）**\n- PMTiles HTTP serving 含 Range：`src/routers/map.py` `serve_pmtiles`\n- `pmtiles.js` v4.4.1 + MapLibre v4.7.1 vendored（POLICY.md 已釘 SHA256）\n- 中文 label glyphs（Noto Sans Regular, CJK 全 BMP）+ JetBrains Mono\n- EntityLayer 抽象、indoor/outdoor 整合點乾淨（只動 outdoor style）\n- CSP 不需改（同源 PMTiles → `connect-src 'self'` 已涵蓋；`worker-src blob:` 已在）\n\n**真正缺的（= P1-10c 工作）**\n- `taiwan.pmtiles` 不存在（gitignored deploy artifact，fresh clone 無此檔）\n- 底圖完全沒接：outdoor 目前是 `EMPTY_DARK_STYLE`（純背景色）\n- `pmtiles://` protocol 未註冊（無 `addProtocol`）\n- dark / muted-day 兩套 style.json 不存在\n- **主題切換 UI 完全沒有**（隱性 scope，DoD「24/7 主題切換」要求）\n- attribution 關著（`maplibre_core.js` `attributionControl:false` TODO）\n\n**隱性技術陷阱**\n- `map.setStyle()` 會清掉所有 runtime layer → 主題切換必須在 setStyle 後重建 EntityLayer + MGRS grid，否則 entity 全消失。codebase 目前無此處理。\n\n## 底圖來源 / build recipe（落定 2026-06-01）\n\n- 採 Protomaps 體系。**路徑 A（採用）**：`pmtiles extract` 從 planet build 切台灣（單一 binary、HTTP Range、Windows 可跑、~15-30 分鐘）。**路徑 B（fallback）**：planetiler + Geofabrik 台灣 extract（完全可重現，需 JDK 21 + Maven）。\n- **schema 對齊紅線**：PMTiles 版本必須與 `@protomaps/basemaps` style 版本對齊，否則底圖空白。\n- 供應鏈全鏈非中國（Protomaps/US、planetiler/US、Geofabrik/德、OSM/全球、Natural Earth/US）。\n- **ODbL attribution 必做**：© OpenStreetMap contributors。\n- 完整 recipe + provenance 留痕模板見 `command-dashboard/docs/design/POLICY.md` §底圖資料來源與 build recipe。\n\n## 釐清\n\nmini-taiwan-learning-project 是 P1-10b **渲染架構**借鏡來源（見 #19），**非底圖資料來源**——其底圖為 Mapbox 線上圖磚 + token，ICS 已明確拒絕（違反「PMTiles 離線」紅線）。\n\n## 工時更正\n\nROADMAP 原估 1-2 天僅涵蓋 style 換來源。含主題切換 UI + setStyle 重建隱性 scope，且 `taiwan.pmtiles` 若需重 build，**實估 3-5 天**（檔已在則接近原估）。\n\n## 待決\n\n1. Mac / 舊部署上是否還有 `taiwan.pmtiles`？（在 → 資料端幾乎免做；不在 → 走 build recipe）\n2. bbox 是否含金門 / 馬祖？（預設僅本島 + 澎湖：`119.3,21.7,122.2,25.4`；含金馬需 `118.1,21.7,122.3,26.4`）\n\n## 留痕\n\n- POLICY.md §底圖資料來源與 build recipe（本 commit）\n- ROADMAP P1-10c 列已加指標 + scope 更正（本 commit）\n",
-    "closedAt": null,
+    "closedAt": "2026-06-01T13:26:12Z",
     "comments": [],
     "createdAt": "2026-06-01T13:22:12Z",
     "labels": [],
     "milestone": null,
     "number": 52,
-    "state": "OPEN",
+    "state": "CLOSED",
     "title": "P1-10c: PMTiles 台灣底圖 — 底圖來源/build recipe 落定 + reality check",
-    "updatedAt": "2026-06-01T13:22:12Z",
+    "updatedAt": "2026-06-01T13:26:12Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/52"
   }
 ]

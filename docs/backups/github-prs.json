@@ -1172,5 +1172,26 @@
     "title": "docs(roadmap): P1-10b ✅ 完成（step 14 FPS PASS）",
     "updatedAt": "2026-06-01T09:44:31Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/51"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "## 目的\n\nP1-10c 動工前的 reality check 與底圖來源/build recipe 落定，補上 `taiwan.pmtiles` 從未留 recipe / provenance 的文件缺口。純文件 PR，無 code 變更。\n\nCloses #52\n\n## 變更\n\n- **`command-dashboard/docs/design/POLICY.md`**：新增「底圖資料來源與 build recipe（P1-10c）」整節\n  - 採用體系、schema 對齊紅線、路徑 A（pmtiles extract，採用）+ 路徑 B（planetiler，fallback）\n  - 供應鏈紅線表（全非中國）+ ODbL attribution 義務 + provenance 留痕模板\n  - 釐清 mini-taiwan 非底圖來源（僅渲染架構借鏡 #19）+ 新舊引擎差異\n- **`docs/ROADMAP.md`**：P1-10c 列加指標連到該節 + reality check scope 更正（主題切換 UI + setStyle 重建隱性 scope；重 build 實估 3-5 天）\n\n## §8 Verification\n\n純文件變更，無 runtime 行為改動。驗證方式：\n- [ ] POLICY.md 新節 markdown 渲染正常、表格不破\n- [ ] ROADMAP P1-10c 列指標連結指向 `../command-dashboard/docs/design/POLICY.md` 正確\n- [ ] `python3 scripts/doc_sync_check.py` exit 0（新加路徑引用真實存在）\n\n## 待決（非本 PR scope，已記入 #52）\n\n1. Mac / 舊部署是否還有 `taiwan.pmtiles`（決定資料端是否需重 build）\n2. bbox 是否含金門 / 馬祖\n",
+    "closedAt": "2026-06-01T13:26:10Z",
+    "comments": [],
+    "createdAt": "2026-06-01T13:23:42Z",
+    "headRefName": "docs/issue-52-p1-10c-recipe",
+    "labels": [],
+    "mergedAt": "2026-06-01T13:26:10Z",
+    "number": 53,
+    "state": "MERGED",
+    "title": "docs(roadmap): P1-10c 底圖來源/build recipe 落定 + reality check（#52）",
+    "updatedAt": "2026-06-01T13:26:13Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/53"
   }
 ]
