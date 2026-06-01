@@ -1046,5 +1046,26 @@
     "title": "refactor(cop): issue#29 PR-H — 退役 ＋標記 MVP + 移除流向 + close #29",
     "updatedAt": "2026-06-01T02:10:55Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/41"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "## 背景\napp 無 build/版號 cache-busting，登入後動態 import 的 ES module（如 `cop_stream.js`）易被瀏覽器模組/HTTP 快取卡住，造成「新 `map.js` × 舊 `cop_stream.js`」API 不匹配，連 cmd+shift+R 都繞不掉（issue #29 dogfood）。\n\n## 作法\n- `_NoCacheJsStaticFiles`：static `.js` 一律回 `Cache-Control: no-store`。\n- css / 字型 / 圖片不受影響（沿用預設快取）。\n- production 由 nginx 服務靜態、自管 header，不走此 mount。\n\n## 測試\n新增 `tests/integration/test_static_no_store.py`（3 cases，本地全綠）：\n- `/static/js/main.js` → no-store\n- `/static/js/map/cop_stream.js`（動態 import 模組）→ no-store\n- `/static/css/ds-tokens.css` → 不被強制 no-store\n\n## 來源說明\n此分支為前一 session 處理「地圖只剩底圖能動」時所開。該症狀真因為 **worktree 空 DB first-run 未完成 → /api 全 423**（與快取無關），no-store 對該 bug 無效；但作為無 cache-busting 專案的 stale 動態模組 hardening 仍獨立有效，故正式併入。\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+    "closedAt": "2026-06-01T04:14:49Z",
+    "comments": [],
+    "createdAt": "2026-06-01T04:14:36Z",
+    "headRefName": "chore/static-no-store",
+    "labels": [],
+    "mergedAt": "2026-06-01T04:14:49Z",
+    "number": 42,
+    "state": "MERGED",
+    "title": "chore(static): JS 強制 no-store 根除 stale 動態模組",
+    "updatedAt": "2026-06-01T04:16:21Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/42"
   }
 ]
