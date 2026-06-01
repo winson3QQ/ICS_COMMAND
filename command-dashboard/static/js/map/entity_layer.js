@@ -507,39 +507,7 @@ export function infraToFeature(infra) {
   };
 }
 
-/**
- * flow-shaped object + resolveRef 函式 → GeoJSON LineString Feature。
- * map_config.maps.outdoor.flows schema：{ id, from_ref|from_zone_id, to_ref|to_zone_id, flow_type, color?, label? }
- *
- * caller 必須提供 resolveRef(ref) → { lat, lng, label? } | null
- * （map.js 已有 _resolveRef 可重用；entity_layer 不知道 zones / infrastructure 在哪）
- *
- * @param {object} flow
- * @param {(ref: string | null) => ({lat: number, lng: number, label?: string} | null)} resolveRef
- */
-export function flowToFeature(flow, resolveRef) {
-  if (flow == null || typeof resolveRef !== 'function') return null;
-  const fromRef = flow.from_ref || (flow.from_zone_id ? `zone:${flow.from_zone_id}` : null);
-  const toRef   = flow.to_ref   || (flow.to_zone_id   ? `zone:${flow.to_zone_id}`   : null);
-  const from = resolveRef(fromRef);
-  const to   = resolveRef(toRef);
-  if (!from || !to) return null;
-  const fLng = Number(from.lng), fLat = Number(from.lat);
-  const tLng = Number(to.lng),   tLat = Number(to.lat);
-  if (![fLng, fLat, tLng, tLat].every(Number.isFinite)) return null;
-  return {
-    type: 'Feature',
-    geometry: { type: 'LineString', coordinates: [[fLng, fLat], [tLng, tLat]] },
-    properties: {
-      id: flow.id ?? null,
-      flow_type: flow.flow_type ?? null,
-      color: flow.color ?? '#888888',
-      label: flow.label ?? '',
-      from_label: from.label ?? '',
-      to_label: to.label ?? '',
-    },
-  };
-}
+// PR-H：flowToFeature 已移除（流向功能退役 —— 與 routeToFeature 重疊）。
 
 /**
  * 標準化 helper：把 zone-shaped object（cop_entities 或 map_config.maps.outdoor.zones）

@@ -18,7 +18,6 @@ import {
   routeToFeature,
   routeLabelToFeature,
   infraToFeature,
-  flowToFeature,
   copEntityToRoute,
   copEntityToPolygon,
   copEntityToEventZone,
@@ -376,43 +375,6 @@ describe('zoneToNodeFeature', () => {
   });
 });
 
-describe('flowToFeature', () => {
-  const zones = {
-    z1: { lat: 24.826, lng: 121.014, label: 'A' },
-    z2: { lat: 24.831, lng: 121.019, label: 'B' },
-  };
-  const resolveRef = (ref) => {
-    if (!ref) return null;
-    const id = ref.includes(':') ? ref.split(':')[1] : ref;
-    return zones[id] || null;
-  };
-
-  test('合法 flow → LineString 帶 from/to label', () => {
-    const f = flowToFeature({ id: 'f1', from_zone_id: 'z1', to_zone_id: 'z2', flow_type: 'casualty', color: '#e05555' }, resolveRef);
-    expect(f).not.toBeNull();
-    expect(f.geometry.type).toBe('LineString');
-    expect(f.geometry.coordinates).toEqual([[121.014, 24.826], [121.019, 24.831]]);
-    expect(f.properties.from_label).toBe('A');
-    expect(f.properties.to_label).toBe('B');
-    expect(f.properties.color).toBe('#e05555');
-  });
-
-  test('from_ref 優先於 from_zone_id', () => {
-    const f = flowToFeature({ from_ref: 'zone:z2', to_zone_id: 'z1' }, resolveRef);
-    expect(f.geometry.coordinates).toEqual([[121.019, 24.831], [121.014, 24.826]]);
-  });
-
-  test('from/to 解析失敗 → null', () => {
-    expect(flowToFeature({ from_zone_id: 'unknown', to_zone_id: 'z1' }, resolveRef)).toBeNull();
-    expect(flowToFeature({ from_zone_id: 'z1', to_zone_id: 'unknown' }, resolveRef)).toBeNull();
-    expect(flowToFeature({}, resolveRef)).toBeNull();
-  });
-
-  test('resolveRef 非 function → null（防呆）', () => {
-    expect(flowToFeature({ from_zone_id: 'z1', to_zone_id: 'z2' }, null)).toBeNull();
-    expect(flowToFeature(null, resolveRef)).toBeNull();
-  });
-});
 
 // MapLibre 4.7.1 render pipeline 對 ['geometry-type'] expression 在 symbol layer
 // 內 cull 掉所有 features（dogfood 發現）。Label feature 必須帶 properties.kind='label'

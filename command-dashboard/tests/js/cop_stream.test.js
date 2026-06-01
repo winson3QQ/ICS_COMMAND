@@ -6,7 +6,7 @@
  * - 防護 1（_isSaving）/ 防護 4（dragging）：本地寫/拖中的 uid 不被遠端覆蓋
  * - delete 套用 + 遲到舊刪除忽略
  * - _onMessage 分派（hello/create/update/delete）
- * - placeAtCenter POST + 本地 upsert；_putEntity 409 採 server_entity
+ * - createEntity POST + 本地 upsert；updateEntity/deleteEntity 回傳成功/失敗（409 採 server_entity）
  * - resync：套用 server 全量、移除 server 已無者、但保留 in-flight uid（防護 2）
  */
 import { describe, expect, test, vi } from "vitest";
@@ -14,35 +14,7 @@ import { describe, expect, test, vi } from "vitest";
 import { createCopStream } from "../../static/js/map/cop_stream.js";
 
 // ── mocks ────────────────────────────────────────────────────────────────
-
-class FakeMarker {
-  constructor(opts = {}) {
-    this.opts = opts;
-    this.lngLat = null;
-    this.added = false;
-    this.removed = false;
-    this.handlers = {};
-  }
-  setLngLat(ll) {
-    this.lngLat = ll;
-    return this;
-  }
-  addTo() {
-    this.added = true;
-    return this;
-  }
-  remove() {
-    this.removed = true;
-    return this;
-  }
-  on(ev, fn) {
-    this.handlers[ev] = fn;
-    return this;
-  }
-  getLngLat() {
-    return { lat: this.lngLat[1], lng: this.lngLat[0] };
-  }
-}
+// PR-H：cop_stream 退役自建 marker → 純資料層，測試不再需要 FakeMarker。
 
 function _resp(status, body) {
   return Promise.resolve({
@@ -59,11 +31,9 @@ function makeStream(over = {}) {
     return over.fetchImpl ? over.fetchImpl(url, opts) : _resp(200, {});
   });
   const stream = createCopStream({
-    map: { getCenter: () => ({ lat: 25, lng: 121 }), ...over.map },
     getToken: () => "tok",
     authFetch,
     canWrite: over.canWrite || (() => true),
-    MarkerCtor: FakeMarker,
     WebSocketCtor: function () {},
     setTimeoutFn: () => 0,
     clearTimeoutFn: () => {},
@@ -156,16 +126,6 @@ describe("_onMessage dispatch", () => {
 // ── REST 寫入 ───────────────────────────────────────────────────────────────
 
 describe("REST writes", () => {
-  test("placeAtCenter POST + 本地 upsert", async () => {
-    const created = E("new-1", 1, { callsign: "C" });
-    const { stream, fetchCalls } = makeStream({ fetchImpl: () => _resp(201, created) });
-    const ent = await stream.placeAtCenter();
-    expect(ent.uid).toBe("new-1");
-    expect(stream._byUid.has("new-1")).toBe(true);
-    expect(fetchCalls[0].url).toMatch(/\/api\/cop\/entities$/);
-    expect(fetchCalls[0].opts.method).toBe("POST");
-  });
-
   test("createEntity POST 帶 attributes/kind + 本地 upsert（map 物件 cutover 用）", async () => {
     const created = E("route:1", 1, { callsign: "北線", attributes: { kind: "route" } });
     const { stream, fetchCalls } = makeStream({ fetchImpl: () => _resp(201, created) });
@@ -224,14 +184,14 @@ describe("REST writes", () => {
     expect(await s4.stream.deleteEntity("c")).toBe(true);
   });
 
-  test("observer（canWrite=false）placeAtCenter no-op", async () => {
+  test("observer（canWrite=false）createEntity no-op", async () => {
     const { stream, authFetch } = makeStream({ canWrite: () => false });
-    const ent = await stream.placeAtCenter();
+    const ent = await stream.createEntity({ type: "a-u-G", lat: 1, lon: 2 });
     expect(ent).toBe(null);
     expect(authFetch).not.toHaveBeenCalled();
   });
 
-  test("dragend → PUT 帶 If-Match；409 採 server_entity", async () => {
+  test("updateEntity 409 → 採 server_entity（對齊 server 現值）", async () => {
     let put = null;
     const { stream } = makeStream({
       fetchImpl: (url, opts) => {
@@ -243,16 +203,12 @@ describe("REST writes", () => {
       },
     });
     stream._applyEntity(E("a", 3));
-    const rec = stream._byUid.get("a");
-    rec.marker.lngLat = [62, 51]; // 模擬拖到的位置
-    // 觸發 dragstart→dragend
-    rec.marker.handlers.dragstart();
-    await rec.marker.handlers.dragend();
-    expect(put.headers["If-Match"]).toBe("3"); // 帶拖前的 version
-    // 409 → 採 server 現值（回到 server 位置）
-    expect(stream._byUid.get("a").entity.version_clock).toBe(7);
-    expect(stream._byUid.get("a").entity.lat).toBe(50);
-    expect(stream._debugState().dragging).toBe(null); // dragend 後解除
+    const ok = await stream.updateEntity("a", { lat: 1, lon: 2 });
+    expect(ok).toBe(false);
+    expect(put.headers["If-Match"]).toBe("3"); // 帶改前的 version
+    // 409 → 採 server 現值（本地對齊到 v7）
+    expect(stream.getEntity("a").version_clock).toBe(7);
+    expect(stream.getEntity("a").lat).toBe(50);
   });
 });
 
@@ -310,25 +266,6 @@ describe("render delegation seam", () => {
     expect(fires).toBe(3);
   });
 
-  test("kind-aware：被委派 kind 不自建 marker、無 kind 的 ＋標記 MVP 仍自建", () => {
-    const { stream } = makeStream();
-    stream.onChange(() => {});
-    // 被委派 kind（route/polygon）→ map.js 渲染，cop_stream marker 為 null
-    stream._applyEntity(E("r1", 1, { attributes: { kind: "route" } }));
-    expect(stream._byUid.get("r1").marker).toBe(null);
-    stream._applyEntity(E("p1", 1, { attributes: { kind: "polygon" } }));
-    expect(stream._byUid.get("p1").marker).toBe(null);
-    // 無 kind 的 ＋標記 MVP（type a-f-G-U-C）→ 委派模式下仍自建 marker（留到 PR-H 退役）
-    stream._applyEntity(E("mvp", 1));
-    expect(stream._byUid.get("mvp").marker).not.toBe(null);
-  });
-
-  test("未訂閱（standalone）→ 即使有 kind 也 fallback 自建 marker", () => {
-    const { stream } = makeStream();
-    stream._applyEntity(E("r1", 1, { attributes: { kind: "route" } }));
-    expect(stream._byUid.get("r1").marker).not.toBe(null);
-  });
-
   test("getEntitiesByKind 依 attributes.kind 過濾", () => {
     const { stream } = makeStream();
     stream.onChange(() => {});
@@ -345,13 +282,6 @@ describe("render delegation seam", () => {
     stream._applyEntity(E("a", 7));
     expect(stream.getEntity("a").version_clock).toBe(7);
     expect(stream.getEntity("nope")).toBe(null);
-  });
-
-  test("event kind 被委派（不自建 marker）", () => {
-    const { stream } = makeStream();
-    stream.onChange(() => {});
-    stream._applyEntity(E("e1", 1, { attributes: { kind: "event", event_id: "x" } }));
-    expect(stream._byUid.get("e1").marker).toBe(null);
   });
 });
 

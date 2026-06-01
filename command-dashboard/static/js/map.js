@@ -37,7 +37,6 @@ import {
   routeToFeature,
   routeMidLngLat,
   routeLabelToFeature,
-  flowToFeature,
   zoneToNodeFeature,
   copEntityToRoute,
   copEntityToPolygon,
@@ -91,7 +90,6 @@ let _leafletMarkers = [];
 // P1-10b 步驟 6/7：原為 Leaflet L.layerGroup，現改持 EntityLayer instance。
 let _polygonLayer = null;   // EntityLayer (Polygon fill+stroke)
 let _infraLayer = null;     // EntityLayer (Point circle)
-let _flowLayer = null;      // EntityLayer (LineString)
 let _routeLayer = null;     // EntityLayer (LineString)
 let _zoneLayer = null;      // EntityLayer (Point circle) — step 7 階段 1
 let _drawPreview = null;       // DrawPreview — step 8（polygon / route 繪製預覽）
@@ -115,7 +113,7 @@ let _mgrsGridVisible = sessionStorage.getItem('_mgrsGridVisible') === '1';
 // PR-G1b：events 從 zones 拆出獨立可見性 —— 事件圖釘與永久節點同走 _zoneLayer，但分別
 // 由 _layerVis.zones（節點）/ _layerVis.events（事件）控制，feature-level 過濾（取消勾「節點」
 // 不再連帶把事件藏掉）。
-const _layerVis = { zones: true, events: true, polygons: true, infra: true, flows: true, routes: true, mgrs: false };
+const _layerVis = { zones: true, events: true, polygons: true, infra: true, routes: true, mgrs: false };
 
 const _HSINCHU_CENTER = [24.8283, 121.0149];
 const _HSINCHU_ZOOM = 15;
@@ -200,12 +198,6 @@ const POLY_COT_TYPE = 'u-d-f';
 // 事件位置圖釘 cutover（PR-G1b）：暫用 a-u-G（atoms-unknown-ground，未識別陸上目標）。
 // 事件嚴重度/狀態仍由 events 表掌管，CoT type 的 affiliation/dimension 細分留 P2-04 TAK。
 const EVENT_COT_TYPE = 'a-u-G';
-
-const FLOW_TYPES = {
-  casualty:   { label: '傷患後送', color: '#e05555' },
-  evacuation: { label: '疏散人員', color: '#e3b341' },
-  resource:   { label: '資源調度', color: '#56d364' },
-};
 
 export function initMap(deps = {}) {
   _deps = deps;
@@ -329,8 +321,7 @@ export function applyMapRoleUiGuards() {
   if (!tools) return;
   const objectTools = canAccessMapObjects()
     ? `<button class="map-btn" id="btn-poly-draw"  data-action="startPolyDraw"   title="繪製範圍" style="font-size:16px;">▱</button>
-     <button class="map-btn" id="btn-route-draw" data-action="startRouteDraw"  title="繪製路線" style="font-size:14px;">↗</button>
-     <button class="map-btn" id="btn-flow-add"   data-action="openFlowForm"    title="新增流向" style="font-size:14px;">→</button>`
+     <button class="map-btn" id="btn-route-draw" data-action="startRouteDraw"  title="繪製路線" style="font-size:14px;">↗</button>`
     : '';
   // CSP 合規：用 data-action 委派，main.js 全域 click handler 會接住
   tools.innerHTML =
@@ -417,7 +408,6 @@ export function refreshLeafletMarkers() {
   _ensureEntityLayers();
   _renderPolygons();
   _renderInfra();
-  _renderFlows();
   _renderRoutes();
   _renderZones();
 }
@@ -505,7 +495,6 @@ function _rebuildLayerPanel() {
     { key: 'events',   icon: '▲', label: '事件' },
     { key: 'polygons', icon: '▱', label: '範圍' },
     { key: 'infra',    icon: '＋', label: '設施' },
-    { key: 'flows',    icon: '→', label: '流向' },
     { key: 'routes',   icon: '↗', label: '路線' },
     { key: 'mgrs',     icon: '⊞', label: 'MGRS 格線' },
   ];
@@ -968,46 +957,7 @@ function _ensureEntityLayers() {
     ],
   });
 
-  // Flows — line + arrow（同 routes 模式，方向感更重要因為 flow 本身 = 流向）
-  _flowLayer = new EntityLayer(map, 'flows', {
-    layers: [
-      {
-        id: 'flows-line', type: 'line',
-        paint: { 'line-color': ['get', 'color'], 'line-width': 2.5, 'line-opacity': 0.85 },
-      },
-      {
-        id: 'flows-arrow', type: 'symbol',
-        layout: {
-          'symbol-placement': 'line',
-          'symbol-spacing': 80,
-          'icon-image': 'route-arrow',
-          'icon-size': 1.05,
-          'icon-allow-overlap': true,
-          'icon-ignore-placement': true,
-          'icon-rotation-alignment': 'map',
-        },
-        paint: { 'icon-color': ['get', 'color'], 'icon-opacity': 0.95 },
-      },
-      {
-        // Flow label：放在線中點
-        id: 'flows-label', type: 'symbol',
-        filter: ['has', 'label'],
-        layout: {
-          'text-field': ['get', 'label'],
-          'text-font': ['Noto Sans Regular'],
-          'text-size': 11,
-          'symbol-placement': 'line-center',
-          'text-rotation-alignment': 'viewport',
-          'text-allow-overlap': false,
-        },
-        paint: {
-          'text-color': ['get', 'color'],
-          'text-halo-color': '#0d1117',
-          'text-halo-width': 2,
-        },
-      },
-    ],
-  });
+  // PR-H：flows EntityLayer 已移除（流向功能退役 —— 與 route 重疊，且 G1b 後連不到事件）。
 
   // Zones — step 7 階段 1：circle marker（NAPSG SVG SDF 留階段 2；
   // 用三層 stack 預留 hover/selected/halo 接點，目前 selected/halo 給 0 opacity）
@@ -1123,7 +1073,6 @@ function _ensureEntityLayers() {
   map.on('click', 'infra-circle', (e) => _onInfraClick(e));
   map.on('click', 'routes-line-solid', (e) => _onRouteClick(e));
   map.on('click', 'routes-line-dash', (e) => _onRouteClick(e));
-  map.on('click', 'flows-line', (e) => _onFlowClick(e));
   map.on('click', 'zones-base', (e) => _onZoneClick(e));
   map.on('click', 'zones-abbr', (e) => _onZoneClick(e));  // abbr 字也可點，跟 base 同 handler
 
@@ -1134,7 +1083,7 @@ function _ensureEntityLayers() {
   const _resetHoverCursor = () => { map.getCanvas().style.cursor = ''; };  // '' = 回 MapLibre 自己管
   [
     'polygons-fill', 'infra-circle',
-    'routes-line-solid', 'routes-line-dash', 'flows-line',
+    'routes-line-solid', 'routes-line-dash',
     'zones-base', 'zones-abbr',
   ].forEach((id) => {
     map.on('mouseenter', id, () => { _hoverCount += 1; _setHoverCursor(); });
@@ -1341,18 +1290,6 @@ function _onRouteClick(e) {
       route.label_anchor ? { resetAnchorAction: 'resetRouteLabelAnchor' } : {}));
 }
 
-function _onFlowClick(e) {
-  if (!canAccessMapObjects()) return;
-  const id = e.features?.[0]?.properties?.id;
-  const flow = _findById(_mapConfig?.maps?.outdoor?.flows, id);
-  if (!flow) return;
-  const def = FLOW_TYPES[flow.flow_type] || FLOW_TYPES.casualty;
-  const props = e.features?.[0]?.properties || {};
-  const desc = `${def.label || flow.flow_type}　${props.from_label || '?'} → ${props.to_label || '?'}`;
-  _deps.openModal?.(`→ ${flow.label || def.label || '流向'}`,
-    _featureInfo(desc, 'deleteFlow', flow.id));
-}
-
 function _onZoneClick(e) {
   if (!canAccessMapObjects()) return;
   const id = e.features?.[0]?.properties?.id;
@@ -1503,36 +1440,7 @@ function _renderRoutes() {
   }
 }
 
-function _resolveRef(ref, flow) {
-  if (!ref) {
-    const zoneId = flow?.from_zone_id || flow?.to_zone_id;
-    if (!zoneId) return null;
-    ref = `zone:${zoneId}`;
-  }
-  const sep = ref.indexOf(':');
-  const type = sep > 0 ? ref.slice(0, sep) : 'zone';
-  const id = sep > 0 ? ref.slice(sep + 1) : ref;
-  if (type === 'infra') {
-    const item = (_mapConfig?.maps?.outdoor?.infrastructure || []).find(i => i.id === id);
-    return item ? { lat: item.lat, lng: item.lng, label: item.label } : null;
-  }
-  const zone = (_mapConfig?.maps?.outdoor?.zones || []).find(z => z.id === id);
-  return zone ? { lat: zone.lat, lng: zone.lng, label: zone.label } : null;
-}
-
-function _renderFlows() {
-  // P1-10b 步驟 11：Leaflet legacy 移除。
-  if (!_flowLayer) return;
-  _flowLayer.setVisible(_layerVis.flows);
-  if (!_layerVis.flows) { _flowLayer.clear(); return; }
-  const features = (_mapConfig?.maps?.outdoor?.flows || [])
-    .map((flow) => {
-      const def = FLOW_TYPES[flow.flow_type] || FLOW_TYPES.casualty;
-      return flowToFeature({ ...flow, color: flow.color || def.color }, _resolveRef);
-    })
-    .filter(Boolean);
-  _flowLayer.update(features);
-}
+// PR-H：_resolveRef / _renderFlows 已移除（流向功能退役）。
 
 // P1-10b 步驟 7 階段 1：zone marker port — circle only（NAPSG SVG SDF + abbr text
 // 留階段 2，需 addImage + glyphs source）。Drag-to-reposition 留 step 8 draw_tools.js。
@@ -1892,93 +1800,10 @@ export async function _deleteInfra(id) {
 }
 
 export function _saveInfraPosition() {}
-// ══════════════════════════════════════════════════════════════
-// 流向（Flow）表單
-// ══════════════════════════════════════════════════════════════
 
-export function _openFlowForm() {
-  if (!canAccessMapObjects()) return;
-  const zones = (_mapConfig?.maps?.outdoor?.zones || []).filter(z => z.lat != null);
-  const infras = _mapConfig?.maps?.outdoor?.infrastructure || [];
-  if (zones.length + infras.length < 2) {
-    _deps.openModal?.('● → ● 新增調度指示',
-      `<div style="color:var(--text2);font-size:12px;padding:12px 0;">需要至少兩個已定位的節點（或設施）才能建立流向。</div>
-       <button data-action="closeModal" style="width:100%;padding:8px;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:6px;cursor:pointer;font-family:var(--mono);">關閉</button>`);
-    return;
-  }
-  const SEL = 'width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px 8px;border-radius:4px;font-size:12px;';
-  const nodeZones = zones.filter(z => !(z.event_id || z.event_code));
-  const eventZones = zones.filter(z => !!(z.event_id || z.event_code));
-  const endpointOpts =
-    (nodeZones.length ? `<optgroup label="── ICS 節點">` +
-      nodeZones.map(z => `<option value="zone:${z.id}">${z.label}</option>`).join('') +
-      `</optgroup>` : '') +
-    (eventZones.length ? `<optgroup label="── 事件標記">` +
-      eventZones.map(z => {
-        const typeName = _EVENT_TYPES[z.node_type]?.label || z.label;
-        const code = z.event_code ? ` · ${z.event_code.replace(/-\d{4}-/, '-')}` : '';
-        return `<option value="zone:${z.id}">${typeName}${code}</option>`;
-      }).join('') + `</optgroup>` : '') +
-    (infras.length ? `<optgroup label="── 基礎設施">` + infras.map(i => {
-      const def = INFRA_TYPES[i.infra_type] || {};
-      return `<option value="infra:${i.id}">${def.abbr || '+'} ${i.label}</option>`;
-    }).join('') + `</optgroup>` : '');
-  const typeOpts = Object.entries(FLOW_TYPES).map(([k, v]) =>
-    `<option value="${k}">${v.label}</option>`).join('');
-  let html = '';
-  html += `<div style="margin-bottom:10px;"><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:4px;">流向類型</label>`;
-  html += `<select id="flow-type-sel" style="${SEL}">${typeOpts}</select></div>`;
-  html += `<div style="margin-bottom:10px;"><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:4px;">起點</label>`;
-  html += `<select id="flow-from-sel" style="${SEL}">${endpointOpts}</select></div>`;
-  html += `<div style="margin-bottom:10px;"><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:4px;">終點</label>`;
-  html += `<select id="flow-to-sel" style="${SEL}">${endpointOpts}</select></div>`;
-  html += `<div style="margin-bottom:16px;"><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:4px;">標籤（可選）</label>`;
-  html += `<input id="flow-label" placeholder="例：傷患後送路徑" autocomplete="off" style="${SEL}"></div>`;
-  // 錯誤提示區（驗證失敗時 _saveFlow 寫進去）
-  html += `<div id="flow-err" style="display:none;font-size:11px;color:var(--red);margin-bottom:10px;"></div>`;
-  html += `<div style="display:flex;gap:8px;">`;
-  html += `<button data-action="closeModal" style="flex:1;padding:8px;background:transparent;border:1px solid var(--border);color:var(--text2);border-radius:6px;cursor:pointer;font-family:var(--mono);">取消</button>`;
-  html += `<button data-action="saveFlow" style="flex:2;padding:8px;background:var(--green);color:#fff;border:none;border-radius:6px;font-weight:700;cursor:pointer;font-family:var(--mono);">儲存</button>`;
-  html += `</div>`;
-  _deps.openModal?.('● → ● 新增調度指示', html);
-}
-
-export async function _saveFlow() {
-  if (!canAccessMapObjects()) return;
-  const typeVal = document.getElementById('flow-type-sel')?.value || 'casualty';
-  const fromRef = document.getElementById('flow-from-sel')?.value || '';
-  const toRef = document.getElementById('flow-to-sel')?.value || '';
-  const labelVal = (document.getElementById('flow-label')?.value || '').trim();
-  const errEl = document.getElementById('flow-err');
-  // 顯式驗證失敗提示（取代原 silent return；user dogfood 撞到）
-  const showErr = (msg) => {
-    if (!errEl) return;
-    errEl.textContent = msg;
-    errEl.style.display = 'block';
-  };
-  if (!fromRef || !toRef) { showErr('請選擇起點與終點'); return; }
-  if (fromRef === toRef) { showErr('起點與終點不能相同'); return; }
-  const flow = {
-    id: 'flow_' + Date.now(),
-    flow_type: typeVal,
-    from_ref: fromRef,
-    to_ref: toRef,
-    label: labelVal,
-  };
-  if (!_mapConfig.maps.outdoor.flows) _mapConfig.maps.outdoor.flows = [];
-  _mapConfig.maps.outdoor.flows.push(flow);
-  await saveMapConfig();
-  _deps.closeModal?.();
-  _renderFlows();
-}
-
-export async function _deleteFlow(id) {
-  if (!_mapConfig?.maps?.outdoor?.flows || !id) return;
-  _mapConfig.maps.outdoor.flows = _mapConfig.maps.outdoor.flows.filter(f => f.id !== id);
-  await saveMapConfig();
-  _deps.closeModal?.();
-  _renderFlows();
-}
+// PR-H：流向（Flow）功能整組退役 —— 與「繪製路線」重疊（route 是有向多段線、對齊
+// CoT b-m-r，已即時同步），且 cutover 後 flow 連不到事件。_openFlowForm / _saveFlow /
+// _deleteFlow / _renderFlows / _resolveRef / FLOW_TYPES / flows 圖層皆移除。
 
 // ══════════════════════════════════════════════════════════════
 // 繪製路線（Route）

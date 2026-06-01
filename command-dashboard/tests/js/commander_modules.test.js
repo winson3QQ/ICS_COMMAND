@@ -453,14 +453,15 @@ describe('C1-F commander modules', () => {
     expect(mapSource).toMatch(/const objectTools = canAccessMapObjects\(\)/);
     expect(mapSource).toMatch(/id="btn-poly-draw"/);
     expect(mapSource).toMatch(/id="btn-route-draw"/);
-    expect(mapSource).toMatch(/id="btn-flow-add"/);
+    // PR-H：btn-flow-add（流向）已退役 → 不再斷言
     expect(mapSource).toMatch(/marker\.addEventListener\('click', \(\) => {\s+if \(!canAccessMapObjects\(\)\) return;/);
     // P1-10b 步驟 11：Leaflet legacy marker click handler (含 L.DomEvent) 已刪；
     // MapLibre zone click 由 entity_layer.js 的 onZoneClick handler 處理（auth guard 已備）
     expect(mapSource).toMatch(/export function showZoneDetail\(zone\) {\s+if \(!canAccessMapObjects\(\)\) return;/);
     expect(mapSource).toMatch(/export function openL4Detail\(unitId, tableName, index\) {\s+if \(!canAccessMapObjects\(\)\) return;/);
     expect(mapSource).toMatch(/export function _startPolyDraw\(\) {\s+if \(!canAccessMapObjects\(\)\) return;/);
-    expect(mapSource).toMatch(/export function _openFlowForm\(\) {\s+if \(!canAccessMapObjects\(\)\) return;/);
+    // PR-H：_openFlowForm（流向）已退役 → 改驗仍存在的 _saveRoute guard
+    expect(mapSource).toMatch(/export async function _saveRoute\(\) {\s+if \(!canAccessMapObjects\(\)\) return;/);
     expect(mapSource).toMatch(/export function _startRouteDraw\(\) {\s+if \(!canAccessMapObjects\(\)\) return;/);
   });
 

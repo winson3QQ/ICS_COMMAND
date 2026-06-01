@@ -54,9 +54,9 @@ import {
   toggleCsel, _toggleMgrsGrid, _toggleLayerPanel,
   _startPolyDraw, _cancelPolyDraw, _finishPolyDraw,
   _startInfraPlace, _startRouteDraw, _cancelRouteDraw, _finishRouteDraw,
-  _savePolygon, _saveFlow, _saveRoute,
-  _openFlowForm, _openPolyForm, _openInfraForm, _openRouteForm,
-  _deletePolygon, _deleteFlow, _deleteRoute, _deleteInfra, _deleteEventZone,
+  _savePolygon, _saveRoute,
+  _openPolyForm, _openInfraForm, _openRouteForm,
+  _deletePolygon, _deleteRoute, _deleteInfra, _deleteEventZone,
   _resetPolyLabelAnchor, _resetRouteLabelAnchor,
   _panToCoordTarget, _mgrsSearch, _toggleCoordMode,
   _populateNapsgCsel,
@@ -83,22 +83,17 @@ async function _initCopStream() {
     _copStream.connect();
     return;
   }
-  const [{ createCopStream }, core] = await Promise.all([
-    import('./map/cop_stream.js'),
-    import('./map/maplibre_core.js'),
-  ]);
-  const map = core.getMap && core.getMap();
-  if (!map || !window.maplibregl) return; // 地圖尚未就緒則略過（下次 auth 事件再試）
+  // PR-H：cop_stream 是純資料層，**不依賴地圖**（不再吃 map / MarkerCtor）。因此移除舊的
+  // 「地圖就緒才 init」guard —— 否則 _initCopStream 若在地圖 ready 前觸發就 early-return、
+  // 又不重試，會導致 _copStream 永遠 null（route/polygon 存不了、事件不即時）。
+  // 渲染由 map.js 的 setCopStream→onChange 負責，render 函式自身對圖層未就緒容錯。
+  const { createCopStream } = await import('./map/cop_stream.js');
   _copStream = createCopStream({
-    map,
     getToken,
     authFetch,
     canWrite: () => canAccessMapObjects(),
-    MarkerCtor: window.maplibregl.Marker,
   });
-  // PR-G1a：把 stream 交給 map.js → 訂閱 onChange 即時重繪 route/polygon 兩層，
-  // 並讓 cop_stream 進入 kind-aware 委派模式（route/polygon 不自建 marker）。
-  setCopStream(_copStream);
+  setCopStream(_copStream); // 交給 map.js 訂閱 onChange 即時重繪 route/polygon/event
   _copStream.connect();
 }
 
@@ -252,20 +247,6 @@ document.addEventListener('click', function (e) {
     case 'toggleMgrsGrid': _toggleMgrsGrid(); break;
     case 'toggleLayerPanel': _toggleLayerPanel(); break;
     case 'toggleLayer': _toggleLayer(btn.dataset.layer); break;
-    case 'copToggle': {
-      // 切換 COP 即時層顯示
-      if (_copStream) {
-        const on = _copStream.toggleVisible();
-        btn.classList.toggle('active', on);
-      }
-      break;
-    }
-    case 'copPlace': {
-      // 在地圖中心放一顆 COP 標記（operator+）
-      if (!canAccessMapObjects()) break;
-      if (_copStream) _copStream.placeAtCenter();
-      break;
-    }
     case 'closeLayerPanel': _closeLayerPanel(); break;
     case 'openMapConfigPanel': openMapConfigPanel(); break;
     case 'closeMapConfigPanel': closeMapConfigPanel(); break;
@@ -315,21 +296,6 @@ document.addEventListener('click', function (e) {
     case 'deleteInfra': {
       if (!canAccessMapObjects()) break;
       _deleteInfra(id);
-      break;
-    }
-    case 'openFlowForm': {
-      if (!canAccessMapObjects()) break;
-      _openFlowForm();
-      break;
-    }
-    case 'saveFlow': {
-      if (!canAccessMapObjects()) break;
-      _saveFlow();
-      break;
-    }
-    case 'deleteFlow': {
-      if (!canAccessMapObjects()) break;
-      _deleteFlow(id);
       break;
     }
     case 'startRouteDraw': {
