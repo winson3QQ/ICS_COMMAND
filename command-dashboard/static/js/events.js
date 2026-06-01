@@ -66,6 +66,39 @@ export const NAPSG_GROUPS = {
   ops:      '行動管理',
 };
 
+// ── P1-10d 地基（#60/#66）：事件 taxonomy 改由後端 /api/event_taxonomy 載入 ──────
+// 上面的 NAPSG_EVENTS / NAPSG_GROUPS 為**內建 fallback**（= seed 內容），登入前 / 離線
+// / API 失敗時用；runtime 單一 SoT = /api/event_taxonomy。applyTaxonomy 就地 mutate
+// （保持物件 identity）→ 既有 NAPSG_EVENTS[key] 參照與 map.js EventPopup 持有的 ref 都同步。
+
+/** 套用後端 taxonomy 到 in-place NAPSG_EVENTS / NAPSG_GROUPS。失敗回 false（保留 fallback）。*/
+export function applyTaxonomy(tax) {
+  if (!tax || !Array.isArray(tax.events) || !Array.isArray(tax.groups)) return false;
+  for (const k of Object.keys(NAPSG_EVENTS)) delete NAPSG_EVENTS[k];
+  for (const ev of tax.events) {
+    if (!ev || !ev.key) continue;
+    const { key, ...rest } = ev;
+    NAPSG_EVENTS[key] = rest;
+  }
+  for (const k of Object.keys(NAPSG_GROUPS)) delete NAPSG_GROUPS[k];
+  for (const g of tax.groups) {
+    if (g && g.key) NAPSG_GROUPS[g.key] = g.label;
+  }
+  return true;
+}
+
+/** 從後端載入 taxonomy 並套用；回傳 raw taxonomy（供 main.js 轉給 map.js）或 null。*/
+export async function loadEventTaxonomy() {
+  try {
+    const resp = await authFetch(API_BASE + '/api/event_taxonomy');
+    if (!resp.ok) return null;
+    const tax = await resp.json();
+    return applyTaxonomy(tax) ? tax : null;
+  } catch (e) {
+    return null;  // 保留內建 fallback
+  }
+}
+
 // ══════════════════════════════════════════════════════════════
 // 依賴注入（cop.js 在 initEvents 時提供）
 // ══════════════════════════════════════════════════════════════

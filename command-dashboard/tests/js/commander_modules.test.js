@@ -182,6 +182,45 @@ describe('C1-F commander modules', () => {
     expect(file('static/js/map/coord_tools.js')).toMatch(/applyTheme\(theme\)/);
   });
 
+  test('event_taxonomy_is_data_driven_from_api', async () => {
+    // P1-10d 地基：事件分類改由 /api/event_taxonomy 載入（runtime SoT），
+    // 內建常數降為 fallback。map.js 不 import events.js（boundary），由 main.js 橋接。
+    const events = file('static/js/events.js');
+    const mapSrc = file('static/js/map.js');
+    const mainSrc = file('static/js/main.js');
+    expect(events).toMatch(/export async function loadEventTaxonomy/);
+    expect(events).toMatch(/export function applyTaxonomy/);
+    expect(events).toMatch(/\/api\/event_taxonomy/);
+    expect(mapSrc).toMatch(/export function applyEventTaxonomy/);   // map.js 自有套用，不 import events.js
+    expect(mainSrc).toMatch(/loadEventTaxonomy\(\)/);               // 登入後載入
+    expect(mainSrc).toMatch(/applyEventTaxonomy\(tax\)/);           // 橋接到 map.js
+  });
+
+  test('applyTaxonomy_mutates_in_place_and_falls_back', async () => {
+    const ev = await import('../../static/js/events.js');
+    const snapE = JSON.parse(JSON.stringify(ev.NAPSG_EVENTS));
+    const snapG = JSON.parse(JSON.stringify(ev.NAPSG_GROUPS));
+    const ref = ev.NAPSG_EVENTS;  // 記 identity
+    try {
+      const ok = ev.applyTaxonomy({
+        groups: [{ key: 'g1', label: 'G1' }],
+        events: [{ key: 'x', label: 'X', group: 'g1', severity: 'info' }],
+      });
+      expect(ok).toBe(true);
+      expect(ev.NAPSG_EVENTS).toBe(ref);              // 就地 mutate，identity 不變（保留既有 ref）
+      expect(ev.NAPSG_EVENTS.x.label).toBe('X');
+      expect(ev.NAPSG_EVENTS.explosive).toBeUndefined();  // 舊 key 清掉
+      expect(ev.NAPSG_GROUPS.g1).toBe('G1');
+      expect(ev.applyTaxonomy(null)).toBe(false);     // 壞輸入 → false（保留 fallback）
+      expect(ev.applyTaxonomy({ events: 'nope' })).toBe(false);
+    } finally {
+      for (const k of Object.keys(ev.NAPSG_EVENTS)) delete ev.NAPSG_EVENTS[k];
+      Object.assign(ev.NAPSG_EVENTS, snapE);
+      for (const k of Object.keys(ev.NAPSG_GROUPS)) delete ev.NAPSG_GROUPS[k];
+      Object.assign(ev.NAPSG_GROUPS, snapG);
+    }
+  });
+
   test('reloadMapConfig_refetches_after_login_401', async () => {
     // Bug：boot（登入前）GET /api/map_config 回 401 → _mapConfig=null → 地圖空白，
     // 每次登入要 cmd-shift-R。修法：登入後 onEnterDashboard 呼叫 reloadMapConfig 重抓。
