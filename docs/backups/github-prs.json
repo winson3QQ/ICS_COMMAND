@@ -795,7 +795,7 @@
     "number": 31,
     "state": "CLOSED",
     "title": "feat(map): β Phase 1 — map_config version 樂觀鎖 + server CAS（issue #29）",
-    "updatedAt": "2026-05-29T02:57:56Z",
+    "updatedAt": "2026-06-01T02:10:54Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/31"
   },
   {
@@ -831,7 +831,7 @@
     "number": 32,
     "state": "CLOSED",
     "title": "feat(map): β Phase 2 — client If-Match + 409 衝突處理 + _isSaving（issue #29）",
-    "updatedAt": "2026-05-29T02:57:58Z",
+    "updatedAt": "2026-06-01T02:10:54Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/32"
   },
   {
@@ -867,7 +867,7 @@
     "number": 33,
     "state": "MERGED",
     "title": "feat(cop): issue#29 PR-A — cop_entities per-entity 樂觀鎖 + soft-delete",
-    "updatedAt": "2026-05-29T03:45:36Z",
+    "updatedAt": "2026-06-01T02:10:55Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/33"
   },
   {
@@ -888,7 +888,7 @@
     "number": 34,
     "state": "MERGED",
     "title": "fix(ci): doc_sync_check 跳過 gitignored runtime 路徑（解 main 既有紅 gate）",
-    "updatedAt": "2026-05-29T03:42:16Z",
+    "updatedAt": "2026-06-01T02:10:55Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/34"
   },
   {
@@ -924,7 +924,7 @@
     "number": 35,
     "state": "MERGED",
     "title": "feat(cop): issue#29 PR-B — /api/cop/* CRUD + If-Match 樂觀鎖 HTTP 層",
-    "updatedAt": "2026-05-29T04:35:32Z",
+    "updatedAt": "2026-06-01T02:10:55Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/35"
   },
   {
@@ -960,7 +960,7 @@
     "number": 36,
     "state": "MERGED",
     "title": "feat(cop): issue#29 PR-D — COP entity WebSocket 即時推播 + in-process hub",
-    "updatedAt": "2026-05-29T04:58:05Z",
+    "updatedAt": "2026-06-01T02:10:55Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/36"
   },
   {
@@ -981,7 +981,7 @@
     "number": 37,
     "state": "MERGED",
     "title": "feat(cop): issue#29 PR-E — 前端 COP 即時同步層（疊加 marker + cop_stream）",
-    "updatedAt": "2026-05-29T06:14:35Z",
+    "updatedAt": "2026-06-01T02:10:55Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/37"
   },
   {
@@ -1025,5 +1025,26 @@
     "title": "feat(cop): issue#29 PR-G1b — event marker cutover 進 cop_entities（即時同步）",
     "updatedAt": "2026-05-29T10:06:58Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/39"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "## 摘要\n\nissue #29「多人即時共享 COP」收尾。即時管線（PR-A/B/D/E）+ cutover（route/polygon G1a、event G1b）已上線；本 PR 做最後清理並 **close #29**。\n\n## 改動\n\n**退役 PR-E ＋標記 MVP**\n- `cop_stream.js` → **純資料層**：移除自建 marker 分支 / `_wireMarkerDrag` / dblclick 刪 / `placeAtCenter` / `setVisible`/`toggleVisible`/`_visible` / `MarkerCtor` / `_DELEGATED_KINDS`/`_isDelegated`。渲染全由 map.js `onChange` + EntityLayer。\n- HTML 移除 `◉COP`/`＋標記`；main.js 移除 `copToggle`/`copPlace`。\n- **修 init race**：`_initCopStream` 移除過時的「地圖就緒才 init」guard（cop_stream 不再吃 map/Marker）—— 否則地圖 ready 前觸發會 early-return 又不重試，`_copStream` 永遠 null（dogfood 撞到）。\n\n**移除流向（flow）功能**（與「繪製路線」重疊：route 是有向多段線、對齊 CoT `b-m-r`、已即時同步；flow cutover 後又連不到事件）\n- `_openFlowForm`/`_saveFlow`/`_deleteFlow`/`_onFlowClick`/`_renderFlows`/`_resolveRef`/`FLOW_TYPES`/`_flowLayer`(+3 圖層+綁定)/`_layerVis.flows`/圖層面板「流向」/工具列 `→`；`flowToFeature`；`flows[]` 棄用。\n\n**infra 保留**（render 仍走 map_config）。節點 + 設施 placement UI 缺口（MapLibre 改寫遺失的空 stub）→ 另開 **#40**。\n\n**docs**：規格書 + ROADMAP **P1-15 標 ✅**。\n\n## 驗證\n- 177 vitest（cop_stream 純資料層 20 測）· lint clean（3 pre-existing）· full pytest · doc_sync ✓\n- **:8001 fresh-origin 兩瀏覽器 dogfood PASS**（route/polygon/event 即時同步/拖移/highlight/reset 跨瀏覽器；確認無 流向/＋標記/◉COP）\n\n淨 −445 行。**Closes #29**。建議 squash merge。\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+    "closedAt": "2026-06-01T02:08:41Z",
+    "comments": [],
+    "createdAt": "2026-06-01T02:08:25Z",
+    "headRefName": "feat/issue-29-pr-h",
+    "labels": [],
+    "mergedAt": "2026-06-01T02:08:41Z",
+    "number": 41,
+    "state": "MERGED",
+    "title": "refactor(cop): issue#29 PR-H — 退役 ＋標記 MVP + 移除流向 + close #29",
+    "updatedAt": "2026-06-01T02:10:55Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/41"
   }
 ]
