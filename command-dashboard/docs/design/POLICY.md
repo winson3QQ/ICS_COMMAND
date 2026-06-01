@@ -241,6 +241,8 @@ P1-10c 提供 2 套：
 
 **相容性紅線（必記）**：PMTiles 的 schema 版本必須與 `@protomaps/basemaps` style 版本**對齊**——
 兩者釘同一個 `@protomaps/basemaps` 版本，否則 source-layer 名對不上 → 底圖空白。
+**現況**：首次 build 的 `taiwan.pmtiles` 為 **Protomaps Basemap schema v4.14.9**（見下方 Provenance），
+故 style 端 `@protomaps/basemaps` 應釘 **v4 線**對應版本。
 
 ### Build recipe — 路徑 A（採用，pmtiles extract 切片）
 
@@ -286,11 +288,18 @@ java -jar protomaps-basemaps-with-deps.jar --osm-path=taiwan-latest.osm.pbf
 ### Provenance 留痕（每次 build 後補）
 
 每次重 build 必須在本節釘：planet build 日期 **或** Geofabrik pbf 日期、`--bbox`、`--maxzoom`、
-`@protomaps/basemaps` 版本、輸出檔 BLAKE3 hash。否則此檔再次失去可重現性。
+`@protomaps/basemaps` 版本、輸出檔 hash。否則此檔再次失去可重現性。
 
 ```
-build 日期：<填>   bbox：<填>   maxzoom：<填>   basemaps 版本：<填>
-taiwan.pmtiles BLAKE3：<填>
+# 首次 build（2026-06-01，路徑 A，winson @ Windows）
+source       : https://build.protomaps.com/20260601.pmtiles（OSM replication 2026-06-01T04:00:00Z）
+tool         : go-pmtiles v1.30.3
+cmd          : pmtiles extract <source> taiwan.pmtiles --bbox=119.3,21.7,122.2,25.4 --maxzoom=15 --download-threads=8
+bbox         : 119.3,21.7,122.2,25.4（本島 + 澎湖，不含金馬 — 2026-06-01 定案）
+maxzoom      : 15
+schema       : Protomaps Basemap v4.14.9（planetiler 0.10.2）→ style 釘 @protomaps/basemaps v4 線
+size         : 235.5 MB（51,294 tiles，clustered=true，verify OK）
+SHA256       : 2C57A5B2A4ECAF8630E6AD00EC5C3EEA0E638BDF56D08E9A411B6E78C9B34659
 ```
 
 ### 釐清：mini-taiwan 不是底圖來源（避免再次誤認）
