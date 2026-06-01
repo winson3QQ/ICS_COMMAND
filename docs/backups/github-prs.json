@@ -1067,5 +1067,26 @@
     "title": "chore(static): JS 強制 no-store 根除 stale 動態模組",
     "updatedAt": "2026-06-01T04:16:21Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/42"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "## 問題\nobserver 登入後地圖整片載不出（close #43）。\n\n## 根因\n`role_enum.py` 對 `/api/map_config` 不分 method 回 `WRITE_ROLES`（不含 observer）→ observer GET 吃 403。\n\n## 修法\n`GET → READ_ROLES`（含 observer 看地圖）、寫入 → `WRITE_ROLES`（operator 仍可寫、observer 仍不能寫）。\n\n## 測試\n- 新增 `test_observer_can_get_map_config`（GET 200）\n- `test_observer_cannot_post_map_config`（POST 仍 403）未破壞\n- 全套 **518 passed**\n\nCloses #43\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+    "closedAt": "2026-06-01T06:45:11Z",
+    "comments": [],
+    "createdAt": "2026-06-01T06:45:07Z",
+    "headRefName": "fix/issue-43-observer-map",
+    "labels": [],
+    "mergedAt": "2026-06-01T06:45:11Z",
+    "number": 44,
+    "state": "MERGED",
+    "title": "fix(rbac): observer 可 GET /api/map_config（看地圖）",
+    "updatedAt": "2026-06-01T06:45:11Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/44"
   }
 ]

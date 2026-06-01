@@ -899,15 +899,15 @@
       "name": ""
     },
     "body": "## 現象\n以 **observer（觀察員）** 登入後，地圖整片載不出來（底圖可縮放，但 zones/markers 全空）。\n\n## 根因\n`src/auth/role_enum.py` 對 `/api/map_config` 不分 method 一律回 `WRITE_ROLES`（sysadmin/commander/operator，**不含 observer**）：\n\n```python\nif path == \"/api/map_config\":\n    return WRITE_ROLES        # GET 也要 WRITE_ROLES → observer GET 吃 403\n```\n\nobserver 登入後前端 `_loadMapConfig` 打 `GET /api/map_config` → **403** → `_mapConfig` 為 null → 地圖資料層空白。\n\n此條當初（issue #24 α）為了讓 operator 能 **POST 寫** map_config 而開成 WRITE_ROLES，**連 GET（看地圖）也一起鎖了**，誤殺 observer 的唯讀檢視權。\n\n## 修法\n分 method：`GET → READ_ROLES`（含 observer）、寫入 → `WRITE_ROLES`（operator 仍可寫、observer 仍不能寫）。與 `/api/config`、`/api/tak` 同 pattern。\n\n## 驗收\n- 新增 `test_observer_can_get_map_config`（GET 應 200）\n- 既有 `test_observer_cannot_post_map_config`（POST 仍 403）不破壞\n- 全套 pytest 綠\n\ndogfood 發現於實機測試。",
-    "closedAt": null,
+    "closedAt": "2026-06-01T06:45:12Z",
     "comments": [],
     "createdAt": "2026-06-01T06:42:56Z",
     "labels": [],
     "milestone": null,
     "number": 43,
-    "state": "OPEN",
+    "state": "CLOSED",
     "title": "fix(rbac): observer 登入後看不到地圖 — GET /api/map_config 被 WRITE_ROLES 鎖住",
-    "updatedAt": "2026-06-01T06:42:56Z",
+    "updatedAt": "2026-06-01T06:45:12Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/43"
   }
 ]
