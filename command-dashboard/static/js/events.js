@@ -24,7 +24,16 @@ import { authFetch, canCreateEvents } from './ws.js';
 const API_BASE = location.origin;
 
 // ══════════════════════════════════════════════════════════════
-// NAPSG 危害事件類型（single source of truth；map.js re-export 此模組）
+// HTML escape — 用於把值塞進 innerHTML 模板前自衛（review #69：taxonomy label 現自
+// /api/event_taxonomy 載入，render sink 不應只靠後端 denylist，這裡 escape 為縱深防禦）。
+function _esc(s) {
+  return String(s == null ? '' : s).replace(
+    /[&<>"']/g,
+    (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]),
+  );
+}
+
+// NAPSG 危害事件類型（內建 fallback；runtime SoT = /api/event_taxonomy，見下方 applyTaxonomy）
 // ══════════════════════════════════════════════════════════════
 export const NAPSG_EVENTS = {
   // ── 安全威脅 ──────────────────────────────────────────────────
@@ -65,6 +74,40 @@ export const NAPSG_GROUPS = {
   infra:    '基礎設施',
   ops:      '行動管理',
 };
+
+// ── P1-10d 地基（#60/#66）：事件 taxonomy 改由後端 /api/event_taxonomy 載入 ──────
+// 上面的 NAPSG_EVENTS / NAPSG_GROUPS 為**內建 fallback**（= seed 內容），登入前 / 離線
+// / API 失敗時用；runtime 單一 SoT = /api/event_taxonomy。applyTaxonomy 就地 mutate
+// （保持物件 identity）→ 既有 NAPSG_EVENTS[key] 參照與 map.js EventPopup 持有的 ref 都同步。
+
+/** 套用後端 taxonomy 到 in-place NAPSG_EVENTS / NAPSG_GROUPS。失敗回 false（保留 fallback）。*/
+export function applyTaxonomy(tax) {
+  if (!tax || !Array.isArray(tax.events) || !Array.isArray(tax.groups)) return false;
+  const unsafe = (k) => k === '__proto__' || k === 'constructor' || k === 'prototype';
+  for (const k of Object.keys(NAPSG_EVENTS)) delete NAPSG_EVENTS[k];
+  for (const ev of tax.events) {
+    if (!ev || !ev.key || unsafe(ev.key)) continue;  // 防原型污染（review #69）
+    const { key, ...rest } = ev;
+    NAPSG_EVENTS[key] = rest;
+  }
+  for (const k of Object.keys(NAPSG_GROUPS)) delete NAPSG_GROUPS[k];
+  for (const g of tax.groups) {
+    if (g && g.key && !unsafe(g.key)) NAPSG_GROUPS[g.key] = g.label;
+  }
+  return true;
+}
+
+/** 從後端載入 taxonomy 並套用；回傳 raw taxonomy（供 main.js 轉給 map.js）或 null。*/
+export async function loadEventTaxonomy() {
+  try {
+    const resp = await authFetch(API_BASE + '/api/event_taxonomy');
+    if (!resp.ok) return null;
+    const tax = await resp.json();
+    return applyTaxonomy(tax) ? tax : null;
+  } catch (e) {
+    return null;  // 保留內建 fallback
+  }
+}
 
 // ══════════════════════════════════════════════════════════════
 // 依賴注入（cop.js 在 initEvents 時提供）
@@ -366,7 +409,7 @@ export function showEventProcessModal(zone) {
 
   import('./map.js').then(m => {
     const iconHtml = `<span style="display:inline-flex;vertical-align:middle;margin-right:4px;">${m.renderIcon(zone.icon)}</span>`;
-    el('modal-title').innerHTML = `${iconHtml} ${(ev.event_code || '').replace(/-\d{4}-/, '-')}　${_evTypeLabel(ev)}`;
+    el('modal-title').innerHTML = `${iconHtml} ${(ev.event_code || '').replace(/-\d{4}-/, '-')}　${_esc(_evTypeLabel(ev))}`;
   });
 
   let html = '';
@@ -860,7 +903,7 @@ function _eventCardHTML(ev, dimmed, viewUnit) {
 
   let html = `<div style="padding:8px 10px;margin-bottom:6px;background:var(--surface2);border-radius:5px;border-left:3px solid ${sevC};${dimmed ? 'opacity:.5;' : ''}">`;
   html += `<div style="display:flex;justify-content:space-between;align-items:center;gap:6px;">`;
-  html += `<span style="font-size:12px;font-weight:700;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${_typeLabel}</span>`;
+  html += `<span style="font-size:12px;font-weight:700;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${_esc(_typeLabel)}</span>`;
   html += `<div style="display:flex;align-items:center;gap:4px;flex-shrink:0;">${roleTag}<span style="font-size:10px;color:${statusC};font-weight:600;">${statusLabel}</span></div>`;
   html += `</div>`;
   if (_descSub) html += `<div style="font-size:10px;color:var(--text2);margin-top:1px;font-style:italic;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">${_descSub}</div>`;
@@ -1076,7 +1119,7 @@ export function renderZoneC(data, d) {
       let h = '';
       h += `<div style="cursor:pointer;padding:5px 8px;margin-bottom:2px;background:var(--surface2);border-radius:5px;border-left:3px solid ${sevColor};" data-action="openEventByCode" data-id="${ev.id}" data-longpress-id="${ev.id}">`;
       h += `<div style="display:flex;justify-content:space-between;align-items:center;gap:4px;">`;
-      h += `<span style="font-size:10px;font-weight:600;flex:1;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">${typeLabel}</span>`;
+      h += `<span style="font-size:10px;font-weight:600;flex:1;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">${_esc(typeLabel)}</span>`;
       h += `<span style="font-size:9px;font-weight:700;color:${tagColor};flex-shrink:0;${overdueAnim}" data-countdown-deadline="${ev.response_deadline || ''}">${cd}</span>`;
       h += `</div>`;
       if (extraDesc) h += `<div style="font-size:9px;color:var(--text3);overflow:hidden;white-space:nowrap;text-overflow:ellipsis;margin-top:1px;font-style:italic;">${extraDesc}</div>`;
@@ -1126,7 +1169,7 @@ export function renderZoneC(data, d) {
         const extraDesc = ev.description && ev.description !== typeLabel ? ev.description : '';
         let h = `<div style="cursor:pointer;padding:5px 8px;margin-bottom:2px;background:var(--surface2);border-radius:5px;border-left:3px solid ${sevColor};opacity:.45;" data-action="openEventByCode" data-id="${ev.id}">`;
         h += `<div style="display:flex;justify-content:space-between;align-items:center;gap:4px;">`;
-        h += `<span style="font-size:10px;font-weight:600;flex:1;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">${typeLabel}</span>`;
+        h += `<span style="font-size:10px;font-weight:600;flex:1;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">${_esc(typeLabel)}</span>`;
         h += `<span style="font-size:9px;color:var(--text3);flex-shrink:0;">已結案</span>`;
         h += `</div>`;
         if (extraDesc) h += `<div style="font-size:9px;color:var(--text3);overflow:hidden;white-space:nowrap;text-overflow:ellipsis;margin-top:1px;font-style:italic;">${extraDesc}</div>`;

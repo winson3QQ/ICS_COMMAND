@@ -164,6 +164,25 @@ const _EVENT_GROUPS = {
   ops: '行動管理',
 };
 
+// P1-10d 地基（#60/#66）：上面的 _EVENT_TYPES / _EVENT_GROUPS 為**內建 fallback**；
+// runtime SoT = /api/event_taxonomy。map.js 受 import boundary 限制不能 import events.js，
+// 故由 main.js 載入後呼叫本函式套用（就地 mutate 保 ref；EventPopup 持有的 ref 同步）。
+export function applyEventTaxonomy(tax) {
+  if (!tax || !Array.isArray(tax.events) || !Array.isArray(tax.groups)) return false;
+  const unsafe = (k) => k === '__proto__' || k === 'constructor' || k === 'prototype';
+  for (const k of Object.keys(_EVENT_TYPES)) delete _EVENT_TYPES[k];
+  for (const ev of tax.events) {
+    if (!ev || !ev.key || unsafe(ev.key)) continue;  // 防原型污染（review #69）
+    const { key, ...rest } = ev;
+    _EVENT_TYPES[key] = rest;
+  }
+  for (const k of Object.keys(_EVENT_GROUPS)) delete _EVENT_GROUPS[k];
+  for (const g of tax.groups) {
+    if (g && g.key && !unsafe(g.key)) _EVENT_GROUPS[g.key] = g.label;
+  }
+  return true;
+}
+
 const _NAPSG_GROUP_ABBR = { security: '安', rescue: '救', medical: '醫', care: '護', infra: '設', ops: '行' };
 const _NODE_ABBR = { shelter: '收', medical: '醫', forward: '前', security: '安', command: '指' };
 const _NODE_COLORS = { shelter: '#f0883e', medical: '#e05555', forward: '#58a6ff', security: '#e3b341', command: '#8b949e' };
