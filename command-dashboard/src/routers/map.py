@@ -14,6 +14,7 @@ from core.config import (
 )
 from core.input_safety import validate_no_unsafe_strings
 from services import event_taxonomy_store, map_config_store
+from services.event_taxonomy_validate import validate_taxonomy
 
 router = APIRouter(tags=["map"])
 
@@ -162,15 +163,20 @@ async def save_event_taxonomy(request: Request):
         # RecursionError：深層巢狀 JSON → json.loads 爆 recursion（非 JSONDecodeError），
         # 一併當無效 JSON 擋，避免 500 DoS（review #68 MED；同 /api/map_config）。
         raise HTTPException(400, f"無效 JSON：{e}") from e
-    # 結構最小檢查（完整 schema / 參照完整性由編輯器 #66 守門；此處只擋明顯壞資料）
-    if not isinstance(body, dict) or not isinstance(body.get("events"), list) \
-            or not isinstance(body.get("groups"), list):
-        raise HTTPException(400, "event_taxonomy 需含 events[] 與 groups[]")
     # XSS hardening（與 map_config / cop entity 共用單一 source of truth）
     try:
         validate_no_unsafe_strings(body, label="event_taxonomy")
     except RecursionError as e:
         raise HTTPException(400, "結構過深") from e
+    # #66 PR-A：schema + 參照完整性驗證（severity 3 級、cot_type 必填、group 參照、
+    # key 格式/唯一、禁改 key/禁硬刪 superset、禁刪非空 group）。previous 取既有做 superset。
+    # 已知限制（review #76 MED）：read→write 間無鎖，並發 POST 可 lost-update（os.replace 原子，
+    # 不壞檔）。POST 限 sysadmin 單人編輯場景，風險低；version 樂觀鎖（body 已有 version 欄位）留
+    # 編輯器 UI（PR-C）一併做。
+    try:
+        validate_taxonomy(body, previous=event_taxonomy_store.read())
+    except ValueError as e:
+        raise HTTPException(400, f"event_taxonomy 驗證失敗：{e}") from e
     event_taxonomy_store.write_atomic(body)
     return {"ok": True, "path": str(EVENT_TAXONOMY_PATH)}
 

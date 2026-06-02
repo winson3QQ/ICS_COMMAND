@@ -46,15 +46,29 @@ def test_operator_cannot_post_taxonomy(client):
 
 
 def test_sysadmin_can_post_and_get_reflects(client):
+    # #66 PR-A：superset 檢查禁移除既有 key → 真實編輯流程是 GET 現況、改、整包 POST。
     create_account("sa_tax", "1234", ROLE_SYSADMIN_ZH, "SA", "sysadmin")
     h = _login(client, "sa_tax", "1234")
-    payload = _valid_payload()
-    payload["events"][0]["label"] = "改過的標籤"
-    r = client.post("/api/event_taxonomy", json=payload, headers=h)
+    cur = client.get("/api/event_taxonomy", headers=h).json()
+    cur["events"][0]["label"] = "改過的標籤"
+    r = client.post("/api/event_taxonomy", json=cur, headers=h)
     assert r.status_code == 200, r.text
     assert r.json()["ok"] is True
     got = client.get("/api/event_taxonomy", headers=h).json()
     assert got["events"][0]["label"] == "改過的標籤"
+
+
+def test_post_rejects_removed_key_and_bad_severity(client):
+    """#66 PR-A：移除既有 key（superset 違規）/ 非法 severity → 400（API 層）。"""
+    create_account("sa_tax4", "1234", ROLE_SYSADMIN_ZH, "SA4", "sysadmin")
+    h = _login(client, "sa_tax4", "1234")
+    cur = client.get("/api/event_taxonomy", headers=h).json()
+    # 移除一個既有 event → superset 違規
+    dropped = {**cur, "events": cur["events"][1:]}
+    assert client.post("/api/event_taxonomy", json=dropped, headers=h).status_code == 400
+    # 非法 severity
+    bad = {**cur, "events": [{**cur["events"][0], "severity": "bogus"}, *cur["events"][1:]]}
+    assert client.post("/api/event_taxonomy", json=bad, headers=h).status_code == 400
 
 
 def test_invalid_body_rejected(client):
