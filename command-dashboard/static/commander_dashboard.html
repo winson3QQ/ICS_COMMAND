@@ -565,6 +565,12 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(
   transition:all .15s;
 }
 .adm-btn:hover{background:var(--border);color:var(--text);}
+/* #66 PR-C1：事件分類編輯器表格 */
+.tax-table{width:100%;border-collapse:collapse;font-size:11px;margin-bottom:4px;}
+.tax-table th{text-align:left;color:var(--text3);font-weight:600;padding:2px 4px;border-bottom:1px solid var(--border);}
+.tax-table td{padding:2px 4px;vertical-align:middle;}
+.tax-table code{font-size:10px;color:var(--text2);}
+.tax-table .adm-input{width:100%;box-sizing:border-box;padding:2px 4px;font-size:11px;}
 .adm-btn.danger{border-color:var(--red);color:var(--red);}
 .adm-btn.danger:hover{background:var(--red);color:#fff;}
 .adm-edit-form{
@@ -796,6 +802,14 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(
       <div class="stg-item" data-action="openAdminPanel">
         <span class="si-icon">&#128100;</span>
         <div class="si-text"><div class="si-title">管理員後台</div><div class="si-sub">帳號 ／ Pi 節點 ／ 稽核 ／ 系統</div></div>
+        <span class="si-arrow">&#x203A;</span>
+      </div>
+    </div>
+    <div class="stg-section" id="stg-taxonomy-section" style="display:none;">
+      <div class="stg-section-title">事件分類</div>
+      <div class="stg-item" data-action="openTaxonomyEditor">
+        <span class="si-icon">&#127991;</span>
+        <div class="si-text"><div class="si-title">事件分類編輯</div><div class="si-sub">編輯事件型別 ／ 群組（soft-delete）</div></div>
         <span class="si-arrow">&#x203A;</span>
       </div>
     </div>

@@ -292,6 +292,51 @@ describe('C1-F commander modules', () => {
     expect(events._parseNotes('[{\"note\":\"ok\"}]')).toEqual([{ note: 'ok' }]);
   });
 
+  test('taxonomy_editor_C1_buildBody_and_wiring', async () => {
+    // #66 PR-C1：編輯既有 + soft-delete（不增不刪 key）。_buildTaxonomyBody 為純合併函式。
+    const ev = await import('../../static/js/events.js');
+    const raw = {
+      version: 1,
+      groups: [{ key: 'security', label: '安全', order: 1 }, { key: 'ops', label: '行動', order: 2 }],
+      events: [
+        { key: 'explosive', label: '爆裂', group: 'security', severity: 'critical', cot_type: 'a-h-G', defaultAssigned: 'forward', abbr: '爆' },
+        { key: 'other', label: '其他', group: 'ops', severity: 'info', cot_type: 'a-u-G', defaultAssigned: null, abbr: '他' },
+      ],
+    };
+    const body = ev._buildTaxonomyBody(raw, {
+      groups: { security: { label: '安全威脅', deleted: false } },
+      events: {
+        explosive: { label: '疑似爆裂物', severity: 'critical', group: 'security', cot_type: 'a-h-G', defaultAssigned: '', deleted: false },
+        other: { label: '其他', severity: 'info', group: 'ops', cot_type: 'a-u-G', defaultAssigned: 'command', deleted: true },
+      },
+    });
+    expect(body.groups.find((g) => g.key === 'security').label).toBe('安全威脅');  // rename
+    const exp = body.events.find((e) => e.key === 'explosive');
+    expect(exp.label).toBe('疑似爆裂物');
+    expect(exp.defaultAssigned).toBeNull();   // 清空 → null
+    expect(exp.abbr).toBe('爆');              // 未編欄位保留
+    expect('deleted' in exp).toBe(false);
+    const oth = body.events.find((e) => e.key === 'other');
+    expect(oth.deleted).toBe(true);           // soft-delete
+    expect(oth.defaultAssigned).toBe('command');
+    expect(body.events.map((e) => e.key).sort()).toEqual(['explosive', 'other']);  // 不增不刪 key
+    // 空 label / cot_type 保留舊（required，不可清成空）
+    const body2 = ev._buildTaxonomyBody(raw, { events: { explosive: { label: '', severity: 'critical', group: 'security', cot_type: '', defaultAssigned: '', deleted: false } } });
+    expect(body2.events.find((e) => e.key === 'explosive').label).toBe('爆裂');
+    expect(body2.events.find((e) => e.key === 'explosive').cot_type).toBe('a-h-G');
+    // wiring：editor 函式 + main.js 派發 + HTML 入口 + auth.js sysadmin 守門
+    expect(typeof ev.openTaxonomyEditor).toBe('function');
+    expect(typeof ev.saveTaxonomyFromEditor).toBe('function');
+    const mainSrc = file('static/js/main.js');
+    expect(mainSrc).toMatch(/case 'openTaxonomyEditor'/);
+    expect(mainSrc).toMatch(/case 'taxSave'/);
+    expect(mainSrc).toMatch(/_reloadTaxonomyPipeline/);
+    const html = file('static/commander_dashboard.html');
+    expect(html).toMatch(/id="stg-taxonomy-section"/);
+    expect(html).toMatch(/data-action="openTaxonomyEditor"/);
+    expect(file('static/js/auth.js')).toMatch(/stg-taxonomy-section[\s\S]{0,80}hasAnyRole\('sysadmin'\)/);
+  });
+
   test('auth_logout_clears_session', async () => {
     const auth = await import('../../static/js/auth.js');
     sessionStorage.setItem('cmd_session_id', 'token');

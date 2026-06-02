@@ -110,6 +110,122 @@ export async function loadEventTaxonomy() {
 }
 
 // ══════════════════════════════════════════════════════════════
+// 事件分類編輯器（#66 PR-C1：編輯既有 + soft-delete；新增留 C2）
+// sysadmin-only（後端 POST 為 SYSADMIN_ONLY + PR-A schema/superset 守門）。
+// 只改既有 key（不增不刪），key 唯讀；刪除＝soft-delete（deleted:true 保 key）。
+// ══════════════════════════════════════════════════════════════
+let _taxEditRaw = null;  // 開啟時 GET 的整份 raw taxonomy（含 cot_type/order/deleted 完整欄位）
+
+/** C1：把表單 edits 合併進 raw 副本（只改既有，不增不刪 key）。純函式，便於單測。 */
+export function _buildTaxonomyBody(rawTax, edits) {
+  const ge = (edits && edits.groups) || {};
+  const ee = (edits && edits.events) || {};
+  return {
+    ...rawTax,
+    groups: (rawTax.groups || []).map((g) => {
+      const e = ge[g.key];
+      if (!e) return g;
+      const out = { ...g, label: e.label || g.label };  // 空 label 保留舊（label 必填）
+      if (e.deleted) out.deleted = true; else delete out.deleted;
+      return out;
+    }),
+    events: (rawTax.events || []).map((v) => {
+      const e = ee[v.key];
+      if (!e) return v;
+      const out = {
+        ...v,
+        label: e.label || v.label,
+        severity: e.severity || v.severity,
+        group: e.group || v.group,
+        cot_type: e.cot_type || v.cot_type,           // cot_type 必填 → 空保留舊
+        defaultAssigned: e.defaultAssigned ? e.defaultAssigned : null,  // 可清空
+      };
+      if (e.deleted) out.deleted = true; else delete out.deleted;
+      return out;
+    }),
+  };
+}
+
+export async function openTaxonomyEditor() {
+  let tax = null;
+  try {
+    const r = await authFetch(API_BASE + '/api/event_taxonomy');
+    if (r.ok) tax = await r.json();
+  } catch (e) { tax = null; }
+  if (!tax || !Array.isArray(tax.events) || !Array.isArray(tax.groups)) {
+    _openModal?.('事件分類編輯', '<div style="padding:12px;color:var(--red);">載入失敗，請重試</div>');
+    return;
+  }
+  _taxEditRaw = tax;
+  const sevOpts = (cur) => ['critical', 'warning', 'info']
+    .map((s) => `<option value="${s}"${s === cur ? ' selected' : ''}>${s}</option>`).join('');
+  const grpOpts = (cur) => tax.groups
+    .map((g) => `<option value="${_esc(g.key)}"${g.key === cur ? ' selected' : ''}>${_esc(g.label || g.key)}</option>`).join('');
+  const grpRows = tax.groups.map((g) => `<tr data-gkey="${_esc(g.key)}">
+      <td><code>${_esc(g.key)}</code></td>
+      <td><input class="adm-input tax-g-label" value="${_esc(g.label || '')}"></td>
+      <td style="text-align:center;"><input type="checkbox" class="tax-g-del"${g.deleted ? ' checked' : ''}></td></tr>`).join('');
+  const evRows = tax.events.map((e) => `<tr data-ekey="${_esc(e.key)}">
+      <td><code>${_esc(e.key)}</code></td>
+      <td><input class="adm-input tax-e-label" value="${_esc(e.label || '')}"></td>
+      <td><select class="adm-input tax-e-sev">${sevOpts(e.severity)}</select></td>
+      <td><select class="adm-input tax-e-grp">${grpOpts(e.group)}</select></td>
+      <td><input class="adm-input tax-e-cot" value="${_esc(e.cot_type || '')}" size="8"></td>
+      <td><input class="adm-input tax-e-da" value="${_esc(e.defaultAssigned || '')}" size="6"></td>
+      <td style="text-align:center;"><input type="checkbox" class="tax-e-del"${e.deleted ? ' checked' : ''}></td></tr>`).join('');
+  const body = `<div id="tax-edit-err" style="color:var(--red);font-size:12px;min-height:16px;"></div>
+    <div style="font-size:11px;color:var(--text2);margin-bottom:4px;">群組（key 唯讀，禁改名/硬刪；勾刪除＝soft-delete，禁刪非空群組）</div>
+    <table class="tax-table"><thead><tr><th>key</th><th>名稱</th><th>刪</th></tr></thead><tbody>${grpRows}</tbody></table>
+    <div style="font-size:11px;color:var(--text2);margin:10px 0 4px;">事件型別（key 唯讀；severity 固定 3 級；cot_type 必填）</div>
+    <table class="tax-table"><thead><tr><th>key</th><th>名稱</th><th>severity</th><th>群組</th><th>cot_type</th><th>處理組</th><th>刪</th></tr></thead><tbody>${evRows}</tbody></table>`;
+  const footer = '<button class="adm-btn" data-action="taxSave">儲存</button>'
+    + '<button class="adm-btn" data-action="close-modal">取消</button>';
+  _openModal?.('事件分類編輯', body, footer);
+}
+
+/** 讀編輯器 DOM → 組 body → POST。回 {ok, error}。成功後由 main.js 跑重渲染管線。 */
+export async function saveTaxonomyFromEditor() {
+  if (!_taxEditRaw) return { ok: false, error: '狀態遺失，請重開' };
+  const errEl = document.getElementById('tax-edit-err');
+  const edits = { groups: {}, events: {} };
+  document.querySelectorAll('tr[data-gkey]').forEach((tr) => {
+    edits.groups[tr.dataset.gkey] = {
+      label: (tr.querySelector('.tax-g-label')?.value || '').trim(),
+      deleted: !!tr.querySelector('.tax-g-del')?.checked,
+    };
+  });
+  document.querySelectorAll('tr[data-ekey]').forEach((tr) => {
+    edits.events[tr.dataset.ekey] = {
+      label: (tr.querySelector('.tax-e-label')?.value || '').trim(),
+      severity: tr.querySelector('.tax-e-sev')?.value,
+      group: tr.querySelector('.tax-e-grp')?.value,
+      cot_type: (tr.querySelector('.tax-e-cot')?.value || '').trim(),
+      defaultAssigned: (tr.querySelector('.tax-e-da')?.value || '').trim(),
+      deleted: !!tr.querySelector('.tax-e-del')?.checked,
+    };
+  });
+  const payload = _buildTaxonomyBody(_taxEditRaw, edits);
+  try {
+    const r = await authFetch(API_BASE + '/api/event_taxonomy', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!r.ok) {
+      let msg = `儲存失敗（${r.status}）`;
+      try { const j = await r.json(); if (j && j.detail) msg = j.detail; } catch (e) { /* 非 JSON */ }
+      if (errEl) errEl.textContent = msg;
+      return { ok: false, error: msg };
+    }
+    _taxEditRaw = null;
+    return { ok: true };
+  } catch (e) {
+    if (errEl) errEl.textContent = '網路錯誤，請重試';
+    return { ok: false, error: '網路錯誤' };
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
 // 依賴注入（cop.js 在 initEvents 時提供）
 // ══════════════════════════════════════════════════════════════
 let _getData              = null;  // () => _data

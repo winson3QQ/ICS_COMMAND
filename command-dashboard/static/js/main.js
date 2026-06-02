@@ -48,7 +48,7 @@ import {
   toggleRightExpand, _evtCardDown, _evtCardUp,
   _addEventNote, _updateEvAndRefresh, _updateEvTypeFromCategories, _syncEvSeverity,
   _renderZoneModal, setZoneModalTab,
-  loadEventTaxonomy,
+  loadEventTaxonomy, openTaxonomyEditor, saveTaxonomyFromEditor,
 } from './events.js';
 import {
   initMap, reloadMapConfig, switchMap, cancelPlaceMode, togglePinEditMode,
@@ -144,6 +144,8 @@ document.addEventListener('click', function (e) {
     }
     case 'showAuditLog':   showAuditLog(); break;
     case 'openAdminPanel': openAdminPanel(); break;
+    case 'openTaxonomyEditor': openTaxonomyEditor(); break;   // #66 PR-C1
+    case 'taxSave':        _handleTaxSave(); break;
     case 'closeAdminPanel': closeAdminPanel(); break;
     case 'adminLogin':     adminLogin(); break;
     case 'admShowTab':     admShowTab(btn.dataset.tab); break;
@@ -477,6 +479,26 @@ function _applyRoleUiGuards() {
   applyMapRoleUiGuards();
 }
 
+// #66：taxonomy 變更後重渲染管線（events 側 apply → map 側 apply+bake → 重建兩邊下拉）。
+// 登入後 onEnterDashboard 與編輯器存檔後共用，確保即時生效（不必重登）。
+async function _reloadTaxonomyPipeline() {
+  const tax = await loadEventTaxonomy();
+  if (tax) {
+    applyEventTaxonomy(tax);
+    _populateNapsgCsel();
+    _updateEvTypeFromCategories();
+  }
+}
+
+// #66 PR-C1：編輯器存檔 → 後端守門通過後跑重渲染管線 + 關 modal（失敗訊息留在 modal 內）。
+async function _handleTaxSave() {
+  const res = await saveTaxonomyFromEditor();
+  if (res && res.ok) {
+    await _reloadTaxonomyPipeline();
+    closeModal();
+  }
+}
+
 // ══════════════════════════════════════════════════════════════
 // resize
 // ══════════════════════════════════════════════════════════════
@@ -600,12 +622,7 @@ function _loadClassicScript(src) {
       // P1-10d 地基（#60/#66）：登入後載入事件 taxonomy（boot 時登入前 GET 會 401）。
       // 套用到 events.js（NAPSG_EVENTS）+ map.js（_EVENT_TYPES）後重建事件下拉，確保用的是
       // runtime SoT（/api/event_taxonomy）；admin 編輯（#66）後重登也即時反映。失敗則沿用內建 fallback。
-      const tax = await loadEventTaxonomy();
-      if (tax) {
-        applyEventTaxonomy(tax);
-        _populateNapsgCsel();
-        _updateEvTypeFromCategories();
-      }
+      await _reloadTaxonomyPipeline();
       // 登入後重抓 map_config：boot 時（登入前）的 GET /api/map_config 會 401 → _mapConfig=null
       // → 地圖空白（節點/網格不出現，要 cmd-shift-R）。登入帶 token 後重抓 → 正常 render。
       reloadMapConfig();
