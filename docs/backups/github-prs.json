@@ -1319,5 +1319,194 @@
     "title": "docs(roadmap): P1-10c ✅ 完成",
     "updatedAt": "2026-06-01T15:44:10Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/65"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "P1-10d 設計落定（#60）+ 編輯器分流（#66）。新增 event-symbology-mapping.md（NAPSG 對齊、混合 icon、severity token、22 事件對照、CoT bucket、taxonomy 資料化地基 + 雷）。ROADMAP P1-10d scope 更新。純文件。",
+    "closedAt": "2026-06-01T22:46:37Z",
+    "comments": [],
+    "createdAt": "2026-06-01T22:42:26Z",
+    "headRefName": "docs/p1-10d-symbology-design",
+    "labels": [],
+    "mergedAt": "2026-06-01T22:46:37Z",
+    "number": 67,
+    "state": "MERGED",
+    "title": "docs(design): P1-10d 事件符號設計提案（NAPSG 對齊 + CoT 預備）",
+    "updatedAt": "2026-06-01T22:46:39Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/67"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "P1-10d 地基（PR-1，後端資料層）。事件分類 → seed/runtime 可編資料（P1-13 模式），為編輯器 #66 鋪地基。前端讀取 + 收斂 events.js/map.js 重複 = PR-2。\n\n- event_taxonomy.seed.json（22 事件/6 群組 + cot_type + severity）\n- event_taxonomy_store（ensure/read/write_atomic）+ config + startup ensure\n- GET /api/event_taxonomy（READ_ROLES）/ POST（sysadmin-only）+ RBAC case\n- 順帶修 map_config/event_taxonomy store parent-dir fsync → best-effort（解 Windows pytest 既有 6 失敗）\n\n**§8**：8 store unit（含 seed 完整性）+ 4 API/RBAC；全 pytest green、pyflakes clean。data/event_taxonomy.json gitignored。",
+    "closedAt": "2026-06-01T23:35:14Z",
+    "comments": [],
+    "createdAt": "2026-06-01T23:07:20Z",
+    "headRefName": "feat/issue-60-taxonomy-foundation",
+    "labels": [],
+    "mergedAt": "2026-06-01T23:35:14Z",
+    "number": 68,
+    "state": "MERGED",
+    "title": "feat(events): P1-10d 地基 — 事件 taxonomy 資料化（seed/runtime + API）（#60/#66）",
+    "updatedAt": "2026-06-01T23:35:16Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/68"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "事件分類改由後端 taxonomy 載入（runtime SoT = /api/event_taxonomy），收斂 events.js/map.js 兩份事件表 drift（登入後兩邊套同一 API 資料；map.js 受 import boundary 由 main.js 橋接）。內建常數降為 fallback。\n\n**§8 驗證**：vitest 180（+2 新：wiring 斷言 + applyTaxonomy 就地 mutate/fallback 功能測）；eslint clean；import boundary 維持。**hands-on**：登入 → 事件下拉/建立/地圖 marker 行為不變（資料現自 API；admin 編輯 #66 後重登即反映）。\n\n無視覺變化（視覺 = PR-2b，需 NAPSG icon）。",
+    "closedAt": "2026-06-01T23:56:53Z",
+    "comments": [],
+    "createdAt": "2026-06-01T23:48:09Z",
+    "headRefName": "feat/issue-60-taxonomy-frontend",
+    "labels": [],
+    "mergedAt": "2026-06-01T23:56:53Z",
+    "number": 69,
+    "state": "MERGED",
+    "title": "feat(events): P1-10d 地基 PR-2a — 前端讀 /api/event_taxonomy（資料化 + 收斂）（#60/#66）",
+    "updatedAt": "2026-06-01T23:56:55Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/69"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "達成 T2.5。事件 circle → ◆ diamond（NAPSG hazard）+ severity NAPSG 標準色 token + critical 脈動。節點維持圓形。NAPSG 象形 glyph（不透明代碼，需逐圖視覺 QA）為下一刀。\n\n- ds-tokens `--severity-*`（NAPSG Red/Orange/Blue）；_SEV_COLORS 對齊\n- bakeDiamondSdf + zones-event symbol（icon-color+icon-halo）；zones-base 改只給節點\n- zones-crit-pulse 獨立層 + 單一全域 RAF（不用 @keyframes、不碰既有 halo/highlight）\n\n**§8**：vitest 181；eslint clean；真實 Chrome imperative 驗 diamond SDF 出圖 + symbol(icon-color/halo) 渲染 + crit-pulse setPaintProperty + 0 error（screenshot preview flaky 未取）。hands-on：登入看地圖事件應為 ◆ diamond、severity 色、critical 呼吸光暈。",
+    "closedAt": "2026-06-02T02:23:37Z",
+    "comments": [],
+    "createdAt": "2026-06-02T00:12:31Z",
+    "headRefName": "feat/issue-60-p1-10d-visual",
+    "labels": [],
+    "mergedAt": "2026-06-02T02:23:37Z",
+    "number": 70,
+    "state": "MERGED",
+    "title": "feat(map): P1-10d 視覺 — 事件 ◆ diamond + NAPSG severity 色 + critical 脈動（#60）",
+    "updatedAt": "2026-06-02T02:23:38Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/70"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "跨機器三要素（底圖 gitignored / 節點+格線 needs first-run / DB per-machine）原散在 POLICY SOP + PROCESS worktree 段，不在新 session onboarding 路徑。補進 README Onboarding + CLAUDE START HERE 指標。無新腳本。純文件。",
+    "closedAt": "2026-06-02T00:48:10Z",
+    "comments": [],
+    "createdAt": "2026-06-02T00:48:07Z",
+    "headRefName": "docs/onboarding-cross-machine",
+    "labels": [],
+    "mergedAt": "2026-06-02T00:48:10Z",
+    "number": 71,
+    "state": "MERGED",
+    "title": "docs: README/CLAUDE 補「換機器 setup」（底圖 provision + first-run）",
+    "updatedAt": "2026-06-02T00:48:12Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/71"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "實跑 publish_basemap 發現 gh asset name=basename（taiwan.pmtiles），原 manifest/script 期望 taiwan-<ver>.pmtiles → provision --pattern 對不上。修：版本放 tag、asset 名 taiwan.pmtiles。**已實測 provision --force 從 release 下載+SHA驗證+安裝+preflight 全通**。Codeberg 待補 token。",
+    "closedAt": "2026-06-02T00:54:55Z",
+    "comments": [],
+    "createdAt": "2026-06-02T00:54:52Z",
+    "headRefName": "fix/basemap-release-asset-name",
+    "labels": [],
+    "mergedAt": "2026-06-02T00:54:55Z",
+    "number": 72,
+    "state": "MERGED",
+    "title": "fix(deploy): 底圖 release asset 名對齊 taiwan.pmtiles（provision 實測修正）",
+    "updatedAt": "2026-06-02T00:54:57Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/72"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "三軸正交（事件類型/回報組/處理組）+ severity + status；符號=類型(→CoT,TAK 共同語言)、ICS 組織=detail 屬性、右側欄 pivot、解 類別↔組織 撞名。寫進現有 event-symbology-mapping.md（非新檔）+ ROADMAP P1-10d 衍生工作指標。純文件。",
+    "closedAt": "2026-06-02T01:38:21Z",
+    "comments": [],
+    "createdAt": "2026-06-02T01:38:17Z",
+    "headRefName": "docs/event-three-axis-model",
+    "labels": [],
+    "mergedAt": "2026-06-02T01:38:20Z",
+    "number": 73,
+    "state": "MERGED",
+    "title": "docs(design): 事件資料模型三軸 + 命名解撞名 + TAK 對照（#60/#66）",
+    "updatedAt": "2026-06-02T01:38:22Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/73"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "P1-10d 標記完成,證據 #68/#69/#70 + 設計 #67/#73。衍生 (a)NAPSG glyph (b)(c)#66/pivot (d)P2-04 為 follow-up。純文件。",
+    "closedAt": "2026-06-02T02:26:52Z",
+    "comments": [],
+    "createdAt": "2026-06-02T02:26:49Z",
+    "headRefName": "docs/p1-10d-done",
+    "labels": [],
+    "mergedAt": "2026-06-02T02:26:52Z",
+    "number": 74,
+    "state": "MERGED",
+    "title": "docs(roadmap): P1-10d ✅ 完成",
+    "updatedAt": "2026-06-02T02:26:54Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/74"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "## 摘要\nP1-10d 衍生工作 (a) NAPSG 象形 glyph 第一批落地。混合策略：有 vendored NAPSG 象形且已 bake → 用 glyph，否則退 abbr。\n\n## 6 強配 glyph（其餘 14 維持 abbr）\n| 事件 | NAPSG | 圖 |\n|---|---|---|\n| explosive | FAA | 星爆 |\n| comm_fail | LEK | 訊號塔 |\n| hazard | MAAN | 驚嘆號 |\n| evacuation | GAAN | 跑人（剝紅三角底）|\n| facility | AAB | 房子（剝黃菱底）|\n| rescue | AAE | 「V」(USAR,邊際) |\n\n## 變更\n- `static/js/map/napsg_glyphs.js`（NEW）— vendored 6 SVG（CC BY 4.0 NAPSG/DHS，非中國）+ `hasNapsgGlyph`\n- `entity_layer.js` — `bakeSvgIcon`（非 SDF 白圖）+ `pickForeground`（純函式）+ feature `fg`/`fg_glyph`\n- `map.js` — `_bakeGlyphs`、_renderZones 選圖、前景層 icon-image=fg + glyph 加大\n- 文件 — FEMA/IPAWS/NIMS 查證結論 + 覆蓋現實 ~8/22\n\n## 驗證\n- vitest 182 pass、eslint clean\n- ⚠️ **需視覺 QA**（pilot 已跨機看過 6 張；此 PR 為整合進真實地圖）：拉分支跑 dashboard，確認事件 ◆ 內出現象形（無對應者仍顯 abbr）、glyph 大小 OK。\n\n## 備註\n- glyph 走白色 RGBA 非 SDF（SDF 距離場會侵蝕星爆/電波細線）；與共層 abbr(SDF) 混用無礙。\n- icon-size 0.62 可微調。\n\nRefs #60",
+    "closedAt": null,
+    "comments": [],
+    "createdAt": "2026-06-02T03:54:16Z",
+    "headRefName": "feat/p1-10d-napsg-glyph",
+    "labels": [],
+    "mergedAt": null,
+    "number": 75,
+    "state": "OPEN",
+    "title": "feat(map): P1-10d 事件 NAPSG 象形 glyph 第一批（6 強配）",
+    "updatedAt": "2026-06-02T04:00:01Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/75"
   }
 ]
