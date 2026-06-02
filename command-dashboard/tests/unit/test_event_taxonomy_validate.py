@@ -28,6 +28,14 @@ def test_valid_passes():
     validate_taxonomy(_ok(), previous=_ok())  # previous = 自身（superset 成立）
 
 
+def test_source_optional_and_enum():
+    b = _ok()
+    validate_taxonomy(b)                       # 無 source（可選，向後相容）
+    b["events"][0]["source"] = "napsg"
+    b["events"][1]["source"] = "ics"
+    validate_taxonomy(b)                       # napsg / ics 皆合法
+
+
 @pytest.mark.parametrize("mutate, frag", [
     (lambda b: b.pop("events"), "groups[] 與 events[]"),
     (lambda b: b["events"][0].__setitem__("severity", "bogus"), "severity"),
@@ -39,6 +47,7 @@ def test_valid_passes():
     (lambda b: b["events"].append(dict(b["events"][0])), "event key 重複"),
     (lambda b: b["groups"][0].__setitem__("label", "  "), "缺 label"),
     (lambda b: b["events"][0].__setitem__("deleted", "yes"), "deleted 需為 bool"),
+    (lambda b: b["events"][0].__setitem__("source", "bogus"), "source 非法"),
 ])
 def test_schema_violations_raise(mutate, frag):
     body = _ok()
