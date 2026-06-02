@@ -61,8 +61,11 @@ def tile_metadata(source: str):
 
 @router.get("/tiles/pmtiles/{filename}")
 def serve_pmtiles(filename: str, request: Request):
-    path = MBTILES_DIR / filename
-    if not path.exists() or not filename.endswith(".pmtiles"):
+    # 路徑穿越縱深防禦（#64-2）：str path-converter 已不含 '/'，但加 resolve() 容器內檢查，
+    # 不靠單一慣例（防編碼繞過/未來路由改 {filename:path}）。先驗格式+容器再 exists（不洩漏外部檔存在）。
+    base = MBTILES_DIR.resolve()
+    path = (MBTILES_DIR / filename).resolve()
+    if not filename.endswith(".pmtiles") or not path.is_relative_to(base) or not path.exists():
         raise HTTPException(404, "PMTiles file not found")
     file_size = path.stat().st_size
     range_header = request.headers.get("Range")

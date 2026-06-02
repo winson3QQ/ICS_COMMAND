@@ -77,9 +77,10 @@ AUTH_EXEMPT_EXACT: frozenset[tuple[str, str]] = frozenset(
 )
 
 # path 前綴匹配（任何 method）
+# 註：tile 路由是 /tiles/...（非 /api/ 底下），auth_middleware 只 gate /api/* → tiles 本就不需
+# exempt。舊有 "/api/map/tiles/" 條目 match 不到任何路由（dead/誤導），已移除（#64-1）。
 AUTH_EXEMPT_PREFIXES: tuple[str, ...] = (
     "/static/",
-    "/api/map/tiles/",
 )
 
 # ── Trusted Ingest（TI-01）────────────────────────────────────────────────
