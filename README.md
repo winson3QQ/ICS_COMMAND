@@ -13,12 +13,24 @@ git config core.hooksPath .githooks   # 啟用 memory sync hook（一次性）
 ./status.sh                            # 看當前 commit + ROADMAP 進度全景
 ```
 
-啟動本機 dashboard（dev / quick test）：
+### 換機器 / 新接手者：補 gitignored runtime（**必看**）
+
+底圖、DB **不在 git 裡**（deploy artifact / per-machine 帳號）。只 clone 會看到「**空白底圖 + 節點/格線不出現**」——不是 bug，是少了兩樣：
 
 ```bash
-./start_mac.sh   # macOS
-./start_pi.sh    # Linux / Pi
+# 1. 底圖（command-dashboard/static/tiles/taiwan.pmtiles，gitignored）
+./scripts/provision_basemap.sh                          # 從雙 release 下載（需發佈者先跑過 publish_basemap）
+# ./scripts/provision_basemap.sh --from /mnt/usb/taiwan-<ver>.pmtiles   # air-gap / 無 release 時
+
+# 2. 啟動
+./start_mac.sh   # macOS    /    ./start_pi.sh   # Linux / Pi
+
+# 3. first-run（每台一次）：啟動時 console（或 ~/.ics/first_run_token）會印初始 PIN
+#    → admin + 該 PIN 登入 → 改 PIN。完成後「節點/格線」會自動從 seed 出現。
 ```
+
+> ⚠️ 底圖 / DB 是 gitignored；**別把 live SQLite（`command-dashboard/data/ics.db`）丟 OneDrive/iCloud 同步**（WAL 會壞）。DB 路徑可用 `ICS_DB_PATH` env 固定在 repo 外（見 `.claude/launch.json`）。
+> 底圖**發佈/整備/多機同步 SOP**（`publish_basemap` / `provision_basemap` / preflight）見 [`command-dashboard/docs/design/POLICY.md`](command-dashboard/docs/design/POLICY.md) §底圖資料來源與 build recipe。
 
 生產環境用 `systemd/ics-command.service`（site config 經 `EnvironmentFile=/etc/ics/command.env`，見 `systemd/ics-command.service.d/README.md`）。
 
