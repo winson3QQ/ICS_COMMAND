@@ -394,7 +394,7 @@ export function showEventProcessModal(zone) {
 
   const el = id => document.getElementById(id);
   const sevLabel = { critical: '緊急', warning: '警告', info: '一般' }[ev.severity] || ev.severity;
-  const sevColor = ev.severity === 'critical' ? 'var(--red)' : ev.severity === 'warning' ? 'var(--yellow)' : 'var(--text3)';
+  const sevColor = ev.severity === 'critical' ? 'var(--severity-critical)' : ev.severity === 'warning' ? 'var(--severity-warning)' : 'var(--severity-info)';
   const statusLabel = { open: '未結', in_progress: '處理中', resolved: '已結案', closed: '已關閉' }[ev.status] || ev.status;
   const statusC = (ev.status === 'resolved' || ev.status === 'closed') ? 'var(--green)' : 'var(--yellow)';
   const unitLabel = { forward: '前進組', security: '安全組', shelter: '收容組', medical: '醫療組', command: '指揮部' }[ev.reported_by_unit] || ev.reported_by_unit;
@@ -864,7 +864,7 @@ function _zoneDecisionsTab(zone) {
   let html = '';
   filtered.forEach(dec => {
     const age  = _decisionAge(dec.created_at);
-    const sevC = dec.severity === 'critical' ? 'var(--red)' : 'var(--yellow)';
+    const sevC = dec.severity === 'critical' ? 'var(--severity-critical)' : 'var(--severity-warning)';
     const statusLabel = dec.status === 'pending' ? '待裁示' : '已裁示：' + dec.status;
     html += `<div style="padding:6px 8px;margin-bottom:4px;background:var(--surface2);border-radius:5px;border-left:3px solid ${sevC};cursor:pointer;" data-action="showDecisionModal" data-id="${dec.id}">`;
     html += `<div style="display:flex;justify-content:space-between;">`;
@@ -878,7 +878,7 @@ function _zoneDecisionsTab(zone) {
 }
 
 function _eventCardHTML(ev, dimmed, viewUnit) {
-  const sevC = ev.severity === 'critical' ? 'var(--red)' : ev.severity === 'warning' ? 'var(--yellow)' : 'var(--text3)';
+  const sevC = ev.severity === 'critical' ? 'var(--severity-critical)' : ev.severity === 'warning' ? 'var(--severity-warning)' : 'var(--severity-info)';
   const statusLabel = { open: '未結', in_progress: '處理中', resolved: '已結案', closed: '已關閉' }[ev.status] || ev.status;
   const statusC = (ev.status === 'resolved' || ev.status === 'closed') ? 'var(--green)' : 'var(--yellow)';
   const notes = _parseNotes(ev.notes);
@@ -1109,7 +1109,7 @@ export function renderZoneC(data, d) {
           if ((dl - now) < (dl - cr) * 0.5) tagColor = '#e67e22';
         }
       }
-      const sevColor = ev.severity === 'critical' ? 'var(--red)' : ev.severity === 'warning' ? 'var(--yellow)' : 'var(--text3)';
+      const sevColor = ev.severity === 'critical' ? 'var(--severity-critical)' : ev.severity === 'warning' ? 'var(--severity-warning)' : 'var(--severity-info)';
       const uName  = unitNames[ev.reported_by_unit] || '';
       const asgKey = ev.assigned_unit;
       const asgName = asgKey && asgKey !== ev.reported_by_unit ? (unitNames[asgKey] || asgKey) : '';
@@ -1161,7 +1161,7 @@ export function renderZoneC(data, d) {
 
     if (filteredResolved.length > 0) {
       const _resolvedCard = (ev) => {
-        const sevColor = ev.severity === 'critical' ? 'var(--red)' : ev.severity === 'warning' ? 'var(--yellow)' : 'var(--text3)';
+        const sevColor = ev.severity === 'critical' ? 'var(--severity-critical)' : ev.severity === 'warning' ? 'var(--severity-warning)' : 'var(--severity-info)';
         const uName  = unitNames[ev.reported_by_unit] || '';
         const asgKey = ev.assigned_unit;
         const asgName = asgKey && asgKey !== ev.reported_by_unit ? (unitNames[asgKey] || asgKey) : '';

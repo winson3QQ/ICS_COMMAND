@@ -705,12 +705,13 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(
   cursor:pointer;text-align:left;transition:background .1s,border-color .1s;
 }
 .ev-popup-type-btn:hover{background:rgba(88,166,255,.12);}
-.ev-popup-type-btn.sev-critical{ border-left-color:#f85149; }
-.ev-popup-type-btn.sev-critical:hover{ background:rgba(248,81,73,.12); }
-.ev-popup-type-btn.sev-warning { border-left-color:#e3b341; }
-.ev-popup-type-btn.sev-warning:hover { background:rgba(227,179,65,.10); }
-.ev-popup-type-btn.sev-info    { border-left-color:#6e7681; }
-.ev-popup-type-btn.sev-info:hover    { background:rgba(110,118,129,.12); }
+/* P1-10d：事件分類選單邊條同步 NAPSG severity token（與地圖 marker 同色） */
+.ev-popup-type-btn.sev-critical{ border-left-color:var(--severity-critical); }
+.ev-popup-type-btn.sev-critical:hover{ background:color-mix(in srgb, var(--severity-critical) 12%, transparent); }
+.ev-popup-type-btn.sev-warning { border-left-color:var(--severity-warning); }
+.ev-popup-type-btn.sev-warning:hover { background:color-mix(in srgb, var(--severity-warning) 10%, transparent); }
+.ev-popup-type-btn.sev-info    { border-left-color:var(--severity-info); }
+.ev-popup-type-btn.sev-info:hover    { background:color-mix(in srgb, var(--severity-info) 12%, transparent); }
 .ev-popup-back{display:inline-block;margin-bottom:6px;font-size:10px;color:#58a6ff;cursor:pointer;padding:2px 0;}
 .ev-popup-back:hover{text-decoration:underline;}
 /* 舊 .ev-popup-reporter 保留，避免其他地方引用報錯 */
