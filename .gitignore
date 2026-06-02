@@ -66,3 +66,6 @@ command-dashboard/static/*.png
 !command-dashboard/static/badge.png
 !command-dashboard/static/臂章後製版.png
 command-dashboard/static/tiles/
+
+# 本地暫存 / 實驗區（mockup、抓取腳本、中間檔；保留品已搬進 static/）
+_scratch/
