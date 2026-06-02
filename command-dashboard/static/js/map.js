@@ -131,29 +131,31 @@ const _PERM_NODES = [
   { id: 'node_security', label: '安全組', node_type: 'security', icon: 'pin' },
 ];
 
+// 內建 fallback（runtime SoT = /api/event_taxonomy，由 applyEventTaxonomy 覆蓋）。
+// **必含 abbr** —— marker 字 + SDF bake 都讀它；缺 abbr 會讓事件菱形無字（review #70 HIGH）。
 const _EVENT_TYPES = {
-  explosive: { label: '疑似爆裂物', group: 'security', severity: 'critical' },
-  drone: { label: '無人機威脅', group: 'security', severity: 'critical' },
-  violent: { label: '暴力事件', group: 'security', severity: 'critical' },
-  unknown_person: { label: '不明人士', group: 'security', severity: 'warning' },
-  perimeter: { label: '管制區異常', group: 'security', severity: 'warning' },
-  crowd: { label: '秩序問題', group: 'security', severity: 'warning' },
-  rescue: { label: '受困救援', group: 'rescue', severity: 'warning' },
-  qrf: { label: 'QRF 出動', group: 'rescue', severity: 'warning' },
-  mci: { label: '大量傷亡', group: 'medical', severity: 'critical' },
-  emergency: { label: '緊急病症', group: 'medical', severity: 'critical' },
-  infectious: { label: '傳染疑慮', group: 'medical', severity: 'warning' },
-  capacity: { label: '量能超載', group: 'care', severity: 'warning' },
-  isolation: { label: '隔離事件', group: 'care', severity: 'warning' },
-  person_need: { label: '人員狀況', group: 'care', severity: 'info' },
-  comm_fail: { label: '通訊異常', group: 'infra', severity: 'warning' },
-  facility: { label: '設施異常', group: 'infra', severity: 'info' },
-  equipment: { label: '設備故障', group: 'infra', severity: 'info' },
-  evacuation: { label: '撤離', group: 'ops', severity: 'warning' },
-  resource: { label: '資源調度', group: 'ops', severity: 'info' },
-  situation: { label: '現場變化', group: 'ops', severity: 'info' },
-  hazard: { label: '危害回報', group: 'ops', severity: 'info' },
-  other: { label: '其他', group: 'ops', severity: 'info' },
+  explosive: { label: '疑似爆裂物', group: 'security', severity: 'critical', abbr: '爆' },
+  drone: { label: '無人機威脅', group: 'security', severity: 'critical', abbr: '機' },
+  violent: { label: '暴力事件', group: 'security', severity: 'critical', abbr: '暴' },
+  unknown_person: { label: '不明人士', group: 'security', severity: 'warning', abbr: '人' },
+  perimeter: { label: '管制區異常', group: 'security', severity: 'warning', abbr: '域' },
+  crowd: { label: '秩序問題', group: 'security', severity: 'warning', abbr: '眾' },
+  rescue: { label: '受困救援', group: 'rescue', severity: 'warning', abbr: '救' },
+  qrf: { label: 'QRF 出動', group: 'rescue', severity: 'warning', abbr: 'QR' },
+  mci: { label: '大量傷亡', group: 'medical', severity: 'critical', abbr: 'MCI' },
+  emergency: { label: '緊急病症', group: 'medical', severity: 'critical', abbr: '急' },
+  infectious: { label: '傳染疑慮', group: 'medical', severity: 'warning', abbr: '疫' },
+  capacity: { label: '量能超載', group: 'care', severity: 'warning', abbr: '滿' },
+  isolation: { label: '隔離事件', group: 'care', severity: 'warning', abbr: '隔' },
+  person_need: { label: '人員狀況', group: 'care', severity: 'info', abbr: '護' },
+  comm_fail: { label: '通訊異常', group: 'infra', severity: 'warning', abbr: '訊' },
+  facility: { label: '設施異常', group: 'infra', severity: 'info', abbr: '設' },
+  equipment: { label: '設備故障', group: 'infra', severity: 'info', abbr: '器' },
+  evacuation: { label: '撤離', group: 'ops', severity: 'warning', abbr: '疏' },
+  resource: { label: '資源調度', group: 'ops', severity: 'info', abbr: '物' },
+  situation: { label: '現場變化', group: 'ops', severity: 'info', abbr: '況' },
+  hazard: { label: '危害回報', group: 'ops', severity: 'info', abbr: '危' },
+  other: { label: '其他', group: 'ops', severity: 'info', abbr: '他' },
 };
 
 const _EVENT_GROUPS = {
@@ -181,7 +183,24 @@ export function applyEventTaxonomy(tax) {
   for (const g of tax.groups) {
     if (g && g.key && !unsafe(g.key)) _EVENT_GROUPS[g.key] = g.label;
   }
+  // taxonomy 變更後新 abbr 需 bake（review #70 HIGH：否則 marker 無字）。idempotent；
+  // map 未就緒則 defer 到 load。bake 在 marker render 前完成（onEnterDashboard 序 + reloadMapConfig）。
+  const _m = _getMap();
+  if (_m) { if (_m.isStyleLoaded()) _bakeAbbrs(_m); else _m.once('load', () => _bakeAbbrs(_m)); }
   return true;
+}
+
+// P1-10d：bake 節點 abbr + group abbr(fallback) + 所有事件型別 abbr（taxonomy 動態）。
+// 讓事件 marker 顯示各自型別字（爆/機/QR/MCI…）。可重複呼叫（bakeTextSdf 內 hasImage 去重），
+// 故 taxonomy 變更（#66 admin 編輯）後再呼叫即補 bake 新字。多字元由 bakeTextSdf 自動縮放。
+function _bakeAbbrs(map) {
+  if (!map) return;
+  const set = new Set([
+    ...Object.values(_NODE_ABBR),
+    ...Object.values(_NAPSG_GROUP_ABBR),
+    ...Object.values(_EVENT_TYPES).map((t) => t && t.abbr).filter(Boolean),
+  ]);
+  bakeTextSdf(map, 'napsg-abbr-', [...set]);
 }
 
 const _NAPSG_GROUP_ABBR = { security: '安', rescue: '救', medical: '醫', care: '護', infra: '設', ops: '行' };
@@ -949,14 +968,7 @@ function _ensureEntityLayers() {
   // P1-10b 步驟 7 階段 2/3a：bake SDF icons（zone abbr 字 + arrow 三角形）
   // 必須在新 EntityLayer 建 symbol layer 之前 addImage，否則 layer 找不到 icon-image。
   // 不重複 bake — bakeTextSdf/bakeArrowSdf 內部 hasImage 判斷。
-  // P1-10d：bake 節點 abbr + group abbr(fallback) + 所有事件型別 abbr（taxonomy 動態），
-  // 讓事件 marker 能顯示各自型別字（爆/機/QR/MCI…）。多字元由 bakeTextSdf 自動縮放適配。
-  const _abbrSet = new Set([
-    ...Object.values(_NODE_ABBR),
-    ...Object.values(_NAPSG_GROUP_ABBR),
-    ...Object.values(_EVENT_TYPES).map((t) => t && t.abbr).filter(Boolean),
-  ]);
-  bakeTextSdf(map, 'napsg-abbr-', [..._abbrSet]);
+  _bakeAbbrs(map);
   bakeArrowSdf(map, 'route-arrow');
   bakeDiamondSdf(map, 'zone-diamond');  // P1-10d：事件 ◆ hazard 形狀
 
