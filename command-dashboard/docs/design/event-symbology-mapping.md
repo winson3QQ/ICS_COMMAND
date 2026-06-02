@@ -153,7 +153,7 @@ POST `/api/event_taxonomy` 原本「整包覆蓋、幾乎不驗」→ 收緊為�
 ### 衍生工作（ROADMAP 追蹤）
 
 1. **符號改依 event type（非 group）** — ✅ abbr 版（#70）；✅ NAPSG 象形 glyph 第一批 6 個強配（本 PR，見下〈NAPSG 象形 glyph 落地〉）。其餘維持 abbr。
-2. **#66 編輯器：事件類別表 / ICS 組織表分開**（解撞名）。
+2. **解撞名**：✅ 前端 event entity 改用 `event_group`、不再借 `node_type`（PR-B；cop attributes 自由 JSON 免 migration，舊 entity back-compat 讀回）。事件類別表 / ICS 組織表的後端分開留 #66 編輯器。
 3. **右側欄 pivot 分組**（by 類別 / 處理組 / status）— 獨立小 item。
 4. **report / handle → CoT `<detail>`** — P2-04 TAK。
 

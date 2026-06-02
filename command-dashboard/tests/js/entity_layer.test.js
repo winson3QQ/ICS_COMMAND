@@ -489,23 +489,31 @@ describe('copEntityToRoute / copEntityToPolygon adapter（PR-G1a cutover）', ()
 });
 
 describe('copEntityToEventZone adapter（PR-G1b cutover）', () => {
-  test('event cop_entity → 既有事件 zone shape', () => {
+  test('event cop_entity → 既有事件 zone shape（解撞名：event_group）', () => {
     const ent = {
       uid: 'manual:e1',
       lat: 24.8,
       lon: 121.0,
       callsign: '疑似爆裂物',
-      attributes: { kind: 'event', event_id: 'ev-123', event_code: 'EV-0529-001', node_type: 'security' },
+      attributes: { kind: 'event', event_id: 'ev-123', event_code: 'EV-0529-001', event_group: 'security' },
     };
     const z = copEntityToEventZone(ent);
     expect(z.id).toBe('manual:e1');       // cop uid → zone.id（刪除/回查用）
     expect(z.lat).toBe(24.8);
     expect(z.lng).toBe(121.0);            // cop lon → zone.lng
     expect(z.label).toBe('疑似爆裂物');
-    expect(z.node_type).toBe('security');
+    expect(z.event_group).toBe('security');  // #66 PR-B：事件類別走 event_group，不借 node_type
     expect(z.icon).toBe('event');
     expect(z.event_id).toBe('ev-123');
     expect(z.event_code).toBe('EV-0529-001');
+  });
+
+  test('back-compat：舊 entity 用 node_type 存 group → 仍還原成 event_group', () => {
+    const z = copEntityToEventZone({
+      uid: 'manual:e2', lat: 24.8, lon: 121.0, callsign: '受困救援',
+      attributes: { kind: 'event', event_id: 'ev-9', node_type: 'rescue' },  // 舊欄位
+    });
+    expect(z.event_group).toBe('rescue');
   });
 
   test('非 event kind / 缺 event_id / null → 回 null', () => {
