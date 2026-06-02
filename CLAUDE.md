@@ -8,6 +8,9 @@
 ./status.sh                       # 1. 看當前 commit + ROADMAP 進度全景
 ```
 
+> **換機器 / 新機器**：clone 後底圖與 DB 不隨 git（空白底圖 + 節點/格線不出現是正常）。
+> 先照 [`README.md` §換機器 / 新接手者](README.md) 補 runtime：`./scripts/provision_basemap.sh` 取底圖 + 啟動後一次性 first-run。
+
 然後依序看（自動載入的不再點名）：
 1. **工作流**：[`docs/PROCESS.md`](docs/PROCESS.md) — 一個 task 怎麼走（10 步 lifecycle、要打哪個 slash command）
 2. **路線圖**：[`docs/ROADMAP.md`](docs/ROADMAP.md) — 做什麼（38 items，✅/⏳/🚧 marker）
