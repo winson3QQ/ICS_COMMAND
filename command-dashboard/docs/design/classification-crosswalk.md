@@ -36,6 +36,10 @@
 > **NAPSG icon 欄為 draft**：標註信心（🟢 強配＝有乾淨單色象形 / 🟡 勉強＝單位圖或彩色或語意鬆 /
 > 🔴 無乾淨對應）。是否放寬「事件 vs 單位」潔癖、把 🟡 也納入，見 §6 視覺模型 / §7 待決策。
 > cot_type / source 來自現行 seed；台灣欄僅在民防疏散/收容類有對應，其餘留空。
+>
+> **✅ 2026-06-03 已重 audit**：下表 NAPSG 欄為原始 **draft（對 v4.0 Guideline PDF 評估，已知低估）**。
+> 經對**完整 NAPSG 庫（1301 unique 符號；工具 [`static/napsg_browser.html`](../../static/napsg_browser.html)）**重評，
+> **以表後〈audit 修正〉為準**（個別 row cell 未逐一改寫，保留 draft 供對照）。
 
 | 事件 key | 群組 | severity | source | NAPSG（類別 / 候選 icon · 信心）| cot_type | 台灣（NFA/NCDR）|
 |---|---|---|---|---|---|---|
@@ -62,8 +66,28 @@
 | hazard 危害回報 | ops | info | napsg | Hazard / General Hazards `MAAN`（!）🟢 | a-u-G-I | NCDR 災害潛勢（依類）|
 | other 其他 | ops | info | ics | Human-Caused / Other `FAI` 🟢 | a-u-G | — |
 
-**現況統計**：🟢 強配 8（已實作 6：explosive/comm_fail/hazard/evacuation/facility/rescue；other/?）、
-🟡 勉強 ~8、🔴 無乾淨 ~6。其餘以 abbr 顯示（中間步）。
+### ✅ audit 修正（2026-06-03，對完整 NAPSG 庫；取代上方 draft 標記與舊統計）
+
+> 套 §6 LOCKED 判準：先分軸（A/B/C 敵我 → 2525 milsymbol P2-05，**NAPSG 象形不適用**；D/E 民事 → NAPSG）；
+> D/E 再判 🟢線稿可單色 / 🟡待視覺QA / 🔴色依賴 or 單位職位圖 or 無對應。
+> ⚠ 本次為**名稱+類別層級**判定（未逐圖目視）；🟡 待用瀏覽器視覺 QA。
+
+- **走 P2-05（非 NAPSG 象形）**：`drone`(A 敵)、`violent`(A 敵)、`unknown_person`(B 不明)、`qrf`(C 友/單位)
+  —— 敵我/單位本質，框內用 2525 entity 符號（milsymbol 原生），不配 NAPSG glyph。修正舊表把這些當「NAPSG 待配」。
+- **已落地 🟢（6，#75）**：explosive · comm_fail · hazard · evacuation · facility · rescue
+- **ready 🟢（+2，本次新確認）**：
+  - `perimeter` → `Incident/Barrier__No_Access`、`Access_Hazards/No_Access__Blocked`（barrier/禁入 線稿）
+  - `infectious` → `Hazard/Biological_Hazard`（無字 biohazard trefoil；**非** `Class_6_2` 含字 placard，那個是 🔴）
+- **🟡 待視覺 QA**：`isolation`(`Incident/Decontamination`)、`mci`(`Incident/Triage`；另受 §7-1「mci 是否屬 C 友軍」影響)、
+  `facility` 變體(`Structural_Collapse`/`Do_Not_Enter_Structure`)、`capacity`(`Hazard/High_Occupancy_Numbers`)、`emergency`(醫療，多為單位圖)
+- **🔴 維持 abbr**：`crowd`(單位圖)、`situation`(抽象/指揮)、`resource`(`Staging__*` 屬「who/資源」非 WHAT)、
+  `other`(與 hazard 撞驚嘆號)、`equipment`(preplan 設施符號、細節多、40px 易糊)
+
+**真實數字**：已 6 ＋ 穩 2 ＝ **8 個 🟢**；🟡 過 QA 上看 **~12**。舊表「剩 0–2 可加」**修正為 +2（穩）~ +6（含 QA 過關）**
+—— 確比 0–2 多（完整庫覆蓋面廣），但非「+16」：近半型別本質是敵我(→2525)或單位/抽象(→abbr)，此為 LOCKED 分層必然。
+
+> **本次只修文件**：glyph 本身（vendor SVG + 剝框上白 + 測試）待 **[#66](https://github.com/winson3QQ/ICS_COMMAND/issues/66) C2** 真做時一併處理；
+> perimeter / infectious 為屆時最先可上的 🟢。
 
 ## 4. 台灣現況（2026-06-02 查證）
 
