@@ -146,6 +146,12 @@
 A/B/C（有敵我）走 2525 框（milsymbol 吃 `cot_type` 生，P2-05）；D/E（民事）走 NAPSG。情境由 `cot_type`
 前綴（`a-h`/`a-f`/`a-u` vs `b-*`）**自動分流**。
 
+### ⚠️ 內部象形（框內那個圖）有兩個來源，別混
+- **民事 D/E（NAPSG ◆/▲）→ 內部用 NAPSG 象形** ←「NAPSG 定義好的 symbol」即此。工作 = **NAPSG 象形字典擴充
+  + admin icon picker**，**歸 [#66](https://github.com/winson3QQ/ICS_COMMAND/issues/66) C2**（不是孤兒 follow-up）；P1-10d 已落地 6 個強配。
+- **軍事 A/B/C（2525 框）→ 內部用 2525 entity 符號**（milsymbol 原生）←**非** NAPSG 象形。工作 = **P2-05**。
+- 兩套 icon 來源不同：NAPSG 服務民事、2525/milsymbol 服務軍事；切換由情境（cot_type 前綴）決定。
+
 ### 事件建立流程（type-first，不是 scenario-first）
 
 > 分類主軸＝**事件型別**（operator 想「是什麼事」，高壓下最快）；**敵我是正交屬性**，多由型別自動帶、
