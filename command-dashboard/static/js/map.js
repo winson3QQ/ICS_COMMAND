@@ -1036,9 +1036,8 @@ function _ensureEntityLayers() {
         paint: {
           'circle-color': ['get', 'color'],
           'circle-radius': 18,       // RAF 每幀覆寫
-          'circle-opacity': 0.22,    // RAF 每幀覆寫
+          'circle-opacity': 0,       // 初始 0；_updateCritPulse 有 critical 時才由 RAF 拉起
           'circle-blur': 0.5,
-          // dimmed（focus 模式其他暗化）時不脈動
           'circle-opacity-transition': { duration: 0 },
         },
       },
@@ -1251,24 +1250,41 @@ function _ensureEntityLayers() {
     _unhighlightEvent();
   });
 
-  _startCritPulse(map);
+  _updateCritPulse();
   _entityLayersInstalled = true;
 }
 
 // P1-10d：critical 事件脈動。單一全域 RAF，每幀對 zones-crit-pulse 層下 2 個 setPaintProperty
-// （sin wave 動 radius/opacity）。filter 已限 critical+event，故只影響少量 feature；Pi 可負擔。
-// 不用 @keyframes（WebGL 層非 DOM）、不用 per-feature feature-state（避免與 highlight 衝突）。
+// （sin wave 動 radius/opacity）。不用 @keyframes（WebGL 層非 DOM）、不用 per-feature
+// feature-state（避免與 highlight 衝突）。
+//
+// review #70 修：RAF 只在「有 critical 事件 且 非 focus(dim) 模式」時跑，且 tab 隱藏時跳過
+// 重繪——否則永久 RAF 會每幀強制全圖 GL 重繪（Pi 不友善），且 focus 模式下非 target 的
+// critical 仍全亮（與 dim 矛盾）。
 let _critPulseRaf = null;
-function _startCritPulse(map) {
-  if (_critPulseRaf || typeof requestAnimationFrame === 'undefined') return;
-  const loop = () => {
-    if (!map.getLayer('zones-crit-pulse')) { _critPulseRaf = null; return; }
-    const k = (Math.sin(performance.now() / 1000 * 3.2) + 1) / 2;  // 0..1
-    map.setPaintProperty('zones-crit-pulse', 'circle-radius', 16 + k * 11);
-    map.setPaintProperty('zones-crit-pulse', 'circle-opacity', 0.10 + k * 0.22);
+let _critPulseHas = false;    // 畫面上有 critical 事件
+let _critPulseFocus = false;  // focus（右側長按 dim）模式中
+function _updateCritPulse() {
+  const map = _getMap();
+  if (!map) return;
+  const want = _critPulseHas && !_critPulseFocus;
+  if (want && !_critPulseRaf && typeof requestAnimationFrame !== 'undefined') {
+    const loop = () => {
+      if (!map.getLayer('zones-crit-pulse')) { _critPulseRaf = null; return; }
+      if (typeof document !== 'undefined' && document.hidden) {
+        _critPulseRaf = requestAnimationFrame(loop); return;  // tab 隱藏不強制重繪
+      }
+      const k = (Math.sin(performance.now() / 1000 * 3.2) + 1) / 2;  // 0..1
+      map.setPaintProperty('zones-crit-pulse', 'circle-radius', 16 + k * 11);
+      map.setPaintProperty('zones-crit-pulse', 'circle-opacity', 0.10 + k * 0.22);
+      _critPulseRaf = requestAnimationFrame(loop);
+    };
     _critPulseRaf = requestAnimationFrame(loop);
-  };
-  _critPulseRaf = requestAnimationFrame(loop);
+  } else if (!want && _critPulseRaf) {
+    cancelAnimationFrame(_critPulseRaf);
+    _critPulseRaf = null;
+    if (map.getLayer('zones-crit-pulse')) map.setPaintProperty('zones-crit-pulse', 'circle-opacity', 0);
+  }
 }
 
 /**
@@ -1359,6 +1375,9 @@ function _highlightEvent(eventId) {
   }
   // (2) 啟動 pulse
   _startHighlightPulse(map, target.id);
+  // focus 模式：暫停 critical 脈動（否則非 target 的 critical 仍全亮，與 dim 矛盾，review #70）
+  _critPulseFocus = true;
+  _updateCritPulse();
 }
 
 function _unhighlightEvent() {
@@ -1371,6 +1390,9 @@ function _unhighlightEvent() {
     map.setFeatureState({ source: 'zones', id: z.id }, { dimmed: false, highlighted: false });
   }
   _eventDragMgr?.undimAll();
+  // 離開 focus 模式：恢復 critical 脈動（若畫面有 critical 事件）
+  _critPulseFocus = false;
+  _updateCritPulse();
 }
 
 
@@ -1636,6 +1658,9 @@ function _renderZones(opts = {}) {
     if (feat) features.push(feat);
   }
   _zoneLayer.update(features);
+  // P1-10d：只有 critical 事件會有 severity==='critical'（節點預設 'warning'）→ 用來 gate 脈動 RAF。
+  _critPulseHas = features.some((f) => f.properties && f.properties.severity === 'critical');
+  _updateCritPulse();
   // 帶入避免重複全掃；事件隱藏時不掛拖曳 handle
   if (!opts.skipHandleSync) _syncEventDragHandles(showEvents ? rendered.eventZones : []);
 }
