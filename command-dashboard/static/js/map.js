@@ -949,7 +949,14 @@ function _ensureEntityLayers() {
   // P1-10b 步驟 7 階段 2/3a：bake SDF icons（zone abbr 字 + arrow 三角形）
   // 必須在新 EntityLayer 建 symbol layer 之前 addImage，否則 layer 找不到 icon-image。
   // 不重複 bake — bakeTextSdf/bakeArrowSdf 內部 hasImage 判斷。
-  bakeTextSdf(map, 'napsg-abbr-', ['收', '醫', '指', '前', '安', '救', '護', '設', '行']);
+  // P1-10d：bake 節點 abbr + group abbr(fallback) + 所有事件型別 abbr（taxonomy 動態），
+  // 讓事件 marker 能顯示各自型別字（爆/機/QR/MCI…）。多字元由 bakeTextSdf 自動縮放適配。
+  const _abbrSet = new Set([
+    ...Object.values(_NODE_ABBR),
+    ...Object.values(_NAPSG_GROUP_ABBR),
+    ...Object.values(_EVENT_TYPES).map((t) => t && t.abbr).filter(Boolean),
+  ]);
+  bakeTextSdf(map, 'napsg-abbr-', [..._abbrSet]);
   bakeArrowSdf(map, 'route-arrow');
   bakeDiamondSdf(map, 'zone-diamond');  // P1-10d：事件 ◆ hazard 形狀
 
@@ -1610,11 +1617,12 @@ function _renderZones(opts = {}) {
     const isEvent = !!(zone.event_id || zone.event_code);
     let severity = 'warning';
     let isOrphan = false;
+    let evType = null;
     if (isEvent) {
       const ev = (data.events || []).find((item) => item.id === zone.event_id);
       if (!ev) { severity = 'info'; isOrphan = true; }
       else if (['resolved', 'closed'].includes(ev.status)) continue;
-      else severity = ev.severity || 'warning';
+      else { severity = ev.severity || 'warning'; evType = ev.event_type; }
     }
 
     // 顏色解析：事件 → SEV；節點 → NODE base，shelter/medical 受 RAG 蓋過
@@ -1641,18 +1649,14 @@ function _renderZones(opts = {}) {
       if (linkLevel === 'crit' || linkLevel === 'lkp') stale = true;
     }
 
-    // NAPSG abbr 對映：事件 zone + 節點 zone 都走 zone.node_type。
-    // 事件 zone 的 node_type 在 _evPopupSubmit 被設成 evDef.group（'rescue'/'security'/
-    // 'medical'/'care'/'infra'/'ops'），與 _NAPSG_GROUP_ABBR 的 key 直接對齊；節點 zone
-    // 的 node_type 是 'shelter'/'medical'/'command'/'forward'/'security'，與 _NODE_ABBR
-    // 的 key 對齊。先查 group abbr（事件），找不到再退到 node abbr（節點），與
-    // legacy _napsgIcon (line ~868) 行為一致。
-    //
-    // ⚠️ 修 step 7 port 引入的 regression：原本誤用 event_code（server-generated
-    // 形如 'EV-0527-001'）當 key 查 type-slug 字典 _EVENT_TYPES，永遠 undefined，
-    // 導致 rescue / care / infra / ops 事件都 fallthrough 到 '?'，MapLibre 找不到
-    // 'napsg-abbr-?' SDF 影像（commander_modules.test.js SoT 鎖住正解）。
-    const abbr = _NAPSG_GROUP_ABBR[zone.node_type] || _NODE_ABBR[zone.node_type] || '?';
+    // NAPSG abbr 對映（P1-10d 事件資料模型）：
+    // **事件** marker 字用「**事件型別自己的 abbr**」（爆/機/暴…，來自 taxonomy _EVENT_TYPES,
+    // runtime SoT）——不再用群組 abbr，否則同群組事件圖上分不出（見
+    // docs/design/event-symbology-mapping.md：符號講 WHAT）。orphan / 查不到型別 → 退群組 abbr。
+    // **節點** 仍用 _NODE_ABBR（收/醫/指/前/安）。NAPSG 象形 glyph 為後續正式版（PR-2b-3）。
+    const abbr = isEvent
+      ? ((evType && _EVENT_TYPES[evType]?.abbr) || _NAPSG_GROUP_ABBR[zone.node_type] || '?')
+      : (_NODE_ABBR[zone.node_type] || '?');
 
     const feat = zoneToNodeFeature(zone, { color, abbr, severity, stale, is_orphan: isOrphan });
     if (feat) features.push(feat);

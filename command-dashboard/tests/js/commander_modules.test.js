@@ -512,12 +512,11 @@ describe('C1-F commander modules', () => {
     expect(mapSource).toMatch(/async function _evPopupSubmit\(typeKey, ctx\) {\s+if \(!canCreateEvents\(\)\) return;/);
     expect(wsSource).toMatch(/canCreateEvents/);
     expect(wsSource).toMatch(/canUseRealModeControls/);
-    // P1-10b code-review fix：_renderZones 內事件 zone abbr 對映必須以 zone.node_type
-    // 為 key 查 _NAPSG_GROUP_ABBR，不能用 _EVENT_TYPES[zone.event_code]（event_code
-    // 是 server-generated 'EV-MMDD-NNN'，不是 _EVENT_TYPES 的 type-slug key）。
-    expect(mapSource).toMatch(
-      /_NAPSG_GROUP_ABBR\[zone\.node_type\]\s*\|\|\s*_NODE_ABBR\[zone\.node_type\]/,
-    );
+    // P1-10d 事件資料模型：事件 marker abbr 用「事件型別自己的 abbr」（_EVENT_TYPES[evType]?.abbr,
+    // evType=ev.event_type 的 type-slug），同群組事件才分得出；orphan/查無型別退群組 abbr；
+    // 節點用 _NODE_ABBR。仍**不可**用 zone.event_code 當 _EVENT_TYPES key（server-gen 'EV-MMDD-NNN'，非 slug）。
+    expect(mapSource).toMatch(/_EVENT_TYPES\[evType\]\?\.abbr/);
+    expect(mapSource).toMatch(/_NODE_ABBR\[zone\.node_type\]/);
     expect(mapSource).not.toMatch(/_EVENT_TYPES\[zone\.event_code\]/);
   });
 

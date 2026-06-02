@@ -185,9 +185,17 @@ export function bakeTextSdf(map, idPrefix, chars, opts = {}) {
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, size, size);
     ctx.fillStyle = '#ffffff';
-    ctx.font = `${weight} ${fontSize}px ${font}`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
+    // 多字元（如 QR / MCI）自動縮字級塞進 canvas，避免裁切（P1-10d 事件 abbr）
+    let fs = fontSize;
+    ctx.font = `${weight} ${fs}px ${font}`;
+    const w = ctx.measureText(ch).width;
+    const maxW = size * 0.86;
+    if (w > maxW) {
+      fs = Math.max(8, Math.floor((fs * maxW) / w));
+      ctx.font = `${weight} ${fs}px ${font}`;
+    }
     ctx.fillText(ch, size / 2, size / 2);
     map.addImage(id, ctx.getImageData(0, 0, size, size), { sdf: true, pixelRatio: 2 });
   }
