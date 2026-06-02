@@ -95,6 +95,53 @@
 2. **視覺（P1-10d）**：讀 config 渲染 ◆ + NAPSG icon + severity 色 + critical pulse + severity token
 3. **編輯器（[#66](https://github.com/winson3QQ/ICS_COMMAND/issues/66)）**：admin CRUD 事件/群組
 
+## 事件資料模型：三軸正交 + ICS 組織 + TAK 對接（2026-06-02 落定）
+
+> 動機：要跟既有系統（TAK）有共同語言，同時 ICS 內部有「事件類別 / 回報組 / 處理組」多個「組」概念被混在一起（連地圖符號、右側欄分類都受影響）。釐清軸線後整合方向才一致。
+
+### 三條正交軸（不要混）
+
+| 軸 | 是什麼 | 現有欄位 | 驅動 |
+|---|---|---|---|
+| **WHAT — 事件類型/類別** | 發生了什麼（爆裂物/醫療/火災）| `event_type` + `group`(類別) | **地圖符號** + **TAK 共同語言** |
+| **誰回報** | 哪個 ICS 組通報 | `reported_by_unit` | 來源 provenance（次要）|
+| **誰處理** | 指派哪個 ICS 組 | `assigned_unit`（taxonomy `defaultAssigned`）| 任務指派（次要）|
+
+外加 **severity**（顏色 token）、**status**（open / in_progress / resolved 生命週期）。
+
+### 整合原則（與 TAK 共同語言）
+
+1. **地圖符號 = WHAT（事件類型）** → NAPSG glyph / `cot_type`。**這條才是對接外部系統的橋**：對方 ATAK 讀 CoT type 就懂「這是爆裂物」，不需要懂我們的「安全組」。
+2. **ICS 組織（回報 / 處理）= metadata 屬性**，不是符號本體。在 2525/CoT 是 amplifier / `<detail>`（掛符號旁的文字/欄位），不進核心符號；地圖上當次要線索（label、右側欄 pivot、選配小角標）。
+3. **`group`（類別）= 從 type 衍生的分組**，給篩選 / 右側欄用，不是獨立第三軸，也不當符號。
+4. **severity → 顏色 token；status → CoT stale / 生命週期。**
+
+一句話：**符號只講「是什麼事件」（對 TAK）；「誰報 / 誰處理 / 哪一組」是掛旁邊的屬性，給人看 + 右側欄分類用。**
+
+### 右側事件欄：pivot 分組
+
+三軸正交 → 右側欄應支援**切換分組維度**（by 類別 / by 處理組 / by status），而非寫死一種。同一批事件，指揮官要「看安全組要處理什麼」就 by 處理組；要「看有哪些爆裂類」就 by 類別。
+
+### ⚠️ 命名解撞名（關鍵 cleanup）
+
+事件**類別** `security` / `medical` ≠ ICS **組織單位** 安全組 / 醫療組（`node_type`）。兩者目前撞名、且地圖 marker 誤用 `node_type` 當類別 abbr。整合時必須**明確分開**：事件類別 key（NAPSG category）與 ICS 組織 unit key 各自一張表，**不再共用 `node_type`**。
+
+### TAK 對接對照
+
+| ICS 概念 | CoT/TAK 落點 |
+|---|---|
+| 事件類型 | **CoT `type`**（`cot_type`，已在 seed；P2-04 細化）← 共同語言 |
+| severity | `--severity-*`（CoT 無直接對應，當 detail）|
+| 回報組 / 處理組 | CoT `<detail>` 自訂欄位 / TAK 指派（P2-04）|
+| status | CoT stale / 生命週期 |
+
+### 衍生工作（ROADMAP 追蹤）
+
+1. **符號改依 event type（非 group）** — P1-10d 收尾 / PR-2b-3（NAPSG 象形 glyph；中間步可先用事件 abbr）。
+2. **#66 編輯器：事件類別表 / ICS 組織表分開**（解撞名）。
+3. **右側欄 pivot 分組**（by 類別 / 處理組 / status）— 獨立小 item。
+4. **report / handle → CoT `<detail>`** — P2-04 TAK。
+
 ## 參考來源
 - [NAPSG Incident Symbology Framework & Guideline v4.0](https://www.napsgfoundation.org/wp-content/uploads/2020/03/NAPSG-Foundation-Incident-Symbol-Guideline_v4.0_03212020.pdf)（US DHS 背書；非中國）
 - [About MIL-STD-2525 and CoT — FreeTAKServer Docs](https://freetakteam.github.io/FreeTAKServer-User-Docs/About/architecture/mil_std_2525/)（CoT type ↔ 2525 對映）
