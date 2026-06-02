@@ -148,7 +148,9 @@ export class EventPopup {
     mgrsSpan.textContent = `📍 ${latlngToMgrs ? latlngToMgrs(lat, lng) : ''}`;
 
     const grid = _el('div', 'ev-popup-groups', wrap);
-    Object.entries(groups).forEach(([k, label]) => {
+    // #66：群組底下若已無可建立（非 deleted）型別，不顯示該 group 按鈕（避免點進空清單）。
+    const hasLiveType = (gk) => Object.values(this.deps.types || {}).some((v) => v.group === gk && !v.deleted);
+    Object.entries(groups).filter(([k]) => hasLiveType(k)).forEach(([k, label]) => {
       const btn = _el('button', 'ev-popup-group-btn', grid);
       btn.type = 'button';
       btn.textContent = label;
@@ -177,7 +179,7 @@ export class EventPopup {
 
     const list = _el('div', 'ev-popup-types', wrap);
     Object.entries(types)
-      .filter(([, v]) => v.group === groupKey)
+      .filter(([, v]) => v.group === groupKey && !v.deleted)  // #66：soft-delete 的型別不可建立
       .forEach(([k, v]) => {
         const sev = v.severity || 'info';
         const btn = _el('button', `ev-popup-type-btn sev-${sev}`, list);
