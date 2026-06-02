@@ -183,19 +183,42 @@ export async function openTaxonomyEditor() {
       <td><code>${_esc(g.key)}</code></td>
       <td><input class="adm-input tax-g-label" value="${_esc(g.label || '')}"></td>
       <td style="text-align:center;"><input type="checkbox" class="tax-g-del"${g.deleted ? ' checked' : ''}></td></tr>`).join('');
+  // 欄位重排成兩個「來源帶」相鄰：對外(severity+cot_type) / ICS 內部(群組+處理組)，
+  // 以分組表頭 + 背景框讓 user 看懂每欄的產生原則（FEMA/NAPSG/TAK vs ICS/NIMS）。
   const evRows = tax.events.map((e) => `<tr data-ekey="${_esc(e.key)}">
       <td><code>${_esc(e.key)}</code></td>
       <td><input class="adm-input tax-e-label" value="${_esc(e.label || '')}"></td>
-      <td><select class="adm-input tax-e-sev">${sevOpts(e.severity)}</select></td>
-      <td><select class="adm-input tax-e-grp">${grpOpts(e.group)}</select></td>
-      <td><input class="adm-input tax-e-cot" value="${_esc(e.cot_type || '')}" size="8"></td>
-      <td><select class="adm-input tax-e-da">${daOpts(e.defaultAssigned)}</select></td>
+      <td class="tax-band-ext"><select class="adm-input tax-e-sev">${sevOpts(e.severity)}</select></td>
+      <td class="tax-band-ext"><input class="adm-input tax-e-cot" value="${_esc(e.cot_type || '')}" size="8"></td>
+      <td class="tax-band-ics"><select class="adm-input tax-e-grp">${grpOpts(e.group)}</select></td>
+      <td class="tax-band-ics"><select class="adm-input tax-e-da">${daOpts(e.defaultAssigned)}</select></td>
       <td style="text-align:center;"><input type="checkbox" class="tax-e-del"${e.deleted ? ' checked' : ''}></td></tr>`).join('');
+  const help = `<div class="tax-help">
+    <div class="tax-help-title">事件分類三軸 &amp; 來源（為何這樣分）</div>
+    <div><b>對外 · 國際標準</b>（對接 TAK／外部系統）：<b>severity</b> 色＝NAPSG（US DHS／FEMA 對齊）；
+      <b>cot_type</b>＝TAK <b>CoT</b>（Cursor on Target，MIL-STD-2525 對映）；地圖象形＝NAPSG（撤離類屬 FEMA IPAWS ▲ 警報）。</div>
+    <div><b>ICS 內部</b>（NIMS，給人看／分流）：<b>群組</b>＝事件類別（驅動符號分組／篩選）；<b>處理組</b>＝指派的 ICS 組織單位。</div>
+    <div class="tax-help-note">※ 對接外部的橋是 <b>cot_type</b>（資料），不是視覺符號。事件圖釘的載體＝<b>COP</b>（Common Operating Picture）即時同步層。詳見 docs/design/event-symbology-mapping.md。</div>
+  </div>`;
   const body = `<div id="tax-edit-err" style="color:var(--red);font-size:12px;min-height:16px;"></div>
-    <div style="font-size:11px;color:var(--text2);margin-bottom:4px;">群組（key 唯讀，禁改名/硬刪；勾刪除＝soft-delete，禁刪非空群組）</div>
+    ${help}
+    <div class="tax-sec-title">群組（事件類別；key 唯讀，禁改名/硬刪；勾刪除＝soft-delete，禁刪非空群組）</div>
     <table class="tax-table"><thead><tr><th>key</th><th>名稱</th><th>刪</th></tr></thead><tbody>${grpRows}</tbody></table>
-    <div style="font-size:11px;color:var(--text2);margin:10px 0 4px;">事件型別（key 唯讀；severity 固定 3 級；cot_type 必填）</div>
-    <table class="tax-table"><thead><tr><th>key</th><th>名稱</th><th>severity</th><th>群組</th><th>cot_type</th><th>處理組</th><th>刪</th></tr></thead><tbody>${evRows}</tbody></table>`;
+    <div class="tax-sec-title">事件型別（key 唯讀；severity 固定 3 級；cot_type 必填）</div>
+    <table class="tax-table tax-ev"><thead>
+      <tr>
+        <th rowspan="2">key</th><th rowspan="2">名稱</th>
+        <th colspan="2" class="tax-band-ext tax-band-hd">▸ 對外 · 國際標準</th>
+        <th colspan="2" class="tax-band-ics tax-band-hd">▸ ICS 內部</th>
+        <th rowspan="2">刪</th>
+      </tr>
+      <tr>
+        <th class="tax-band-ext">severity<span class="tax-band-sub">NAPSG 3級色</span></th>
+        <th class="tax-band-ext">cot_type<span class="tax-band-sub">TAK/CoT · 2525</span></th>
+        <th class="tax-band-ics">群組<span class="tax-band-sub">事件類別</span></th>
+        <th class="tax-band-ics">處理組<span class="tax-band-sub">ICS/NIMS 單位</span></th>
+      </tr>
+    </thead><tbody>${evRows}</tbody></table>`;
   const footer = '<button class="adm-btn" data-action="taxSave">儲存</button>'
     + '<button class="adm-btn" data-action="close-modal">取消</button>';
   _openModal?.('事件分類編輯', body, footer);

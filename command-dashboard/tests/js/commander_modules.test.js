@@ -348,6 +348,19 @@ describe('C1-F commander modules', () => {
     expect(evSrc).toMatch(/assigned_unit:\s*NAPSG_EVENTS\[el\('ev-type'\)\.value\]\?\.defaultAssigned/);  // submitEvent
   });
 
+  test('taxonomy_editor_provenance_ui', async () => {
+    // 編輯器標出每欄來源（對外 NAPSG/FEMA/TAK vs ICS/NIMS）+ CoT/COP 說明。
+    const evSrc = file('static/js/events.js');
+    expect(evSrc).toMatch(/tax-help/);                       // 說明框
+    expect(evSrc).toMatch(/Cursor on Target/);               // CoT
+    expect(evSrc).toMatch(/Common Operating Picture/);       // COP（載體）
+    expect(evSrc).toMatch(/NAPSG/);
+    expect(evSrc).toMatch(/NIMS/);
+    expect(evSrc).toMatch(/tax-band-ext/);                   // 對外帶
+    expect(evSrc).toMatch(/tax-band-ics/);                   // ICS 內部帶
+    expect(file('static/commander_dashboard.html')).toMatch(/\.tax-band-ext\{/);  // 帶背景 CSS
+  });
+
   test('auth_logout_clears_session', async () => {
     const auth = await import('../../static/js/auth.js');
     sessionStorage.setItem('cmd_session_id', 'token');

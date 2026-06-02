@@ -571,6 +571,16 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(
 .tax-table td{padding:2px 4px;vertical-align:middle;}
 .tax-table code{font-size:10px;color:var(--text2);}
 .tax-table .adm-input{width:100%;box-sizing:border-box;padding:2px 4px;font-size:11px;}
+/* 來源說明框 + 來源帶（讓 user 看懂每欄產生原則：對外 NAPSG/FEMA/TAK vs ICS/NIMS） */
+.tax-help{border:1px solid var(--border);border-left:3px solid #237acf;border-radius:6px;padding:8px 10px;margin-bottom:10px;font-size:11px;line-height:1.65;color:var(--text2);background:rgba(127,127,127,.06);}
+.tax-help-title{font-weight:700;color:var(--text);margin-bottom:4px;}
+.tax-help-note{color:var(--text3);margin-top:4px;}
+.tax-sec-title{font-size:11px;color:var(--text2);margin:10px 0 4px;}
+.tax-band-hd{text-align:center !important;letter-spacing:.05em;}
+.tax-band-sub{display:block;font-size:9px;color:var(--text3);font-weight:400;}
+.tax-band-ext{background:rgba(35,122,207,.10);}   /* 對外：藍調 */
+.tax-band-ics{background:rgba(180,180,180,.07);}  /* ICS 內部：中性 */
+.tax-table.tax-ev th{vertical-align:bottom;}
 .adm-btn.danger{border-color:var(--red);color:var(--red);}
 .adm-btn.danger:hover{background:var(--red);color:#fff;}
 .adm-edit-form{
