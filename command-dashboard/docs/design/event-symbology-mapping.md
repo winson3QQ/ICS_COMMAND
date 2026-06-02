@@ -89,6 +89,21 @@
 4. **severity 級別固定**：3 級對齊 token；只可指派。
 5. **icon 庫**：自訂型別從 vendored NAPSG icon 庫挑。
 
+### #66 PR-A 後端守門（已落地 2026-06-02，`services/event_taxonomy_validate.py`）
+
+POST `/api/event_taxonomy` 原本「整包覆蓋、幾乎不驗」→ 收緊為（違規 400）：
+- key 格式 `^[a-z0-9_]+$`、events/groups 內各自唯一；
+- severity 固定 3 級（critical/warning/info），只可指派；
+- `cot_type` 必填（TAK 互通，預設 `a-u-G`）；
+- `event.group` 必須指向存在的 `group.key`（參照完整性）；
+- **禁改 key / 禁硬刪**（key superset：新 body 的 key 集合必須 ⊇ 既有）——既有 events 紀錄用
+  `event_type` 字串引用，移除/改名會孤兒；刪除一律走 **soft-delete**（加 `deleted: true`，保留 key）；
+- **禁刪非空 group**：被 soft-delete 的 group 下不可有未刪除的 event（先搬移或一併刪）。
+
+每型別欄位新增可選 `deleted: bool`（缺省 false）。RBAC：GET=READ_ROLES、POST=SYSADMIN_ONLY（既有）。
+編輯器 UI（PR-C）只要組整份 body 送 POST，後端把關；存檔後跑既有即時管線
+（`loadEventTaxonomy → applyEventTaxonomy → 重建下拉 → _bakeAbbrs`）即時生效。
+
 ## 決策的拆解
 
 1. **地基**：taxonomy 資料化（seed/runtime + API + 收斂重複）
