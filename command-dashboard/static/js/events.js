@@ -183,9 +183,9 @@ export async function openTaxonomyEditor() {
   // **唯讀顯示**：這是事實屬性（型別是否有外部標準定義），非 user 可任意宣稱 → badge 不可編。
   // 由 seed/taxonomy 定；存檔時靠 _buildTaxonomyBody 的 spread 原值保留，不經表單。
   const srcBadge = (cur) => {
+    const v = cur === 'napsg' ? 'napsg' : 'ics';  // 後端已回填；缺值/非 napsg 一律歸 ICS（其餘皆 ICS）
     const lab = { napsg: 'NAPSG', ics: 'ICS' };
-    if (!cur) return '<span class="tax-src-badge tax-src-none">—</span>';
-    return `<span class="tax-src-badge tax-src-${_esc(cur)}">${lab[cur] || _esc(cur)}</span>`;
+    return `<span class="tax-src-badge tax-src-${v}">${lab[v]}</span>`;
   };
   const grpRows = tax.groups.map((g) => `<tr data-gkey="${_esc(g.key)}">
       <td><code>${_esc(g.key)}</code></td>

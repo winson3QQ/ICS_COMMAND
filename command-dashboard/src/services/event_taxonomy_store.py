@@ -56,6 +56,32 @@ def ensure(path: Path | None = None, seed: Path | None = None) -> Path:
     return path
 
 
+def _backfill_source(data: dict[str, Any], seed: Path) -> dict[str, Any]:
+    """為缺 `source` 的 runtime event 從 seed 補（source 是 read-only 事實，seed = SoT）。
+
+    舊 runtime（在 source 欄加入前建立）不會有此欄；ensure() 又不回填 → 編輯器顯示「—」。
+    此處依 key 從 seed 補，使「定義來源」一律正確顯示，無需每台重建 runtime。
+    存檔後 source 會隨整包寫回 runtime 持久化。in-place，僅補缺漏不覆蓋既有值。
+    """
+    try:
+        if not seed.exists():
+            return data
+        seed_data = json.loads(seed.read_text(encoding="utf-8"))
+        src_by_key = {
+            e["key"]: e.get("source")
+            for e in seed_data.get("events", [])
+            if isinstance(e, dict) and e.get("key")
+        }
+    except (OSError, json.JSONDecodeError):
+        return data
+    for e in data.get("events", []):
+        if isinstance(e, dict) and not e.get("source"):
+            s = src_by_key.get(e.get("key"))
+            if s:
+                e["source"] = s
+    return data
+
+
 def read(path: Path | None = None, seed: Path | None = None) -> dict[str, Any]:
     """GET /api/event_taxonomy：runtime → seed → 空殼。永遠回 dict（不 raise）。"""
     if path is None:
@@ -68,6 +94,9 @@ def read(path: Path | None = None, seed: Path | None = None) -> dict[str, Any]:
                 data = json.loads(candidate.read_text(encoding="utf-8"))
                 # 守 dict 契約：valid JSON 但非 dict（如手改成 []）→ 不回，續 fallback
                 if isinstance(data, dict):
+                    # runtime 缺 source 從 seed 回填（seed 自身已含 source，不需補）
+                    if label == "runtime":
+                        data = _backfill_source(data, seed)
                     return data
                 log.warning(
                     "[event_taxonomy_store] %s 非 dict（%s），續 fallback",

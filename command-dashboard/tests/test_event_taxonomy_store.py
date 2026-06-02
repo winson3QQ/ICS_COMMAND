@@ -92,6 +92,33 @@ def test_read_falls_back_when_runtime_malformed(tmp_path: Path):
     assert event_taxonomy_store.read(path=runtime, seed=seed) == _SAMPLE
 
 
+def test_read_backfills_source_from_seed(tmp_path: Path):
+    """舊 runtime 缺 source → 依 key 從 seed 回填（source 為 read-only 事實，#66）。"""
+    seed = tmp_path / "seed.json"
+    runtime = tmp_path / "runtime.json"
+    seed.write_text(json.dumps({
+        "version": 1, "groups": [{"key": "security", "label": "安全"}],
+        "events": [{"key": "explosive", "label": "爆", "group": "security",
+                    "severity": "critical", "cot_type": "a-h-G", "source": "napsg"}],
+    }))
+    runtime.write_text(json.dumps({  # runtime 無 source（舊版建立）
+        "version": 1, "groups": [{"key": "security", "label": "安全"}],
+        "events": [{"key": "explosive", "label": "爆改", "group": "security",
+                    "severity": "critical", "cot_type": "a-h-G"}],
+    }))
+    got = event_taxonomy_store.read(path=runtime, seed=seed)
+    assert got["events"][0]["source"] == "napsg"   # 回填
+    assert got["events"][0]["label"] == "爆改"      # runtime 其他值不被覆蓋
+
+
+def test_read_backfill_does_not_override_existing_source(tmp_path: Path):
+    seed = tmp_path / "seed.json"
+    runtime = tmp_path / "runtime.json"
+    seed.write_text(json.dumps({"version": 1, "groups": [], "events": [{"key": "x", "source": "napsg"}]}))
+    runtime.write_text(json.dumps({"version": 1, "groups": [], "events": [{"key": "x", "source": "ics"}]}))
+    assert event_taxonomy_store.read(path=runtime, seed=seed)["events"][0]["source"] == "ics"
+
+
 # ── write_atomic() ──────────────────────────────────────────
 
 def test_write_atomic_creates_and_replaces_no_tmp(tmp_path: Path):
@@ -118,3 +145,4 @@ def test_factory_seed_is_valid_and_complete():
         assert ev["group"] in groups, f"{ev['key']} 指向不存在群組 {ev['group']}"
         assert ev["key"] not in keys, f"重複 key：{ev['key']}"
         keys.add(ev["key"])
+        assert ev.get("source") in {"napsg", "ics"}, f"{ev['key']} source 非法：{ev.get('source')}"
