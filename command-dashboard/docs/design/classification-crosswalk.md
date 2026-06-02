@@ -34,7 +34,7 @@
 ## 3. Rosetta 對照表（22 事件 × 各標準）
 
 > **NAPSG icon 欄為 draft**：標註信心（🟢 強配＝有乾淨單色象形 / 🟡 勉強＝單位圖或彩色或語意鬆 /
-> 🔴 無乾淨對應）。是否放寬「事件 vs 單位」潔癖、把 🟡 也納入，待決策（見 §5）。
+> 🔴 無乾淨對應）。是否放寬「事件 vs 單位」潔癖、把 🟡 也納入，待決策（見 §6）。
 > cot_type / source 來自現行 seed；台灣欄僅在民防疏散/收容類有對應，其餘留空。
 
 | 事件 key | 群組 | severity | source | NAPSG（類別 / 候選 icon · 信心）| cot_type | 台灣（NFA/NCDR）|
@@ -80,9 +80,39 @@
 - **操作型 incident**（安全威脅 / 搜救 / 行動）→ 台灣無對應，仍以 **NAPSG / CoT** 為主幹。
 - 台灣標準偏「自然災害 + 疏散」，與我們偏「指揮操作」的 scope 互補而非重疊。
 
-## 5. 待決策（對照清楚後再定）
+## 5. 業界做法 / Prior Art —— Dictionary Renderer 模式（2026-06-02 查證）
 
-1. **NAPSG icon 採用程度**（見 [`event-symbology-mapping.md`] 已列 A/B/C）：
+> CLAUDE.md：一定有先例，先找成功做法再 reinvent。查證結論：業界**不手畫、不逐筆指定符號**，
+> 而是「採標準集 + 資料帶代碼 + 字典渲染」。我們的 crosswalk 表正是那本字典的雛形 → 方向正確。
+
+### 核心模式
+1. **資料 feature 帶「標準代碼」**（2525 的 SIDC、或 TAK 的 CoT type）+ 屬性。
+2. **rule engine / 字典（如 Esri `stylx`）** 依代碼從**標準符號集**組裝符號（"symbol primitives + rule engine, assembled from attributes"）。
+3. **採用現成標準集**（MIL-STD-2525 / APP-6 / NAPSG / OCHA），不自繪。
+4. **互通靠代碼傳遞**（CoT / SIDC 在系統間流動），各端用自己的字典 render。
+
+### 具體軟體
+| 軟體 | 做法 |
+|---|---|
+| **Esri ArcGIS**（標竿）| **Dictionary Renderer** + 內建 2525B/C/D/E、APP-6、NAPSG style；資料填 `identity`/`symbolset` 或單一 SIDC → 自動 render |
+| **TAK（ATAK/WinTAK）** | CoT 事件；`type`（如 `a-h-G`）→ 2525 符號；互通＝CoT XML 在網路傳 |
+| **milsymbol**（JS, MIT；本專案 roadmap P2-05）| 吃 SIDC/CoT → 畫 2525/APP-6，**與 ATAK 同 type 畫同款符號（像素級一致）** |
+| **NICS / NextGen ICS**（美國民事指揮）| 採 **NAPSG** 符號集 |
+| **OCHA Humanitarian Icons** | 人道領域免費標準集（OSM-humanitarian / Sahana 採用）＝民間版 NAPSG |
+
+### 對我們的意義
+- 「taxonomy 主幹 + cot_type + source + Rosetta 對照」**就是 Dictionary Renderer 模式**，沒在 reinvent；`cot_type`/`source` 即字典 key。
+- 業界**整套採用**標準集當字典、缺則擴充字典、不用文字 → 我們的中文 abbr 是權宜，應逐步以標準象形取代。
+- **視覺要對齊哪個標準？**（與 §6.1 的 A/B/C 連動）
+  - **Path 1 — NAPSG 字典**：民事緊急視覺（FEMA/NICS 路線），key = 事件→NAPSG code。
+  - **Path 2 — 2525 via milsymbol（key = `cot_type`）**：**與 ATAK 像素級一致**，對 TAK 整合最強；milsymbol 已在 P2-05。
+  - 兩者皆 dictionary 模式，可**並存切換**（平時 NAPSG 民事、對接 TAK 時 2525）。
+
+> 來源：[Esri Dictionary Renderer Toolkit](https://github.com/Esri/dictionary-renderer-toolkit)、[Esri Military Symbology Styles](https://developers.arcgis.com/documentation/mapping-and-location-services/data-visualization/resources/military-symbology-styles/)、[milsymbol](https://github.com/spatialillusions/milsymbol)（瑞典 MIT，非中國）。
+
+## 6. 待決策（對照清楚後再定）
+
+1. **NAPSG icon 採用程度**（見 [`event-symbology-mapping.md`] 已列 A/B/C；對照 §5 Path 1/2）：
    - A 維持現渲染（severity 填色菱形）+ 放寬潔癖、把 🟡 也配上 NAPSG 單色象形，減少 abbr。
    - B 直接用 NAPSG 原版 icon（含其色彩/框），失去統一填色。
    - C 維持現狀（6 glyph + abbr）。
@@ -90,4 +120,4 @@
 3. **是否抓 NFA 疏散避難圖例實際符號**做在地對齊（需另查 NFA 繪製規範 PDF）。
 4. **severity 是否補 Purple=Extreme**（NAPSG 7 級我們只用 3）。
 
-> 本檔為「先記錄框架」；§3 表的 NAPSG icon 欄與 §5 決策待後續逐項定案後更新。
+> 本檔為「先記錄框架」；§3 表的 NAPSG icon 欄與 §6 決策待後續逐項定案後更新。
