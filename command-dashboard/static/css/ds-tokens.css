@@ -108,6 +108,13 @@
   --mil-neutral:  #00FF00;   /* Lime       — neutral */
   --mil-unknown:  #FFFF00;   /* Yellow     — unknown / pending */
 
+  /* 事件 severity（P1-10d）— 採 NAPSG Incident Symbology 標準色 ramp。
+   * 與 affiliation 並列為「唯一可用 saturated 色」（POLICY.md 戰術底圖 doctrine）。
+   * 見 docs/design/event-symbology-mapping.md。保留 #FFD718(watch)/#00AC3A(已解除) 未來用。 */
+  --severity-critical: #FF181E;  /* NAPSG Red    — 極高 / 緊急 */
+  --severity-warning:  #FF8918;  /* NAPSG Orange — 高 / 警告 */
+  --severity-info:     #237ACF;  /* NAPSG Blue   — 中 / 一般 */
+
 
   /* ─── Geometry ────────────────────────────────────────────────────────────── */
   --radius:      8px;

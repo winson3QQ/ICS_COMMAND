@@ -221,6 +221,18 @@ describe('C1-F commander modules', () => {
     }
   });
 
+  test('p1_10d_event_visual_diamond_severity_pulse', async () => {
+    // P1-10d 視覺：事件 ◆ diamond（NAPSG hazard）+ severity NAPSG 色 token + critical 脈動。
+    const mapSrc = file('static/js/map.js');
+    expect(file('static/css/ds-tokens.css')).toMatch(/--severity-critical:\s*#FF181E/i);  // NAPSG Red token
+    expect(mapSrc).toMatch(/critical: '#FF181E'/);            // _SEV_COLORS 採 NAPSG 色
+    expect(mapSrc).toMatch(/id: 'zones-event'/);             // 事件 diamond 層
+    expect(mapSrc).toMatch(/'icon-image': 'zone-diamond'/);
+    expect(mapSrc).toMatch(/id: 'zones-crit-pulse'/);        // critical 脈動層
+    expect(mapSrc).toMatch(/bakeDiamondSdf\(map, 'zone-diamond'\)/);
+    expect(file('static/js/map/entity_layer.js')).toMatch(/export function bakeDiamondSdf/);
+  });
+
   test('reloadMapConfig_refetches_after_login_401', async () => {
     // Bug：boot（登入前）GET /api/map_config 回 401 → _mapConfig=null → 地圖空白，
     // 每次登入要 cmd-shift-R。修法：登入後 onEnterDashboard 呼叫 reloadMapConfig 重抓。

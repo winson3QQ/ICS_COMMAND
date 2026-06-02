@@ -45,6 +45,7 @@ import {
   copEntityToEventZone,
   bakeTextSdf,
   bakeArrowSdf,
+  bakeDiamondSdf,
 } from './map/entity_layer.js';
 import { DrawPreview } from './map/draw_tools.js';
 import { LabelMarkerManager } from './map/label_markers.js';
@@ -186,7 +187,10 @@ export function applyEventTaxonomy(tax) {
 const _NAPSG_GROUP_ABBR = { security: '安', rescue: '救', medical: '醫', care: '護', infra: '設', ops: '行' };
 const _NODE_ABBR = { shelter: '收', medical: '醫', forward: '前', security: '安', command: '指' };
 const _NODE_COLORS = { shelter: '#f0883e', medical: '#e05555', forward: '#58a6ff', security: '#e3b341', command: '#8b949e' };
-const _SEV_COLORS = { critical: '#e05555', warning: '#e3b341', info: '#3a4149' };
+// P1-10d：severity 色採 NAPSG Incident Symbology 標準 hex（對齊 ds-tokens --severity-*）。
+// JS 端 canvas/MapLibre paint 需字面值，無法直接 var()，故與 ds-tokens 同步維護（見
+// docs/design/event-symbology-mapping.md）。critical Red / warning Orange / info Blue。
+const _SEV_COLORS = { critical: '#FF181E', warning: '#FF8918', info: '#237ACF' };
 const _RAG_COLORS = { ok: '#3fb950', warn: '#e3b341', crit: '#f85149' };
 
 const POLY_TYPES = {
@@ -947,6 +951,7 @@ function _ensureEntityLayers() {
   // 不重複 bake — bakeTextSdf/bakeArrowSdf 內部 hasImage 判斷。
   bakeTextSdf(map, 'napsg-abbr-', ['收', '醫', '指', '前', '安', '救', '護', '設', '行']);
   bakeArrowSdf(map, 'route-arrow');
+  bakeDiamondSdf(map, 'zone-diamond');  // P1-10d：事件 ◆ hazard 形狀
 
   // Routes — line（solid/dash 拆兩 layer）+ arrow symbol-on-line（step 7 階段 3a）
   _routeLayer = new EntityLayer(map, 'routes', {
@@ -1020,6 +1025,23 @@ function _ensureEntityLayers() {
   // 用 ['==', ..., true] 確保通過 style 驗證。
   _zoneLayer = new EntityLayer(map, 'zones', {
     layers: [
+      // P1-10d：critical 事件脈動光暈（獨立層，全域 RAF 動 radius/opacity；
+      // 與既有 zones-halo 的 highlighted/feature-state 邏輯不衝突）。draw 最底。
+      {
+        id: 'zones-crit-pulse', type: 'circle',
+        filter: ['all',
+          ['==', ['get', 'severity'], 'critical'],
+          ['==', ['coalesce', ['get', 'is_event'], false], true],
+        ],
+        paint: {
+          'circle-color': ['get', 'color'],
+          'circle-radius': 18,       // RAF 每幀覆寫
+          'circle-opacity': 0.22,    // RAF 每幀覆寫
+          'circle-blur': 0.5,
+          // dimmed（focus 模式其他暗化）時不脈動
+          'circle-opacity-transition': { duration: 0 },
+        },
+      },
       // halo（給 critical entity / right-panel 長按 highlight 用）
       // 三狀態優先序：
       //   dimmed=true   → halo 隱（focus 模式下其他 zone 整個暗，halo 跟著消）
@@ -1060,6 +1082,8 @@ function _ensureEntityLayers() {
       // **stroke 也要 0.15** — 否則白圈仍然顯眼（issue #24 dogfood UX 反饋）。
       {
         id: 'zones-base', type: 'circle',
+        // P1-10d：只有節點用圓；事件（hazard）改走 ◆ diamond（zones-event 層）。
+        filter: ['!=', ['coalesce', ['get', 'is_event'], false], true],
         paint: {
           'circle-radius': [
             'case', ['==', ['coalesce', ['get', 'is_event'], false], true], 13, 14,
@@ -1077,6 +1101,32 @@ function _ensureEntityLayers() {
             ['boolean', ['feature-state', 'dimmed'], false], 0.15,
             ['==', ['coalesce', ['get', 'stale'], false], true], 0.55,
             0.92,
+          ],
+        },
+      },
+      // P1-10d：事件 ◆ diamond（NAPSG hazard 形狀）。icon-color = severity 色，
+      // icon-halo 白邊取代 circle 的 white stroke。只 render is_event=true。
+      {
+        id: 'zones-event', type: 'symbol',
+        filter: ['==', ['coalesce', ['get', 'is_event'], false], true],
+        layout: {
+          'icon-image': 'zone-diamond',
+          'icon-size': 0.62,
+          'icon-allow-overlap': true,
+          'icon-ignore-placement': true,
+          'symbol-sort-key': [
+            'case', ['==', ['get', 'severity'], 'critical'], 0, 1,  // critical 優先放置
+          ],
+        },
+        paint: {
+          'icon-color': ['get', 'color'],
+          'icon-halo-color': '#ffffff',
+          'icon-halo-width': 1.8,
+          'icon-opacity': [
+            'case',
+            ['boolean', ['feature-state', 'dimmed'], false], 0.15,
+            ['==', ['coalesce', ['get', 'stale'], false], true], 0.55,
+            0.95,
           ],
         },
       },
@@ -1201,7 +1251,24 @@ function _ensureEntityLayers() {
     _unhighlightEvent();
   });
 
+  _startCritPulse(map);
   _entityLayersInstalled = true;
+}
+
+// P1-10d：critical 事件脈動。單一全域 RAF，每幀對 zones-crit-pulse 層下 2 個 setPaintProperty
+// （sin wave 動 radius/opacity）。filter 已限 critical+event，故只影響少量 feature；Pi 可負擔。
+// 不用 @keyframes（WebGL 層非 DOM）、不用 per-feature feature-state（避免與 highlight 衝突）。
+let _critPulseRaf = null;
+function _startCritPulse(map) {
+  if (_critPulseRaf || typeof requestAnimationFrame === 'undefined') return;
+  const loop = () => {
+    if (!map.getLayer('zones-crit-pulse')) { _critPulseRaf = null; return; }
+    const k = (Math.sin(performance.now() / 1000 * 3.2) + 1) / 2;  // 0..1
+    map.setPaintProperty('zones-crit-pulse', 'circle-radius', 16 + k * 11);
+    map.setPaintProperty('zones-crit-pulse', 'circle-opacity', 0.10 + k * 0.22);
+    _critPulseRaf = requestAnimationFrame(loop);
+  };
+  _critPulseRaf = requestAnimationFrame(loop);
 }
 
 /**

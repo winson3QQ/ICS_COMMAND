@@ -223,6 +223,32 @@ export function bakeArrowSdf(map, id, opts = {}) {
 }
 
 /**
+ * Diamond (rhombus) SDF — P1-10d：事件（hazard）的 NAPSG ◆ 形狀。
+ * 實心 diamond 當 alpha mask；MapLibre symbol 用 icon-color 填 severity 色、
+ * icon-halo-* 給白邊（取代 circle 的 white stroke）。
+ */
+export function bakeDiamondSdf(map, id, opts = {}) {
+  if (map.hasImage?.(id)) return;
+  const size = opts.size ?? 44;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, size, size);
+  ctx.fillStyle = '#ffffff';
+  const m = size / 2;
+  const pad = 4;  // 留白給 icon-halo 白邊
+  ctx.beginPath();
+  ctx.moveTo(m, pad);          // 上
+  ctx.lineTo(size - pad, m);   // 右
+  ctx.lineTo(m, size - pad);   // 下
+  ctx.lineTo(pad, m);          // 左
+  ctx.closePath();
+  ctx.fill();
+  map.addImage(id, ctx.getImageData(0, 0, size, size), { sdf: true, pixelRatio: 2 });
+}
+
+/**
  * 把 zone-shaped object（cop_entities 或 map_config.maps.outdoor.zones）
  * 轉成「節點圖示」用 GeoJSON Point Feature。
  *
