@@ -1085,7 +1085,7 @@ function _ensureEntityLayers() {
         filter: ['!=', ['coalesce', ['get', 'is_event'], false], true],
         paint: {
           'circle-radius': [
-            'case', ['==', ['coalesce', ['get', 'is_event'], false], true], 13, 14,
+            'case', ['==', ['coalesce', ['get', 'is_event'], false], true], 13, 11,
           ],
           'circle-color': ['get', 'color'],
           'circle-stroke-color': '#ffffff',
@@ -1110,7 +1110,7 @@ function _ensureEntityLayers() {
         filter: ['==', ['coalesce', ['get', 'is_event'], false], true],
         layout: {
           'icon-image': 'zone-diamond',
-          'icon-size': 0.62,
+          'icon-size': 1.1,   // 事件(hazard)為焦點：比節點圓更醒目（dogfood：原 0.62 太小；含 SDF halo pad）
           'icon-allow-overlap': true,
           'icon-ignore-placement': true,
           'symbol-sort-key': [
