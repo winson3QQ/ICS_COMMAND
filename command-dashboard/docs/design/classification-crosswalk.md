@@ -34,7 +34,7 @@
 ## 3. Rosetta 對照表（22 事件 × 各標準）
 
 > **NAPSG icon 欄為 draft**：標註信心（🟢 強配＝有乾淨單色象形 / 🟡 勉強＝單位圖或彩色或語意鬆 /
-> 🔴 無乾淨對應）。是否放寬「事件 vs 單位」潔癖、把 🟡 也納入，待決策（見 §6）。
+> 🔴 無乾淨對應）。是否放寬「事件 vs 單位」潔癖、把 🟡 也納入，見 §6 視覺模型 / §7 待決策。
 > cot_type / source 來自現行 seed；台灣欄僅在民防疏散/收容類有對應，其餘留空。
 
 | 事件 key | 群組 | severity | source | NAPSG（類別 / 候選 icon · 信心）| cot_type | 台灣（NFA/NCDR）|
@@ -103,21 +103,70 @@
 ### 對我們的意義
 - 「taxonomy 主幹 + cot_type + source + Rosetta 對照」**就是 Dictionary Renderer 模式**，沒在 reinvent；`cot_type`/`source` 即字典 key。
 - 業界**整套採用**標準集當字典、缺則擴充字典、不用文字 → 我們的中文 abbr 是權宜，應逐步以標準象形取代。
-- **視覺要對齊哪個標準？**（與 §6.1 的 A/B/C 連動）
+- **視覺要對齊哪個標準？**（已於 §6 落定為 affiliation-aware：A/B/C 走 2525 框、D/E 走 NAPSG）
   - **Path 1 — NAPSG 字典**：民事緊急視覺（FEMA/NICS 路線），key = 事件→NAPSG code。
   - **Path 2 — 2525 via milsymbol（key = `cot_type`）**：**與 ATAK 像素級一致**，對 TAK 整合最強；milsymbol 已在 P2-05。
   - 兩者皆 dictionary 模式，可**並存切換**（平時 NAPSG 民事、對接 TAK 時 2525）。
 
 > 來源：[Esri Dictionary Renderer Toolkit](https://github.com/Esri/dictionary-renderer-toolkit)、[Esri Military Symbology Styles](https://developers.arcgis.com/documentation/mapping-and-location-services/data-visualization/resources/military-symbology-styles/)、[milsymbol](https://github.com/spatialillusions/milsymbol)（瑞典 MIT，非中國）。
 
-## 6. 待決策（對照清楚後再定）
+### 5.1 字典擴充模型（標準 / 擴充 + degrade）
 
-1. **NAPSG icon 採用程度**（見 [`event-symbology-mapping.md`] 已列 A/B/C；對照 §5 Path 1/2）：
-   - A 維持現渲染（severity 填色菱形）+ 放寬潔癖、把 🟡 也配上 NAPSG 單色象形，減少 abbr。
-   - B 直接用 NAPSG 原版 icon（含其色彩/框），失去統一填色。
-   - C 維持現狀（6 glyph + abbr）。
-2. **是否新增 `tw_ref` 欄**：給收容/疏散類掛台灣 NFA 圖例對應。
-3. **是否抓 NFA 疏散避難圖例實際符號**做在地對齊（需另查 NFA 繪製規範 PDF）。
-4. **severity 是否補 Purple=Extreme**（NAPSG 7 級我們只用 3）。
+> 結論：2525 與 NAPSG **都可擴充**，機制不同；我們的 ICS 自訂事件＝合法的本地擴充。
 
-> 本檔為「先記錄框架」；§3 表的 NAPSG icon 欄與 §6 決策待後續逐項定案後更新。
+- **2525 / APP-6**：SIDC 結構碼 + 通用框架（敵我框、維度套用任何 entity）；entity 目錄**可加自訂**
+  （Esri dictionary-renderer-toolkit「add a new symbol set to MIL-STD-2525D」明示）；CoT type 可帶自訂 suffix。
+- **NAPSG**：保留形狀框架（◆/▲）+「Symbols are variable other than shape」→ **自畫內部象形塞進保留形狀仍合規**；官方 set 不可改但本地可擴充。
+- **我們的模型即此**：`source`（napsg=標準 / ics=擴充）標示「標準 vs 本地擴充」；字典 = {標準符號} ∪ {ICS 自訂}。
+- **⚠️ 擴充代價**：自訂符號**只在本系統有完整語意**（外部無我們字典看不懂）→ 故每個事件（含 ics）都掛
+  **最近的標準 `cot_type`**，外部系統至少能 degrade 畫出近似符號（如 `a-u-G` 不明地面）。
+
+## 6. 視覺顯示模型（依使用情境）+ 事件建立流程（2026-06-02 落定方向）
+
+> **修正**：原 §5 的「Path 1（全 NAPSG ◆ + severity）」**砍掉了敵我/維度** —— 對「民防含軍事支援任務」不行
+> （敵無人機 vs 友 QRF 在地圖上會長一樣，敵我只活在 `cot_type`、要開 ATAK 才看得到）。故修正為
+> **affiliation-aware**：敵我用 2525 框、類型用 NAPSG 象形、severity 用 halo。
+
+### 統一原則（三通道不互搶）
+- **敵我（affiliation）→ 外框形狀**（2525：友=矩形 / 敵=菱形 / 不明=四葉 / 中立=方或圓）
+- **事件類型 → 內部象形**（NAPSG glyph）
+- **嚴重度 → halo / 角標**（NAPSG 色 ramp，當 secondary modifier，不跟敵我框搶顏色）
+- **對接 → `cot_type`**（全程帶，與視覺無關）
+
+### 顯示情境表
+
+| # | 情境 | 範例事件 | 敵我 | 地圖顯示（框 + 象形 + 嚴重度）| cot_type | 標準 |
+|---|---|---|---|---|---|---|
+| A | 敵對威脅 | 敵無人機、爆裂物、暴力 | 敵 | 2525 敵框（菱形）+ 象形 + critical halo | `a-h-*` | 2525/APP-6 |
+| B | 不明目標 | 不明人士、可疑載具 | 不明 | 2525 不明框（四葉）+ 象形 + severity halo | `a-u-*` | 2525/APP-6 |
+| C | 己方 / 友軍應處 | QRF、受困救援、醫療出動 | 友 | 2525 友框（矩形）+ 象形 + severity halo | `a-f-*` | 2525/APP-6 |
+| D | 公眾警報 | 撤離、就地避難 | （對民眾）| ▲ 三角（IPAWS/NAPSG）+ 象形 + severity | `b-a-*` | NAPSG/IPAWS |
+| E | 民事危害 / 事故 | 設施、通訊、危害回報、傳染、收容超載 | 中立 | ◆ 危害菱形（NAPSG）+ 象形 + severity 色 | `b-r`/`a-u-G-I` | NAPSG incident |
+
+A/B/C（有敵我）走 2525 框（milsymbol 吃 `cot_type` 生，P2-05）；D/E（民事）走 NAPSG。情境由 `cot_type`
+前綴（`a-h`/`a-f`/`a-u` vs `b-*`）**自動分流**。
+
+### 事件建立流程（type-first，不是 scenario-first）
+
+> 分類主軸＝**事件型別**（operator 想「是什麼事」，高壓下最快）；**敵我是正交屬性**，多由型別自動帶、
+> 少數現場可改。**不重組 taxonomy、不改操作員心智模型。**（2525/ATAK 之所以敵我優先，是軍事戰場 COP；
+> 我們是民事 ICS，incident-first 才對。）
+
+1. 長按地圖 → EventPopup
+2. **選分類 → 選事件型別**（不變）
+3. 型別自動帶：severity、`cot_type`、**敵我預設**、象形
+4. **僅「敵我會變」的型別**（無人機、不明人士、可疑載具）→ 多一條快速 **友 / 敵 / 不明** segment
+   （預設已帶，通常不動）；其餘型別不問
+5. 回報組（自動可改）、位置（長按點）→ 建立
+6. 地圖依上表 render（敵我→框、型別→象形、severity→halo）
+
+UI：EventPopup 維持「分類 → 型別」下鑽，僅對「敵我可變」型別多一條 affiliation segment；**95% 事件步驟不變**。
+
+## 7. 待決策
+
+1. **哪些型別屬「敵我可變」**（需 affiliation segment）：初判 drone / unknown_person /（可疑載具）；其餘固定。待逐一確認。
+2. **milsymbol（2525 框）整合時機**：A/B/C 的實作主力，排 P2-05；在那之前 A/B/C 可暫用 NAPSG + severity 過渡。
+3. **是否新增 `tw_ref` 欄** + 是否抓 NFA 疏散避難圖例（收容/疏散在地對齊）。
+4. **severity 是否補 Purple=Extreme**（NAPSG 7 級我們用 3）。
+
+> 本檔記錄框架與落定方向；§3 Rosetta 的 NAPSG icon 欄、§6 的 milsymbol 實作與 §7 細項待後續定案更新。
