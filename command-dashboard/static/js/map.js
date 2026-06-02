@@ -650,7 +650,7 @@ async function _evPopupSubmit(typeKey, ctx) {
     try { return window.__sessionType || 'real'; } catch { return 'real'; }
   })();
 
-  const nodeType = evDef.group || 'ops';
+  const evGroup = evDef.group || 'ops';  // 解撞名：事件「類別 group」≠ ICS 組織 node_type
   const roundedLat = Math.round(lat * 1000000) / 1000000;
   const roundedLng = Math.round(lng * 1000000) / 1000000;
 
@@ -685,7 +685,7 @@ async function _evPopupSubmit(typeKey, ctx) {
   if (!eventId) return; // 事件沒建起來就不放圖釘
 
   // 2. PR-G1b cutover：事件「位置圖釘」改建為 cop_entity（即時同步），取代 push 進 map_config。
-  //    event_id 連回 events 表；node_type=NAPSG group；label→callsign。
+  //    event_id 連回 events 表；event_group=NAPSG 事件類別（解撞名，非 ICS node_type）；label→callsign。
   if (!_copStream) { _flashMapMsg('✗ 即時同步未就緒，事件已建立但圖釘未放，請重整'); _deps.doPoll?.(); return; }
   const created = await _copStream.createEntity({
     type: EVENT_COT_TYPE,
@@ -693,7 +693,7 @@ async function _evPopupSubmit(typeKey, ctx) {
     lon: roundedLng,
     callsign: evDef.label,
     severity: evDef.severity || 'warning',
-    attributes: { kind: 'event', event_id: eventId, event_code: eventCode, node_type: nodeType },
+    attributes: { kind: 'event', event_id: eventId, event_code: eventCode, event_group: evGroup },
   });
   if (!created) {
     // 事件已落 DB 但圖釘沒建起來 = orphan event（與舊 rollback 行為對齊：提示重試）
@@ -1686,8 +1686,11 @@ function _renderZones(opts = {}) {
     // runtime SoT）——不再用群組 abbr，否則同群組事件圖上分不出（見
     // docs/design/event-symbology-mapping.md：符號講 WHAT）。orphan / 查不到型別 → 退群組 abbr。
     // **節點** 仍用 _NODE_ABBR（收/醫/指/前/安）。NAPSG 象形 glyph 為後續正式版（PR-2b-3）。
+    // 事件 group 權威來源 = event_type 經 taxonomy 推得；zone.event_group 為孤兒/back-compat fallback
+    // （解撞名：不再用 node_type 裝事件類別）。節點仍用 node_type。
+    const evGroup = (evType && _EVENT_TYPES[evType]?.group) || zone.event_group;
     const abbr = isEvent
-      ? ((evType && _EVENT_TYPES[evType]?.abbr) || _NAPSG_GROUP_ABBR[zone.node_type] || '?')
+      ? ((evType && _EVENT_TYPES[evType]?.abbr) || _NAPSG_GROUP_ABBR[evGroup] || '?')
       : (_NODE_ABBR[zone.node_type] || '?');
 
     // P1-10d 正式 icon：有 vendored NAPSG 象形且已 bake → 用 glyph，否則退 abbr（見 napsg_glyphs.js）。
@@ -1857,7 +1860,7 @@ function _showOrphanZoneModal(zone) {
   // 與其他 modal sink 一致（issue #24 belt-and-braces），避免日後驗證鬆動成提權路徑。
   const code = _escapeHtml(zone.event_code || zone.id || '?');
   const desc = `此事件標記在地圖上仍存在，但對應的事件紀錄已不在資料庫（可能已被清除或重設）。`
-    + `<br><br><span style="color:var(--text3);font-size:11px;">標記：${code}　·　類型：${_escapeHtml(zone.label || zone.node_type || '—')}</span>`;
+    + `<br><br><span style="color:var(--text3);font-size:11px;">標記：${code}　·　類型：${_escapeHtml(zone.label || zone.event_group || '—')}</span>`;
   _deps.openModal?.(`⚠ 孤兒事件標記`,
     _featureInfo(desc, 'deleteEventZone', zone.id));
 }

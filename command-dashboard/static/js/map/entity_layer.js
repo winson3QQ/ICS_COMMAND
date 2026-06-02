@@ -552,7 +552,8 @@ export function copEntityToPolygon(entity) {
  *   - uid              → id（cop 主鍵；刪除 / 回查用）
  *   - lat / lon        → lat / lng（注意：cop 用 lon，zone 用 lng）
  *   - callsign         → label（事件類型中文名）
- *   - attributes.{event_id, event_code, node_type} → 同名（event_id 是與 events 表的連結）
+ *   - attributes.{event_id, event_code} → 同名（event_id 是與 events 表的連結）
+ *   - attributes.event_group（或 back-compat 舊 node_type）→ event_group（事件類別，解撞名 #66 PR-B）
  *   - icon 固定 'event'
  *
  * 缺 event_id（非事件 entity / 資料殘缺）→ 回 null（下游已用 event_id 判斷是否為事件）。
@@ -569,7 +570,9 @@ export function copEntityToEventZone(entity) {
     lat,
     lng,
     label: entity.callsign ?? '',
-    node_type: attrs.node_type ?? 'ops',
+    // 解撞名（#66 PR-B）：事件「類別 group」用 event_group，不再借 node_type（ICS 組織單位）。
+    // back-compat：舊 cop entity attributes 用 node_type 存 group → fallback 讀回。
+    event_group: attrs.event_group ?? attrs.node_type ?? 'ops',
     icon: 'event',
     event_id: attrs.event_id,
     event_code: attrs.event_code ?? null,
