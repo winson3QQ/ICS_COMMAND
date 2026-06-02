@@ -46,7 +46,10 @@ import {
   bakeTextSdf,
   bakeArrowSdf,
   bakeDiamondSdf,
+  bakeSvgIcon,
+  pickForeground,
 } from './map/entity_layer.js';
+import { NAPSG_GLYPH_SVG, hasNapsgGlyph } from './map/napsg_glyphs.js';
 import { DrawPreview } from './map/draw_tools.js';
 import { LabelMarkerManager } from './map/label_markers.js';
 import { EventPopup } from './map/event_popup.js';
@@ -201,6 +204,19 @@ function _bakeAbbrs(map) {
     ...Object.values(_EVENT_TYPES).map((t) => t && t.abbr).filter(Boolean),
   ]);
   bakeTextSdf(map, 'napsg-abbr-', [...set]);
+}
+
+// P1-10d 正式 icon：bake vendored NAPSG 象形 glyph（非 SDF 白圖，見 napsg_glyphs.js）。
+// SVG raster 非同步 → 全部 bake 完成後重繪一次，讓 _renderZones 重算 fg（象形取代 abbr）。
+// glyph 為固定 vendored 集（非 taxonomy 動態），故只需 layer 建立時 bake 一次。
+function _bakeGlyphs(map) {
+  if (!map) return;
+  const tasks = [];
+  for (const key of Object.keys(NAPSG_GLYPH_SVG)) {
+    if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue;
+    tasks.push(bakeSvgIcon(map, 'napsg-glyph-' + key, NAPSG_GLYPH_SVG[key]));
+  }
+  Promise.all(tasks).then((res) => { if (res.some(Boolean)) refreshLeafletMarkers(); });
 }
 
 const _NAPSG_GROUP_ABBR = { security: '安', rescue: '救', medical: '醫', care: '護', infra: '設', ops: '行' };
@@ -969,6 +985,7 @@ function _ensureEntityLayers() {
   // 必須在新 EntityLayer 建 symbol layer 之前 addImage，否則 layer 找不到 icon-image。
   // 不重複 bake — bakeTextSdf/bakeArrowSdf 內部 hasImage 判斷。
   _bakeAbbrs(map);
+  _bakeGlyphs(map);  // P1-10d 正式 icon：NAPSG 象形（非同步 SVG raster，完成後自重繪）
   bakeArrowSdf(map, 'route-arrow');
   bakeDiamondSdf(map, 'zone-diamond');  // P1-10d：事件 ◆ hazard 形狀
 
@@ -1154,8 +1171,11 @@ function _ensureEntityLayers() {
       {
         id: 'zones-abbr', type: 'symbol',
         layout: {
-          'icon-image': ['concat', 'napsg-abbr-', ['get', 'abbr']],
-          'icon-size': 0.9,
+          // P1-10d 正式 icon：fg = NAPSG 象形（'napsg-glyph-*'）或 abbr（'napsg-abbr-*'）。
+          // 舊 feature 無 fg 時 coalesce 回 abbr。glyph 框內加大（0.62 vs abbr 0.9，因 glyph
+          // 影像為 48px、abbr 為 32px，故 glyph 數值小但實際更大）。
+          'icon-image': ['coalesce', ['get', 'fg'], ['concat', 'napsg-abbr-', ['get', 'abbr']]],
+          'icon-size': ['case', ['==', ['coalesce', ['get', 'fg_glyph'], false], true], 0.62, 0.9],
           'icon-allow-overlap': true,
           'icon-ignore-placement': true,
         },
@@ -1670,7 +1690,13 @@ function _renderZones(opts = {}) {
       ? ((evType && _EVENT_TYPES[evType]?.abbr) || _NAPSG_GROUP_ABBR[zone.node_type] || '?')
       : (_NODE_ABBR[zone.node_type] || '?');
 
-    const feat = zoneToNodeFeature(zone, { color, abbr, severity, stale, is_orphan: isOrphan });
+    // P1-10d 正式 icon：有 vendored NAPSG 象形且已 bake → 用 glyph，否則退 abbr（見 napsg_glyphs.js）。
+    const _map = _getMap();
+    const _hasGlyph = !!(isEvent && hasNapsgGlyph(evType)
+      && _map?.hasImage?.('napsg-glyph-' + evType));
+    const { fg, fg_glyph } = pickForeground({ isEvent, evType, abbr, hasGlyph: _hasGlyph });
+
+    const feat = zoneToNodeFeature(zone, { color, abbr, severity, stale, is_orphan: isOrphan, fg, fg_glyph });
     if (feat) features.push(feat);
   }
   _zoneLayer.update(features);

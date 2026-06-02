@@ -233,6 +233,41 @@ describe('C1-F commander modules', () => {
     expect(file('static/js/map/entity_layer.js')).toMatch(/export function bakeDiamondSdf/);
   });
 
+  test('napsg_glyph_foreground_select_and_vendor', async () => {
+    // P1-10d 正式 icon：有 vendored NAPSG 象形且已 bake → 用 glyph，否則退 abbr（混合）。
+    const el = await import('../../static/js/map/entity_layer.js');
+    const glyphs = await import('../../static/js/map/napsg_glyphs.js');
+    // pickForeground 純函式
+    expect(el.pickForeground({ isEvent: true, evType: 'explosive', abbr: '爆', hasGlyph: true }))
+      .toEqual({ fg: 'napsg-glyph-explosive', fg_glyph: true });
+    expect(el.pickForeground({ isEvent: true, evType: 'explosive', abbr: '爆', hasGlyph: false }))
+      .toEqual({ fg: 'napsg-abbr-爆', fg_glyph: false });   // 未 bake → 退 abbr（避免缺圖空白）
+    expect(el.pickForeground({ isEvent: true, evType: 'qrf', abbr: 'QR', hasGlyph: false }))
+      .toEqual({ fg: 'napsg-abbr-QR', fg_glyph: false });   // 無 vendored glyph（ICS ops）
+    expect(el.pickForeground({ isEvent: false, evType: null, abbr: '收', hasGlyph: false }))
+      .toEqual({ fg: 'napsg-abbr-收', fg_glyph: false });   // 節點永遠 abbr
+    // zoneToNodeFeature 帶 fg / fg_glyph（預設退 abbr，舊呼叫相容）
+    const f = el.zoneToNodeFeature({ lat: 1, lng: 2, event_code: 'E1' }, { abbr: '爆' });
+    expect(f.properties.fg).toBe('napsg-abbr-爆');
+    expect(f.properties.fg_glyph).toBe(false);
+    // vendored 集：6 個強配，皆含白色 SVG；hasNapsgGlyph 正確分辨
+    expect(Object.keys(glyphs.NAPSG_GLYPH_SVG).sort())
+      .toEqual(['comm_fail', 'evacuation', 'explosive', 'facility', 'hazard', 'rescue']);
+    for (const k of Object.keys(glyphs.NAPSG_GLYPH_SVG)) {
+      expect(glyphs.hasNapsgGlyph(k)).toBe(true);
+      expect(glyphs.NAPSG_GLYPH_SVG[k]).toMatch(/<svg[^>]*fill="#fff"/);
+    }
+    expect(glyphs.hasNapsgGlyph('qrf')).toBe(false);
+    expect(glyphs.hasNapsgGlyph(undefined)).toBe(false);
+    expect(typeof el.bakeSvgIcon).toBe('function');   // 非 SDF SVG raster
+    // map.js wiring：import vendored、bake、fg 前景層
+    const mapSrc = file('static/js/map.js');
+    expect(mapSrc).toMatch(/from '\.\/map\/napsg_glyphs\.js'/);
+    expect(mapSrc).toMatch(/_bakeGlyphs\(map\)/);
+    expect(mapSrc).toMatch(/'icon-image': \['coalesce', \['get', 'fg'\]/);
+    expect(mapSrc).toMatch(/fg_glyph/);
+  });
+
   test('reloadMapConfig_refetches_after_login_401', async () => {
     // Bug：boot（登入前）GET /api/map_config 回 401 → _mapConfig=null → 地圖空白，
     // 每次登入要 cmd-shift-R。修法：登入後 onEnterDashboard 呼叫 reloadMapConfig 重抓。
