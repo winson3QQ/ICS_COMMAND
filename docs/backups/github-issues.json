@@ -1135,14 +1135,29 @@
     },
     "body": "## 目標\nadmin 可在 UI 編輯**事件型別 + 群組**(全 CRUD),取代寫死的 `NAPSG_EVENTS`/`NAPSG_GROUPS`。\n\n## 前置（依賴 P1-10d 地基）\nP1-10d 先把 taxonomy 資料化:`static/event_taxonomy.seed.json`(tracked)+ `data/event_taxonomy.json`(runtime,gitignored)+ `GET/POST /api/event_taxonomy` + startup ensure(),並**收斂 events.js / map.js 重複定義**為單一 SoT。本 issue 在地基上做編輯器。\n\n## 範圍（2026-06-02 決策）\n- 事件型別:增 / 刪(soft-delete,保 key 穩定)/ 改(label/icon/abbr/severity/group/defaultAssigned/cot_type)/ 換群組\n- 群組:增 / 刪 / 改名\n- admin-only(RBAC)\n- icon 從內建 NAPSG icon 庫挑(不自畫)\n- 自訂型別必填 CoT bucket(預設 a-u-G;細化 P2-04)\n- severity 級別**固定 3 級**(critical/warning/info),只可指派不可新增級別\n\n## 雷（務必處理）\n- **參照完整性**:既有 events 紀錄用 event_type key → 刪/改名走 soft-delete + key 穩定,不孤兒。\n- 改群組/刪群組時,該群組下事件的 re-assign 策略。\n- 編輯後即時生效:前端讀 config 重渲染(對齊 #29 即時管線)。\n\n## 設計依據\n見 `command-dashboard/docs/design/event-symbology-mapping.md`（P1-10d 設計提案,NAPSG 對齊 + CoT 預備）。\n",
     "closedAt": null,
-    "comments": [],
+    "comments": [
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## 進度（2026-06-02，建在 P1-10d 地基上）\n- ✅ **PR-A** 後端守門 [#76](https://github.com/winson3QQ/ICS_COMMAND/pull/76)：schema 驗證 + soft-delete + 禁改 key/禁硬刪（superset）+ 禁刪非空群組。\n- ✅ **PR-B** 解撞名 [#77](https://github.com/winson3QQ/ICS_COMMAND/pull/77)：event entity 改用 `event_group`，不再借 `node_type`（cop attributes 自由 JSON 免 migration）。\n- ✅ **PR-C1** 編輯器 v1 [#78](https://github.com/winson3QQ/ICS_COMMAND/pull/78)：sysadmin 編輯既有事件/群組 + soft-delete；新事件預填 defaultAssigned；soft-delete 隱藏於建立選單（含 EventPopup）。\n- ✅ **來源標註 + 「定義」欄** [#79](https://github.com/winson3QQ/ICS_COMMAND/pull/79)：編輯器標出每欄來源（對外 NAPSG/FEMA/TAK vs ICS/NIMS）+ 三軸說明（CoT vs COP）；新增 `source` schema 欄（napsg/ics，唯讀 badge，舊 runtime GET 自動回填）。\n\n## 剩餘（C2，主體收尾）\n- **新增**事件型別 / 群組（目前只能編輯既有，key 唯讀、不增不刪）。\n- **icon picker**（從 vendored NAPSG glyph 庫挑）。\n- 衍生：右側欄 pivot 分組（可獨立）、report/handle → CoT `<detail>`（P2-04）。\n\n設計依據見 `command-dashboard/docs/design/event-symbology-mapping.md`（已隨各 PR 更新）。",
+        "createdAt": "2026-06-02T08:21:06Z",
+        "id": "IC_kwDOSnBjpc8AAAABEjEWbg",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/66#issuecomment-4600174190"
+      }
+    ],
     "createdAt": "2026-06-01T22:40:52Z",
     "labels": [],
     "milestone": null,
     "number": 66,
     "state": "OPEN",
     "title": "事件/群組 taxonomy 編輯器（admin CRUD,依賴 P1-10d 資料化地基）",
-    "updatedAt": "2026-06-01T22:40:52Z",
+    "updatedAt": "2026-06-02T08:21:06Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/66"
   }
 ]
