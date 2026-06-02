@@ -110,12 +110,146 @@ export async function loadEventTaxonomy() {
 }
 
 // ══════════════════════════════════════════════════════════════
+// 事件分類編輯器（#66 PR-C1：編輯既有 + soft-delete；新增留 C2）
+// sysadmin-only（後端 POST 為 SYSADMIN_ONLY + PR-A schema/superset 守門）。
+// 只改既有 key（不增不刪），key 唯讀；刪除＝soft-delete（deleted:true 保 key）。
+// ══════════════════════════════════════════════════════════════
+let _taxEditRaw = null;  // 開啟時 GET 的整份 raw taxonomy（含 cot_type/order/deleted 完整欄位）
+
+/** C1：把表單 edits 合併進 raw 副本（只改既有，不增不刪 key）。純函式，便於單測。 */
+export function _buildTaxonomyBody(rawTax, edits) {
+  const ge = (edits && edits.groups) || {};
+  const ee = (edits && edits.events) || {};
+  return {
+    ...rawTax,
+    groups: (rawTax.groups || []).map((g) => {
+      const e = ge[g.key];
+      if (!e) return g;
+      const out = { ...g, label: e.label || g.label };  // 空 label 保留舊（label 必填）
+      if (e.deleted) out.deleted = true; else delete out.deleted;
+      return out;
+    }),
+    events: (rawTax.events || []).map((v) => {
+      const e = ee[v.key];
+      if (!e) return v;
+      const out = {
+        ...v,
+        label: e.label || v.label,
+        severity: e.severity || v.severity,
+        group: e.group || v.group,
+        cot_type: e.cot_type || v.cot_type,           // cot_type 必填 → 空保留舊
+        defaultAssigned: e.defaultAssigned ? e.defaultAssigned : null,  // 可清空
+      };
+      if (e.deleted) out.deleted = true; else delete out.deleted;
+      return out;
+    }),
+  };
+}
+
+export async function openTaxonomyEditor() {
+  let tax = null;
+  try {
+    const r = await authFetch(API_BASE + '/api/event_taxonomy');
+    if (r.ok) tax = await r.json();
+  } catch (e) { tax = null; }
+  if (!tax || !Array.isArray(tax.events) || !Array.isArray(tax.groups)) {
+    _taxEditRaw = null;  // 別殘留上次 raw（review #78 LOW）
+    _openModal?.('事件分類編輯', '<div style="padding:12px;color:var(--red);">載入失敗，請重試</div>');
+    return;
+  }
+  _taxEditRaw = tax;
+  // review #75/#78 MED-1：select 若現值不在選項，瀏覽器默選第一項 → 存檔會靜默竄改。
+  // 故對「不在合法清單的現值」插一個 selected 的「（無效）」option，保留原值、逼使用者明確重選。
+  const sevOpts = (cur) => {
+    const base = ['critical', 'warning', 'info'];
+    const list = (cur && !base.includes(cur)) ? [cur, ...base] : base;
+    return list.map((s) => `<option value="${_esc(s)}"${s === cur ? ' selected' : ''}>${_esc(s)}${base.includes(s) ? '' : '（無效）'}</option>`).join('');
+  };
+  const grpKeys = new Set(tax.groups.map((g) => g.key));
+  const grpOpts = (cur) => {
+    const html = tax.groups
+      .map((g) => `<option value="${_esc(g.key)}"${g.key === cur ? ' selected' : ''}>${_esc(g.label || g.key)}${g.deleted ? '（已刪）' : ''}</option>`).join('');
+    return (cur && !grpKeys.has(cur)) ? `<option value="${_esc(cur)}" selected>${_esc(cur)}（無效）</option>${html}` : html;
+  };
+  // review #78 MED-2：defaultAssigned 改 select（原 free-text 打錯 key 會靜默壞自動派工）。
+  // ICS 處理組暫硬編（組織表正式分離留後續 #66）；現值若不在清單保留並標「未知」。
+  const _ASSIGN_UNITS = ['command', 'forward', 'security', 'medical', 'shelter'];
+  const daOpts = (cur) => {
+    const base = (cur && !_ASSIGN_UNITS.includes(cur)) ? [cur, ..._ASSIGN_UNITS] : _ASSIGN_UNITS;
+    return `<option value=""${!cur ? ' selected' : ''}>（不指派）</option>`
+      + base.map((u) => `<option value="${_esc(u)}"${u === cur ? ' selected' : ''}>${_esc(u)}${_ASSIGN_UNITS.includes(u) ? '' : '（未知）'}</option>`).join('');
+  };
+  const grpRows = tax.groups.map((g) => `<tr data-gkey="${_esc(g.key)}">
+      <td><code>${_esc(g.key)}</code></td>
+      <td><input class="adm-input tax-g-label" value="${_esc(g.label || '')}"></td>
+      <td style="text-align:center;"><input type="checkbox" class="tax-g-del"${g.deleted ? ' checked' : ''}></td></tr>`).join('');
+  const evRows = tax.events.map((e) => `<tr data-ekey="${_esc(e.key)}">
+      <td><code>${_esc(e.key)}</code></td>
+      <td><input class="adm-input tax-e-label" value="${_esc(e.label || '')}"></td>
+      <td><select class="adm-input tax-e-sev">${sevOpts(e.severity)}</select></td>
+      <td><select class="adm-input tax-e-grp">${grpOpts(e.group)}</select></td>
+      <td><input class="adm-input tax-e-cot" value="${_esc(e.cot_type || '')}" size="8"></td>
+      <td><select class="adm-input tax-e-da">${daOpts(e.defaultAssigned)}</select></td>
+      <td style="text-align:center;"><input type="checkbox" class="tax-e-del"${e.deleted ? ' checked' : ''}></td></tr>`).join('');
+  const body = `<div id="tax-edit-err" style="color:var(--red);font-size:12px;min-height:16px;"></div>
+    <div style="font-size:11px;color:var(--text2);margin-bottom:4px;">群組（key 唯讀，禁改名/硬刪；勾刪除＝soft-delete，禁刪非空群組）</div>
+    <table class="tax-table"><thead><tr><th>key</th><th>名稱</th><th>刪</th></tr></thead><tbody>${grpRows}</tbody></table>
+    <div style="font-size:11px;color:var(--text2);margin:10px 0 4px;">事件型別（key 唯讀；severity 固定 3 級；cot_type 必填）</div>
+    <table class="tax-table"><thead><tr><th>key</th><th>名稱</th><th>severity</th><th>群組</th><th>cot_type</th><th>處理組</th><th>刪</th></tr></thead><tbody>${evRows}</tbody></table>`;
+  const footer = '<button class="adm-btn" data-action="taxSave">儲存</button>'
+    + '<button class="adm-btn" data-action="close-modal">取消</button>';
+  _openModal?.('事件分類編輯', body, footer);
+}
+
+/** 讀編輯器 DOM → 組 body → POST。回 {ok, error}。成功後由 main.js 跑重渲染管線。 */
+export async function saveTaxonomyFromEditor() {
+  if (!_taxEditRaw) return { ok: false, error: '狀態遺失，請重開' };
+  const errEl = document.getElementById('tax-edit-err');
+  const edits = { groups: {}, events: {} };
+  document.querySelectorAll('tr[data-gkey]').forEach((tr) => {
+    edits.groups[tr.dataset.gkey] = {
+      label: (tr.querySelector('.tax-g-label')?.value || '').trim(),
+      deleted: !!tr.querySelector('.tax-g-del')?.checked,
+    };
+  });
+  document.querySelectorAll('tr[data-ekey]').forEach((tr) => {
+    edits.events[tr.dataset.ekey] = {
+      label: (tr.querySelector('.tax-e-label')?.value || '').trim(),
+      severity: tr.querySelector('.tax-e-sev')?.value,
+      group: tr.querySelector('.tax-e-grp')?.value,
+      cot_type: (tr.querySelector('.tax-e-cot')?.value || '').trim(),
+      defaultAssigned: (tr.querySelector('.tax-e-da')?.value || '').trim(),
+      deleted: !!tr.querySelector('.tax-e-del')?.checked,
+    };
+  });
+  const payload = _buildTaxonomyBody(_taxEditRaw, edits);
+  try {
+    const r = await authFetch(API_BASE + '/api/event_taxonomy', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!r.ok) {
+      let msg = `儲存失敗（${r.status}）`;
+      try { const j = await r.json(); if (j && j.detail) msg = j.detail; } catch (e) { /* 非 JSON */ }
+      if (errEl) errEl.textContent = msg;
+      return { ok: false, error: msg };
+    }
+    _taxEditRaw = null;
+    return { ok: true };
+  } catch (e) {
+    if (errEl) errEl.textContent = '網路錯誤，請重試';
+    return { ok: false, error: '網路錯誤' };
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
 // 依賴注入（cop.js 在 initEvents 時提供）
 // ══════════════════════════════════════════════════════════════
 let _getData              = null;  // () => _data
 let _getCurrentOperator   = null;  // () => string
 let _closeModal           = null;  // () => void
-let _openModal            = null;  // (title, body) => void
+let _openModal            = null;  // (title, body, footer?) => void
 let _doPoll               = null;  // async () => void
 let _appConfirm           = null;  // (title, msg) => Promise<bool>
 let _findZoneByEventId    = null;  // (id) => zone | null
@@ -269,6 +403,7 @@ export function _updateEvTypeFromCategories() {
   sel.innerHTML = '';
   let prevGroup = null;
   Object.entries(NAPSG_EVENTS).forEach(([k, v]) => {
+    if (v.deleted) return;  // #66：soft-delete 的型別不出現在建立事件下拉（保留供既有事件渲染）
     if (v.group !== prevGroup) {
       const grpOpt = document.createElement('option');
       grpOpt.disabled = true;
@@ -293,6 +428,7 @@ export async function submitEvent() {
     reported_by_unit:          el('ev-unit').value,
     event_type:                el('ev-type').value,
     severity,
+    assigned_unit:             NAPSG_EVENTS[el('ev-type').value]?.defaultAssigned || null,  // #66：預填預設處理組
     description:               el('ev-desc').value,
     operator_name:             el('ev-operator').value || _getCurrentOperator?.() || '',
     location_desc:             el('ev-location').value || null,
@@ -323,7 +459,7 @@ export async function submitEvent() {
           operator_name:    body.operator_name,
           location_desc:    body.location_desc || null,
           location_zone_id: body.location_zone_id || null,
-          assigned_unit:    null,
+          assigned_unit:    body.assigned_unit || null,
           status:           'open',
           occurred_at:      now,
           created_at:       now,

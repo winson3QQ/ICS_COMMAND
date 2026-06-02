@@ -104,6 +104,18 @@ POST `/api/event_taxonomy` 原本「整包覆蓋、幾乎不驗」→ 收緊為�
 編輯器 UI（PR-C）只要組整份 body 送 POST，後端把關；存檔後跑既有即時管線
 （`loadEventTaxonomy → applyEventTaxonomy → 重建下拉 → _bakeAbbrs`）即時生效。
 
+### #66 PR-C1 編輯器 v1（編輯既有 + soft-delete）
+
+sysadmin-only 設定項「事件分類編輯」（`#stg-taxonomy-section`，auth.js 以 `hasAnyRole('sysadmin')` 守）。
+modal 表格列出群組 + 事件型別，**編輯既有**：群組 label / 事件 label·severity（3 選）·group·cot_type·
+defaultAssigned，及 soft-delete 勾選（**key 唯讀、不增不刪**；新增留 PR-C2）。存檔 = `events.js`
+`_buildTaxonomyBody` 合併 raw + 表單 edits → POST（後端 PR-A 守門）→ `main.js _reloadTaxonomyPipeline`
+跑即時管線 + 關 modal；後端 400 訊息顯示在 modal 內。icon picker 留 C2。
+soft-delete 的型別**不出現在建立事件下拉**（`_populateNapsgCsel` / `_updateEvTypeFromCategories` 跳過
+`deleted`；但 `_EVENT_TYPES`/`NAPSG_EVENTS` 仍保留供既有事件 marker 渲染）；建立新事件時
+**預填** taxonomy 的 `defaultAssigned` → `assigned_unit`（三軸「誰處理」軸落地，兩個創建路徑皆套）。
+severity / 處理組欄改 `<select>`（防自由文字打錯靜默竄改）。
+
 ## 決策的拆解
 
 1. **地基**：taxonomy 資料化（seed/runtime + API + 收斂重複）

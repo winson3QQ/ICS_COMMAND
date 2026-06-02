@@ -279,4 +279,30 @@ describe('EventPopup', () => {
     expect(ep.isOpen()).toBe(false);
     expect(ep.getLatLng()).toBe(null);
   });
+
+  it('#66：soft-delete 的型別不出現；該 group 全刪則 group 按鈕也不顯示', () => {
+    const Popup = makeMockPopup();
+    const ep = new EventPopup(MOCK_MAP, { Popup }, {
+      groups: { security: '安全', rescue: '救援', medical: '醫療' },
+      types: {
+        explosive: { label: '疑似爆裂物', group: 'security', severity: 'critical' },
+        perimeter: { label: '管制區異常', group: 'security', severity: 'warning', deleted: true }, // soft-deleted
+        qrf: { label: 'QRF 出動', group: 'rescue', severity: 'warning', deleted: true },           // rescue 唯一 type 被刪
+        mci: { label: '大量傷亡', group: 'medical', severity: 'critical' },
+      },
+      reporterOptions: [['command', '指揮部']],
+      getReporter: () => 'command',
+      onReporterChange: vi.fn(),
+      latlngToMgrs: () => 'X',
+      onSubmit: vi.fn(),
+    });
+    ep.open(24.83, 121.01);
+    // 全刪的 rescue group 不顯示（只剩 安全 / 醫療）
+    const groupBtns = ep._popup._dom.querySelectorAll('.ev-popup-group-btn');
+    expect(groupBtns.map(b => b.textContent)).toEqual(['安全', '醫療']);
+    // security 下被 soft-delete 的 perimeter 不出現
+    groupBtns.find(b => b.textContent === '安全').click();
+    const typeBtns = ep._popup._dom.querySelectorAll('.ev-popup-type-btn');
+    expect(typeBtns.map(b => b.textContent)).toEqual(['疑似爆裂物']);
+  });
 });

@@ -666,6 +666,7 @@ async function _evPopupSubmit(typeKey, ctx) {
         event_type: typeKey,
         severity: evDef.severity || 'warning',
         description: evDef.label,
+        assigned_unit: evDef.defaultAssigned || null,  // #66：新事件預填 taxonomy 預設處理組
         operator_name: operator,
         location_zone_id: id,   // 記錄用 client id；consumer 主要靠 event_id 連結
         location_desc: mgrs,
@@ -811,6 +812,7 @@ export function _populateNapsgCsel() {
   panel.innerHTML = '';
   let group = null;
   for (const [key, def] of Object.entries(_EVENT_TYPES)) {
+    if (def.deleted) continue;  // #66：soft-delete 的型別不出現在建立事件下拉（保留供既有事件渲染）
     if (def.group !== group) {
       group = def.group;
       const h = document.createElement('div');
