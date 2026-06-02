@@ -1149,6 +1149,20 @@
         "minimizedReason": "",
         "reactionGroups": [],
         "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/66#issuecomment-4600174190"
+      },
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## C2 範圍補充（2026-06-02）\nC2 除「新增事件/群組」外，**併入 NAPSG 象形字典擴充**（原 P1-10d 孤兒 follow-up (a) 正式歸此）：\n- **icon picker**：admin 從 vendored NAPSG 象形庫挑圖指派給事件。\n- **字典擴充**：vendor 更多 NAPSG 單色象形（民事 D/E 事件用），減少 abbr。\n- **來源分流**（見 `classification-crosswalk.md` §6）：**民事 D/E → NAPSG 象形**（本 issue C2）；**軍事 A/B/C 的內部符號 → 2525/milsymbol（P2-05）**，不在本 issue。\n- 敵我框（2525）= P2-05；本 issue 只管 NAPSG 象形那一側 + 編輯器 CRUD。",
+        "createdAt": "2026-06-02T12:11:42Z",
+        "id": "IC_kwDOSnBjpc8AAAABElC9xQ",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/66#issuecomment-4602248645"
       }
     ],
     "createdAt": "2026-06-01T22:40:52Z",
@@ -1157,7 +1171,7 @@
     "number": 66,
     "state": "OPEN",
     "title": "事件/群組 taxonomy 編輯器（admin CRUD,依賴 P1-10d 資料化地基）",
-    "updatedAt": "2026-06-02T08:21:06Z",
+    "updatedAt": "2026-06-02T12:11:42Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/66"
   }
 ]

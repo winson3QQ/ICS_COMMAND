@@ -1613,5 +1613,152 @@
     "title": "fix(hardening): #64 硬化 1+2+4（dead exempt / pmtiles 穿越縱深 / lib SHA 驗）",
     "updatedAt": "2026-06-02T08:11:27Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/80"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "純文件。ROADMAP P1-10d ✅ 註記補上 #75(glyph)/#76-79(#66 編輯器)/剩 C2；P1-10c 補 #64 1+2+4 完成(#80)、#3 留 P1-10h。doc_sync=0。",
+    "closedAt": "2026-06-02T08:22:55Z",
+    "comments": [],
+    "createdAt": "2026-06-02T08:22:52Z",
+    "headRefName": "docs/roadmap-sync-0602",
+    "labels": [],
+    "mergedAt": "2026-06-02T08:22:55Z",
+    "number": 81,
+    "state": "MERGED",
+    "title": "docs(roadmap): 同步 P1-10d 後續 + #64 硬化進度",
+    "updatedAt": "2026-06-02T08:22:57Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/81"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "純文件，記錄分類體系框架。\n\n- 四軸說明：NAPSG（符號庫目錄）/ 我們（營運分組）/ CoT-2525（TAK 資料語言）/ 台灣 NCDR-NFA（民防疏散）—— 同一批現實的不同切法，不該合成單一樹。\n- 共同平台＝統一對照（Rosetta）：以我們事件為主幹，掛各標準座標（cot_type/source 即雛形）。\n- 22 事件 × NAPSG/cot_type/台灣/severity draft 對照表（NAPSG icon 欄標信心 🟢🟡🔴，待決策）。\n- 台灣查證：NCDR/NFA/EMIC 有平台但無統一 incident icon 標準；最近似為 NFA 疏散避難圖例（收容/避難/危險區），偏民防疏散。\n- 待決策：NAPSG 採用程度(A/B/C)、是否加 tw_ref 欄、是否抓 NFA 圖例、severity 是否補 Purple=Extreme。\n\n先記錄框架；icon 欄與決策後續更新。",
+    "closedAt": "2026-06-02T09:22:59Z",
+    "comments": [],
+    "createdAt": "2026-06-02T09:22:56Z",
+    "headRefName": "docs/classification-crosswalk",
+    "labels": [],
+    "mergedAt": "2026-06-02T09:22:59Z",
+    "number": 82,
+    "state": "MERGED",
+    "title": "docs(design): 分類體系與標準對照（NAPSG/我們/CoT/台灣 crosswalk）",
+    "updatedAt": "2026-06-02T09:23:01Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/82"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "純文件。在 classification-crosswalk 加 §5「業界做法 / Prior Art」：Dictionary Renderer 模式（採標準集+資料帶代碼+字典渲染）、軟體實例（Esri/TAK/milsymbol/NICS/OCHA）、Path 1(NAPSG) vs Path 2(2525 via milsymbol，ATAK 一致) 可並存。待決策順移 §6。doc_sync=0。",
+    "closedAt": "2026-06-02T09:29:15Z",
+    "comments": [],
+    "createdAt": "2026-06-02T09:29:12Z",
+    "headRefName": "docs/crosswalk-priorart",
+    "labels": [],
+    "mergedAt": "2026-06-02T09:29:15Z",
+    "number": 83,
+    "state": "MERGED",
+    "title": "docs(design): crosswalk 補業界做法（Dictionary Renderer prior art）",
+    "updatedAt": "2026-06-02T09:29:18Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/83"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "把近期討論定案寫進 classification-crosswalk：\n\n- §5.1 字典擴充模型：2525/NAPSG 皆可擴充；source=標準/擴充、cot_type degrade。\n- §6 視覺顯示模型（affiliation-aware）：修正原 Path1 砍敵我之誤 → 敵我=2525 框 / 類型=NAPSG 象形 / severity=halo；情境表 A-E（cot_type 前綴自動分流）；建立流程 type-first（敵我正交、少數可變型別才問友/敵/不明，95% 步驟不變）。\n- §7 待決策更新。\n\n純文件，doc_sync=0。",
+    "closedAt": "2026-06-02T11:51:35Z",
+    "comments": [],
+    "createdAt": "2026-06-02T11:51:32Z",
+    "headRefName": "docs/crosswalk-display-model",
+    "labels": [],
+    "mergedAt": "2026-06-02T11:51:35Z",
+    "number": 84,
+    "state": "MERGED",
+    "title": "docs(design): crosswalk 視覺顯示模型(依情境)+建立流程+字典擴充",
+    "updatedAt": "2026-06-02T11:51:37Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/84"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "補 .claude/memory/ —— 新 session 自動載入,但原本沒有本輪決策。新增 event-symbology-classification.md（四軸對照 / affiliation-aware 視覺 / type-first 流程 / 字典擴充 / #66 剩 C2、#64 剩 #3→P1-10h / 環境 quirk / 指向設計文件）+ 更新 MEMORY.md 索引。純文件。",
+    "closedAt": "2026-06-02T11:55:36Z",
+    "comments": [],
+    "createdAt": "2026-06-02T11:55:33Z",
+    "headRefName": "docs/memory-symbology",
+    "labels": [],
+    "mergedAt": "2026-06-02T11:55:36Z",
+    "number": 85,
+    "state": "MERGED",
+    "title": "docs(memory): 記錄事件符號/分類體系決策（接手脈絡）",
+    "updatedAt": "2026-06-02T11:55:38Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/85"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "純文件一行。ROADMAP P2-05（milsymbol/2525 渲染）加回指 classification-crosswalk §6 affiliation-aware 視覺模型,讓實作者直接找到。doc_sync=0。",
+    "closedAt": "2026-06-02T12:07:15Z",
+    "comments": [],
+    "createdAt": "2026-06-02T12:07:12Z",
+    "headRefName": "docs/roadmap-p205-pointer",
+    "labels": [],
+    "mergedAt": "2026-06-02T12:07:15Z",
+    "number": 86,
+    "state": "MERGED",
+    "title": "docs(roadmap): P2-05 回指 crosswalk 視覺模型",
+    "updatedAt": "2026-06-02T12:07:18Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/86"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "純文件。① crosswalk §6 釐清框內象形兩來源（民事 D/E=NAPSG、軍事 A/B/C=2525/milsymbol P2-05），NAPSG 字典擴充+icon picker 歸 #66 C2。② ROADMAP P1-10d follow-up (a) 把孤兒「其餘 NAPSG glyph」正式歸到 #66 C2。doc_sync=0。",
+    "closedAt": "2026-06-02T12:11:23Z",
+    "comments": [],
+    "createdAt": "2026-06-02T12:11:20Z",
+    "headRefName": "docs/napsg-glyph-home",
+    "labels": [],
+    "mergedAt": "2026-06-02T12:11:23Z",
+    "number": 87,
+    "state": "MERGED",
+    "title": "docs: NAPSG 象形字典歸 #66 C2 + 內部象形來源釐清",
+    "updatedAt": "2026-06-02T12:11:25Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/87"
   }
 ]
