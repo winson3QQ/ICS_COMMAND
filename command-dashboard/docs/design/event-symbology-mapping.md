@@ -2,6 +2,7 @@
 
 > 落定 2026-06-02。P1-10d（事件視覺）+ taxonomy 資料化地基 + 編輯器（[#66](https://github.com/winson3QQ/ICS_COMMAND/issues/66)）的共同設計依據。
 > 為何不自創符號：業界已有標準，對齊可省 P2 重工。見〈參考來源〉。
+> **分類體系對照**（NAPSG / 我們 / CoT / 台灣 四軸如何對齊）見 [`classification-crosswalk.md`](classification-crosswalk.md)。
 
 ## 決策（2026-06-02）
 
