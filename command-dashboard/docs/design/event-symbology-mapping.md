@@ -119,7 +119,9 @@ severity / 處理組欄改 `<select>`（防自由文字打錯靜默竄改）。
 ### 事件定義來源（`source` 欄，schema + 編輯器，2026-06-02）
 
 每事件型別加可選 `source` 欄（後端驗證 `napsg` / `ics`；舊資料無此欄相容）；編輯器以「定義」欄
-（select NAPSG/ICS）呈現「此型別是哪個標準定義的」，讓 user 看懂哪些可對接、哪些是自訂。
+**唯讀 badge**（NAPSG/ICS）呈現「此型別是哪個標準定義的」，讓 user 看懂哪些可對接、哪些是自訂。
+**唯讀理由**：source 是事實屬性（型別是否有外部標準定義），非 user 可任意宣稱（不能把 QRF 改標成 NAPSG）；
+由 seed/taxonomy 定，存檔時靠 `_buildTaxonomyBody` 的 spread 保留原值，不經表單。
 - **napsg**（11，有外部標準對應：NAPSG / MIL-STD-2525 / FEMA IPAWS / USAR）：
   explosive · drone · violent · mci · emergency · infectious · hazard · evacuation · comm_fail · facility · rescue
 - **ics**（11，ICS/NIMS 運作自訂，無外部符號標準）：
