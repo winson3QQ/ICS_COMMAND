@@ -342,7 +342,7 @@ Phase 1 內部建議順序：P1-10 全部完成 → P1-12a → **P1-12b+14 合�
 | P2-02 | `services/tak_service.py`：CoT XML 解析（規格相容，禁止自創欄位）；TAK Server 推播訂閱（TCP/SSL 8089 或 federation port 9000） |
 | P2-03 | `routers/tak.py`：從 stub 升級為真實 endpoint（接 TAK Server federation push + REST 查詢）；schema 已存在於 Stage 1 帶過來的 stub |
 | P2-04 | `cop_service.normalize_cot(event)` — CoT → COP entity 映射（type / uid / time / stale / lat / lon → COP `entity` + `track`） |
-| P2-05 | 前端 `static/js/map.js` 加 MIL-STD-2525 符號渲染（用 [milsymbol](https://github.com/spatialillusions/milsymbol) JS lib，MIT，非中國維護）。**MGRS grid 一併於本項實作**（zoom-adaptive 密度、淡灰底 + 強調 100km / 10km 分層、label 避讓）——P1-10 已預埋 MapLibre Symbol Layer 接點 |
+| P2-05 | 前端 `static/js/map.js` 加 MIL-STD-2525 符號渲染（用 [milsymbol](https://github.com/spatialillusions/milsymbol) JS lib，MIT，非中國維護）。**MGRS grid 一併於本項實作**（zoom-adaptive 密度、淡灰底 + 強調 100km / 10km 分層、label 避讓）——P1-10 已預埋 MapLibre Symbol Layer 接點。**affiliation-aware 渲染模型**（敵我=2525 框 / 類型=NAPSG 象形 / severity=halo；情境表 A–E 由 cot_type 前綴分流；建立流程 type-first）依 [`classification-crosswalk.md`](../command-dashboard/docs/design/classification-crosswalk.md) §6 |
 | P2-06 | 時間軸支援：CoT `stale` 處理 + COP 快照寫入 `snapshot_repo`（Wave 6 時間軸回放預埋） |
 | P2-07 | Federation 設定：與外部 TAK 節點交換 CoT（可選；先單機 PoC） |
 | P2-08 | 測試：CoT parse unit + TAK Server ↔ command-dashboard integration（mock TAK 推播）+ security（CoT injection / XML XXE 防護） |
