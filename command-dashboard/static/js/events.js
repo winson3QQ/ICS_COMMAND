@@ -403,6 +403,7 @@ export function _updateEvTypeFromCategories() {
   sel.innerHTML = '';
   let prevGroup = null;
   Object.entries(NAPSG_EVENTS).forEach(([k, v]) => {
+    if (v.deleted) return;  // #66：soft-delete 的型別不出現在建立事件下拉（保留供既有事件渲染）
     if (v.group !== prevGroup) {
       const grpOpt = document.createElement('option');
       grpOpt.disabled = true;
@@ -427,6 +428,7 @@ export async function submitEvent() {
     reported_by_unit:          el('ev-unit').value,
     event_type:                el('ev-type').value,
     severity,
+    assigned_unit:             NAPSG_EVENTS[el('ev-type').value]?.defaultAssigned || null,  // #66：預填預設處理組
     description:               el('ev-desc').value,
     operator_name:             el('ev-operator').value || _getCurrentOperator?.() || '',
     location_desc:             el('ev-location').value || null,
@@ -457,7 +459,7 @@ export async function submitEvent() {
           operator_name:    body.operator_name,
           location_desc:    body.location_desc || null,
           location_zone_id: body.location_zone_id || null,
-          assigned_unit:    null,
+          assigned_unit:    body.assigned_unit || null,
           status:           'open',
           occurred_at:      now,
           created_at:       now,

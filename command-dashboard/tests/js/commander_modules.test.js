@@ -337,6 +337,17 @@ describe('C1-F commander modules', () => {
     expect(file('static/js/auth.js')).toMatch(/stg-taxonomy-section[\s\S]{0,80}hasAnyRole\('sysadmin'\)/);
   });
 
+  test('taxonomy_softdelete_hides_and_defaultAssigned_prefilled', async () => {
+    // #66：soft-delete 的型別不出現在建立事件下拉（兩個下拉都跳過 deleted）。
+    const mapSrc = file('static/js/map.js');
+    const evSrc = file('static/js/events.js');
+    expect(mapSrc).toMatch(/if \(def\.deleted\) continue;/);     // _populateNapsgCsel
+    expect(evSrc).toMatch(/if \(v\.deleted\) return;/);          // _updateEvTypeFromCategories
+    // 新事件預填 taxonomy 的 defaultAssigned → assigned_unit（兩個創建路徑）。
+    expect(mapSrc).toMatch(/assigned_unit: evDef\.defaultAssigned \|\| null/);          // _evPopupSubmit
+    expect(evSrc).toMatch(/assigned_unit:\s*NAPSG_EVENTS\[el\('ev-type'\)\.value\]\?\.defaultAssigned/);  // submitEvent
+  });
+
   test('auth_logout_clears_session', async () => {
     const auth = await import('../../static/js/auth.js');
     sessionStorage.setItem('cmd_session_id', 'token');
