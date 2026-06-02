@@ -1100,14 +1100,29 @@
     },
     "body": "## 來源\nP1-10c security/code review（#62）發現的 **pre-existing**（非 P1-10c 引入）低風險硬化項，集中追蹤。\n\n## 項目\n1. **`config.py` `/api/map/tiles/` dead exempt prefix**：實際 tile 路由為 `/tiles/...`（map router 無 prefix），此 exempt 條目 match 不到任何路由 → 誤導。對齊路由 prefix 或移除該條目。\n2. **`/tiles/pmtiles/{filename}` 缺 `resolve()` 容器內檢查**：目前靠 path-converter 不含 `/` 擋 traversal，屬慣例非縱深。加 `(MBTILES_DIR/filename).resolve()` is-relative-to `MBTILES_DIR.resolve()` 硬化。\n3. **CSP enforce 確認**：commander_dashboard.html 的 enforce CSP 需確認涵蓋 pmtiles range fetch（`connect-src 'self'`）+ MapLibre worker（`worker-src 'self' blob:`）。屬 **P1-10h** 範圍。\n4. **vendored `pmtiles.js` SHA 僅文件釘版**：POLICY.md 有 SHA 但無 runtime/CI 驗證 on-disk 檔未被替換。可加 CI hash check（底圖資料本身已 SHA-gated，此為 JS lib 供應鏈硬化）。\n\n## 性質\n皆 LOW、非阻塞;3 併入 P1-10h、其餘可獨立小修。\n",
     "closedAt": null,
-    "comments": [],
+    "comments": [
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "1+2+4 已於 #80 完成（merged）：\n- ✅ #64-1 移除 dead exempt prefix `/api/map/tiles/`\n- ✅ #64-2 serve_pmtiles 加 resolve() 容器內檢查（路徑穿越縱深）\n- ✅ #64-4 vendored pmtiles.js SHA256 CI 驗證（+ POLICY 同步測試）\n\n剩 **#64-3（CSP enforce 涵蓋 pmtiles range / MapLibre worker）留 P1-10h**，本 issue 保持 open 追蹤該項。",
+        "createdAt": "2026-06-02T08:11:45Z",
+        "id": "IC_kwDOSnBjpc8AAAABEi-8Pw",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/64#issuecomment-4600085567"
+      }
+    ],
     "createdAt": "2026-06-01T15:42:50Z",
     "labels": [],
     "milestone": null,
     "number": 64,
     "state": "OPEN",
     "title": "硬化 follow-up（P1-10c review 衍生，pre-existing LOW）: tile 路由 auth/traversal + CSP + pmtiles.js SHA 驗",
-    "updatedAt": "2026-06-01T15:42:50Z",
+    "updatedAt": "2026-06-02T08:11:46Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/64"
   },
   {
