@@ -1085,7 +1085,7 @@ function _ensureEntityLayers() {
         filter: ['!=', ['coalesce', ['get', 'is_event'], false], true],
         paint: {
           'circle-radius': [
-            'case', ['==', ['coalesce', ['get', 'is_event'], false], true], 13, 11,
+            'case', ['==', ['coalesce', ['get', 'is_event'], false], true], 13, 9,
           ],
           'circle-color': ['get', 'color'],
           'circle-stroke-color': '#ffffff',
