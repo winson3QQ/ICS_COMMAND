@@ -153,14 +153,32 @@ export async function openTaxonomyEditor() {
     if (r.ok) tax = await r.json();
   } catch (e) { tax = null; }
   if (!tax || !Array.isArray(tax.events) || !Array.isArray(tax.groups)) {
+    _taxEditRaw = null;  // 別殘留上次 raw（review #78 LOW）
     _openModal?.('事件分類編輯', '<div style="padding:12px;color:var(--red);">載入失敗，請重試</div>');
     return;
   }
   _taxEditRaw = tax;
-  const sevOpts = (cur) => ['critical', 'warning', 'info']
-    .map((s) => `<option value="${s}"${s === cur ? ' selected' : ''}>${s}</option>`).join('');
-  const grpOpts = (cur) => tax.groups
-    .map((g) => `<option value="${_esc(g.key)}"${g.key === cur ? ' selected' : ''}>${_esc(g.label || g.key)}</option>`).join('');
+  // review #75/#78 MED-1：select 若現值不在選項，瀏覽器默選第一項 → 存檔會靜默竄改。
+  // 故對「不在合法清單的現值」插一個 selected 的「（無效）」option，保留原值、逼使用者明確重選。
+  const sevOpts = (cur) => {
+    const base = ['critical', 'warning', 'info'];
+    const list = (cur && !base.includes(cur)) ? [cur, ...base] : base;
+    return list.map((s) => `<option value="${_esc(s)}"${s === cur ? ' selected' : ''}>${_esc(s)}${base.includes(s) ? '' : '（無效）'}</option>`).join('');
+  };
+  const grpKeys = new Set(tax.groups.map((g) => g.key));
+  const grpOpts = (cur) => {
+    const html = tax.groups
+      .map((g) => `<option value="${_esc(g.key)}"${g.key === cur ? ' selected' : ''}>${_esc(g.label || g.key)}${g.deleted ? '（已刪）' : ''}</option>`).join('');
+    return (cur && !grpKeys.has(cur)) ? `<option value="${_esc(cur)}" selected>${_esc(cur)}（無效）</option>${html}` : html;
+  };
+  // review #78 MED-2：defaultAssigned 改 select（原 free-text 打錯 key 會靜默壞自動派工）。
+  // ICS 處理組暫硬編（組織表正式分離留後續 #66）；現值若不在清單保留並標「未知」。
+  const _ASSIGN_UNITS = ['command', 'forward', 'security', 'medical', 'shelter'];
+  const daOpts = (cur) => {
+    const base = (cur && !_ASSIGN_UNITS.includes(cur)) ? [cur, ..._ASSIGN_UNITS] : _ASSIGN_UNITS;
+    return `<option value=""${!cur ? ' selected' : ''}>（不指派）</option>`
+      + base.map((u) => `<option value="${_esc(u)}"${u === cur ? ' selected' : ''}>${_esc(u)}${_ASSIGN_UNITS.includes(u) ? '' : '（未知）'}</option>`).join('');
+  };
   const grpRows = tax.groups.map((g) => `<tr data-gkey="${_esc(g.key)}">
       <td><code>${_esc(g.key)}</code></td>
       <td><input class="adm-input tax-g-label" value="${_esc(g.label || '')}"></td>
@@ -171,7 +189,7 @@ export async function openTaxonomyEditor() {
       <td><select class="adm-input tax-e-sev">${sevOpts(e.severity)}</select></td>
       <td><select class="adm-input tax-e-grp">${grpOpts(e.group)}</select></td>
       <td><input class="adm-input tax-e-cot" value="${_esc(e.cot_type || '')}" size="8"></td>
-      <td><input class="adm-input tax-e-da" value="${_esc(e.defaultAssigned || '')}" size="6"></td>
+      <td><select class="adm-input tax-e-da">${daOpts(e.defaultAssigned)}</select></td>
       <td style="text-align:center;"><input type="checkbox" class="tax-e-del"${e.deleted ? ' checked' : ''}></td></tr>`).join('');
   const body = `<div id="tax-edit-err" style="color:var(--red);font-size:12px;min-height:16px;"></div>
     <div style="font-size:11px;color:var(--text2);margin-bottom:4px;">群組（key 唯讀，禁改名/硬刪；勾刪除＝soft-delete，禁刪非空群組）</div>
@@ -231,7 +249,7 @@ export async function saveTaxonomyFromEditor() {
 let _getData              = null;  // () => _data
 let _getCurrentOperator   = null;  // () => string
 let _closeModal           = null;  // () => void
-let _openModal            = null;  // (title, body) => void
+let _openModal            = null;  // (title, body, footer?) => void
 let _doPoll               = null;  // async () => void
 let _appConfirm           = null;  // (title, msg) => Promise<bool>
 let _findZoneByEventId    = null;  // (id) => zone | null
