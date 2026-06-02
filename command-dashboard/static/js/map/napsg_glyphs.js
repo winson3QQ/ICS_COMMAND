@@ -2,7 +2,7 @@
 //
 // 來源：NAPSG Foundation Incident Symbol Set / DHS-Symbol-Server
 //   https://github.com/NAPSG/DHS-Symbol-Server （US DHS / FEMA-aligned；非中國來源，符合 CLAUDE.md 供應鏈紅線）
-// 授權：CC BY 4.0（NAPSG Foundation）。本檔即為標示（attribution）。
+// 授權：CC BY 4.0（NAPSG Foundation）。使用者可見的 attribution 見 repo 根 THIRD_PARTY_LICENSES.md。
 //
 // 設計依據：docs/design/event-symbology-mapping.md。
 // 對接定位：地圖象形屬「給人看的細節層」；TAK 互通靠 cot_type（資料），不靠視覺 glyph。

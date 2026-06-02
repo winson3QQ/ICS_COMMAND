@@ -1172,10 +1172,10 @@ function _ensureEntityLayers() {
         id: 'zones-abbr', type: 'symbol',
         layout: {
           // P1-10d 正式 icon：fg = NAPSG 象形（'napsg-glyph-*'）或 abbr（'napsg-abbr-*'）。
-          // 舊 feature 無 fg 時 coalesce 回 abbr。glyph 框內加大（0.62 vs abbr 0.9，因 glyph
-          // 影像為 48px、abbr 為 32px，故 glyph 數值小但實際更大）。
+          // coalesce 防禦（fg 理論上恆有值）。glyph 框內加大：影像 48px（abbr 32px），
+          // icon-size 0.72 → glyph 明顯大於 abbr（review #75：0.62 太小、形同 abbr，未兌現「加大」）。
           'icon-image': ['coalesce', ['get', 'fg'], ['concat', 'napsg-abbr-', ['get', 'abbr']]],
-          'icon-size': ['case', ['==', ['coalesce', ['get', 'fg_glyph'], false], true], 0.62, 0.9],
+          'icon-size': ['case', ['==', ['coalesce', ['get', 'fg_glyph'], false], true], 0.72, 0.9],
           'icon-allow-overlap': true,
           'icon-ignore-placement': true,
         },

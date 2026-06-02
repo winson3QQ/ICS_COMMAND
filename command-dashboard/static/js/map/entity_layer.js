@@ -293,7 +293,9 @@ export function bakeSvgIcon(map, id, svgStr, opts = {}) {
         resolve(false);
       }
     };
-    img.onerror = () => resolve(false);
+    // onerror 才會被 CSP img-src 不含 data: / SVG 解析失敗觸發 → 退 abbr。
+    // 加 warn 讓「靜默退回 abbr」可被 debug（review #75 MED；現行 CSP 已含 data: blob:）。
+    img.onerror = () => { console.warn('[entity_layer] NAPSG glyph SVG raster 失敗:', id); resolve(false); };
     img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgStr);
   });
 }
