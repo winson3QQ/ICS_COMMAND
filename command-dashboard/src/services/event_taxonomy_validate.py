@@ -24,6 +24,9 @@ import re
 from typing import Any
 
 SEVERITIES = frozenset({"critical", "warning", "info"})
+# 定義來源（provenance）：napsg=有外部標準對應（NAPSG/2525/IPAWS/USAR 等），ics=ICS 運作自訂。
+# 可選欄位（舊資料無此欄相容）；編輯器以 NAPSG/ICS 呈現「事件型別是哪個標準定義的」。
+SOURCES = frozenset({"napsg", "ics"})
 _KEY_RE = re.compile(r"^[a-z0-9_]+$")
 # regex 允許底線 → __proto__/constructor/prototype 會通過格式檢查；後端一併擋（縱深防禦，
 # 不只靠前端 applyTaxonomy/_bakeGlyphs 的 guard）。security review #76 MED。
@@ -96,6 +99,8 @@ def validate_taxonomy(body: Any, previous: Any = None) -> None:
         ct = e.get("cot_type")
         if not isinstance(ct, str) or not ct.strip():
             raise ValueError(f"event {k} 缺 cot_type（TAK 互通必填，預設 a-u-G）")
+        if "source" in e and e["source"] not in SOURCES:
+            raise ValueError(f"event {k} 的 source 非法：{e.get('source')!r}（限 napsg / ics）")
         if "deleted" in e and not isinstance(e["deleted"], bool):
             raise ValueError(f"event {k} 的 deleted 需為 bool")
 

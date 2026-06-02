@@ -359,6 +359,18 @@ describe('C1-F commander modules', () => {
     expect(evSrc).toMatch(/tax-band-ext/);                   // 對外帶
     expect(evSrc).toMatch(/tax-band-ics/);                   // ICS 內部帶
     expect(file('static/commander_dashboard.html')).toMatch(/\.tax-band-ext\{/);  // 帶背景 CSS
+    // schema「定義」欄（source）：編輯器有 select + buildBody 套用 + seed 已填。
+    const ev = await import('../../static/js/events.js');
+    expect(evSrc).toMatch(/tax-e-src/);                      // 定義 select
+    const raw = { version: 1, groups: [{ key: 'security', label: '安全' }],
+      events: [{ key: 'explosive', label: '爆', group: 'security', severity: 'critical', cot_type: 'a-h-G', source: 'napsg' }] };
+    // 改 source → 套用
+    expect(ev._buildTaxonomyBody(raw, { events: { explosive: { source: 'ics' } } }).events[0].source).toBe('ics');
+    // 空 source（未設）→ 保留原值
+    expect(ev._buildTaxonomyBody(raw, { events: { explosive: { source: '' } } }).events[0].source).toBe('napsg');
+    // seed 22 事件都已填 source（napsg/ics）
+    const seed = JSON.parse(file('static/event_taxonomy.seed.json'));
+    expect(seed.events.every((e) => e.source === 'napsg' || e.source === 'ics')).toBe(true);
   });
 
   test('auth_logout_clears_session', async () => {

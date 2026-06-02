@@ -116,6 +116,17 @@ soft-delete 的型別**不出現在建立事件下拉**（`_populateNapsgCsel` /
 **預填** taxonomy 的 `defaultAssigned` → `assigned_unit`（三軸「誰處理」軸落地，兩個創建路徑皆套）。
 severity / 處理組欄改 `<select>`（防自由文字打錯靜默竄改）。
 
+### 事件定義來源（`source` 欄，schema + 編輯器，2026-06-02）
+
+每事件型別加可選 `source` 欄（後端驗證 `napsg` / `ics`；舊資料無此欄相容）；編輯器以「定義」欄
+（select NAPSG/ICS）呈現「此型別是哪個標準定義的」，讓 user 看懂哪些可對接、哪些是自訂。
+- **napsg**（11，有外部標準對應：NAPSG / MIL-STD-2525 / FEMA IPAWS / USAR）：
+  explosive · drone · violent · mci · emergency · infectious · hazard · evacuation · comm_fail · facility · rescue
+- **ics**（11，ICS/NIMS 運作自訂，無外部符號標準）：
+  unknown_person · perimeter · crowd · qrf · capacity · isolation · person_need · equipment · resource · situation · other
+- 分界＝「是否有可對接的國際標準定義/符號」，與 P1-10d glyph 覆蓋現實一致（沒標準的本就沒象形）。
+  注：IPAWS（撤離）符號亦由 NAPSG 製作，故歸 napsg；分界為判斷值、可由編輯器調整（資料化）。
+
 ## 決策的拆解
 
 1. **地基**：taxonomy 資料化（seed/runtime + API + 收斂重複）

@@ -140,6 +140,7 @@ export function _buildTaxonomyBody(rawTax, edits) {
         cot_type: e.cot_type || v.cot_type,           // cot_type 必填 → 空保留舊
         defaultAssigned: e.defaultAssigned ? e.defaultAssigned : null,  // 可清空
       };
+      if (e.source) out.source = e.source;            // 定義來源（空＝未設則保留 spread 的原值）
       if (e.deleted) out.deleted = true; else delete out.deleted;
       return out;
     }),
@@ -179,6 +180,13 @@ export async function openTaxonomyEditor() {
     return `<option value=""${!cur ? ' selected' : ''}>（不指派）</option>`
       + base.map((u) => `<option value="${_esc(u)}"${u === cur ? ' selected' : ''}>${_esc(u)}${_ASSIGN_UNITS.includes(u) ? '' : '（未知）'}</option>`).join('');
   };
+  // 定義來源（provenance，schema source 欄）：napsg=有外部標準對應 / ics=ICS 運作自訂。
+  // 缺值給「（未設）」selected 空項，避免靜默落到第一項；save 空值則保留原樣（不竄改）。
+  const srcOpts = (cur) => {
+    const lab = { napsg: 'NAPSG', ics: 'ICS' };
+    const opts = ['napsg', 'ics'].map((s) => `<option value="${s}"${s === cur ? ' selected' : ''}>${lab[s]}</option>`).join('');
+    return cur ? opts : `<option value="" selected>（未設）</option>${opts}`;
+  };
   const grpRows = tax.groups.map((g) => `<tr data-gkey="${_esc(g.key)}">
       <td><code>${_esc(g.key)}</code></td>
       <td><input class="adm-input tax-g-label" value="${_esc(g.label || '')}"></td>
@@ -188,6 +196,7 @@ export async function openTaxonomyEditor() {
   const evRows = tax.events.map((e) => `<tr data-ekey="${_esc(e.key)}">
       <td><code>${_esc(e.key)}</code></td>
       <td><input class="adm-input tax-e-label" value="${_esc(e.label || '')}"></td>
+      <td><select class="adm-input tax-e-src">${srcOpts(e.source)}</select></td>
       <td class="tax-band-ext"><select class="adm-input tax-e-sev">${sevOpts(e.severity)}</select></td>
       <td class="tax-band-ext"><input class="adm-input tax-e-cot" value="${_esc(e.cot_type || '')}" size="8"></td>
       <td class="tax-band-ics"><select class="adm-input tax-e-grp">${grpOpts(e.group)}</select></td>
@@ -208,6 +217,7 @@ export async function openTaxonomyEditor() {
     <table class="tax-table tax-ev"><thead>
       <tr>
         <th rowspan="2">key</th><th rowspan="2">名稱</th>
+        <th rowspan="2">定義<span class="tax-band-sub">NAPSG/ICS</span></th>
         <th colspan="2" class="tax-band-ext tax-band-hd">▸ 對外 · 國際標準</th>
         <th colspan="2" class="tax-band-ics tax-band-hd">▸ ICS 內部</th>
         <th rowspan="2">刪</th>
@@ -242,6 +252,7 @@ export async function saveTaxonomyFromEditor() {
       group: tr.querySelector('.tax-e-grp')?.value,
       cot_type: (tr.querySelector('.tax-e-cot')?.value || '').trim(),
       defaultAssigned: (tr.querySelector('.tax-e-da')?.value || '').trim(),
+      source: tr.querySelector('.tax-e-src')?.value || '',
       deleted: !!tr.querySelector('.tax-e-del')?.checked,
     };
   });
