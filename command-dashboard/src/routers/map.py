@@ -170,6 +170,9 @@ async def save_event_taxonomy(request: Request):
         raise HTTPException(400, "結構過深") from e
     # #66 PR-A：schema + 參照完整性驗證（severity 3 級、cot_type 必填、group 參照、
     # key 格式/唯一、禁改 key/禁硬刪 superset、禁刪非空 group）。previous 取既有做 superset。
+    # 已知限制（review #76 MED）：read→write 間無鎖，並發 POST 可 lost-update（os.replace 原子，
+    # 不壞檔）。POST 限 sysadmin 單人編輯場景，風險低；version 樂觀鎖（body 已有 version 欄位）留
+    # 編輯器 UI（PR-C）一併做。
     try:
         validate_taxonomy(body, previous=event_taxonomy_store.read())
     except ValueError as e:

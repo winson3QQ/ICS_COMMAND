@@ -34,6 +34,8 @@ def test_valid_passes():
     (lambda b: b["events"][0].__setitem__("cot_type", ""), "cot_type"),
     (lambda b: b["events"][0].__setitem__("group", "nope"), "group 不存在"),
     (lambda b: b["events"][0].__setitem__("key", "Bad Key"), "key 格式"),
+    (lambda b: b["events"][0].__setitem__("key", "__proto__"), "保留字"),
+    (lambda b: b["groups"][0].__setitem__("key", "constructor"), "保留字"),
     (lambda b: b["events"].append(dict(b["events"][0])), "event key 重複"),
     (lambda b: b["groups"][0].__setitem__("label", "  "), "缺 label"),
     (lambda b: b["events"][0].__setitem__("deleted", "yes"), "deleted 需為 bool"),

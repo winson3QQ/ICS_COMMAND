@@ -25,11 +25,16 @@ from typing import Any
 
 SEVERITIES = frozenset({"critical", "warning", "info"})
 _KEY_RE = re.compile(r"^[a-z0-9_]+$")
+# regex 允許底線 → __proto__/constructor/prototype 會通過格式檢查；後端一併擋（縱深防禦，
+# 不只靠前端 applyTaxonomy/_bakeGlyphs 的 guard）。security review #76 MED。
+_UNSAFE_KEYS = frozenset({"__proto__", "constructor", "prototype"})
 
 
-def _keys_of(items: list[Any]) -> set[str]:
-    """取 list[dict] 中合法 str key 的集合（供 superset 比對；非 dict/無 key 略過）。"""
+def _keys_of(items: Any) -> set[str]:
+    """取 list[dict] 中合法 str key 的集合（供 superset 比對；非 list/dict/無 key 略過）。"""
     out: set[str] = set()
+    if not isinstance(items, list):  # previous 檔被手改成非 list 時不 TypeError（code review #76 LOW）
+        return out
     for it in items:
         if isinstance(it, dict) and isinstance(it.get("key"), str):
             out.add(it["key"])
@@ -56,6 +61,8 @@ def validate_taxonomy(body: Any, previous: Any = None) -> None:
         k = g.get("key")
         if not isinstance(k, str) or not _KEY_RE.match(k):
             raise ValueError(f"group key 格式錯誤：{k!r}（限小寫英數底線）")
+        if k in _UNSAFE_KEYS:
+            raise ValueError(f"group key 不可為保留字：{k}")
         if k in group_keys:
             raise ValueError(f"group key 重複：{k}")
         group_keys.add(k)
@@ -72,6 +79,8 @@ def validate_taxonomy(body: Any, previous: Any = None) -> None:
         k = e.get("key")
         if not isinstance(k, str) or not _KEY_RE.match(k):
             raise ValueError(f"event key 格式錯誤：{k!r}（限小寫英數底線）")
+        if k in _UNSAFE_KEYS:
+            raise ValueError(f"event key 不可為保留字：{k}")
         if k in event_keys:
             raise ValueError(f"event key 重複：{k}")
         event_keys.add(k)
