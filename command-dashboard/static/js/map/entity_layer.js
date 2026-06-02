@@ -185,9 +185,17 @@ export function bakeTextSdf(map, idPrefix, chars, opts = {}) {
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, size, size);
     ctx.fillStyle = '#ffffff';
-    ctx.font = `${weight} ${fontSize}px ${font}`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
+    // 多字元（如 QR / MCI）自動縮字級塞進 canvas，避免裁切（P1-10d 事件 abbr）
+    let fs = fontSize;
+    ctx.font = `${weight} ${fs}px ${font}`;
+    const w = ctx.measureText(ch).width;
+    const maxW = size * 0.86;
+    if (w > maxW) {
+      fs = Math.max(8, Math.floor((fs * maxW) / w));
+      ctx.font = `${weight} ${fs}px ${font}`;
+    }
     ctx.fillText(ch, size / 2, size / 2);
     map.addImage(id, ctx.getImageData(0, 0, size, size), { sdf: true, pixelRatio: 2 });
   }
@@ -220,6 +228,32 @@ export function bakeArrowSdf(map, id, opts = {}) {
   ctx.lineTo(3, size - 3);
   ctx.stroke();
   map.addImage(id, ctx.getImageData(0, 0, size, size), { sdf: true });
+}
+
+/**
+ * Diamond (rhombus) SDF — P1-10d：事件（hazard）的 NAPSG ◆ 形狀。
+ * 實心 diamond 當 alpha mask；MapLibre symbol 用 icon-color 填 severity 色、
+ * icon-halo-* 給白邊（取代 circle 的 white stroke）。
+ */
+export function bakeDiamondSdf(map, id, opts = {}) {
+  if (map.hasImage?.(id)) return;
+  const size = opts.size ?? 44;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, size, size);
+  ctx.fillStyle = '#ffffff';
+  const m = size / 2;
+  const pad = 4;  // 留白給 icon-halo 白邊
+  ctx.beginPath();
+  ctx.moveTo(m, pad);          // 上
+  ctx.lineTo(size - pad, m);   // 右
+  ctx.lineTo(m, size - pad);   // 下
+  ctx.lineTo(pad, m);          // 左
+  ctx.closePath();
+  ctx.fill();
+  map.addImage(id, ctx.getImageData(0, 0, size, size), { sdf: true, pixelRatio: 2 });
 }
 
 /**

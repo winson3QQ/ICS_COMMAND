@@ -221,6 +221,18 @@ describe('C1-F commander modules', () => {
     }
   });
 
+  test('p1_10d_event_visual_diamond_severity_pulse', async () => {
+    // P1-10d 視覺：事件 ◆ diamond（NAPSG hazard）+ severity NAPSG 色 token + critical 脈動。
+    const mapSrc = file('static/js/map.js');
+    expect(file('static/css/ds-tokens.css')).toMatch(/--severity-critical:\s*#FF181E/i);  // NAPSG Red token
+    expect(mapSrc).toMatch(/critical: '#FF181E'/);            // _SEV_COLORS 採 NAPSG 色
+    expect(mapSrc).toMatch(/id: 'zones-event'/);             // 事件 diamond 層
+    expect(mapSrc).toMatch(/'icon-image': 'zone-diamond'/);
+    expect(mapSrc).toMatch(/id: 'zones-crit-pulse'/);        // critical 脈動層
+    expect(mapSrc).toMatch(/bakeDiamondSdf\(map, 'zone-diamond'\)/);
+    expect(file('static/js/map/entity_layer.js')).toMatch(/export function bakeDiamondSdf/);
+  });
+
   test('reloadMapConfig_refetches_after_login_401', async () => {
     // Bug：boot（登入前）GET /api/map_config 回 401 → _mapConfig=null → 地圖空白，
     // 每次登入要 cmd-shift-R。修法：登入後 onEnterDashboard 呼叫 reloadMapConfig 重抓。
@@ -500,12 +512,11 @@ describe('C1-F commander modules', () => {
     expect(mapSource).toMatch(/async function _evPopupSubmit\(typeKey, ctx\) {\s+if \(!canCreateEvents\(\)\) return;/);
     expect(wsSource).toMatch(/canCreateEvents/);
     expect(wsSource).toMatch(/canUseRealModeControls/);
-    // P1-10b code-review fix：_renderZones 內事件 zone abbr 對映必須以 zone.node_type
-    // 為 key 查 _NAPSG_GROUP_ABBR，不能用 _EVENT_TYPES[zone.event_code]（event_code
-    // 是 server-generated 'EV-MMDD-NNN'，不是 _EVENT_TYPES 的 type-slug key）。
-    expect(mapSource).toMatch(
-      /_NAPSG_GROUP_ABBR\[zone\.node_type\]\s*\|\|\s*_NODE_ABBR\[zone\.node_type\]/,
-    );
+    // P1-10d 事件資料模型：事件 marker abbr 用「事件型別自己的 abbr」（_EVENT_TYPES[evType]?.abbr,
+    // evType=ev.event_type 的 type-slug），同群組事件才分得出；orphan/查無型別退群組 abbr；
+    // 節點用 _NODE_ABBR。仍**不可**用 zone.event_code 當 _EVENT_TYPES key（server-gen 'EV-MMDD-NNN'，非 slug）。
+    expect(mapSource).toMatch(/_EVENT_TYPES\[evType\]\?\.abbr/);
+    expect(mapSource).toMatch(/_NODE_ABBR\[zone\.node_type\]/);
     expect(mapSource).not.toMatch(/_EVENT_TYPES\[zone\.event_code\]/);
   });
 

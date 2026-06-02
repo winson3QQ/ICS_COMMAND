@@ -45,6 +45,7 @@ import {
   copEntityToEventZone,
   bakeTextSdf,
   bakeArrowSdf,
+  bakeDiamondSdf,
 } from './map/entity_layer.js';
 import { DrawPreview } from './map/draw_tools.js';
 import { LabelMarkerManager } from './map/label_markers.js';
@@ -130,29 +131,31 @@ const _PERM_NODES = [
   { id: 'node_security', label: '安全組', node_type: 'security', icon: 'pin' },
 ];
 
+// 內建 fallback（runtime SoT = /api/event_taxonomy，由 applyEventTaxonomy 覆蓋）。
+// **必含 abbr** —— marker 字 + SDF bake 都讀它；缺 abbr 會讓事件菱形無字（review #70 HIGH）。
 const _EVENT_TYPES = {
-  explosive: { label: '疑似爆裂物', group: 'security', severity: 'critical' },
-  drone: { label: '無人機威脅', group: 'security', severity: 'critical' },
-  violent: { label: '暴力事件', group: 'security', severity: 'critical' },
-  unknown_person: { label: '不明人士', group: 'security', severity: 'warning' },
-  perimeter: { label: '管制區異常', group: 'security', severity: 'warning' },
-  crowd: { label: '秩序問題', group: 'security', severity: 'warning' },
-  rescue: { label: '受困救援', group: 'rescue', severity: 'warning' },
-  qrf: { label: 'QRF 出動', group: 'rescue', severity: 'warning' },
-  mci: { label: '大量傷亡', group: 'medical', severity: 'critical' },
-  emergency: { label: '緊急病症', group: 'medical', severity: 'critical' },
-  infectious: { label: '傳染疑慮', group: 'medical', severity: 'warning' },
-  capacity: { label: '量能超載', group: 'care', severity: 'warning' },
-  isolation: { label: '隔離事件', group: 'care', severity: 'warning' },
-  person_need: { label: '人員狀況', group: 'care', severity: 'info' },
-  comm_fail: { label: '通訊異常', group: 'infra', severity: 'warning' },
-  facility: { label: '設施異常', group: 'infra', severity: 'info' },
-  equipment: { label: '設備故障', group: 'infra', severity: 'info' },
-  evacuation: { label: '撤離', group: 'ops', severity: 'warning' },
-  resource: { label: '資源調度', group: 'ops', severity: 'info' },
-  situation: { label: '現場變化', group: 'ops', severity: 'info' },
-  hazard: { label: '危害回報', group: 'ops', severity: 'info' },
-  other: { label: '其他', group: 'ops', severity: 'info' },
+  explosive: { label: '疑似爆裂物', group: 'security', severity: 'critical', abbr: '爆' },
+  drone: { label: '無人機威脅', group: 'security', severity: 'critical', abbr: '機' },
+  violent: { label: '暴力事件', group: 'security', severity: 'critical', abbr: '暴' },
+  unknown_person: { label: '不明人士', group: 'security', severity: 'warning', abbr: '人' },
+  perimeter: { label: '管制區異常', group: 'security', severity: 'warning', abbr: '域' },
+  crowd: { label: '秩序問題', group: 'security', severity: 'warning', abbr: '眾' },
+  rescue: { label: '受困救援', group: 'rescue', severity: 'warning', abbr: '救' },
+  qrf: { label: 'QRF 出動', group: 'rescue', severity: 'warning', abbr: 'QR' },
+  mci: { label: '大量傷亡', group: 'medical', severity: 'critical', abbr: 'MCI' },
+  emergency: { label: '緊急病症', group: 'medical', severity: 'critical', abbr: '急' },
+  infectious: { label: '傳染疑慮', group: 'medical', severity: 'warning', abbr: '疫' },
+  capacity: { label: '量能超載', group: 'care', severity: 'warning', abbr: '滿' },
+  isolation: { label: '隔離事件', group: 'care', severity: 'warning', abbr: '隔' },
+  person_need: { label: '人員狀況', group: 'care', severity: 'info', abbr: '護' },
+  comm_fail: { label: '通訊異常', group: 'infra', severity: 'warning', abbr: '訊' },
+  facility: { label: '設施異常', group: 'infra', severity: 'info', abbr: '設' },
+  equipment: { label: '設備故障', group: 'infra', severity: 'info', abbr: '器' },
+  evacuation: { label: '撤離', group: 'ops', severity: 'warning', abbr: '疏' },
+  resource: { label: '資源調度', group: 'ops', severity: 'info', abbr: '物' },
+  situation: { label: '現場變化', group: 'ops', severity: 'info', abbr: '況' },
+  hazard: { label: '危害回報', group: 'ops', severity: 'info', abbr: '危' },
+  other: { label: '其他', group: 'ops', severity: 'info', abbr: '他' },
 };
 
 const _EVENT_GROUPS = {
@@ -180,13 +183,33 @@ export function applyEventTaxonomy(tax) {
   for (const g of tax.groups) {
     if (g && g.key && !unsafe(g.key)) _EVENT_GROUPS[g.key] = g.label;
   }
+  // taxonomy 變更後新 abbr 需 bake（review #70 HIGH：否則 marker 無字）。idempotent；
+  // map 未就緒則 defer 到 load。bake 在 marker render 前完成（onEnterDashboard 序 + reloadMapConfig）。
+  const _m = _getMap();
+  if (_m) { if (_m.isStyleLoaded()) _bakeAbbrs(_m); else _m.once('load', () => _bakeAbbrs(_m)); }
   return true;
+}
+
+// P1-10d：bake 節點 abbr + group abbr(fallback) + 所有事件型別 abbr（taxonomy 動態）。
+// 讓事件 marker 顯示各自型別字（爆/機/QR/MCI…）。可重複呼叫（bakeTextSdf 內 hasImage 去重），
+// 故 taxonomy 變更（#66 admin 編輯）後再呼叫即補 bake 新字。多字元由 bakeTextSdf 自動縮放。
+function _bakeAbbrs(map) {
+  if (!map) return;
+  const set = new Set([
+    ...Object.values(_NODE_ABBR),
+    ...Object.values(_NAPSG_GROUP_ABBR),
+    ...Object.values(_EVENT_TYPES).map((t) => t && t.abbr).filter(Boolean),
+  ]);
+  bakeTextSdf(map, 'napsg-abbr-', [...set]);
 }
 
 const _NAPSG_GROUP_ABBR = { security: '安', rescue: '救', medical: '醫', care: '護', infra: '設', ops: '行' };
 const _NODE_ABBR = { shelter: '收', medical: '醫', forward: '前', security: '安', command: '指' };
 const _NODE_COLORS = { shelter: '#f0883e', medical: '#e05555', forward: '#58a6ff', security: '#e3b341', command: '#8b949e' };
-const _SEV_COLORS = { critical: '#e05555', warning: '#e3b341', info: '#3a4149' };
+// P1-10d：severity 色採 NAPSG Incident Symbology 標準 hex（對齊 ds-tokens --severity-*）。
+// JS 端 canvas/MapLibre paint 需字面值，無法直接 var()，故與 ds-tokens 同步維護（見
+// docs/design/event-symbology-mapping.md）。critical Red / warning Orange / info Blue。
+const _SEV_COLORS = { critical: '#FF181E', warning: '#FF8918', info: '#237ACF' };
 const _RAG_COLORS = { ok: '#3fb950', warn: '#e3b341', crit: '#f85149' };
 
 const POLY_TYPES = {
@@ -945,8 +968,9 @@ function _ensureEntityLayers() {
   // P1-10b 步驟 7 階段 2/3a：bake SDF icons（zone abbr 字 + arrow 三角形）
   // 必須在新 EntityLayer 建 symbol layer 之前 addImage，否則 layer 找不到 icon-image。
   // 不重複 bake — bakeTextSdf/bakeArrowSdf 內部 hasImage 判斷。
-  bakeTextSdf(map, 'napsg-abbr-', ['收', '醫', '指', '前', '安', '救', '護', '設', '行']);
+  _bakeAbbrs(map);
   bakeArrowSdf(map, 'route-arrow');
+  bakeDiamondSdf(map, 'zone-diamond');  // P1-10d：事件 ◆ hazard 形狀
 
   // Routes — line（solid/dash 拆兩 layer）+ arrow symbol-on-line（step 7 階段 3a）
   _routeLayer = new EntityLayer(map, 'routes', {
@@ -1020,6 +1044,22 @@ function _ensureEntityLayers() {
   // 用 ['==', ..., true] 確保通過 style 驗證。
   _zoneLayer = new EntityLayer(map, 'zones', {
     layers: [
+      // P1-10d：critical 事件脈動光暈（獨立層，全域 RAF 動 radius/opacity；
+      // 與既有 zones-halo 的 highlighted/feature-state 邏輯不衝突）。draw 最底。
+      {
+        id: 'zones-crit-pulse', type: 'circle',
+        filter: ['all',
+          ['==', ['get', 'severity'], 'critical'],
+          ['==', ['coalesce', ['get', 'is_event'], false], true],
+        ],
+        paint: {
+          'circle-color': ['get', 'color'],
+          'circle-radius': 18,       // RAF 每幀覆寫
+          'circle-opacity': 0,       // 初始 0；_updateCritPulse 有 critical 時才由 RAF 拉起
+          'circle-blur': 0.5,
+          'circle-opacity-transition': { duration: 0 },
+        },
+      },
       // halo（給 critical entity / right-panel 長按 highlight 用）
       // 三狀態優先序：
       //   dimmed=true   → halo 隱（focus 模式下其他 zone 整個暗，halo 跟著消）
@@ -1060,9 +1100,11 @@ function _ensureEntityLayers() {
       // **stroke 也要 0.15** — 否則白圈仍然顯眼（issue #24 dogfood UX 反饋）。
       {
         id: 'zones-base', type: 'circle',
+        // P1-10d：只有節點用圓；事件（hazard）改走 ◆ diamond（zones-event 層）。
+        filter: ['!=', ['coalesce', ['get', 'is_event'], false], true],
         paint: {
           'circle-radius': [
-            'case', ['==', ['coalesce', ['get', 'is_event'], false], true], 13, 14,
+            'case', ['==', ['coalesce', ['get', 'is_event'], false], true], 13, 9,
           ],
           'circle-color': ['get', 'color'],
           'circle-stroke-color': '#ffffff',
@@ -1077,6 +1119,32 @@ function _ensureEntityLayers() {
             ['boolean', ['feature-state', 'dimmed'], false], 0.15,
             ['==', ['coalesce', ['get', 'stale'], false], true], 0.55,
             0.92,
+          ],
+        },
+      },
+      // P1-10d：事件 ◆ diamond（NAPSG hazard 形狀）。icon-color = severity 色，
+      // icon-halo 白邊取代 circle 的 white stroke。只 render is_event=true。
+      {
+        id: 'zones-event', type: 'symbol',
+        filter: ['==', ['coalesce', ['get', 'is_event'], false], true],
+        layout: {
+          'icon-image': 'zone-diamond',
+          'icon-size': 1.1,   // 事件(hazard)為焦點：比節點圓更醒目（dogfood：原 0.62 太小；含 SDF halo pad）
+          'icon-allow-overlap': true,
+          'icon-ignore-placement': true,
+          'symbol-sort-key': [
+            'case', ['==', ['get', 'severity'], 'critical'], 0, 1,  // critical 優先放置
+          ],
+        },
+        paint: {
+          'icon-color': ['get', 'color'],
+          'icon-halo-color': '#ffffff',
+          'icon-halo-width': 1.8,
+          'icon-opacity': [
+            'case',
+            ['boolean', ['feature-state', 'dimmed'], false], 0.15,
+            ['==', ['coalesce', ['get', 'stale'], false], true], 0.55,
+            0.95,
           ],
         },
       },
@@ -1201,7 +1269,41 @@ function _ensureEntityLayers() {
     _unhighlightEvent();
   });
 
+  _updateCritPulse();
   _entityLayersInstalled = true;
+}
+
+// P1-10d：critical 事件脈動。單一全域 RAF，每幀對 zones-crit-pulse 層下 2 個 setPaintProperty
+// （sin wave 動 radius/opacity）。不用 @keyframes（WebGL 層非 DOM）、不用 per-feature
+// feature-state（避免與 highlight 衝突）。
+//
+// review #70 修：RAF 只在「有 critical 事件 且 非 focus(dim) 模式」時跑，且 tab 隱藏時跳過
+// 重繪——否則永久 RAF 會每幀強制全圖 GL 重繪（Pi 不友善），且 focus 模式下非 target 的
+// critical 仍全亮（與 dim 矛盾）。
+let _critPulseRaf = null;
+let _critPulseHas = false;    // 畫面上有 critical 事件
+let _critPulseFocus = false;  // focus（右側長按 dim）模式中
+function _updateCritPulse() {
+  const map = _getMap();
+  if (!map) return;
+  const want = _critPulseHas && !_critPulseFocus;
+  if (want && !_critPulseRaf && typeof requestAnimationFrame !== 'undefined') {
+    const loop = () => {
+      if (!map.getLayer('zones-crit-pulse')) { _critPulseRaf = null; return; }
+      if (typeof document !== 'undefined' && document.hidden) {
+        _critPulseRaf = requestAnimationFrame(loop); return;  // tab 隱藏不強制重繪
+      }
+      const k = (Math.sin(performance.now() / 1000 * 3.2) + 1) / 2;  // 0..1
+      map.setPaintProperty('zones-crit-pulse', 'circle-radius', 16 + k * 11);
+      map.setPaintProperty('zones-crit-pulse', 'circle-opacity', 0.10 + k * 0.22);
+      _critPulseRaf = requestAnimationFrame(loop);
+    };
+    _critPulseRaf = requestAnimationFrame(loop);
+  } else if (!want && _critPulseRaf) {
+    cancelAnimationFrame(_critPulseRaf);
+    _critPulseRaf = null;
+    if (map.getLayer('zones-crit-pulse')) map.setPaintProperty('zones-crit-pulse', 'circle-opacity', 0);
+  }
 }
 
 /**
@@ -1292,6 +1394,9 @@ function _highlightEvent(eventId) {
   }
   // (2) 啟動 pulse
   _startHighlightPulse(map, target.id);
+  // focus 模式：暫停 critical 脈動（否則非 target 的 critical 仍全亮，與 dim 矛盾，review #70）
+  _critPulseFocus = true;
+  _updateCritPulse();
 }
 
 function _unhighlightEvent() {
@@ -1304,6 +1409,9 @@ function _unhighlightEvent() {
     map.setFeatureState({ source: 'zones', id: z.id }, { dimmed: false, highlighted: false });
   }
   _eventDragMgr?.undimAll();
+  // 離開 focus 模式：恢復 critical 脈動（若畫面有 critical 事件）
+  _critPulseFocus = false;
+  _updateCritPulse();
 }
 
 
@@ -1521,11 +1629,12 @@ function _renderZones(opts = {}) {
     const isEvent = !!(zone.event_id || zone.event_code);
     let severity = 'warning';
     let isOrphan = false;
+    let evType = null;
     if (isEvent) {
       const ev = (data.events || []).find((item) => item.id === zone.event_id);
       if (!ev) { severity = 'info'; isOrphan = true; }
       else if (['resolved', 'closed'].includes(ev.status)) continue;
-      else severity = ev.severity || 'warning';
+      else { severity = ev.severity || 'warning'; evType = ev.event_type; }
     }
 
     // 顏色解析：事件 → SEV；節點 → NODE base，shelter/medical 受 RAG 蓋過
@@ -1552,23 +1661,22 @@ function _renderZones(opts = {}) {
       if (linkLevel === 'crit' || linkLevel === 'lkp') stale = true;
     }
 
-    // NAPSG abbr 對映：事件 zone + 節點 zone 都走 zone.node_type。
-    // 事件 zone 的 node_type 在 _evPopupSubmit 被設成 evDef.group（'rescue'/'security'/
-    // 'medical'/'care'/'infra'/'ops'），與 _NAPSG_GROUP_ABBR 的 key 直接對齊；節點 zone
-    // 的 node_type 是 'shelter'/'medical'/'command'/'forward'/'security'，與 _NODE_ABBR
-    // 的 key 對齊。先查 group abbr（事件），找不到再退到 node abbr（節點），與
-    // legacy _napsgIcon (line ~868) 行為一致。
-    //
-    // ⚠️ 修 step 7 port 引入的 regression：原本誤用 event_code（server-generated
-    // 形如 'EV-0527-001'）當 key 查 type-slug 字典 _EVENT_TYPES，永遠 undefined，
-    // 導致 rescue / care / infra / ops 事件都 fallthrough 到 '?'，MapLibre 找不到
-    // 'napsg-abbr-?' SDF 影像（commander_modules.test.js SoT 鎖住正解）。
-    const abbr = _NAPSG_GROUP_ABBR[zone.node_type] || _NODE_ABBR[zone.node_type] || '?';
+    // NAPSG abbr 對映（P1-10d 事件資料模型）：
+    // **事件** marker 字用「**事件型別自己的 abbr**」（爆/機/暴…，來自 taxonomy _EVENT_TYPES,
+    // runtime SoT）——不再用群組 abbr，否則同群組事件圖上分不出（見
+    // docs/design/event-symbology-mapping.md：符號講 WHAT）。orphan / 查不到型別 → 退群組 abbr。
+    // **節點** 仍用 _NODE_ABBR（收/醫/指/前/安）。NAPSG 象形 glyph 為後續正式版（PR-2b-3）。
+    const abbr = isEvent
+      ? ((evType && _EVENT_TYPES[evType]?.abbr) || _NAPSG_GROUP_ABBR[zone.node_type] || '?')
+      : (_NODE_ABBR[zone.node_type] || '?');
 
     const feat = zoneToNodeFeature(zone, { color, abbr, severity, stale, is_orphan: isOrphan });
     if (feat) features.push(feat);
   }
   _zoneLayer.update(features);
+  // P1-10d：只有 critical 事件會有 severity==='critical'（節點預設 'warning'）→ 用來 gate 脈動 RAF。
+  _critPulseHas = features.some((f) => f.properties && f.properties.severity === 'critical');
+  _updateCritPulse();
   // 帶入避免重複全掃；事件隱藏時不掛拖曳 handle
   if (!opts.skipHandleSync) _syncEventDragHandles(showEvents ? rendered.eventZones : []);
 }
