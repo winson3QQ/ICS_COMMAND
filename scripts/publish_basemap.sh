@@ -33,7 +33,10 @@ done
 
 bm_load
 TAG="basemap-$VERSION"
-ASSET="taiwan-$VERSION.pmtiles"
+# 版本放在 release tag（basemap-$VERSION），asset 名沿用檔案 basename。
+# gh release 的 asset name = 上傳檔 basename（#label 只改顯示、不改 name / 不影響 --pattern），
+# 故 asset 必須叫 taiwan.pmtiles，否則 provision 的 --pattern 對不上（實測踩到）。
+ASSET="taiwan.pmtiles"
 SHA="$(lc "$(sha256_of "$FILE")")"
 SIZE="$(wc -c < "$FILE" | tr -d ' ')"
 echo "[資訊] $ASSET  sha256=$SHA  size=$SIZE"

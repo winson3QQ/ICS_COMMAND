@@ -6,7 +6,7 @@
   "sha256": "2c57a5b2a4ecaf8630e6ad00ec5c3eea0e638bdf56d08e9a411b6e78c9b34659",
   "size_bytes": 246931870,
   "release_tag": "basemap-20260601",
-  "release_asset": "taiwan-20260601.pmtiles",
+  "release_asset": "taiwan.pmtiles",
   "sources": {
     "github_repo": "winson3QQ/ICS_COMMAND",
     "codeberg_repo": "winson3QQ/ICS_COMMAND",
