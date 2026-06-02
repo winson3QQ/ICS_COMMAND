@@ -121,11 +121,28 @@
 - **⚠️ 擴充代價**：自訂符號**只在本系統有完整語意**（外部無我們字典看不懂）→ 故每個事件（含 ics）都掛
   **最近的標準 `cot_type`**，外部系統至少能 degrade 畫出近似符號（如 `a-u-G` 不明地面）。
 
-## 6. 視覺顯示模型（依使用情境）+ 事件建立流程（2026-06-02 落定方向）
+## 6. 視覺顯示模型（依使用情境）+ 事件建立流程（2026-06-02 ✅ LOCKED）
 
 > **修正**：原 §5 的「Path 1（全 NAPSG ◆ + severity）」**砍掉了敵我/維度** —— 對「民防含軍事支援任務」不行
 > （敵無人機 vs 友 QRF 在地圖上會長一樣，敵我只活在 `cot_type`、要開 ATAK 才看得到）。故修正為
 > **affiliation-aware**：敵我用 2525 框、類型用 NAPSG 象形、severity 用 halo。
+
+### ✅ LOCKED 決策（2026-06-02，三模型×極端案例實渲染對照後定案）
+
+經「現狀（單色+剝框）/ NAPSG verbatim（原框原色）/ 2525 affiliation」三模型 × 極端案例（敵我區分、顏色失義、撞號、混場一致性）本地實渲染對照後**定案**。後續 audit / glyph 擴充 / [#66](https://github.com/winson3QQ/ICS_COMMAND/issues/66) C2 一律以此為準：
+
+1. **民事 D/E → 現狀模型「單色 + 剝框」**：我們的 ◆(hazard) / ▲(public-alert) 框 + severity 單一色 + 框內**白色**象形。**NAPSG = 象形來源，非渲染模型**——只借框內象形，**剝掉**其原生框與原生色。
+2. **敵我 A/B/C → 2525 affiliation 框**（milsymbol 吃 `cot_type` 生，**P2-05**）；落地前 A/B/C 可暫用 NAPSG + severity 過渡。
+3. **剝框是「轉接頭」不是妥協**：被剝的（NAPSG 原生框＋原生色）正是我們不要的——框＝敵我、色＝severity，由我們權威控制；剝框讓 NAPSG 象形服貼 2525 文法底盤、與 A/B/C 視覺一致（同一套「框＋色＋框內象形」文法）。
+
+**為何不採 verbatim**：對接靠 `cot_type`（資料）不靠像素 → verbatim 視覺對互通**零貢獻**；且會打掉「severity 獨佔顏色通道」、與 2525 框混場（兩套文法、要學兩套圖例）。**唯一真實取捨 = 靠顏色才成立的符號 → 退 abbr**。
+
+**NAPSG 象形擴充 audit 合格標準**（本模型直接推論；供 §3 重評與 glyph 擴充判定）：
+- 🟢 **線稿 / 剪影型**，剝框上白在 ~40px 仍可辨（爆炸 / 結構 / 塔 / 火 / 水 / 生物 trefoil…）→ 可配 glyph
+- 🟡 細節多或半依賴色 → 標「待視覺 QA」
+- 🔴 **靠色才成立**（hazmat 色碼牌）/ **單位·職位圖**（NIMS_Positions、Resources，違反「符號只講 WHAT」）/ 無乾淨對應 → 維持 abbr
+
+> 參考工具：完整 NAPSG 庫（1301 unique 符號）瀏覽器見 `command-dashboard/static/napsg_browser.html`，audit 逐型別對照時用它當眼睛。
 
 ### 統一原則（三通道不互搶）
 - **敵我（affiliation）→ 外框形狀**（2525：友=矩形 / 敵=菱形 / 不明=四葉 / 中立=方或圓）
@@ -168,10 +185,10 @@ A/B/C（有敵我）走 2525 框（milsymbol 吃 `cot_type` 生，P2-05）；D/E
 
 UI：EventPopup 維持「分類 → 型別」下鑽，僅對「敵我可變」型別多一條 affiliation segment；**95% 事件步驟不變**。
 
-## 7. 待決策
+## 7. 待決策（殘餘子細項；渲染模型本身已於 §6 ✅ LOCKED）
 
 1. **哪些型別屬「敵我可變」**（需 affiliation segment）：初判 drone / unknown_person /（可疑載具）；其餘固定。待逐一確認。
-2. **milsymbol（2525 框）整合時機**：A/B/C 的實作主力，排 P2-05；在那之前 A/B/C 可暫用 NAPSG + severity 過渡。
+2. ✅ **milsymbol（2525 框）整合時機 = P2-05**（§6 LOCKED 確認）：A/B/C 的實作主力；落地前 A/B/C 暫用 NAPSG + severity 過渡。
 3. **是否新增 `tw_ref` 欄** + 是否抓 NFA 疏散避難圖例（收容/疏散在地對齊）。
 4. **severity 是否補 Purple=Extreme**（NAPSG 7 級我們用 3）。
 

@@ -12,6 +12,8 @@
 | 可編輯範圍 | **事件 + 群組全 CRUD**（admin）→ taxonomy 需資料化 | locked → #66 |
 | severity 級別 | **固定 3 級**（critical/warning/info），對齊 NAPSG 色 + token；只可指派不可新增級別 | locked |
 | 排程 | **地基（資料化）+ 視覺（P1-10d）先；編輯器另開 #66** | locked |
+| 渲染模型 | **民事 D/E = 現狀「單色＋剝框」**（◆/▲ 框＋severity 色＋框內白色象形）；**敵我 A/B/C = 2525 框**（milsymbol，P2-05）。不採 NAPSG verbatim（互通靠 `cot_type` 非像素；verbatim 打掉 severity 色通道＋混兩套文法）。詳見 [`classification-crosswalk.md`](classification-crosswalk.md) §6 LOCKED | locked |
+| NAPSG 角色 | **象形「來源」，非渲染模型**：只借框內象形、剝原生框與色（剝框＝服貼 2525 底盤的轉接頭，非妥協）。唯一取捨＝靠色才成立的符號退 abbr | locked |
 
 ## NAPSG 框架（v4.0，已查證）
 

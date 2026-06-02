@@ -6,9 +6,18 @@
 - **體系對照（不重發明）**：NAPSG / 我們的事件 / CoT-2525 / 台灣 NCDR-NFA 是**四種不同切法**，不合成
   單一樹；做法＝「**我們的事件 taxonomy 為主幹 + 掛各標準座標（Rosetta 對照）**」。
 - **視覺 = affiliation-aware（依使用情境）**：敵我 → **2525 框**、事件類型 → **NAPSG 象形**、
-  severity → **halo**、對接 → **`cot_type`**。情境 A–E 由 `cot_type` 前綴自動分流（`a-h`/`a-f`/`a-u`
+  severity → **halo/色**、對接 → **`cot_type`**。情境 A–E 由 `cot_type` 前綴自動分流（`a-h`/`a-f`/`a-u`
   走 2525 框；`b-*` 民事走 NAPSG ◆/▲）。**原「全 NAPSG ◆+severity」(Path 1) 已修正** —— 它砍掉敵我，
   「民防含軍事支援任務」不行（敵無人機 vs 友 QRF 會長一樣）。
+- **✅ 渲染模型 LOCKED（2026-06-02，三模型×極端案例實渲染對照後）**：**民事 D/E = 現狀「單色＋剝框」**
+  （我們的 ◆/▲ 框＋severity 色＋框內白色象形）；**敵我 A/B/C = 2525 框**（milsymbol，P2-05）。
+  **NAPSG = 象形「來源」非渲染模型**——只借框內象形、剝原生框與色。**剝框＝轉接頭非妥協**：被剝的
+  （原生框＋色）正是我們不要的（框＝敵我、色＝severity 自控）。**不採 verbatim**：互通靠 `cot_type`
+  非像素 → verbatim 視覺零互通貢獻，且打掉 severity 色通道＋混兩套文法。**唯一取捨＝靠色才成立的符號退 abbr**。
+  **glyph 擴充 audit 合格標準**：🟢線稿可單色 / 🟡待視覺QA / 🔴色依賴 or 單位職位圖(NIMS/Resources) or 無對應。
+- **NAPSG 完整庫 = 1301 unique 符號**（自 14356 PNG 去重，11 類別；遠超 v4.0 Guideline PDF 的範例）。
+  瀏覽器工具 `command-dashboard/static/napsg_browser.html`（線上引用 S3，CC BY 4.0）= audit 逐型別對照的眼睛。
+  ⚠ 原 crosswalk §3「🔴×6」是對 PDF 評的、低估了；待用此標準＋瀏覽器重評。
 - **建立流程 = type-first**（非 scenario-first）：operator 選「事件型別」（高壓下最快）；**敵我是正交屬性**，
   多由型別自動帶，少數「會變」型別（drone / unknown_person / 可疑載具）才問 友/敵/不明。**不重組 taxonomy。**
 - **字典可擴充**：2525（SIDC + 通用框架）/ NAPSG（形狀框架、內部象形可換）皆可本地擴充；taxonomy
@@ -25,10 +34,12 @@
 - **#64 硬化 1+2+4**（dead exempt 移除 / pmtiles 穿越 resolve() 縱深 / vendored lib SHA CI 驗，#80）；
   **#64-3 CSP enforce → 留 P1-10h**。
 
-## 待決策 / 可接續（crosswalk §7）
-- 哪些型別屬「敵我可變」（需 affiliation segment）；**milsymbol（2525 框）整合時機 → P2-05**；
-  是否新增 `tw_ref` 欄 + 抓 NFA 疏散避難圖例；severity 是否補 Purple=Extreme。
-- 下一個可做：**C2 編輯器** / **P1-10h CSP**（含 #64-3）/ milsymbol affiliation 框。
+## 待決策 / 可接續（crosswalk §7；渲染模型本身已 LOCKED）
+- 殘餘子細項：哪些型別「敵我可變」（需 affiliation segment）；是否新增 `tw_ref` 欄 + 抓 NFA 疏散避難圖例；
+  severity 是否補 Purple=Extreme。（milsymbol→P2-05 已隨 LOCKED 確認。）
+- **下一步（模型已 lock 後的直球）**：用 LOCKED 的 audit 標準（🟢/🟡/🔴）＋ `napsg_browser.html`
+  跑 **NAPSG×22 型別 audit** → 修正 crosswalk §3、給「可加 N 個 glyph」真實數字 → 再定 glyph 擴充 / #66 C2 範圍。
+- 其他可做：**#66 C2-新增**（後端已放行、純前端）/ **P1-10h CSP**（含 #64-3）/ **P1-16** placement UI（#40）。
 
 ## 環境 quirk（此 Windows 開發機；Mac 為主力機則多無此問題）
 - `doc_sync_check` 要 `PYTHONUTF8=1 python scripts/doc_sync_check.py`（否則 cp950 編 ✓ U+2713 → exit1 假失敗）。
