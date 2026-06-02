@@ -257,6 +257,50 @@ export function bakeDiamondSdf(map, id, opts = {}) {
 }
 
 /**
+ * SVG → 白色 RGBA icon（**非 SDF**）— P1-10d 事件 NAPSG 象形 glyph。
+ *
+ * 為何非 SDF：象形固定白色（貼在 severity 色 ◆ 上），不需 icon-color tint；且 SDF shader
+ * 以 alpha 當距離場會侵蝕細線（星爆光芒、訊號電波）。直接白色 RGBA 最 crisp、與 pilot 一致。
+ * 與共層的 abbr（SDF）混用無礙：icon-color 只作用在 SDF image，對非 SDF glyph 無效。
+ *
+ * SVG raster 為非同步（Image.onload）→ 回傳 Promise<boolean>（true=新 bake 完成）。
+ * caller 於 Promise.all 後重繪一次，讓 _renderZones 重算 fg（glyph 取代 abbr）。
+ *
+ * @param {maplibregl.Map} map
+ * @param {string} id - addImage id（例 'napsg-glyph-explosive'）
+ * @param {string} svgStr - 完整 SVG 字串（需含 fill 與 width/height，見 napsg_glyphs.js）
+ * @param {object} opts - { size: 48 }（canvas px；pixelRatio 2 → 邏輯 size/2）
+ * @returns {Promise<boolean>}
+ */
+export function bakeSvgIcon(map, id, svgStr, opts = {}) {
+  if (!map || !svgStr) return Promise.resolve(false);
+  if (map.hasImage?.(id)) return Promise.resolve(false);
+  const size = opts.size ?? 48;
+  return new Promise((resolve) => {
+    const img = document.createElement('img');
+    img.onload = () => {
+      try {
+        if (map.hasImage?.(id)) { resolve(false); return; }  // race：重入時別重複 add
+        const canvas = document.createElement('canvas');
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, size, size);
+        ctx.drawImage(img, 0, 0, size, size);
+        map.addImage(id, ctx.getImageData(0, 0, size, size), { pixelRatio: 2 });
+        resolve(true);
+      } catch {
+        resolve(false);
+      }
+    };
+    // onerror 才會被 CSP img-src 不含 data: / SVG 解析失敗觸發 → 退 abbr。
+    // 加 warn 讓「靜默退回 abbr」可被 debug（review #75 MED；現行 CSP 已含 data: blob:）。
+    img.onerror = () => { console.warn('[entity_layer] NAPSG glyph SVG raster 失敗:', id); resolve(false); };
+    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgStr);
+  });
+}
+
+/**
  * 把 zone-shaped object（cop_entities 或 map_config.maps.outdoor.zones）
  * 轉成「節點圖示」用 GeoJSON Point Feature。
  *
@@ -287,8 +331,24 @@ export function zoneToNodeFeature(zone, opts = {}) {
       is_orphan: !!opts.is_orphan,
       severity: opts.severity ?? 'info',
       stale: !!opts.stale,
+      // P1-10d 正式 icon：前景圖示 id（有 NAPSG 象形用 glyph，否則 abbr）+ 是否為 glyph（控 icon-size）。
+      fg: opts.fg ?? ('napsg-abbr-' + (opts.abbr ?? '?')),
+      fg_glyph: !!opts.fg_glyph,
     },
   };
+}
+
+/**
+ * 決定事件/節點 marker 的前景圖示（NAPSG 象形 vs abbr 字）。純函式，便於單測。
+ * 象形屬「細節層」，僅「有 vendored NAPSG glyph 且已 bake」的事件型別用；其餘退 abbr。
+ * @param {{isEvent:boolean, evType:?string, abbr:string, hasGlyph:boolean}} a
+ * @returns {{fg:string, fg_glyph:boolean}}
+ */
+export function pickForeground({ isEvent, evType, abbr, hasGlyph }) {
+  if (isEvent && evType && hasGlyph) {
+    return { fg: 'napsg-glyph-' + evType, fg_glyph: true };
+  }
+  return { fg: 'napsg-abbr-' + (abbr ?? '?'), fg_glyph: false };
 }
 
 /** 內部：座標 [lat, lng] → [lng, lat]（MapLibre 順序） */

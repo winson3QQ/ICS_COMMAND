@@ -137,10 +137,62 @@
 
 ### 衍生工作（ROADMAP 追蹤）
 
-1. **符號改依 event type（非 group）** — P1-10d 收尾 / PR-2b-3（NAPSG 象形 glyph；中間步可先用事件 abbr）。
+1. **符號改依 event type（非 group）** — ✅ abbr 版（#70）；✅ NAPSG 象形 glyph 第一批 6 個強配（本 PR，見下〈NAPSG 象形 glyph 落地〉）。其餘維持 abbr。
 2. **#66 編輯器：事件類別表 / ICS 組織表分開**（解撞名）。
 3. **右側欄 pivot 分組**（by 類別 / 處理組 / status）— 獨立小 item。
 4. **report / handle → CoT `<detail>`** — P2-04 TAK。
+
+## NAPSG 象形 glyph 落地 — 覆蓋現實 + FEMA/IPAWS 對照（2026-06-02 查證）
+
+> 動機：abbr（爆/機…）已可分辨型別，但「象形比抽象字更快被腦辨識」值得驗。經 pilot 跨機實測 +
+> 掃 NAPSG/DHS-Symbol-Server 全類別代碼後落地。
+
+### marker 尺寸前提（事實）
+MapLibre symbol 用**固定螢幕尺寸**（`icon-size` 常數，不隨 zoom 縮放），事件 ◆ 約 40px 對角。
+**TAK（ATAK/WinTAK）相同**：底層 osmdroid marker 亦固定螢幕尺寸、不隨 zoom 縮放（另有全域 icon 大小設定）。
+故「小尺寸可讀性」是雙方共同前提 → 象形需在 ~40px 下清楚，否則不如 abbr。
+
+### FEMA 體系怎麼定義「事件」（查證結論）
+FEMA 的「事件」分三層，各有歸屬：
+
+| FEMA 概念 | 是什麼 | 符號 | 我們的對應 |
+|---|---|---|---|
+| **IPAWS / EAS event codes** | 公眾警報事件（撤離、龍捲風警報、Civil Danger…，~80 碼）| **▲ triangle** + 內部簡單象形（NAPSG＋DHS GMO＋DHS S&T 共同制定）| 警報軸（design §形狀：▲ alert），如 `evacuation`=GAAN |
+| **NAPSG Incident Symbol Set** | 現場物理危害/事故 | **◆ diamond** hazard | 我們主用，事件 ◆ |
+| **NIMS** | ICS 組織 + 資源 typing | **無地圖符號**（文字/表單）| ICS 內部 ops 軸（回報組/處理組/QRF/資源調度…）|
+
+**關鍵**：對接 TAK 的橋是 **`cot_type`（資料）**，不是視覺象形 —— ATAK 讀 CoT type 就懂「這是爆裂物」。
+故象形純屬「給人看的細節層」。
+
+### 覆蓋現實：NAPSG 乾淨象形只 cover ~8/22
+NAPSG 單色象形集中在**物理危害**（火/爆炸/結構/hazmat/出入口）。我們 22 個事件約一半是
+**ICS 運作概念**（QRF、量能超載、資源調度、現場變化…）—— NAPSG / IPAWS 皆無對應，**FEMA 歸 NIMS**
+（不上符號）。硬配只會誤導 → **採混合**：有標準象形用 glyph，沒有就 abbr。
+
+### 本 PR 落地：6 個強配 glyph（其餘 14 維持 abbr）
+vendored 於 `static/js/map/napsg_glyphs.js`（CC BY 4.0，NAPSG/DHS-Symbol-Server，非中國來源）。
+白色 RGBA（非 SDF；SDF 距離場會侵蝕細線）貼在 severity 色 ◆ 上，框內加大（icon-size 0.62 vs abbr 0.9）。
+
+| 事件型別 | NAPSG 代碼 | 圖樣 | 備註 |
+|---|---|---|---|
+| `explosive` 疑似爆裂物 | FAA Explosion Hazard | 星爆 | — |
+| `comm_fail` 通訊異常 | LEK Transmission Tower | 訊號塔＋電波 | — |
+| `hazard` 危害回報 | MAAN General Hazards | 驚嘆號 ! | — |
+| `evacuation` 撤離 | GAAN Evacuation Immediate（IPAWS）| 跑人 | 剝原紅三角底；viewBox 收緊放大 |
+| `facility` 設施異常 | AAB Structure Damaged（USAR）| 房子 | 剝原黃菱形底 |
+| `rescue` 受困救援 | AAE Victim Detected（USAR）| 「V」| USAR 慣例，邊際（近似字母）|
+
+**退回 abbr（無乾淨對應）**：`infectious`（JAAY 為含字 DOT placard）、`other`（與 hazard 撞驚嘆號）、
+`drone`/`unknown_person`/`emergency`/`capacity`/`isolation`/`person_need`/`equipment`/`resource`/
+`situation`/`violent`/`perimeter`/`crowd`/`qrf`（ICS ops 或 NAPSG 無乾淨象形）。
+
+**選圖機制**：`pickForeground()`（entity_layer.js）—— 事件型別有 vendored glyph **且已 bake** 才用象形，
+否則退 abbr（避免缺圖空白）。新增 glyph 只要在 `napsg_glyphs.js` 補一筆 + 本表登錄。
+
+### 查證來源
+- [FEMA IPAWS Symbology Tip Sheet (tip-36)](https://www.fema.gov/sites/default/files/documents/fema_tip-36-symbology.pdf)（IPAWS event code 符號＝NAPSG＋DHS 共同制定，▲ triangle）
+- [NAPSG Foundation — Symbology](https://www.napsgfoundation.org/resource-tag/symbology/)
+- [osmdroid #1359 — Markers are not resized on Zoom](https://github.com/osmdroid/osmdroid/issues/1359)（ATAK 底層 marker 固定螢幕尺寸佐證）
 
 ## 參考來源
 - [NAPSG Incident Symbology Framework & Guideline v4.0](https://www.napsgfoundation.org/wp-content/uploads/2020/03/NAPSG-Foundation-Incident-Symbol-Guideline_v4.0_03212020.pdf)（US DHS 背書；非中國）
