@@ -121,6 +121,23 @@ describe("_onMessage dispatch", () => {
     await Promise.resolve();
     expect(stream._byUid.size).toBe(0);
   });
+
+  test("exercise_switched op → dispatch document 'exercise:switched'（多 session 即時切場）", () => {
+    // 此 env 無 jsdom，臨時 stub document/CustomEvent 驗 dispatch（用後還原）。
+    const events = [];
+    const prevDoc = globalThis.document;
+    const prevCE = globalThis.CustomEvent;
+    globalThis.CustomEvent = class { constructor(type) { this.type = type; } };
+    globalThis.document = { dispatchEvent: (e) => { events.push(e.type); return true; } };
+    try {
+      const { stream } = makeStream();
+      stream._onMessage({ op: "exercise_switched" });
+      expect(events).toContain("exercise:switched");
+    } finally {
+      globalThis.document = prevDoc;
+      globalThis.CustomEvent = prevCE;
+    }
+  });
 });
 
 // ── REST 寫入 ───────────────────────────────────────────────────────────────

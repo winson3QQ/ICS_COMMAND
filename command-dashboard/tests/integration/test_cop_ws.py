@@ -88,6 +88,22 @@ def test_ws_broadcasts_exercise_switched_on_activate_and_archive(client):
         assert ws.receive_json()["op"] == "exercise_switched"
 
 
+def test_ws_broadcast_reaches_operator_role(client):
+    # 不變式：exercise_switched 廣播必須送達 operator/observer 連線（不只指揮層）。
+    # 守住「operator 以下不即時反應」回歸——根因是修前 operator 無刷新觸發源，broadcast 補上後
+    # 所有角色都該收得到（broadcast_all 不過濾）。
+    from repositories.account_repo import create_account
+    create_account("opws", "1234", "操作員", "", "operator")
+    admin_tok = _login(client)              # admin/1234
+    op_tok = _login(client, "opws", "1234")  # operator
+    h = {"X-Session-Token": admin_tok}
+    ex = client.post("/api/exercises", json={"name": "WS角色", "type": "ttx"}, headers=h).json()
+    with _connect(client, op_tok) as ws:   # operator 連 WS
+        assert ws.receive_json()["op"] == "hello"
+        assert client.post(f"/api/exercises/{ex['id']}/activate", json={}, headers=h).status_code == 200
+        assert ws.receive_json()["op"] == "exercise_switched"  # operator 連線確實收到廣播
+
+
 def test_ws_receives_update_then_delete(client):
     tok = _login(client)
     h = {"X-Session-Token": tok}

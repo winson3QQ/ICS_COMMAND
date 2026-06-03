@@ -129,6 +129,10 @@ def delete_exercise(exercise_id: int) -> dict:
     回傳各表清除筆數。某表無 exercise_id 欄 / 不存在則略過（容錯）。"""
     cleared: dict[str, int] = {}
     with get_conn() as conn:
+        # 防 TOCTOU（router 已 409 擋 active；此處同連線內再確認，避免 race 中清掉剛被啟動的場資料）
+        row = conn.execute("SELECT status FROM exercises WHERE id=?", (exercise_id,)).fetchone()
+        if row is None or row["status"] == "active":
+            return {"skipped": "active_or_missing"}
         for table in _EXERCISE_SCOPED_TABLES:
             try:
                 cur = conn.execute(f"DELETE FROM {table} WHERE exercise_id=?", (exercise_id,))  # nosec B608 — table 名為常數白名單
