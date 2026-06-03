@@ -391,6 +391,11 @@ document.addEventListener('click', function (e) {
       import('./exercises.js').then(m => m.handleExArchive(btn.dataset.id).then(_refreshAfterExerciseSwitch));
       break;
     }
+    case 'exDelete': {
+      if (!canUseRealModeControls()) break;   // 後端 SYSADMIN_ONLY 強制；UI 鈕亦僅 sysadmin 顯示
+      import('./exercises.js').then(m => m.handleExDelete(btn.dataset.id, btn.dataset.name));
+      break;
+    }
     case 'exRefresh': {
       import('./exercises.js').then(m => m.handleExRefresh());
       break;

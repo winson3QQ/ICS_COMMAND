@@ -13,9 +13,14 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 // mock ws.js：注入 authFetch 與角色判斷（exercises.js 由 ws.js re-export 取用）
 const mockAuthFetch = vi.fn();
 let _canManage = true;
+let _isSysadmin = true;
 vi.mock('../../static/js/ws.js', () => ({
   authFetch: (...a) => mockAuthFetch(...a),
   canUseRealModeControls: () => _canManage,
+}));
+// exercises.js 由 auth.js 取 hasAnyRole（刪除鈕 sysadmin-only 判斷）
+vi.mock('../../static/js/auth.js', () => ({
+  hasAnyRole: (...roles) => (roles.includes('sysadmin') ? _isSysadmin : false),
 }));
 
 const HEX_RE = /#[0-9a-fA-F]{3,8}\b/;   // 偵測字面 hex 顏色
@@ -49,6 +54,7 @@ beforeEach(() => {
   globalThis.location = { origin: 'http://127.0.0.1:8000' };
   mockAuthFetch.mockReset();
   _canManage = true;
+  _isSysadmin = true;
   installDom();
 });
 
@@ -157,6 +163,14 @@ describe('API dispatch → 正確 endpoint', () => {
     expect(mockAuthFetch).toHaveBeenCalledWith(
       'http://127.0.0.1:8000/api/exercises/9/archive', { method: 'POST' });
   });
+
+  test('deleteExercise → DELETE /{id}', async () => {
+    mockAuthFetch.mockReturnValueOnce(resp(200, { ok: true }));
+    const m = await import('../../static/js/exercises.js');
+    await m.deleteExercise(5);
+    expect(mockAuthFetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:8000/api/exercises/5', { method: 'DELETE' });
+  });
 });
 
 describe('renderExercisePanel + RBAC', () => {
@@ -188,6 +202,28 @@ describe('renderExercisePanel + RBAC', () => {
     expect(html).not.toMatch(/data-action="exCreate"/);
     expect(html).not.toMatch(/data-action="exActivate"/);
     expect(html).not.toMatch(/data-action="exArchive"/);
+  });
+
+  test('刪除鈕：sysadmin 才出現、且僅非 active；commander 不顯示', async () => {
+    // sysadmin（_isSysadmin=true）：非 active 的 SETUP(id=2) 有刪除鈕，ACTIVE(id=1) 無
+    _canManage = true; _isSysadmin = true;
+    let get = installDom();
+    mockAuthFetch.mockReturnValueOnce(resp(200, [ACTIVE, SETUP]));
+    let m = await import('../../static/js/exercises.js');
+    await m.renderExercisePanel();
+    let html = get('ex-panel-body').innerHTML;
+    expect(html).toMatch(/data-action="exDelete" data-id="2"/);
+    expect(html).not.toMatch(/data-action="exDelete" data-id="1"/);  // active 不可刪
+    // commander（canManage 但非 sysadmin）：無刪除鈕
+    vi.resetModules();
+    _canManage = true; _isSysadmin = false;
+    get = installDom();
+    mockAuthFetch.mockReturnValueOnce(resp(200, [ACTIVE, SETUP]));
+    m = await import('../../static/js/exercises.js');
+    await m.renderExercisePanel();
+    html = get('ex-panel-body').innerHTML;
+    expect(html).not.toMatch(/data-action="exDelete"/);
+    expect(html).toMatch(/data-action="exArchive"/);   // commander 仍可歸檔
   });
 });
 

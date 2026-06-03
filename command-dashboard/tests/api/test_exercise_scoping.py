@@ -32,6 +32,12 @@ def observer_auth(client):
     create_account("ob1", "5678", "觀察員", "", "observer")
     return _login(client, "ob1", "5678")
 
+
+@pytest.fixture
+def commander_auth(client):
+    create_account("cmd1", "5678", "指揮官", "", "commander")
+    return _login(client, "cmd1", "5678")
+
 _EVENT = {
     "reported_by_unit": "shelter",
     "event_type": "fire",
@@ -127,3 +133,30 @@ class TestScopeRoleGate:
         assert client.get(f"/api/ai/report/{exid}", headers=observer_auth).status_code == 403
         # 對照：sysadmin 不被擋（200 或非 403）
         assert client.get(f"/api/exercises/{exid}/aar", headers=auth).status_code != 403
+
+
+class TestExerciseDelete:
+    def test_delete_cascades_and_blocks_active(self, client, auth):
+        a = _mk_exercise(client, auth, "刪除測試")
+        client.post(f"/api/exercises/{a['id']}/activate", json={}, headers=auth)
+        client.post("/api/events", json={**_EVENT, "description": "A事件"}, headers=auth)
+        # 進行中不可刪 → 409
+        assert client.delete(f"/api/exercises/{a['id']}", headers=auth).status_code == 409
+        client.post(f"/api/exercises/{a['id']}/archive", json={}, headers=auth)
+        # 刪前：admin override 看得到 A 的事件
+        before = client.get(f"/api/events?exercise_id={a['id']}", headers=auth).json()
+        assert any(e.get("description") == "A事件" for e in before)
+        # 刪除（級聯）→ 200；exercise 與其事件都沒了
+        assert client.delete(f"/api/exercises/{a['id']}", headers=auth).status_code == 200
+        assert client.get(f"/api/exercises/{a['id']}", headers=auth).status_code == 404
+        after = client.get(f"/api/events?exercise_id={a['id']}", headers=auth).json()
+        assert not any(e.get("description") == "A事件" for e in after)
+
+    def test_delete_is_sysadmin_only(self, client, auth, commander_auth, operator_auth):
+        # 刪除限 sysadmin：commander（能建/啟）與 operator 都應 403
+        a = _mk_exercise(client, auth, "權限測試")
+        client.post(f"/api/exercises/{a['id']}/archive", json={}, headers=auth)  # 非 active
+        assert client.delete(f"/api/exercises/{a['id']}", headers=commander_auth).status_code == 403
+        assert client.delete(f"/api/exercises/{a['id']}", headers=operator_auth).status_code == 403
+        # sysadmin 可刪
+        assert client.delete(f"/api/exercises/{a['id']}", headers=auth).status_code == 200

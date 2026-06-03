@@ -14,6 +14,7 @@
  * 可 import：ws.js（依既有模組邊界慣例，authFetch / 角色判斷由 ws.js re-export）
  */
 
+import { hasAnyRole } from './auth.js';
 import { authFetch, canUseRealModeControls } from './ws.js';
 
 const API_BASE = location.origin;
@@ -58,6 +59,11 @@ export async function activateExercise(id) {
 /** 歸檔演習（釋放 active mutex）。 */
 export async function archiveExercise(id) {
   return authFetch(API_BASE + '/api/exercises/' + id + '/archive', { method: 'POST' });
+}
+
+/** 刪除演習（級聯清資料；sysadmin-only，後端 SYSADMIN_ONLY + 進行中擋）。 */
+export async function deleteExercise(id) {
+  return authFetch(API_BASE + '/api/exercises/' + id, { method: 'DELETE' });
 }
 
 // ── 純函式：chip 文案 / class 決定（可單測）─────────────────────
@@ -176,6 +182,10 @@ export async function renderExercisePanel() {
         if (ex.status !== 'archived') {
           actions += `<button class="ex-btn" data-action="exArchive" data-id="${_esc(ex.id)}">歸檔</button>`;
         }
+        // 刪除（級聯清資料）限 sysadmin；進行中不可刪（需先歸檔）
+        if (hasAnyRole('sysadmin') && ex.status !== 'active') {
+          actions += `<button class="ex-btn ex-btn--danger" data-action="exDelete" data-id="${_esc(ex.id)}" data-name="${_esc(ex.name)}">刪除</button>`;
+        }
       }
       html += `<div class="${rowCls}">
         <div class="ex-row-main">
@@ -233,6 +243,24 @@ export async function handleExArchive(id) {
     const err = await resp.json().catch(() => ({}));
     const warn = document.getElementById('ex-create-warn');
     if (warn) warn.textContent = err.detail || '歸檔失敗';
+    return;
+  }
+  await renderExercisePanel();
+}
+
+/** 刪除演習（sysadmin）。confirm 警告級聯清資料；成功後重渲染。 */
+export async function handleExDelete(id, name) {
+  const warn = document.getElementById('ex-create-warn');
+  if (warn) warn.textContent = '';
+  // 破壞性：連同該場所有事件/圖釘/裁示/紀錄一併刪除，不可復原
+  const ok = (typeof window !== 'undefined' && window.confirm)
+    ? window.confirm(`確定刪除演習「${name || id}」？\n將連同該場所有事件、地圖物件、裁示、紀錄一併刪除，無法復原。`)
+    : true;
+  if (!ok) return;
+  const resp = await deleteExercise(id);
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({}));
+    if (warn) warn.textContent = err.detail || '刪除失敗';
     return;
   }
   await renderExercisePanel();

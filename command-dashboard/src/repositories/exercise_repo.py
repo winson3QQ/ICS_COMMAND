@@ -113,3 +113,29 @@ def get_active_exercise() -> dict | None:
     with get_conn() as conn:
         row = conn.execute("SELECT * FROM exercises WHERE status='active' LIMIT 1").fetchone()
     return dict(row) if row else None
+
+
+# 演習-scoped 的表（皆有 exercise_id 欄）。刪除一場時連同其資料級聯清除，
+# 範圍對齊 admin /reset-exercise，但限定 WHERE exercise_id=?（單場）。table 名為常數白名單。
+_EXERCISE_SCOPED_TABLES = (
+    "events", "cop_entities", "decisions", "audit_log", "manual_records",
+    "snapshots", "resource_snapshots", "aar_entries", "exercise_kpis",
+    "ai_recommendations", "ttx_injects",
+)
+
+
+def delete_exercise(exercise_id: int) -> dict:
+    """硬刪一場演習 + 其所有 scoped 資料（級聯）。**呼叫端須先確認非 active**（active 不可刪）。
+    回傳各表清除筆數。某表無 exercise_id 欄 / 不存在則略過（容錯）。"""
+    cleared: dict[str, int] = {}
+    with get_conn() as conn:
+        for table in _EXERCISE_SCOPED_TABLES:
+            try:
+                cur = conn.execute(f"DELETE FROM {table} WHERE exercise_id=?", (exercise_id,))  # nosec B608 — table 名為常數白名單
+                if cur.rowcount:
+                    cleared[table] = cur.rowcount
+            except Exception:  # noqa: BLE001 — 表/欄不存在（依部署）容錯略過
+                pass
+        cur = conn.execute("DELETE FROM exercises WHERE id=?", (exercise_id,))
+        cleared["exercises"] = cur.rowcount
+    return cleared

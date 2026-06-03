@@ -116,7 +116,8 @@ def allowed_roles_for(method: str, path: str) -> frozenset[str] | None:
     if path == "/api/exercises":
         return READ_ROLES if method == "GET" else COMMAND_ROLES
     if path.startswith("/api/exercises/"):
-        return COMMAND_ROLES
+        # 刪除（級聯清資料）破壞性最高 → 限 sysadmin；其餘（detail/aar/activate/archive/status）指揮層。
+        return SYSADMIN_ONLY if method == "DELETE" else COMMAND_ROLES
     if path.startswith("/api/sync/") and method != "GET":
         return COMMAND_ROLES
     if path.startswith("/api/tak/"):
