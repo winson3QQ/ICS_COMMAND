@@ -907,17 +907,45 @@ function _ensureEntityLayers() {
     layers: [
       {
         id: 'polygons-fill', type: 'fill',
-        paint: { 'fill-color': ['get', 'color'], 'fill-opacity': 0.12 },
+        // P1-10e：hover 時 fill opacity 微升（0.12→0.22）。case 走 feature-state，
+        // 不碰 color（顏色仍是 affiliation/severity 語意，hover 只動 opacity/width）。
+        paint: {
+          'fill-color': ['get', 'color'],
+          'fill-opacity': ['case', ['boolean', ['feature-state', 'hover'], false], 0.22, 0.12],
+        },
       },
       {
         id: 'polygons-stroke-solid', type: 'line',
         filter: ['!', ['coalesce', ['get', 'dash'], false]],
-        paint: { 'line-color': ['get', 'color'], 'line-width': 2 },
+        // P1-10e：hover 時 outline 加粗（2→3.5）
+        paint: {
+          'line-color': ['get', 'color'],
+          'line-width': ['case', ['boolean', ['feature-state', 'hover'], false], 3.5, 2],
+        },
       },
       {
         id: 'polygons-stroke-dash', type: 'line',
         filter: ['==', ['coalesce', ['get', 'dash'], false], true],
-        paint: { 'line-color': ['get', 'color'], 'line-width': 2, 'line-dasharray': [2, 1.5] },
+        paint: {
+          'line-color': ['get', 'color'],
+          'line-width': ['case', ['boolean', ['feature-state', 'hover'], false], 3.5, 2],
+          'line-dasharray': [2, 1.5],
+        },
+      },
+      {
+        // P1-10e：selected 虛線外框（疊在 stroke 之上）。只渲染 feature-state.selected
+        // 的那一個（其餘 line-opacity=0）；sel_pulse（RAF 餵）做 opacity 呼吸動畫——
+        // 動 opacity 不重算 dash tessellation（比動 width/dasharray 便宜）。色仍走 color，
+        // 不搶語意。
+        id: 'polygons-selected', type: 'line',
+        paint: {
+          'line-color': ['get', 'color'],
+          'line-width': 4,
+          'line-dasharray': [2, 2],
+          'line-opacity': ['case',
+            ['boolean', ['feature-state', 'selected'], false],
+            ['coalesce', ['feature-state', 'sel_pulse'], 1], 0],
+        },
       },
       {
         // Polygon label：用 Point geometry（caller 算 centroid 加進 source）。
@@ -997,12 +1025,36 @@ function _ensureEntityLayers() {
       {
         id: 'routes-line-solid', type: 'line',
         filter: ['!', ['coalesce', ['get', 'dash'], false]],
-        paint: { 'line-color': ['get', 'color'], 'line-width': 3, 'line-opacity': 0.9 },
+        // P1-10e：hover 時加粗（2→3）。route 線細（base 2），讓箭頭相對更顯眼。
+        paint: {
+          'line-color': ['get', 'color'],
+          'line-width': ['case', ['boolean', ['feature-state', 'hover'], false], 3, 2],
+          'line-opacity': 0.9,
+        },
       },
       {
         id: 'routes-line-dash', type: 'line',
         filter: ['==', ['coalesce', ['get', 'dash'], false], true],
-        paint: { 'line-color': ['get', 'color'], 'line-width': 3, 'line-opacity': 0.9, 'line-dasharray': [2, 1.5] },
+        paint: {
+          'line-color': ['get', 'color'],
+          'line-width': ['case', ['boolean', ['feature-state', 'hover'], false], 4.5, 3],
+          'line-opacity': 0.9,
+          'line-dasharray': [2, 1.5],
+        },
+      },
+      {
+        // P1-10e：selected 虛線外框（同 polygons-selected 機制）。filter LineString
+        // 避開 routes source 內的 Point label feature。
+        id: 'routes-selected', type: 'line',
+        filter: ['==', ['geometry-type'], 'LineString'],
+        paint: {
+          'line-color': ['get', 'color'],
+          'line-width': 4,
+          'line-dasharray': [2, 2],
+          'line-opacity': ['case',
+            ['boolean', ['feature-state', 'selected'], false],
+            ['coalesce', ['feature-state', 'sel_pulse'], 1], 0],
+        },
       },
       {
         // 顯式 LineString filter — routes source 在 step 8 起含 Point label feature，
@@ -1013,7 +1065,7 @@ function _ensureEntityLayers() {
           'symbol-placement': 'line',
           'symbol-spacing': 90,
           'icon-image': 'route-arrow',
-          'icon-size': 1.0,
+          'icon-size': 1.4,
           'icon-allow-overlap': true,
           'icon-ignore-placement': true,
           'icon-rotation-alignment': 'map',
@@ -1221,6 +1273,15 @@ function _ensureEntityLayers() {
   map.on('click', 'zones-base', (e) => _onZoneClick(e));
   map.on('click', 'zones-abbr', (e) => _onZoneClick(e));  // abbr 字也可點，跟 base 同 handler
 
+  // P1-10e：點到空白（游標下無 polygon/route）→ 取消選中。layer-specific click 先觸發
+  // （已 _setSelection），此 general handler 後觸發；queryRenderedFeatures 有命中就不清。
+  map.on('click', (e) => {
+    const hit = map.queryRenderedFeatures(e.point, {
+      layers: ['polygons-fill', 'routes-line-solid', 'routes-line-dash'],
+    });
+    if (!hit.length) _clearSelection();
+  });
+
   // Cursor 變 pointer 提示可點 — 用 counter 追進入多少 clickable layer，
   // 為 0 時還原 MapLibre 預設 'grab'（不能 reset 成 '' 否則拖曳 cursor 卡住）。
   let _hoverCount = 0;
@@ -1236,6 +1297,36 @@ function _ensureEntityLayers() {
       _hoverCount = Math.max(0, _hoverCount - 1);
       if (_hoverCount === 0) _resetHoverCursor();
     });
+  });
+
+  // P1-10e：polygon / route hover 視覺回饋（outline 加粗 + fill opacity 微升）。
+  // paint case expression 已在 layer spec 備好（feature-state.hover）；此處只負責
+  // 在 mousemove 把 hover state 設到游標下 feature、離開時清掉。promoteId='id' →
+  // e.features[0].id 即 properties.id。hover 與既有 dimmed/highlighted/dragging
+  // 是各自獨立的 state key，不互相覆蓋。
+  let _hoveredFeat = null;  // { source, id }
+  const _clearHover = () => {
+    if (_hoveredFeat) {
+      map.removeFeatureState({ source: _hoveredFeat.source, id: _hoveredFeat.id }, 'hover');
+      _hoveredFeat = null;
+    }
+  };
+  const _hoverOn = (source, fid) => {
+    if (fid == null) return;
+    if (_hoveredFeat && _hoveredFeat.source === source && _hoveredFeat.id === fid) return;
+    _clearHover();
+    map.setFeatureState({ source, id: fid }, { hover: true });
+    _hoveredFeat = { source, id: fid };
+  };
+  [
+    ['polygons-fill', 'polygons'],
+    ['routes-line-solid', 'routes'],
+    ['routes-line-dash', 'routes'],
+  ].forEach(([layerId, source]) => {
+    map.on('mousemove', layerId, (e) => {
+      if (e.features && e.features.length) _hoverOn(source, e.features[0].id);
+    });
+    map.on('mouseleave', layerId, _clearHover);
   });
 
   // Step 8：DrawPreview（polygon/route 繪製預覽）— 共用 'draw-vertices' + 'draw-shape'
@@ -1441,12 +1532,58 @@ function _findById(arr, id) {
   return Array.isArray(arr) ? arr.find((x) => x?.id === id) : null;
 }
 
+// P1-10e：polygon / route 選中態。單一全域 RAF 對 selected feature 餵 sel_pulse
+// （opacity 呼吸），複用 crit-pulse 的「只在需要時跑 + tab 隱藏跳過重繪」紀律。
+// 選中走 feature-state.selected（paint case 已備）；setData 會清 feature-state，
+// 故 _renderPolygons / _renderRoutes 後呼叫 _reapplySelection 重套。
+let _selectedObj = null;       // { source, id }
+let _selPulseRaf = null;
+function _stopSelPulse() {
+  if (_selPulseRaf) { cancelAnimationFrame(_selPulseRaf); _selPulseRaf = null; }
+}
+function _startSelPulse() {
+  const map = _getMap();
+  if (!map || _selPulseRaf || typeof requestAnimationFrame === 'undefined') return;
+  const loop = () => {
+    if (!_selectedObj) { _selPulseRaf = null; return; }
+    if (typeof document !== 'undefined' && document.hidden) { _selPulseRaf = requestAnimationFrame(loop); return; }
+    const t = (typeof performance !== 'undefined' ? performance.now() : 0) / 1000;
+    const p = 0.55 + 0.45 * (0.5 + 0.5 * Math.sin(t * 3));  // 0.55..1.0 呼吸
+    map.setFeatureState(_selectedObj, { sel_pulse: p });
+    _selPulseRaf = requestAnimationFrame(loop);
+  };
+  _selPulseRaf = requestAnimationFrame(loop);
+}
+function _clearSelection() {
+  const map = _getMap();
+  if (map && _selectedObj) {
+    map.removeFeatureState(_selectedObj, 'selected');
+    map.removeFeatureState(_selectedObj, 'sel_pulse');
+  }
+  _selectedObj = null;
+  _stopSelPulse();
+}
+function _setSelection(source, id) {
+  const map = _getMap();
+  if (!map || id == null) return;
+  if (_selectedObj && (_selectedObj.source !== source || _selectedObj.id !== id)) _clearSelection();
+  _selectedObj = { source, id };
+  map.setFeatureState(_selectedObj, { selected: true });
+  _startSelPulse();
+}
+// setData 後 feature-state 遺失 → 重套目前選中（若仍存在則視覺接回）。
+function _reapplySelection() {
+  const map = _getMap();
+  if (map && _selectedObj) map.setFeatureState(_selectedObj, { selected: true });
+}
+
 function _onPolygonClick(e) {
   if (!canAccessMapObjects()) return;
   const id = e.features?.[0]?.properties?.id;
   // PR-G1a：polygon 已 cutover 進 cop_entities，從 cop_stream 回查（id = entity uid）。
   const poly = copEntityToPolygon(_copStream?.getEntity(id));
   if (!poly) return;
+  _setSelection('polygons', id);  // P1-10e
   const typeLabel = POLY_TYPES[poly.poly_type]?.label || poly.poly_type;
   const desc = `${typeLabel}　${poly.latlngs.length} 個頂點`;
   _deps.openModal?.(`▱ ${poly.label || '範圍'}`,
@@ -1469,6 +1606,7 @@ function _onRouteClick(e) {
   // PR-G1a：route 已 cutover 進 cop_entities，從 cop_stream 回查（id = entity uid）。
   const route = copEntityToRoute(_copStream?.getEntity(id));
   if (!route) return;
+  _setSelection('routes', id);  // P1-10e
   const typeLabel = ROUTE_TYPES[route.route_type]?.label || route.route_type;
   const desc = `${typeLabel}　${route.latlngs.length} 個節點`;
   _deps.openModal?.(`↗ ${route.label || '路線'}`,
@@ -1517,6 +1655,7 @@ function _renderPolygons() {
     ...polys.map(polygonLabelToFeature).filter(Boolean),
   ];
   _polygonLayer.update(features);
+  _reapplySelection();  // P1-10e：setData 清掉 feature-state，重套選中
   // Step 8：sync HTML drag handles 給有 label 的 polygon。label_anchor 改動 → PUT cop
   // （attributes 整包覆寫，故先取現值合併）。WS 廣播回來 → onChange 自動重繪。
   if (_polyLabelMgr) {
@@ -1618,6 +1757,7 @@ function _renderRoutes() {
     ...routes.map(routeLabelToFeature).filter(Boolean),
   ];
   _routeLayer.update(features);
+  _reapplySelection();  // P1-10e：setData 清掉 feature-state，重套選中
   // Step 8：sync route label drag handles。label_anchor 改動 → PUT cop（同 polygon）。
   if (_routeLabelMgr) {
     _routeLabelMgr.sync(routes, (id, latlng) => {

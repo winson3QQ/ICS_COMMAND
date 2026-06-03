@@ -29,12 +29,14 @@ function makeMockMap() {
   const layers = new Map();
   const featureStates = new Map();
   const layoutProps = new Map();
+  const paintProps = new Map();
 
   return {
     sources,
     layers,
     featureStates,
     layoutProps,
+    paintProps,
 
     addSource(id, spec) {
       sources.set(id, {
@@ -68,6 +70,12 @@ function makeMockMap() {
     },
     getLayoutProperty(layerId, prop) {
       return layoutProps.get(`${layerId}:${prop}`);
+    },
+    setPaintProperty(layerId, prop, val) {
+      paintProps.set(`${layerId}:${prop}`, val);
+    },
+    getPaintProperty(layerId, prop) {
+      return paintProps.get(`${layerId}:${prop}`);
     },
   };
 }
@@ -142,6 +150,22 @@ describe('EntityLayer', () => {
     expect(map.getLayoutProperty('zones-halo', 'visibility')).toBe('none');
     el.setVisible(true);
     expect(map.getLayoutProperty('zones-base', 'visibility')).toBe('visible');
+  });
+
+  test('setVisible 首次瞬時、之後 opacity 淡入淡出 + 同值 no-op (P1-10g)', () => {
+    const el = new EntityLayer(map, 'polygons', {
+      layers: [{ id: 'p-fill', type: 'fill', paint: { 'fill-opacity': 0.12 } }],
+    });
+    // 首次：瞬時，不設 opacity transition（避免載入時閃）
+    el.setVisible(true);
+    expect(map.getLayoutProperty('p-fill', 'visibility')).toBe('visible');
+    expect(map.getPaintProperty('p-fill', 'fill-opacity-transition')).toBeUndefined();
+    // 真正改變（visible→hidden）→ 設 200ms transition + opacity 走 0（淡出）
+    el.setVisible(false);
+    expect(map.getPaintProperty('p-fill', 'fill-opacity-transition')).toEqual({ duration: 200 });
+    expect(map.getPaintProperty('p-fill', 'fill-opacity')).toBe(0);
+    // 同值再呼叫 → no-op（不炸）
+    expect(() => el.setVisible(false)).not.toThrow();
   });
 
   test('setFeatureState / removeFeatureState 走 promoteId', () => {

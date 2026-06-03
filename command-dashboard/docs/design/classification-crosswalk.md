@@ -216,4 +216,24 @@ UI：EventPopup 維持「分類 → 型別」下鑽，僅對「敵我可變」�
 3. **是否新增 `tw_ref` 欄** + 是否抓 NFA 疏散避難圖例（收容/疏散在地對齊）。
 4. **severity 是否補 Purple=Extreme**（NAPSG 7 級我們用 3）。
 
+## 8. route / polygon（線 / 面）符號 — 現況 ad-hoc，標準對齊屬 P2（2026-06-03 釐清）
+
+> §6 LOCKED 渲染模型**只管「事件點」**（框＋象形＋severity）。route（線）/ polygon（面）是另一類，
+> 既不在 §6 範圍、也不對 NAPSG（NAPSG 是點事件符號學，不規範線/面）。本節記錄現況與未來標準。
+
+### 現況：app 自訂、寫死 hex、無標準對齊
+- `static/js/map.js` `POLY_TYPES`（5：管制區 / 疏散範圍 / 集結點 / 危險區域 / 作業區）、
+  `ROUTE_TYPES`（3：主要 / 次要 / 緊急）顏色為**寫死 hex**（`#e05555` 等 GitHub-dark 系），
+  dash 與否逐型別硬編。
+- **不對任何外部標準**（非 NAPSG、非 2525）。
+- **違反 POLICY doctrine**：寫死 hex + 非 token；POLICY「唯一 saturated 色 = MIL affiliation
+  + severity token」對線/面**尚未落實**——pre-existing 缺口，早於 token 紀律。
+
+### 對應的外部標準 = MIL-STD-2525 Tactical Graphics（control measures）
+- **route ≈ axis of advance / direction**（帶箭頭的軸線）；**polygon ≈ area control**
+  （集結區 / 危險區 / 管制區…）。配色依 affiliation、線型有規定。
+- 走 TAK CoT（`g-*` graphic types）互通——與事件點靠 `cot_type` 對接同理。
+- **歸 P2（P2-05）**：線/面對齊 2525 tactical graphics + 走 design token 的正規化，留待 TAK
+  整合時做。**P1 階段維持 app 自訂、可自由調整**（線寬 / 箭頭等純美術 tweak 不受標準綁）。
+
 > 本檔記錄框架與落定方向；§3 Rosetta 的 NAPSG icon 欄、§6 的 milsymbol 實作與 §7 細項待後續定案更新。

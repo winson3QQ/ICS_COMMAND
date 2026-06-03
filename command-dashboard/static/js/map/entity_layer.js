@@ -64,6 +64,9 @@ export class EntityLayer {
     this.layerSpecs = layers;
     this._installed = false;
     this._lastFeatureCount = 0;
+    this._lastVisible = true;   // P1-10g：layer 安裝時為 visible
+    this._hideTimer = null;
+    this._visInit = false;      // 首次 setVisible 瞬時（避免載入時先閃再淡出）
 
     this._install();
   }
@@ -113,13 +116,74 @@ export class EntityLayer {
     this.update([]);
   }
 
-  /** 切換整層可見性（layer-level visibility，比 update([]) 輕量） */
+  /**
+   * 切換整層可見性。P1-10g：可見性「真的改變」時做 200ms opacity 淡入/淡出
+   * （取代瞬時 visibility 的「啪」一下）。render 每次都呼叫 setVisible，同值則 no-op，
+   * 不會每次資料更新都閃。opacity 原值從 layerSpec.paint 取，忠實還原 hover/selected
+   * 等 case expression。
+   */
   setVisible(visible) {
-    const visValue = visible ? 'visible' : 'none';
-    for (const spec of this.layerSpecs) {
-      if (this.map.getLayer(spec.id)) {
-        this.map.setLayoutProperty(spec.id, 'visibility', visValue);
+    visible = !!visible;
+    if (!this._visInit) {
+      // 首次：瞬時設定，不動畫（避免載入時先前被關的層閃一下再淡出）
+      this._visInit = true;
+      this._lastVisible = visible;
+      const v = visible ? 'visible' : 'none';
+      for (const spec of this.layerSpecs) {
+        if (this.map.getLayer(spec.id)) this.map.setLayoutProperty(spec.id, 'visibility', v);
       }
+      return;
+    }
+    if (visible === this._lastVisible) return;  // 無變化 → no-op（避免資料更新誤觸發淡入）
+    this._lastVisible = visible;
+    if (this._hideTimer) { clearTimeout(this._hideTimer); this._hideTimer = null; }
+    const DUR = 200;
+    const raf = (typeof requestAnimationFrame !== 'undefined')
+      ? requestAnimationFrame : (f) => setTimeout(f, 16);
+    for (const spec of this.layerSpecs) {
+      if (!this.map.getLayer(spec.id)) continue;
+      const props = EntityLayer._opacityProps(spec);
+      for (const { prop } of props) {
+        try { this.map.setPaintProperty(spec.id, `${prop}-transition`, { duration: DUR }); } catch (e) { /* 該 prop 不存在則略 */ }
+      }
+      if (visible) {
+        this.map.setLayoutProperty(spec.id, 'visibility', 'visible');
+        for (const { prop } of props) this.map.setPaintProperty(spec.id, prop, 0);  // 起點 0
+        raf(() => {
+          if (!this._lastVisible) return;  // 淡入途中又被關掉
+          for (const { prop, orig } of props) this.map.setPaintProperty(spec.id, prop, orig);  // → 還原值（transition 內插）
+        });
+      } else {
+        for (const { prop } of props) this.map.setPaintProperty(spec.id, prop, 0);  // 淡出到 0
+      }
+    }
+    if (!visible) {
+      this._hideTimer = setTimeout(() => {
+        this._hideTimer = null;
+        if (this._lastVisible) return;  // 淡出途中又被打開
+        for (const spec of this.layerSpecs) {
+          if (!this.map.getLayer(spec.id)) continue;
+          this.map.setLayoutProperty(spec.id, 'visibility', 'none');
+          for (const { prop, orig } of EntityLayer._opacityProps(spec)) {
+            this.map.setPaintProperty(spec.id, prop, orig);  // 還原 opacity 供下次顯示
+          }
+        }
+      }, DUR);
+    }
+  }
+
+  /** 各 layer type 對應的 opacity paint property + 原值（從 spec.paint 取，缺省 1）。 */
+  static _opacityProps(spec) {
+    const def = (p) => (spec.paint && spec.paint[p] !== undefined) ? spec.paint[p] : 1;
+    switch (spec.type) {
+      case 'fill': return [{ prop: 'fill-opacity', orig: def('fill-opacity') }];
+      case 'line': return [{ prop: 'line-opacity', orig: def('line-opacity') }];
+      case 'circle': return [{ prop: 'circle-opacity', orig: def('circle-opacity') }];
+      case 'symbol': return [
+        { prop: 'icon-opacity', orig: def('icon-opacity') },
+        { prop: 'text-opacity', orig: def('text-opacity') },
+      ];
+      default: return [];
     }
   }
 
@@ -218,7 +282,7 @@ export function bakeArrowSdf(map, id, opts = {}) {
   const ctx = canvas.getContext('2d');
   ctx.clearRect(0, 0, size, size);
   ctx.strokeStyle = '#ffffff';
-  ctx.lineWidth = 2;
+  ctx.lineWidth = 2.5;  // route 線細化後加粗箭頭 chevron（user 回饋）
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
   // Chevron（>）：左上 → 右中頂點 → 左下
