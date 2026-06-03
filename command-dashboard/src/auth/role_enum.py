@@ -104,8 +104,20 @@ def allowed_roles_for(method: str, path: str) -> frozenset[str] | None:
         return COMMAND_ROLES
     if path.startswith("/api/ai/recommendations/"):
         return COMMAND_ROLES
+    # P1-14 HIGH-3：演練後分析 / ML 匯出（吃 path 參數 exercise_id）限指揮層，
+    # 否則 observer 帶任意場號即可拉任意歷史場的後分析 / 訓練資料（跨場洩漏）。
+    if path.startswith("/api/ai/report/") or path.startswith("/api/ai/export/"):
+        return COMMAND_ROLES
     if path.startswith("/api/ai/"):
         return WRITE_ROLES if method == "POST" else READ_ROLES
+    # P1-14 HIGH-4：exercises 個別場 detail / AAR / activate / archive / status 限指揮層
+    #（擋 observer 帶任意 exercise_id 撈歷史場 AAR / metadata）。list（GET ""）保留 READ_ROLES
+    # 供前端 header chip / 選擇器顯示場次；create（POST ""）限指揮層。
+    if path == "/api/exercises":
+        return READ_ROLES if method == "GET" else COMMAND_ROLES
+    if path.startswith("/api/exercises/"):
+        # 刪除（級聯清資料）破壞性最高 → 限 sysadmin；其餘（detail/aar/activate/archive/status）指揮層。
+        return SYSADMIN_ONLY if method == "DELETE" else COMMAND_ROLES
     if path.startswith("/api/sync/") and method != "GET":
         return COMMAND_ROLES
     if path.startswith("/api/tak/"):

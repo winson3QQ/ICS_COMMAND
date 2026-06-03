@@ -10,6 +10,16 @@ from datetime import UTC, datetime, timedelta
 
 from core.database import get_conn
 
+# ── P1-14：exercise filter 第三態 sentinel ──────────────────────────────────
+# repo 的 exercise_id 過濾參數有三種語意，None 無法同時表達「IS NULL」與「不過濾」，
+# 故引入模組級 sentinel 區分：
+#   - `int`        → exact match：WHERE exercise_id = ?
+#   - `NULL_SCOPE` → WHERE exercise_id IS NULL（實戰 / 未分場池；strict isolation 用）
+#   - `None`       → 不加 exercise filter（內部 / 既有 caller 撈全部用，行為不變）
+# 放在 _helpers 而非 service：避免 _helpers ← repos ← exercise_service ← _helpers 形成
+# import 環（sentinel 是最底層常數，無依賴）。
+NULL_SCOPE = object()
+
 
 def now_utc() -> str:
     return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")

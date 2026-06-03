@@ -3,7 +3,7 @@ import uuid
 
 from core.database import get_conn
 
-from ._helpers import audit, now_utc, row_to_dict
+from ._helpers import NULL_SCOPE, audit, now_utc, row_to_dict
 
 
 def create_manual_record(data: dict, exercise_id: int | None = None) -> dict:
@@ -39,27 +39,25 @@ def create_manual_record(data: dict, exercise_id: int | None = None) -> dict:
 
 
 def get_manual_records(sync_status: str | None = None, limit: int = 100,
-                       exercise_id: int | None = None) -> list[dict]:
+                       exercise_id=None) -> list[dict]:
+    # P1-14：exercise_id 三態（見 _helpers.NULL_SCOPE）——
+    #   int → exact / NULL_SCOPE → IS NULL（實戰池）/ None → 不過濾（內部 caller）
+    clauses, params = [], []
+    if sync_status:
+        clauses.append("sync_status=?")
+        params.append(sync_status)
+    if exercise_id is NULL_SCOPE:
+        clauses.append("exercise_id IS NULL")
+    elif exercise_id is not None:
+        clauses.append("exercise_id=?")
+        params.append(exercise_id)
+    sql = "SELECT * FROM manual_records"
+    if clauses:
+        sql += " WHERE " + " AND ".join(clauses)
+    sql += " ORDER BY submitted_at DESC LIMIT ?"
+    params.append(limit)
     with get_conn() as conn:
-        if exercise_id is not None and sync_status:
-            rows = conn.execute(
-                "SELECT * FROM manual_records WHERE sync_status=? AND exercise_id=? "
-                "ORDER BY submitted_at DESC LIMIT ?",
-                (sync_status, exercise_id, limit)).fetchall()
-        elif exercise_id is not None:
-            rows = conn.execute(
-                "SELECT * FROM manual_records WHERE exercise_id=? "
-                "ORDER BY submitted_at DESC LIMIT ?",
-                (exercise_id, limit)).fetchall()
-        elif sync_status:
-            rows = conn.execute(
-                "SELECT * FROM manual_records WHERE sync_status=? "
-                "ORDER BY submitted_at DESC LIMIT ?",
-                (sync_status, limit)).fetchall()
-        else:
-            rows = conn.execute(
-                "SELECT * FROM manual_records ORDER BY submitted_at DESC LIMIT ?",
-                (limit,)).fetchall()
+        rows = conn.execute(sql, params).fetchall()  # nosec B608 — clause 全常數，值 parameterized
 
     result = []
     for r in rows:

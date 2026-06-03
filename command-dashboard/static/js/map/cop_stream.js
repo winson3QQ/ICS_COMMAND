@@ -110,6 +110,14 @@ export function createCopStream(deps) {
         // 移除 server 已無者（防護 2 / in-flight 保留邏輯都在 resync 內）。
         resync();
         break;
+      case "exercise_switched":
+        // P1-14：他人 activate/archive 了演習 → active scope 變了。本 session 須重新依新 scope
+        // 對帳（map 圖釘 / 面板 / chip）。WS 連線的 scope 是 connect 當下定的、已過時 → 交給
+        // main.js 重連 cop_stream（重讀 active scope）+ poll + 更新 chip（dispatch DOM 事件解耦）。
+        if (typeof document !== "undefined") {
+          document.dispatchEvent(new CustomEvent("exercise:switched"));
+        }
+        break;
       default:
         break;
     }

@@ -25,7 +25,7 @@ import {
   getToken, authFetch, onAuthChange,
 } from './auth.js';
 import {
-  setPollActive, setSessionType, getSessionType, forcePoll,
+  setPollActive, forcePoll,
 } from './ws.js';
 import {
   initCop, poll, refresh, renderZoneC,
@@ -114,6 +114,26 @@ window.addEventListener('beforeunload', () => {
   if (_copStream) _copStream.stop();
 });
 
+// P1-14：切換 active 演習後，前端要依新 scope 重抓資料（否則 map 圖釘 / 面板停在舊場，
+// 要 hard reload 才更新）。poll() 重抓 dashboard；cop_stream 重連 → server 依新 active 重 scope
+// WS + 上線自動全量 resync（zone/route/event 圖釘）→ map onChange 重繪。
+function _refreshAfterExerciseSwitch() {
+  try { poll(); } catch (e) { /* poll 失敗不阻斷 */ }
+  if (_copStream) { _copStream.stop(); _copStream.connect(); }
+}
+
+// P1-14：他人 activate/archive 演習 → server broadcast_all → cop_stream 轉發 'exercise:switched'。
+// 本 session 重新依新 scope 對帳（map/面板）+ 更新 header chip（顯示新的當前場 / 無場次）。
+document.addEventListener('exercise:switched', () => {
+  _refreshAfterExerciseSwitch();
+  import('./exercises.js').then(m => {
+    // 設定面板開著（正在看演習清單）→ 重渲染清單（含 chip），讓刪除/狀態變更即時反映；
+    // 否則只更新 header chip。
+    const panelOpen = document.getElementById('settings-overlay')?.classList.contains('show');
+    if (panelOpen) m.renderExercisePanel(); else m.initExerciseChip();
+  });
+});
+
 // ══════════════════════════════════════════════════════════════
 // 全局 click 事件委派（取代所有 inline onclick=）
 // ══════════════════════════════════════════════════════════════
@@ -133,7 +153,7 @@ document.addEventListener('click', function (e) {
     case 'cmdLogout':      cmdLogout(); break;
     case 'sessionContinue': continueSessionFromWarning(); break;
     case 'sessionLogout':  logoutFromSessionWarning(); break;
-    case 'openSettings':   openSettings(); break;
+    case 'openSettings':   openSettings(); import('./exercises.js').then(m => m.renderExercisePanel()); break;
     case 'closeSettings':  closeSettings(); break;
     case 'openConfigModal': openConfigModal(); break;
     case 'saveConfig':
@@ -358,10 +378,38 @@ document.addEventListener('click', function (e) {
     case 'switchLeftPanel': switchLeftPanel(btn.dataset.group); break;
     case 'switchDecTab':    switchDecTab(btn.dataset.tab); break;
 
-    // ── TTX 切換（cop.js 讀取） ──
-    case 'toggleTTXMode': {
+    // ── 演習管理（P1-14 PR-2，取代死掉的實戰/演練切換）──
+    case 'openExercisePanel': {
+      // 開 settings 並渲染 / 捲到演習區
+      openSettings();
+      import('./exercises.js').then(m => {
+        m.renderExercisePanel();
+        document.getElementById('stg-exercise-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+      break;
+    }
+    case 'exCreate': {
+      if (!canUseRealModeControls()) break;   // 後端亦強制；UI 提前擋
+      import('./exercises.js').then(m => m.handleExCreate());
+      break;
+    }
+    case 'exActivate': {
       if (!canUseRealModeControls()) break;
-      _toggleTTXMode();
+      import('./exercises.js').then(m => m.handleExActivate(btn.dataset.id).then(_refreshAfterExerciseSwitch));
+      break;
+    }
+    case 'exArchive': {
+      if (!canUseRealModeControls()) break;
+      import('./exercises.js').then(m => m.handleExArchive(btn.dataset.id).then(_refreshAfterExerciseSwitch));
+      break;
+    }
+    case 'exDelete': {
+      if (!canUseRealModeControls()) break;   // 後端 SYSADMIN_ONLY 強制；UI 鈕亦僅 sysadmin 顯示
+      import('./exercises.js').then(m => m.handleExDelete(btn.dataset.id, btn.dataset.name));
+      break;
+    }
+    case 'exRefresh': {
+      import('./exercises.js').then(m => m.handleExRefresh());
       break;
     }
   }
@@ -446,36 +494,12 @@ setInterval(_updateClock, 1000);
 _updateClock();
 
 // ══════════════════════════════════════════════════════════════
-// TTX 模式切換
+// 角色 UI 守門
 // ══════════════════════════════════════════════════════════════
 
-function _toggleTTXMode() {
-  if (!canUseRealModeControls()) return;
-  const current = getSessionType();
-  const next = current === 'real' ? 'exercise' : 'real';
-  setSessionType(next);
-  const btn = document.getElementById('ttx-toggle');
-  if (btn) {
-    if (next === 'exercise') {
-      btn.textContent = '演練';
-      btn.style.border = '2px solid #FF6600';
-      btn.style.color = '#FF6600';
-      btn.style.fontWeight = '800';
-      btn.title = '目前顯示演練資料（點擊切回實戰）';
-    } else {
-      btn.textContent = '實戰';
-      btn.style.border = '1px solid var(--text3)';
-      btn.style.color = 'var(--text3)';
-      btn.style.fontWeight = '600';
-      btn.title = '目前顯示實戰資料（點擊切到演練）';
-    }
-  }
-  poll();
-}
-
 function _applyRoleUiGuards() {
-  const ttxToggle = document.getElementById('ttx-toggle');
-  if (ttxToggle) ttxToggle.style.display = canUseRealModeControls() ? '' : 'none';
+  // P1-14 PR-2：演習 chip 對所有角色可見（點擊看 list）；建立 / 啟動 / 歸檔鈕
+  // 由 exercises.renderExercisePanel() 依 canUseRealModeControls() 決定是否渲染。
   applyMapRoleUiGuards();
 }
 
@@ -626,6 +650,8 @@ function _loadClassicScript(src) {
       // 登入後重抓 map_config：boot 時（登入前）的 GET /api/map_config 會 401 → _mapConfig=null
       // → 地圖空白（節點/網格不出現，要 cmd-shift-R）。登入帶 token 後重抓 → 正常 render。
       reloadMapConfig();
+      // P1-14 PR-2：登入後初始化 header 演習 chip（顯示 active 演習或「實戰」）。
+      import('./exercises.js').then(m => m.initExerciseChip());
       startSessionStatusPolling();
       setPollActive(true);
       poll();

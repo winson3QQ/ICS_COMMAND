@@ -454,9 +454,7 @@ export async function submitEvent() {
   if (!canCreateEvents()) return;
   const el = id => document.getElementById(id);
   const severity = document.querySelector('input[name="ev-sev"]:checked')?.value || 'warning';
-  const sessionType = (() => {
-    try { return window.__sessionType || 'real'; } catch { return 'real'; }
-  })();
+  // P1-14 PR-2：session_type 退役（後端自動依 active exercise scope，建立 payload 不再送）。
   const body = {
     reported_by_unit:          el('ev-unit').value,
     event_type:                el('ev-type').value,
@@ -467,7 +465,6 @@ export async function submitEvent() {
     location_desc:             el('ev-location').value || null,
     needs_commander_decision:  el('ev-decision').checked,
     location_zone_id:          el('ev-zone-id').value || null,
-    session_type:              sessionType,
   };
   if (!body.description) { el('ev-desc').focus(); return; }
   try {

@@ -30,7 +30,7 @@ const POLL_INTERVAL = 5000;   // ms
 // ── 狀態 ────────────────────────────────────────────────────────
 let _pollActive = false;
 let _pollTimer  = null;
-let _sessionType = 'real';  // 'real' | 'exercise'（由 cop.js 透過 setSessionType 設定）
+// P1-14 PR-2：session_type 已退役（後端自動依 active exercise scope，前端不再送）。
 
 // 資料訂閱者清單
 const _dataCallbacks = [];
@@ -48,9 +48,7 @@ onAuthChange((event) => {
 async function _doPoll() {
   if (!_pollActive) return;
   try {
-    const dashUrl = API_BASE + '/api/dashboard' +
-      (_sessionType === 'exercise' ? '?session_type=exercise' : '');
-    const resp = await authFetch(dashUrl, { signal: AbortSignal.timeout(5000) });
+    const resp = await authFetch(API_BASE + '/api/dashboard', { signal: AbortSignal.timeout(5000) });
     if (!resp.ok) throw new Error(resp.status);
     const data = await resp.json();
 
@@ -130,24 +128,13 @@ export function isPollActive() {
   return _pollActive;
 }
 
-/** 強制設定輪詢狀態（供 cop.js 在切換 session_type 後立即重新 poll）*/
+/** 強制設定輪詢狀態（供 cop.js 在需要時立即重新啟停輪詢）*/
 export function setPollActive(active) {
   if (active && !_pollActive) {
     _startPolling();
   } else if (!active && _pollActive) {
     _stopPolling();
   }
-}
-
-/** 設定 session 類型（real / exercise）；立即觸發一次 poll 更新資料來源 */
-export function setSessionType(type) {
-  _sessionType = type;
-  if (_pollActive) _doPoll();
-}
-
-/** 取得目前 session 類型 */
-export function getSessionType() {
-  return _sessionType;
 }
 
 /** 手動觸發一次 poll（不受 _pollActive 限制，供 cop.js 在操作後立即刷新） */

@@ -239,17 +239,18 @@ async def reset_db(request: Request):
     # issue #29 PR-G1b：cop_entities 被 raw SQL 清空、不會自動發 per-entity WS delete。
     # 廣播 resync → 各 client 重新 GET /api/cop/entities 對帳（清掉 server 已無者），
     # 否則其他瀏覽器的事件/圖釘殘留到手動 reload。exercise_id=None → 廣播給所有連線。
-    await cop_hub.broadcast({"op": "resync"})
+    await cop_hub.broadcast_all({"op": "resync"})  # P1-14：strict wants 後改 broadcast_all 確保全連線收到
     return {"ok": True, "cleared_tables": tables}
 
 
 @router.post("/reset-exercise", tags=["system"])
 async def reset_exercise(request: Request):
     sess = _check_system_admin(request)
-    ex_tables = ["ttx_injects", "exercises", "resource_snapshots", "aar_entries", "ai_recommendations"]
+    ex_tables = ["ttx_injects", "exercises", "resource_snapshots", "aar_entries",
+                 "ai_recommendations", "exercise_kpis"]
     # issue #29 PR-G1b：cop_entities 有 exercise_id，演習重設一併清演習場域的 COP 圖釘
-    # （事件/route/polygon）。tracks/links 無 exercise_id（references uid）；演習事件目前不建
-    # tracks/links，故此處不處理，待 P2 TAK 移動軌跡落地時再補 orphan 清理。
+    # （事件/route/polygon）。tracks/links 無 exercise_id（references uid ON DELETE CASCADE）；
+    # PRAGMA foreign_keys=ON，故刪 cop_entities 時 tracks/links 自動級聯，無 orphan。
     data_tables = ["snapshots", "events", "decisions", "manual_records", "audit_log", "cop_entities"]
     cleared = {}
     with get_conn() as conn:
@@ -266,7 +267,7 @@ async def reset_exercise(request: Request):
             except Exception:
                 pass
     audit(sess["username"], None, "exercise_reset", "system", "all", {"cleared": cleared})
-    await cop_hub.broadcast({"op": "resync"})  # 同 reset-db：各 client 對帳清掉演習場域圖釘
+    await cop_hub.broadcast_all({"op": "resync"})  # P1-14：strict wants 後改 broadcast_all 確保全連線收到  # 同 reset-db：各 client 對帳清掉演習場域圖釘
     return {"ok": True, "cleared": cleared}
 
 

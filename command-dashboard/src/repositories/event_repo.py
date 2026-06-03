@@ -6,7 +6,7 @@ import uuid
 import structlog
 from core.database import get_conn
 
-from ._helpers import add_minutes, audit, now_utc, row_to_dict
+from ._helpers import NULL_SCOPE, add_minutes, audit, now_utc, row_to_dict
 
 _log = structlog.get_logger()
 
@@ -79,27 +79,25 @@ def create_event(data: dict, exercise_id: int | None = None) -> dict:
 
 
 def get_events(status: str | None = None, limit: int = 50,
-               exercise_id: int | None = None) -> list[dict]:
+               exercise_id=None) -> list[dict]:
+    # P1-14：exercise_id 三態（見 _helpers.NULL_SCOPE）——
+    #   int → exact / NULL_SCOPE → IS NULL（實戰池）/ None → 不過濾（內部 caller）
+    clauses, params = [], []
+    if status:
+        clauses.append("status=?")
+        params.append(status)
+    if exercise_id is NULL_SCOPE:
+        clauses.append("exercise_id IS NULL")
+    elif exercise_id is not None:
+        clauses.append("exercise_id=?")
+        params.append(exercise_id)
+    sql = "SELECT * FROM events"
+    if clauses:
+        sql += " WHERE " + " AND ".join(clauses)
+    sql += " ORDER BY occurred_at DESC LIMIT ?"
+    params.append(limit)
     with get_conn() as conn:
-        if exercise_id is not None and status:
-            rows = conn.execute(
-                "SELECT * FROM events WHERE status=? AND exercise_id=? "
-                "ORDER BY occurred_at DESC LIMIT ?",
-                (status, exercise_id, limit)).fetchall()
-        elif exercise_id is not None:
-            rows = conn.execute(
-                "SELECT * FROM events WHERE exercise_id=? "
-                "ORDER BY occurred_at DESC LIMIT ?",
-                (exercise_id, limit)).fetchall()
-        elif status:
-            rows = conn.execute(
-                "SELECT * FROM events WHERE status=? "
-                "ORDER BY occurred_at DESC LIMIT ?",
-                (status, limit)).fetchall()
-        else:
-            rows = conn.execute(
-                "SELECT * FROM events ORDER BY occurred_at DESC LIMIT ?",
-                (limit,)).fetchall()
+        rows = conn.execute(sql, params).fetchall()  # nosec B608 — clause 全常數，值 parameterized
     return [row_to_dict(r) for r in rows]
 
 

@@ -515,6 +515,58 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(
 .si-title{font-size:13px;font-weight:600;color:var(--text);}
 .si-sub{font-size:10px;color:var(--text3);margin-top:1px;}
 .si-arrow{color:var(--text3);font-size:14px;}
+
+/* P1-14 PR-2：演習 chip（header）+ 演習管理面板（settings）。
+   樣式一律走 DS token，禁寫死 hex。 */
+.ex-chip{
+  display:inline-block;padding:2px 8px;border-radius:var(--radius-pill);
+  font-family:var(--mono);font-size:var(--fs-nano);font-weight:600;
+  cursor:pointer;transition:all .2s;white-space:nowrap;border:1px solid transparent;
+}
+.ex-chip--idle{color:var(--text3);border-color:var(--text3);background:transparent;}
+/* ☀ 演練（ttx）= 白天/琥珀；☾ 實戰（real）= 黑夜/紅（嚴肅）。沿用底圖 day/night 圖示語言。 */
+.ex-chip--ttx{
+  color:var(--orange);border-color:var(--orange);font-weight:800;
+  background:color-mix(in srgb, var(--orange) 15%, transparent);
+}
+.ex-chip--real{
+  color:var(--red);border-color:var(--red);font-weight:800;
+  background:color-mix(in srgb, var(--red) 15%, transparent);
+}
+.ex-panel{display:flex;flex-direction:column;gap:8px;}
+.ex-panel-head{display:flex;align-items:center;justify-content:space-between;gap:8px;}
+.ex-create{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:4px;}
+.ex-input{
+  padding:4px 8px;font-size:var(--fs-micro);background:var(--surface);
+  color:var(--text);border:1px solid var(--border);border-radius:var(--radius-sm);
+}
+.ex-input::placeholder{color:var(--text3);}
+.ex-new-name,#ex-new-name{flex:1;min-width:120px;}
+.ex-select{cursor:pointer;}
+.ex-btn{
+  padding:3px 10px;font-size:var(--fs-micro);background:var(--surface2);
+  color:var(--text);border:1px solid var(--border);border-radius:var(--radius-sm);
+  cursor:pointer;white-space:nowrap;
+}
+.ex-btn:hover{border-color:var(--text3);}
+.ex-btn--primary{background:var(--accent);color:var(--surface);border-color:var(--accent);font-weight:600;}
+.ex-btn--danger{color:var(--red);border-color:var(--red);}
+.ex-warn{font-size:var(--fs-nano);color:var(--red);min-height:14px;}
+.ex-empty{font-size:var(--fs-micro);color:var(--text3);padding:12px 0;text-align:center;}
+.ex-list{display:flex;flex-direction:column;gap:4px;margin-top:4px;}
+.ex-row{
+  display:flex;align-items:center;justify-content:space-between;gap:8px;
+  padding:6px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);
+  background:var(--surface);
+}
+.ex-row--active{
+  border-color:var(--orange);
+  background:color-mix(in srgb, var(--orange) 10%, transparent);
+}
+.ex-row-main{min-width:0;flex:1;}
+.ex-row-name{font-size:var(--fs-small);font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.ex-row-meta{font-size:var(--fs-nano);color:var(--text3);margin-top:1px;}
+.ex-row-actions{display:flex;gap:4px;flex-shrink:0;}
 .stg-footer{
   padding:12px 16px;border-top:1px solid var(--border);
   font-size:10px;color:var(--text3);display:flex;flex-direction:column;gap:6px;
@@ -833,6 +885,18 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(
         <span class="si-arrow">&#x203A;</span>
       </div>
     </div>
+    <!-- P1-14 PR-2：演習管理（取代死掉的 ttx-toggle / session_type）。
+         建立 ／ 啟動 ／ 歸檔僅指揮層；非指揮層仍可看列表。 -->
+    <div class="stg-section" id="stg-exercise-section">
+      <div class="stg-section-title">演習管理</div>
+      <div class="ex-panel">
+        <div class="ex-panel-head">
+          <span class="si-sub">演習場次（active 自動 scope 資料）</span>
+          <button class="ex-btn" data-action="exRefresh">重新整理</button>
+        </div>
+        <div id="ex-panel-body"></div>
+      </div>
+    </div>
   </div>
   <div class="stg-footer">
     <div id="stg-user-info"></div>
@@ -888,9 +952,13 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(
   <!-- 中：左半時鐘 / 右半人數+摘要 -->
   <div id="zone-a-mid">
     <div id="zone-a-top">
-      <div class="za-col" style="align-items:center;">
+      <div class="za-col" style="align-items:center;gap:2px;">
         <span class="za-clock" id="clock">--:--:--</span>
-        <span id="date-label" style="font-size:12px;color:var(--text3);"></span>
+        <!-- P1-14：日期 + 演習場次 chip 同一行，置於時鐘正下方（zone-a 固定 64px，不壓縮 map）。 -->
+        <div style="display:flex;align-items:center;gap:10px;">
+          <span id="date-label" style="font-size:12px;color:var(--text3);"></span>
+          <span id="exercise-chip" data-action="openExercisePanel" class="ex-chip ex-chip--idle" title="演習場次">無進行中場次</span>
+        </div>
       </div>
       <div class="za-col za-col-r">
         <!-- counts-shelter / counts-medical 已於 P1-11 移除（PWA-specific 計數） -->
@@ -907,7 +975,6 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(
       <span id="idle-countdown"></span>
       <span data-action="openSettings" style="font-size:14px;cursor:pointer;color:var(--text3);" title="設定">&#9881;</span>
       <span class="h-ver" id="h-ver"></span>
-      <button id="ttx-toggle" data-action="toggleTTXMode" style="padding:2px 8px;border:1px solid var(--text3);border-radius:4px;background:transparent;color:var(--text3);font-size:10px;font-weight:600;cursor:pointer;font-family:var(--mono);transition:all .2s;" title="切換實戰/演練模式">實戰</button>
       <button data-action="cmdLogout" style="padding:2px 8px;border:1px solid var(--red);border-radius:4px;background:transparent;color:var(--red);font-size:10px;font-weight:600;cursor:pointer;font-family:var(--mono);transition:all .2s;"  >登出</button>
     </div>
   </div>

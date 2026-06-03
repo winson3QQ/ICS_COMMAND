@@ -718,9 +718,7 @@ async function _evPopupSubmit(typeKey, ctx) {
   const id = 'evt_' + Date.now();
   const mgrs = _latlngToMGRS(lat, lng, 5);
   const operator = _deps.getCurrentOperator?.() || '';
-  const sessionType = (() => {
-    try { return window.__sessionType || 'real'; } catch { return 'real'; }
-  })();
+  // P1-14 PR-2：session_type 退役（後端自動依 active exercise scope，建立事件不再送）。
 
   const evGroup = evDef.group || 'ops';  // 解撞名：事件「類別 group」≠ ICS 組織 node_type
   const roundedLat = Math.round(lat * 1000000) / 1000000;
@@ -742,7 +740,6 @@ async function _evPopupSubmit(typeKey, ctx) {
         operator_name: operator,
         location_zone_id: id,   // 記錄用 client id；consumer 主要靠 event_id 連結
         location_desc: mgrs,
-        session_type: sessionType,
       }),
     });
     if (resp.ok) {

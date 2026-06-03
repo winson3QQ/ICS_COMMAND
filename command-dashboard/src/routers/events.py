@@ -1,11 +1,12 @@
 from datetime import UTC, datetime, timedelta
 
 import structlog
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 
 from repositories.decision_repo import create_decision
 from repositories.event_repo import add_event_note, create_event, get_events, patch_event, update_event_status
 from schemas.event import DeadlinePatch, EventIn, EventNoteIn, EventPatch
+from services.exercise_service import current_exercise_id, resolve_scope
 
 router = APIRouter(prefix="/api/events", tags=["事件"])
 log    = structlog.get_logger()
@@ -20,7 +21,10 @@ def post_event(ev: EventIn):
         raise HTTPException(422, f"severity 必須是 {VALID_SEVERITIES}")
     if ev.reported_by_unit not in VALID_UNITS:
         raise HTTPException(422, f"reported_by_unit 必須是 {VALID_UNITS}")
-    result = create_event(ev.model_dump(), ev.exercise_id)
+    # P1-14：exercise_id 由 server 端 active 場決定，不信任 client 帶的 ev.exercise_id
+    # （對齊 cop create 強制 source='manual' 的 doctrine）。無 active → NULL＝實戰池。
+    active_ex = current_exercise_id()
+    result = create_event(ev.model_dump(), active_ex)
     log.info("event_created", msg="事件建立",
              detail={"event_id": result.get("id"), "severity": ev.severity,
                      "event_type": ev.event_type, "unit": ev.reported_by_unit})
@@ -33,13 +37,15 @@ def post_event(ev: EventIn):
             "impact_description": f"來源：{ev.reported_by_unit}　{ev.event_type}",
             "suggested_action_a": "（計劃情報組補充建議動作）",
             "created_by":         ev.operator_name,
-        }, ev.exercise_id)
+        }, active_ex)
     return result
 
 
 @router.get("")
-def get_ev(status: str | None = None, limit: int = 50):
-    return get_events(status, limit)
+def get_ev(request: Request, status: str | None = None, limit: int = 50,
+           exercise_id: int | None = None):
+    # P1-14：預設只回當前 active 場；commander 可顯式帶 exercise_id 看歷史（resolve_scope 守門）。
+    return get_events(status, limit, resolve_scope(request.state.session, exercise_id))
 
 
 @router.patch("/{event_id}")

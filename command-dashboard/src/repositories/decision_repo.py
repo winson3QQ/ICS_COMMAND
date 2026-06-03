@@ -2,7 +2,7 @@ import uuid
 
 from core.database import get_conn
 
-from ._helpers import audit, now_utc, row_to_dict
+from ._helpers import NULL_SCOPE, audit, now_utc, row_to_dict
 
 
 def create_decision(data: dict, exercise_id: int | None = None) -> dict:
@@ -76,21 +76,22 @@ def decide(decision_id: str, action: str, decided_by: str,
     return {"id": decision_id, "status": action, "decided_at": now}
 
 
-def get_decisions(status: str | None = None, exercise_id: int | None = None) -> list[dict]:
+def get_decisions(status: str | None = None, exercise_id=None) -> list[dict]:
+    # P1-14：exercise_id 三態（見 _helpers.NULL_SCOPE）——
+    #   int → exact / NULL_SCOPE → IS NULL（實戰池）/ None → 不過濾（內部 caller）
+    clauses, params = [], []
+    if status:
+        clauses.append("status=?")
+        params.append(status)
+    if exercise_id is NULL_SCOPE:
+        clauses.append("exercise_id IS NULL")
+    elif exercise_id is not None:
+        clauses.append("exercise_id=?")
+        params.append(exercise_id)
+    sql = "SELECT * FROM decisions"
+    if clauses:
+        sql += " WHERE " + " AND ".join(clauses)
+    sql += " ORDER BY created_at DESC"
     with get_conn() as conn:
-        if exercise_id is not None and status:
-            rows = conn.execute(
-                "SELECT * FROM decisions WHERE status=? AND exercise_id=? ORDER BY created_at DESC",
-                (status, exercise_id)).fetchall()
-        elif exercise_id is not None:
-            rows = conn.execute(
-                "SELECT * FROM decisions WHERE exercise_id=? ORDER BY created_at DESC",
-                (exercise_id,)).fetchall()
-        elif status:
-            rows = conn.execute(
-                "SELECT * FROM decisions WHERE status=? ORDER BY created_at DESC",
-                (status,)).fetchall()
-        else:
-            rows = conn.execute(
-                "SELECT * FROM decisions ORDER BY created_at DESC").fetchall()
+        rows = conn.execute(sql, params).fetchall()  # nosec B608 — clause 全常數，值 parameterized
     return [row_to_dict(r) for r in rows]
