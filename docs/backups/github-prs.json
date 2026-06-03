@@ -1781,5 +1781,26 @@
     "title": "feat(facilities): P1-17 v1 永久設施公開資料底圖層（#88）",
     "updatedAt": "2026-06-03T09:01:04Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/90"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "@\n## P1-14 Exercise data scoping（issue #89）\n\n點亮休眠的 exercise scoping，補上前端演習管理 UI，並讓切換演習跨 session 即時反應。\n\n### 後端 scoping\n- `resolve_scope(session, requested)` 安全閘門 + `NULL_SCOPE` 三態過濾（int 精確 / NULL 實戰池 / None 不過濾），套到 events/cop/decisions/manual/dashboard/audit 6 repo。\n- **strict isolation**：無 active → 實戰池（NULL）非「看全部」；歷史需 COMMAND_ROLES override。\n- create 由 server 蓋 active exercise_id（不信任 client）；cop create 綁 active（= P1-16 接點）。\n- 硬刪演習（級聯白名單表·sysadmin-only·非 active·TOCTOU 防護）。\n\n### 跨 session 即時\n- `cop_hub.broadcast_all`：activate/archive/delete → 廣播 `exercise_switched` 給**所有**連線（不過濾 scope）→ 各 client 重對帳 map/面板/chip。\n\n### 前端\n- 演習管理面板 + active chip（文字「演習／」「實戰／」「無進行中場次」），退役 ttx-toggle/session_type。\n\n### Review LOW 收尾\n- `GET /api/cop/entities/{uid}` 加 by-uid scope gate（非指揮層跨場讀 → 404）。\n- `reset-exercise` 補清 `exercise_kpis`（與 delete_exercise 一致）。\n\n### 測試\n- 後端：test_exercise_scoping（scoping/strict isolation/role gate/delete/by-uid）、test_cop_ws（operator 收廣播）。\n- 前端：cop_stream `exercise_switched` dispatch、exercises chip/RBAC/delete。\n- 已併 main（含 P1-17 #88）後全綠：216 vitest + pytest。\n\nCode/security review：無 HIGH/MED 新破口，可 merge。\n\nCloses #89\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n@",
+    "closedAt": "2026-06-03T09:13:02Z",
+    "comments": [],
+    "createdAt": "2026-06-03T09:12:48Z",
+    "headRefName": "feat/issue-89-exercise-scoping",
+    "labels": [],
+    "mergedAt": "2026-06-03T09:13:02Z",
+    "number": 91,
+    "state": "MERGED",
+    "title": "P1-14：Exercise data scoping wiring + 演習管理 UI + 跨 session 即時切場（#89）",
+    "updatedAt": "2026-06-03T09:13:06Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/91"
   }
 ]
