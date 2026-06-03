@@ -15,8 +15,8 @@
 
 import {
   authInit, cmdLogout, PinLock,
-  openSettings, closeSettings, openConfigModal,
-  saveConfig, exportDashboardJSON, showAuditLog,
+  openSettings, closeSettings,
+  exportDashboardJSON, showAuditLog,
   openAdminPanel, closeAdminPanel, adminLogin,
   admShowTab, admShowSys, admChangeAdminPin,
   unlockPinLock, setModalHandlers,
@@ -64,9 +64,10 @@ import {
   onPlaceTypeChange,
   l3SubTab, openL4Detail, backToL3,
   loadL3Records, _loadPwaIncidents,
-  saveMapConfig, _saveInfraPosition,
+  saveMapConfig,
   openMapConfigPanel, closeMapConfigPanel, admUploadMapImage,
-  admRemoveMapImage, _cancelNodePlace, _cancelEventPin,
+  admRemoveMapImage, _cancelNodePlace, _cancelInfraPlace, _cancelEventPin,
+  _openNodePlacePicker, _startNodePlace, _deleteNode,
   applyMapRoleUiGuards,
   _toggleLayer, _closeLayerPanel,
   setCopStream,
@@ -155,9 +156,6 @@ document.addEventListener('click', function (e) {
     case 'sessionLogout':  logoutFromSessionWarning(); break;
     case 'openSettings':   openSettings(); import('./exercises.js').then(m => m.renderExercisePanel()); break;
     case 'closeSettings':  closeSettings(); break;
-    case 'openConfigModal': openConfigModal(); break;
-    case 'saveConfig':
-    case 'save-config':    saveConfig(); break;
     case 'exportJSON': {
       import('./cop.js').then(m => exportDashboardJSON(m.getData()));
       break;
@@ -264,7 +262,7 @@ document.addEventListener('click', function (e) {
     // ── 地圖 ──
     case 'switchMap':      switchMap(btn.dataset.map); break;
     case 'cancelPlaceMode': cancelPlaceMode(); break;
-    case 'cancelNodePlace': _cancelNodePlace(); break;
+    case 'cancelNodePlace': _cancelNodePlace(); _cancelInfraPlace(); break;
     case 'cancelEventPin': _cancelEventPin(); break;
     case 'togglePinEditMode': togglePinEditMode(); break;
     case 'toggleCsel':     toggleCsel(); break;
@@ -310,6 +308,7 @@ document.addEventListener('click', function (e) {
     }
     case 'startInfraPlace': {
       if (!canAccessMapObjects()) break;
+      closeModal?.();
       _startInfraPlace(btn.dataset.infraType);
       break;
     }
@@ -347,6 +346,23 @@ document.addEventListener('click', function (e) {
     case 'resetRouteLabelAnchor': {
       if (!canAccessMapObjects()) break;
       _resetRouteLabelAnchor(id);
+      break;
+    }
+    // P1-16：on-demand 放置節點
+    case 'openNodePlace': {
+      if (!canAccessMapObjects()) break;
+      _openNodePlacePicker();
+      break;
+    }
+    case 'startNodePlace': {
+      if (!canAccessMapObjects()) break;
+      closeModal?.();
+      _startNodePlace(btn.dataset.nodeType);
+      break;
+    }
+    case 'deleteNode': {
+      if (!canAccessMapObjects()) break;
+      _deleteNode(id);
       break;
     }
     case 'mgrsSearch':     _mgrsSearch(); break;

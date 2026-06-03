@@ -644,6 +644,71 @@ export function copEntityToEventZone(entity) {
 }
 
 /**
+ * cop_entity（attributes.kind='zone'）→ 既有「節點 zone」shape（P1-16 on-demand 節點放置）。
+ *
+ * 5 個 ICS 編組節點（收容/醫療/指揮/前進/安全）改成 on-demand：admin 從工具列放置，
+ * 存成 cop_entity（attributes.kind='zone'）。render（zoneToNodeFeature）與所有 consumer
+ * （showZoneDetail / _onZoneClick / _highlightEvent）仍吃舊 node-zone shape：
+ *   { id, lat, lng, label, node_type, icon }
+ *
+ *   - uid              → id（cop 主鍵；刪除 / 回查用）
+ *   - lat / lon        → lat / lng（注意：cop 用 lon，zone 用 lng）
+ *   - callsign         → label（節點中文名）
+ *   - attributes.node_type → node_type（ICS 組織單位，缺則預設 'command'）
+ *   - icon 固定 'pin'
+ *
+ * guard：attributes.kind 非 'zone' → 回 null；lat/lon 非有限數 → 回 null。
+ */
+export function copEntityToZone(entity) {
+  if (entity == null) return null;
+  const attrs = entity.attributes || {};
+  if (attrs.kind !== 'zone') return null;
+  const lat = Number(entity.lat);
+  const lng = Number(entity.lon);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  return {
+    id: entity.uid ?? null,
+    lat,
+    lng,
+    label: entity.callsign ?? '',
+    node_type: attrs.node_type ?? 'command',
+    icon: 'pin',
+  };
+}
+
+/**
+ * cop_entity（attributes.kind='infra'）→ 既有「設施 infra」shape（P1-16 on-demand 設施放置）。
+ *
+ * 5 類設施（醫院/收容/警局/消防/維生）改成 on-demand：admin 從工具列/圖層面板放置，
+ * 存成 cop_entity（attributes.kind='infra'）。render（infraToFeature）吃舊 infra shape：
+ *   { id, lat, lng, infra_type, label }
+ *
+ *   - uid                  → id（cop 主鍵；刪除 / 回查用）
+ *   - lat / lon            → lat / lng（注意：cop 用 lon，infra 用 lng）
+ *   - callsign             → label（設施中文名）
+ *   - attributes.infra_type → infra_type（設施類型，缺則預設 'utility'）
+ *
+ * color / abbr 由 caller（_renderInfra）用 INFRA_TYPES 補上（infraToFeature 已是此設計）。
+ *
+ * guard：attributes.kind 非 'infra' → 回 null；lat/lon 非有限數 → 回 null。
+ */
+export function copEntityToInfra(entity) {
+  if (entity == null) return null;
+  const attrs = entity.attributes || {};
+  if (attrs.kind !== 'infra') return null;
+  const lat = Number(entity.lat);
+  const lng = Number(entity.lon);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  return {
+    id: entity.uid ?? null,
+    lat,
+    lng,
+    infra_type: attrs.infra_type ?? 'utility',
+    label: entity.callsign ?? '',
+  };
+}
+
+/**
  * infra-shaped object → GeoJSON Point Feature。
  * map_config.maps.outdoor.infrastructure schema：{ id, lat, lng, infra_type, label }
  *

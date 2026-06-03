@@ -21,6 +21,8 @@ import {
   copEntityToRoute,
   copEntityToPolygon,
   copEntityToEventZone,
+  copEntityToZone,
+  copEntityToInfra,
 } from '../../static/js/map/entity_layer.js';
 
 /** Mock MapLibre Map：記錄所有 addSource/addLayer/setData 呼叫 */
@@ -545,5 +547,76 @@ describe('copEntityToEventZone adapter（PR-G1b cutover）', () => {
     expect(copEntityToEventZone({ uid: 'x', lat: 1, lon: 2, attributes: { kind: 'route', vertices: [] } })).toBeNull();
     expect(copEntityToEventZone({ uid: 'x', lat: 1, lon: 2, attributes: { kind: 'event' } })).toBeNull(); // 缺 event_id
     expect(copEntityToEventZone({ uid: 'x', attributes: { kind: 'event', event_id: 'e' } })).toBeNull(); // 缺座標
+  });
+});
+
+describe('copEntityToZone adapter（P1-16 on-demand 節點）', () => {
+  test('zone cop_entity → 既有節點 zone shape', () => {
+    const ent = {
+      uid: 'manual:z1',
+      lat: 24.83,
+      lon: 121.01,
+      callsign: '指揮部',
+      attributes: { kind: 'zone', node_type: 'command' },
+    };
+    const z = copEntityToZone(ent);
+    expect(z.id).toBe('manual:z1');      // cop uid → zone.id（刪除/回查用）
+    expect(z.lat).toBe(24.83);
+    expect(z.lng).toBe(121.01);          // cop lon → zone.lng
+    expect(z.label).toBe('指揮部');
+    expect(z.node_type).toBe('command');
+    expect(z.icon).toBe('pin');
+  });
+
+  test('缺 node_type → 預設 command；缺 callsign → 空字串', () => {
+    const z = copEntityToZone({ uid: 'manual:z2', lat: 1, lon: 2, attributes: { kind: 'zone' } });
+    expect(z.node_type).toBe('command');
+    expect(z.label).toBe('');
+  });
+
+  test('非 zone kind / 座標非數 / null → 回 null', () => {
+    expect(copEntityToZone(null)).toBeNull();
+    expect(copEntityToZone({ uid: 'x', lat: 1, lon: 2, attributes: { kind: 'event', event_id: 'e' } })).toBeNull();
+    expect(copEntityToZone({ uid: 'x', lat: 1, lon: 2, attributes: {} })).toBeNull(); // 缺 kind
+    expect(copEntityToZone({ uid: 'x', lat: 'nope', lon: 2, attributes: { kind: 'zone' } })).toBeNull();
+    expect(copEntityToZone({ uid: 'x', attributes: { kind: 'zone' } })).toBeNull(); // 缺座標
+  });
+});
+
+describe('copEntityToInfra adapter（P1-16 PR-2 on-demand 設施）', () => {
+  test('infra cop_entity → 既有設施 infra shape', () => {
+    const ent = {
+      uid: 'manual:i1',
+      lat: 24.83,
+      lon: 121.01,
+      callsign: '醫院',
+      attributes: { kind: 'infra', infra_type: 'hospital' },
+    };
+    const i = copEntityToInfra(ent);
+    expect(i.id).toBe('manual:i1');      // cop uid → infra.id（刪除/回查用）
+    expect(i.lat).toBe(24.83);
+    expect(i.lng).toBe(121.01);          // cop lon → infra.lng
+    expect(i.label).toBe('醫院');
+    expect(i.infra_type).toBe('hospital');
+  });
+
+  test('缺 infra_type → 預設 utility；缺 callsign → 空字串', () => {
+    const i = copEntityToInfra({ uid: 'manual:i2', lat: 1, lon: 2, attributes: { kind: 'infra' } });
+    expect(i.infra_type).toBe('utility');
+    expect(i.label).toBe('');
+  });
+
+  test('color / abbr 不由 adapter 補（交給 caller 用 INFRA_TYPES 對映）', () => {
+    const i = copEntityToInfra({ uid: 'x', lat: 1, lon: 2, attributes: { kind: 'infra', infra_type: 'fire' } });
+    expect(i.color).toBeUndefined();
+    expect(i.abbr).toBeUndefined();
+  });
+
+  test('非 infra kind / 座標非數 / null → 回 null', () => {
+    expect(copEntityToInfra(null)).toBeNull();
+    expect(copEntityToInfra({ uid: 'x', lat: 1, lon: 2, attributes: { kind: 'zone' } })).toBeNull();
+    expect(copEntityToInfra({ uid: 'x', lat: 1, lon: 2, attributes: {} })).toBeNull(); // 缺 kind
+    expect(copEntityToInfra({ uid: 'x', lat: 'nope', lon: 2, attributes: { kind: 'infra' } })).toBeNull();
+    expect(copEntityToInfra({ uid: 'x', attributes: { kind: 'infra' } })).toBeNull(); // 缺座標
   });
 });

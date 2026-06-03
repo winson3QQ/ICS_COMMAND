@@ -153,6 +153,39 @@ class TestScopeRoleGate:
         assert client.get(f"/api/exercises/{exid}/aar", headers=auth).status_code != 403
 
 
+class TestNodeInfraRBAC:
+    """P1-16 security review HIGH-1：節點(zone)/設施(infra)建立+刪除限指揮層（後端授權，非只前端）。
+    其餘 kind（route/polygon/event）operator 仍可寫，不誤傷。"""
+
+    _ZONE = {"type": "a-f-G-I", "lat": 24.8, "lon": 121.0, "callsign": "收容組",
+             "attributes": {"kind": "zone", "node_type": "shelter"}}
+    _INFRA = {"type": "a-f-G-I", "lat": 24.8, "lon": 121.0, "callsign": "醫院",
+              "attributes": {"kind": "infra", "infra_type": "hospital"}}
+    _ROUTE = {"type": "a-f-G", "lat": 24.8, "lon": 121.0, "callsign": "R",
+              "attributes": {"kind": "route", "vertices": [[24.8, 121.0], [24.9, 121.1]]}}
+
+    def test_operator_cannot_create_zone_or_infra(self, client, operator_auth):
+        assert client.post("/api/cop/entities", json=self._ZONE, headers=operator_auth).status_code == 403
+        assert client.post("/api/cop/entities", json=self._INFRA, headers=operator_auth).status_code == 403
+
+    def test_operator_can_still_create_route(self, client, operator_auth):
+        # 非 zone/infra 的 cop 寫入（operator 日常畫路線/多邊形）不受限
+        assert client.post("/api/cop/entities", json=self._ROUTE, headers=operator_auth).status_code == 201
+
+    def test_commander_creates_and_deletes_zone(self, client, commander_auth):
+        r = client.post("/api/cop/entities", json=self._ZONE, headers=commander_auth)
+        assert r.status_code == 201, r.text
+        uid, vc = r.json()["uid"], r.json()["version_clock"]
+        d = client.delete(f"/api/cop/entities/{uid}", headers={**commander_auth, "If-Match": str(vc)})
+        assert d.status_code == 200
+
+    def test_operator_cannot_delete_zone(self, client, auth, operator_auth):
+        r = client.post("/api/cop/entities", json=self._ZONE, headers=auth)  # 指揮層建
+        uid, vc = r.json()["uid"], r.json()["version_clock"]
+        assert client.delete(f"/api/cop/entities/{uid}",
+                             headers={**operator_auth, "If-Match": str(vc)}).status_code == 403
+
+
 class TestExerciseDelete:
     def test_delete_cascades_and_blocks_active(self, client, auth):
         a = _mk_exercise(client, auth, "刪除測試")

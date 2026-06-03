@@ -142,6 +142,12 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(
 #route-draw-banner button{background:transparent;border:1px solid var(--border);color:var(--text2);
   padding:2px 10px;border-radius:10px;font-size:11px;cursor:pointer;}
 #route-draw-banner button.ok{background:var(--green);color:#fff;border-color:var(--green);}
+/* P1-16 放置節點 banner（沿用路線 banner 樣式）*/
+#node-place-banner{display:none;position:absolute;top:50px;left:50%;transform:translateX(-50%);z-index:1001;
+  background:rgba(14,22,29,.92);border:1px solid var(--border);border-radius:20px;
+  padding:6px 14px;font-size:12px;align-items:center;gap:12px;white-space:nowrap;pointer-events:auto;}
+#node-place-banner button{background:transparent;border:1px solid var(--border);color:var(--text2);
+  padding:2px 10px;border-radius:10px;font-size:11px;cursor:pointer;}
 /* P1-17 公共設施 hover tooltip（深色，與儀表板一致）*/
 .facility-tip .maplibregl-popup-content{
   background:rgba(22,27,34,.97);color:var(--text);border:1px solid var(--border);
@@ -844,12 +850,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(
   <div class="stg-header"><span>設定</span><button class="stg-close" data-action="closeSettings">&times;</button></div>
   <div class="stg-body">
     <div class="stg-section">
-      <div class="stg-section-title">指揮部</div>
-      <div class="stg-item" data-action="openConfigModal">
-        <span class="si-icon">&#9881;</span>
-        <div class="si-text"><div class="si-title">指揮部設定</div><div class="si-sub">名稱、位置</div></div>
-        <span class="si-arrow">&#x203A;</span>
-      </div>
+      <div class="stg-section-title">站內地圖</div>
       <div class="stg-item" data-action="openMapConfigPanel">
         <span class="si-icon">&#128506;</span>
         <div class="si-text"><div class="si-title">地圖設定</div><div class="si-sub">載入站內平面圖</div></div>
@@ -1011,13 +1012,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(
     <div id="leaflet-map">
       <!-- 中央浮島：座標顯示 -->
       <div id="map-coord-panel" class="map-island" data-action="panToCoordTarget"></div>
-      <!-- 據點定位提示 banner（點地圖設定單位位置時顯示） -->
-      <div id="node-place-banner" style="display:none;position:absolute;top:8px;left:50%;transform:translateX(-50%);
-        z-index:1001;background:rgba(210,144,0,.92);color:#fff;font-family:var(--mono);font-size:11px;
-        padding:5px 14px;border-radius:5px;white-space:nowrap;display:none;align-items:center;gap:10px;">
-        <span>📍 點擊地圖設定「<b id="node-place-label"></b>」駐守位置</span>
-        <span data-action="cancelNodePlace" style="cursor:pointer;opacity:.8;font-size:13px;" title="取消">✕</span>
-      </div>
+      <!-- P1-16：舊「據點定位」banner 已移除（與下方 P1-16 banner 重複 id；node-place-label 已無人使用）。 -->
       <!-- 事件地圖標記提示 banner（從表單送出後，詢問是否標記位置） -->
       <div id="event-pin-banner" style="display:none;position:absolute;top:8px;left:50%;transform:translateX(-50%);
         z-index:1001;background:rgba(13,17,23,.95);border:1px solid rgba(255,255,255,.18);color:#e6edf3;font-family:var(--mono);font-size:11px;
@@ -1036,6 +1031,11 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(
         <span>↗ 繪製路線　點擊新增節點</span>
         <button id="route-finish-btn" class="ok" data-action="finishRouteDraw" disabled>完成</button>
         <button data-action="cancelRouteDraw">取消</button>
+      </div>
+      <!-- P1-16 放置 banner（節點 / 設施共用：點地圖放置） -->
+      <div id="node-place-banner">
+        <span>⊙ 點擊地圖放置</span>
+        <button data-action="cancelNodePlace">取消</button>
       </div>
       <!-- 圖層面板 -->
       <div id="layer-panel" style="display:none;"></div>
