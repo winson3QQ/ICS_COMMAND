@@ -857,16 +857,12 @@ export function findZoneByEventId(eventId) {
 export function showZoneDetail(zone) {
   if (!canAccessMapObjects()) return;
   if (!zone) return;
-  let body = `<div style="font-size:12px;line-height:1.7;">
+  // 注意：此為 fallback；live 路徑是 events.js showZoneDetail → _renderZoneModal（含刪除節點鈕）。
+  // _onZoneClick 走 (_deps.showZoneDetail || showZoneDetail)，_deps 恆被注入故此分支實務不命中。
+  const body = `<div style="font-size:12px;line-height:1.7;">
     <div>類型：${_escapeHtml(zone.node_type || '—')}</div>
     <div>座標：${zone.lat != null ? _coordValueHTML(zone.lat, zone.lng) : '站內相對位置'}</div>
   </div>`;
-  // P1-16：on-demand 節點（cop entity，有 uid、非事件、icon='pin'）可刪除。
-  if (zone.id && !zone.event_id && zone.icon === 'pin') {
-    body += `<div style="display:flex;gap:8px;margin-top:14px;">
-      <button data-action="deleteNode" data-id="${_escapeHtml(String(zone.id))}" style="flex:1;padding:8px;background:var(--red);color:#fff;border:none;border-radius:6px;font-weight:700;cursor:pointer;font-family:var(--mono);">刪除節點</button>
-    </div>`;
-  }
   _deps.openModal?.(zone.label || zone.id || '節點', body);
 }
 
@@ -2507,7 +2503,6 @@ export function _startNodePlace(nodeType) {
   if (banner) banner.style.display = 'flex';
   if (el('map-coord-panel')) el('map-coord-panel').style.display = 'none';
   if (_leafletMap) _leafletMap.getCanvas().style.cursor = 'crosshair';
-  document.getElementById('btn-node-place')?.classList.add('active');
 }
 
 export function _cancelNodePlace() {
@@ -2516,7 +2511,6 @@ export function _cancelNodePlace() {
   const banner = el('node-place-banner');
   if (banner) banner.style.display = 'none';
   if (_leafletMap) _leafletMap.getCanvas().style.cursor = '';
-  document.getElementById('btn-node-place')?.classList.remove('active');
 }
 
 async function _placeNodeAt(lat, lng) {
