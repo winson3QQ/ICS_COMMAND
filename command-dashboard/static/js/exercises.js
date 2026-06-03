@@ -179,7 +179,8 @@ export async function renderExercisePanel() {
         if (ex.status !== 'active') {
           actions += `<button class="ex-btn" data-action="exActivate" data-id="${_esc(ex.id)}">啟動</button>`;
         }
-        if (ex.status !== 'archived') {
+        // 歸檔＝結束進行中的演習，故只對 active 顯示（準備中尚未啟動、archived 已歸檔皆不顯）。
+        if (ex.status === 'active') {
           actions += `<button class="ex-btn" data-action="exArchive" data-id="${_esc(ex.id)}">歸檔</button>`;
         }
         // 刪除（級聯清資料）限 sysadmin；進行中不可刪（需先歸檔）

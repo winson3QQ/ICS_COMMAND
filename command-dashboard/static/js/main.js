@@ -67,6 +67,7 @@ import {
   saveMapConfig, _saveInfraPosition,
   openMapConfigPanel, closeMapConfigPanel, admUploadMapImage,
   admRemoveMapImage, _cancelNodePlace, _cancelEventPin,
+  _openNodePlacePicker, _startNodePlace, _deleteNode,
   applyMapRoleUiGuards,
   _toggleLayer, _closeLayerPanel,
   setCopStream,
@@ -347,6 +348,23 @@ document.addEventListener('click', function (e) {
     case 'resetRouteLabelAnchor': {
       if (!canAccessMapObjects()) break;
       _resetRouteLabelAnchor(id);
+      break;
+    }
+    // P1-16：on-demand 放置節點
+    case 'openNodePlace': {
+      if (!canAccessMapObjects()) break;
+      _openNodePlacePicker();
+      break;
+    }
+    case 'startNodePlace': {
+      if (!canAccessMapObjects()) break;
+      closeModal?.();
+      _startNodePlace(btn.dataset.nodeType);
+      break;
+    }
+    case 'deleteNode': {
+      if (!canAccessMapObjects()) break;
+      _deleteNode(id);
       break;
     }
     case 'mgrsSearch':     _mgrsSearch(); break;

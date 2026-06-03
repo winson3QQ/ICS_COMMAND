@@ -16,7 +16,7 @@
  *     已 stub 為 early-return，TODO 標註待 port
  */
 
-import { authFetch, canAccessMapObjects, canCreateEvents } from './ws.js';
+import { authFetch, canAccessMapObjects, canCreateEvents, canUseRealModeControls } from './ws.js';
 import {
   initMaplibre,
   getMap as _getMap,
@@ -43,6 +43,7 @@ import {
   copEntityToRoute,
   copEntityToPolygon,
   copEntityToEventZone,
+  copEntityToZone,
   bakeTextSdf,
   bakeArrowSdf,
   bakeDiamondSdf,
@@ -121,6 +122,7 @@ let _mgrsGrid = null;        // MgrsGrid instance — step 10 port 到 MapLibre 
 let _coordPin = null;            // 雙擊放置的藍色十字 marker
 let _polyDrawState = null;       // { latlngs, markers, previewPoly }
 let _routeDrawState = null;      // { latlngs, markers, previewLine }
+let _nodePlaceState = null;      // P1-16：{ nodeType } —— on-demand 放置節點模式（點地圖即放）
 let _pendingPolyLatlngs = null;  // _openPolyForm → _savePolygon 暫存
 let _pendingRouteLatlngs = null; // _openRouteForm → _saveRoute 暫存
 let _pinEditMode = false;
@@ -231,9 +233,30 @@ function _bakeGlyphs(map) {
   Promise.all(tasks).then((res) => { if (res.some(Boolean)) refreshLeafletMarkers(); });
 }
 
+// P1-16 視覺收尾：bake on-demand 節點的白色象形 icon（shelter 屋 / medical 十字）。
+// 仿 _bakeGlyphs：SVG raster 為非同步 → 全部 bake 完成後重繪一次（讓 zones-node-icon 層拿到 image）。
+// 固定兩個（非 taxonomy 動態），layer 建立時 bake 一次即可。
+function _bakeZoneIcons(map) {
+  if (!map) return;
+  const tasks = [];
+  for (const [type, svg] of Object.entries(ZONE_ICON_SVG)) {
+    if (type === '__proto__' || type === 'constructor' || type === 'prototype') continue;
+    tasks.push(bakeSvgIcon(map, 'zone-ico-' + type, svg));
+  }
+  Promise.all(tasks).then((res) => { if (res.some(Boolean)) refreshLeafletMarkers(); });
+}
+
 const _NAPSG_GROUP_ABBR = { security: '安', rescue: '救', medical: '醫', care: '護', infra: '設', ops: '行' };
 const _NODE_ABBR = { shelter: '收', medical: '醫', forward: '前', security: '安', command: '指' };
 const _NODE_COLORS = { shelter: '#f0883e', medical: '#e05555', forward: '#58a6ff', security: '#e3b341', command: '#8b949e' };
+// P1-16 視覺收尾：on-demand 節點（kind='zone'）的白色象形 icon（疊在彩色圓上）。
+// shelter＝屋頂（沿用 facilities_layer.js 的「避難收容處所」屋頂 path，與公共設施層一致）；
+// medical＝白十字（疊紅圓上＝紅十字醫療標誌）。command/forward/security 不入此表，維持 abbr（指/前/安）。
+// viewBox 0 0 24 24、fill #fff，bake 後 id = 'zone-ico-<node_type>'。
+const ZONE_ICON_SVG = {
+  shelter: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="#fff" d="M12 4 4 11h2v9h5v-5h2v5h5v-9h2z"/></svg>',
+  medical: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="#fff" d="M10 4h4v6h6v4h-6v6h-4v-6H4v-4h6z"/></svg>',
+};
 // P1-10d：severity 色採 NAPSG Incident Symbology 標準 hex（對齊 ds-tokens --severity-*）。
 // JS 端 canvas/MapLibre paint 需字面值，無法直接 var()，故與 ds-tokens 同步維護（見
 // docs/design/event-symbology-mapping.md）。critical Red / warning Orange / info Blue。
@@ -355,10 +378,11 @@ function _initMaplibre() {
   }
 
   _leafletMap = initMaplibre('leaflet-map', {
-    shouldSuppressInteraction: () => !!(_polyDrawState || _routeDrawState),
+    shouldSuppressInteraction: () => !!(_polyDrawState || _routeDrawState || _nodePlaceState),
 
-    // 單擊：繪製模式時新增頂點
+    // 單擊：繪製模式時新增頂點 / 放置節點
     onClick: ({ lat, lng }) => {
+      if (_nodePlaceState) { _placeNodeAt(lat, lng); return; }
       if (_polyDrawState) { _addPolyVertex(lat, lng); return; }
       if (_routeDrawState) { _addRouteVertex(lat, lng); return; }
     },
@@ -674,6 +698,11 @@ function _rebuildLayerPanel() {
   html += `<div style="border-top:1px solid var(--border);margin:4px 0 2px;padding:4px 12px 2px;font-size:9px;color:var(--text3);letter-spacing:.1em;text-transform:uppercase;">地圖設定</div>`;
   html += `<div class="layer-row" data-action="openInfraForm">
     <span style="font-size:11px;color:var(--text2);">＋ 新增設施</span></div>`;
+  // P1-16：on-demand 放置節點入口（限指揮層；operator/observer 不顯示）
+  if (canUseRealModeControls()) {
+    html += `<div class="layer-row" data-action="openNodePlace">
+      <span style="font-size:11px;color:var(--text2);">⊙ 放置節點</span></div>`;
+  }
   panel.innerHTML = html;
 }
 
@@ -821,11 +850,25 @@ export function findZoneByEventId(eventId) {
 export function showZoneDetail(zone) {
   if (!canAccessMapObjects()) return;
   if (!zone) return;
-  const body = `<div style="font-size:12px;line-height:1.7;">
-    <div>類型：${zone.node_type || '—'}</div>
+  let body = `<div style="font-size:12px;line-height:1.7;">
+    <div>類型：${_escapeHtml(zone.node_type || '—')}</div>
     <div>座標：${zone.lat != null ? _coordValueHTML(zone.lat, zone.lng) : '站內相對位置'}</div>
   </div>`;
+  // P1-16：on-demand 節點（cop entity，有 uid、非事件、icon='pin'）可刪除。
+  if (zone.id && !zone.event_id && zone.icon === 'pin') {
+    body += `<div style="display:flex;gap:8px;margin-top:14px;">
+      <button data-action="deleteNode" data-id="${_escapeHtml(String(zone.id))}" style="flex:1;padding:8px;background:var(--red);color:#fff;border:none;border-radius:6px;font-weight:700;cursor:pointer;font-family:var(--mono);">刪除節點</button>
+    </div>`;
+  }
   _deps.openModal?.(zone.label || zone.id || '節點', body);
+}
+
+export async function _deleteNode(id) {
+  if (!canUseRealModeControls()) return;  // 限指揮層（與放置一致）
+  if (!_copStream || !id) return;
+  const ok = await _copStream.deleteEntity(id);
+  _deps.closeModal?.();
+  if (!ok) _flashMapMsg('✗ 節點刪除失敗，請重試');
 }
 
 export function openMapConfigPanel() {
@@ -1090,6 +1133,7 @@ function _ensureEntityLayers() {
   // 不重複 bake — bakeTextSdf/bakeArrowSdf 內部 hasImage 判斷。
   _bakeAbbrs(map);
   _bakeGlyphs(map);  // P1-10d 正式 icon：NAPSG 象形（非同步 SVG raster，完成後自重繪）
+  _bakeZoneIcons(map);  // P1-16 視覺收尾：節點白色象形（shelter 屋 / medical 十字，非同步 bake 完自重繪）
   bakeArrowSdf(map, 'route-arrow');
   bakeDiamondSdf(map, 'zone-diamond');  // P1-10d：事件 ◆ hazard 形狀
 
@@ -1298,6 +1342,16 @@ function _ensureEntityLayers() {
       // SDF + icon-color 白 → 任何 base color 上都可見。
       {
         id: 'zones-abbr', type: 'symbol',
+        // P1-16 視覺收尾：shelter/medical 的「節點」改用白色象形（zones-node-icon 層），
+        // 故此處 abbr 字要抑制，否則象形跟字疊一起。只排除「節點」（is_event!=true）的
+        // shelter/medical；事件（is_event=true，event abbr/glyph 走自己的 fg）不受影響，
+        // command/forward/security 節點（仍顯 指/前/安）也不受影響。
+        filter: ['!',
+          ['all',
+            ['!=', ['coalesce', ['get', 'is_event'], false], true],
+            ['in', ['get', 'node_type'], ['literal', ['shelter', 'medical']]],
+          ],
+        ],
         layout: {
           // P1-10d 正式 icon：fg = NAPSG 象形（'napsg-glyph-*'）或 abbr（'napsg-abbr-*'）。
           // coalesce 防禦（fg 理論上恆有值）。glyph 框內加大：影像 48px（abbr 32px），
@@ -1309,6 +1363,29 @@ function _ensureEntityLayers() {
         },
         paint: {
           'icon-color': '#ffffff',
+          'icon-opacity': [
+            'case', ['boolean', ['feature-state', 'dimmed'], false], 0.15, 0.95,
+          ],
+        },
+      },
+      // P1-16 視覺收尾：on-demand 節點的白色象形 icon（shelter 屋 / medical 十字），疊在
+      // zones-base 圓之上、取代 zones-abbr 字。icon-image 動態組 'zone-ico-' + node_type
+      // （只 bake 了 shelter/medical 兩張，見 _bakeZoneIcons）。filter：只對「節點」
+      // （is_event!=true）且 node_type ∈ {shelter,medical} 顯示——事件不顯（事件走 ◆ + 自己的 fg）。
+      // icon-color 不設（image 本身已是白色 fill，非 SDF）；圓的 RAG 著色保留在 zones-base。
+      {
+        id: 'zones-node-icon', type: 'symbol',
+        filter: ['all',
+          ['!=', ['coalesce', ['get', 'is_event'], false], true],
+          ['in', ['get', 'node_type'], ['literal', ['shelter', 'medical']]],
+        ],
+        layout: {
+          'icon-image': ['concat', 'zone-ico-', ['get', 'node_type']],
+          'icon-size': 0.55,
+          'icon-allow-overlap': true,
+          'icon-ignore-placement': true,
+        },
+        paint: {
           'icon-opacity': [
             'case', ['boolean', ['feature-state', 'dimmed'], false], 0.15, 0.95,
           ],
@@ -1550,7 +1627,8 @@ function _startHighlightPulse(map, zoneId) {
  * 確保 setFeatureState 用的 id 與實際渲染的 feature id 一致（highlight 才點得到事件）。
  */
 function _allRenderedZones() {
-  const nodeZones = (_mapConfig?.maps?.outdoor?.zones || []).filter((z) => !(z.event_id || z.event_code));
+  // P1-16 cutover：節點不再從 map_config 讀，改 on-demand cop_entities（attributes.kind='zone'）。
+  const nodeZones = (_copStream?.getEntitiesByKind('zone') || []).map(copEntityToZone).filter(Boolean);
   const eventZones = (_copStream?.getEntitiesByKind('event') || [])
     .map(copEntityToEventZone)
     .filter(Boolean);
@@ -1691,8 +1769,9 @@ function _onRouteClick(e) {
 function _onZoneClick(e) {
   if (!canAccessMapObjects()) return;
   const id = e.features?.[0]?.properties?.id;
-  // PR-G1b：事件 zone 在 cop_entities（id=uid），節點仍在 map_config。先查 cop 事件，再退節點。
-  const zone = copEntityToEventZone(_copStream?.getEntity(id)) || _findById(_mapConfig?.maps?.outdoor?.zones, id);
+  // PR-G1b/P1-16：事件 zone 與節點 zone 都在 cop_entities（id=uid）。先查 cop 事件，再退節點。
+  const copEnt = _copStream?.getEntity(id);
+  const zone = copEntityToEventZone(copEnt) || copEntityToZone(copEnt) || _findById(_mapConfig?.maps?.outdoor?.zones, id);
   if (!zone) return;
   const isEvent = !!(zone.event_id || zone.event_code);
   if (isEvent) {
@@ -1922,8 +2001,14 @@ function _renderZones(opts = {}) {
   // P1-10d：只有 critical 事件會有 severity==='critical'（節點預設 'warning'）→ 用來 gate 脈動 RAF。
   _critPulseHas = features.some((f) => f.properties && f.properties.severity === 'critical');
   _updateCritPulse();
-  // 帶入避免重複全掃；事件隱藏時不掛拖曳 handle
-  if (!opts.skipHandleSync) _syncEventDragHandles(showEvents ? rendered.eventZones : []);
+  // 帶入避免重複全掃；事件隱藏時不掛事件拖曳 handle。
+  // P1-16：節點 zone（cop entity，無 event_id）也可拖，與事件 zone 共用同一 drag manager。
+  if (!opts.skipHandleSync) {
+    _syncEventDragHandles(
+      showEvents ? rendered.eventZones : [],
+      showNodes ? rendered.nodeZones : [],
+    );
+  }
 }
 
 /**
@@ -1938,7 +2023,7 @@ function _renderZones(opts = {}) {
  *   內部走 setLngLat 不重建，無無限遞迴風險）
  * - click：轉派 _onZoneClick（不然 handle 蓋住 zones-base，事件 modal 開不起來）
  */
-function _syncEventDragHandles(eventZonesArg) {
+function _syncEventDragHandles(eventZonesArg, nodeZonesArg) {
   if (!_eventDragMgr) return;
   // 同步 _renderZones 的過濾邏輯：只 sync 還在「open / in_progress」狀態的事件
   // zone，避免事件結案後 GPU circle 已消失、handle 還掛在原地（dogfood 撞到）。
@@ -1950,8 +2035,11 @@ function _syncEventDragHandles(eventZonesArg) {
     const ev = (data.events || []).find((e) => e.id === z.event_id);
     return !(ev && ['resolved', 'closed'].includes(ev.status));
   });
+  // P1-16：節點 zone（cop entity，無 event_id）也可拖。無「結案」概念，全數 sync。
+  // dragend / onDrag / onClick callback 用 entity 有無 event_id 區分行為（見下）。
+  const nodeZones = nodeZonesArg || _allRenderedZones().nodeZones;
   _eventDragMgr.sync(
-    eventZones,
+    [...eventZones, ...nodeZones],
     async (id, latlng, from) => {
       // dragend：① cop 落地位置（PUT + If-Match，會清 dragging）。失敗（409/網路）則 cop 已
       // 採 server 現值（pin 彈回），**不可**再寫 events 表，否則 location_desc 與 pin 分歧。
@@ -2312,7 +2400,67 @@ export async function _resetRouteLabelAnchor(id) {
   _deps.closeModal?.();
   if (!ok) _flashMapMsg('✗ 重設標籤位置失敗，請重試');
 }
-export function _cancelNodePlace() {}
+
+// ══════════════════════════════════════════════════════════════
+// P1-16：on-demand 放置節點（kind='zone'）
+//   clone route draw 模式：進入放置模式 → 點地圖 → 建 cop_entity（attributes.kind='zone'）。
+//   後端零新工：POST /api/cop/entities + P1-14 自動蓋 active exercise（或實戰 NULL）。
+// ══════════════════════════════════════════════════════════════
+
+// 工具列「⊙ 放置節點」→ 開類型選擇 modal（5 個 ICS 編組）。
+export function _openNodePlacePicker() {
+  // P1-16：放置/管理節點限指揮層（sysadmin/commander）；operator/observer 不可開。
+  if (!canUseRealModeControls()) return;
+  const BTN = 'display:block;width:100%;padding:10px;margin-bottom:8px;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:6px;cursor:pointer;font-family:var(--mono);font-size:13px;text-align:left;';
+  let html = '<div style="font-size:11px;color:var(--text3);margin-bottom:12px;">選擇節點類型，接著點地圖放置：</div>';
+  for (const n of _PERM_NODES) {
+    html += `<button data-action="startNodePlace" data-node-type="${_escapeHtml(n.node_type)}" style="${BTN}">${_escapeHtml(n.label)}</button>`;
+  }
+  _deps.openModal?.('⊙ 放置節點', html);
+}
+
+export function _startNodePlace(nodeType) {
+  if (!canUseRealModeControls()) return;  // 限指揮層
+  // 先取消其他繪製模式（互斥）
+  if (_routeDrawState) _cancelRouteDraw();
+  if (_polyDrawState) _cancelPolyDraw();
+  if (_currentMap !== 'outdoor') switchMap('outdoor');
+  _nodePlaceState = { nodeType: nodeType || 'command' };
+  const banner = el('node-place-banner');
+  if (banner) banner.style.display = 'flex';
+  if (el('map-coord-panel')) el('map-coord-panel').style.display = 'none';
+  if (_leafletMap) _leafletMap.getCanvas().style.cursor = 'crosshair';
+  document.getElementById('btn-node-place')?.classList.add('active');
+}
+
+export function _cancelNodePlace() {
+  if (!_nodePlaceState) return;
+  _nodePlaceState = null;
+  const banner = el('node-place-banner');
+  if (banner) banner.style.display = 'none';
+  if (_leafletMap) _leafletMap.getCanvas().style.cursor = '';
+  document.getElementById('btn-node-place')?.classList.remove('active');
+}
+
+async function _placeNodeAt(lat, lng) {
+  if (!_nodePlaceState || !_copStream) return;
+  const nodeType = _nodePlaceState.nodeType;
+  const def = _PERM_NODES.find((n) => n.node_type === nodeType);
+  const label = def?.label || '';
+  const created = await _copStream.createEntity({
+    type: 'a-f-G-I',
+    lat: +(+lat).toFixed(6),
+    lon: +(+lng).toFixed(6),
+    callsign: label,
+    attributes: { kind: 'zone', node_type: nodeType },
+  });
+  if (!created) {
+    _flashMapMsg('✗ 節點放置失敗，請重試');
+    return;
+  }
+  // createEntity 內部 upsert + onChange 自動重繪，不必手動 render。
+  _cancelNodePlace();
+}
 export function _cancelEventPin() {}
 export function admUploadMapImage() {}
 export function admRemoveMapImage() {}

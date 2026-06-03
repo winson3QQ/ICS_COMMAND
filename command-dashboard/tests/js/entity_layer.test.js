@@ -21,6 +21,7 @@ import {
   copEntityToRoute,
   copEntityToPolygon,
   copEntityToEventZone,
+  copEntityToZone,
 } from '../../static/js/map/entity_layer.js';
 
 /** Mock MapLibre Map：記錄所有 addSource/addLayer/setData 呼叫 */
@@ -545,5 +546,38 @@ describe('copEntityToEventZone adapter（PR-G1b cutover）', () => {
     expect(copEntityToEventZone({ uid: 'x', lat: 1, lon: 2, attributes: { kind: 'route', vertices: [] } })).toBeNull();
     expect(copEntityToEventZone({ uid: 'x', lat: 1, lon: 2, attributes: { kind: 'event' } })).toBeNull(); // 缺 event_id
     expect(copEntityToEventZone({ uid: 'x', attributes: { kind: 'event', event_id: 'e' } })).toBeNull(); // 缺座標
+  });
+});
+
+describe('copEntityToZone adapter（P1-16 on-demand 節點）', () => {
+  test('zone cop_entity → 既有節點 zone shape', () => {
+    const ent = {
+      uid: 'manual:z1',
+      lat: 24.83,
+      lon: 121.01,
+      callsign: '指揮部',
+      attributes: { kind: 'zone', node_type: 'command' },
+    };
+    const z = copEntityToZone(ent);
+    expect(z.id).toBe('manual:z1');      // cop uid → zone.id（刪除/回查用）
+    expect(z.lat).toBe(24.83);
+    expect(z.lng).toBe(121.01);          // cop lon → zone.lng
+    expect(z.label).toBe('指揮部');
+    expect(z.node_type).toBe('command');
+    expect(z.icon).toBe('pin');
+  });
+
+  test('缺 node_type → 預設 command；缺 callsign → 空字串', () => {
+    const z = copEntityToZone({ uid: 'manual:z2', lat: 1, lon: 2, attributes: { kind: 'zone' } });
+    expect(z.node_type).toBe('command');
+    expect(z.label).toBe('');
+  });
+
+  test('非 zone kind / 座標非數 / null → 回 null', () => {
+    expect(copEntityToZone(null)).toBeNull();
+    expect(copEntityToZone({ uid: 'x', lat: 1, lon: 2, attributes: { kind: 'event', event_id: 'e' } })).toBeNull();
+    expect(copEntityToZone({ uid: 'x', lat: 1, lon: 2, attributes: {} })).toBeNull(); // 缺 kind
+    expect(copEntityToZone({ uid: 'x', lat: 'nope', lon: 2, attributes: { kind: 'zone' } })).toBeNull();
+    expect(copEntityToZone({ uid: 'x', attributes: { kind: 'zone' } })).toBeNull(); // 缺座標
   });
 });

@@ -19,7 +19,7 @@
  *           互動元素一律使用 data-action / data-id / data-change-action
  */
 
-import { authFetch, canCreateEvents } from './ws.js';
+import { authFetch, canCreateEvents, canUseRealModeControls } from './ws.js';
 
 const API_BASE = location.origin;
 
@@ -924,7 +924,15 @@ export function _renderZoneModal() {
     const iconHtml = `<span style="display:inline-flex;vertical-align:middle;margin-right:4px;">${m.renderIcon(zone.icon)}</span>`;
     el('modal-title').innerHTML = `${iconHtml} ${zone.label} <span style="font-size:10px;color:${freshColor};margin-left:6px;">${freshLabel}</span>`;
   });
-  el('modal-body').innerHTML = tabsHtml + body;
+  // P1-16：on-demand 放置的節點（cop entity，有 uid、非事件、icon='pin'、非 sidebar 虛擬 zone）
+  // 可刪除。data-action="deleteNode" 由 main.js 轉派 map.js _deleteNode（cop_stream.deleteEntity）。
+  const isCopNode = !!(zone.id && !zone.event_id && zone.icon === 'pin' && !String(zone.id).startsWith('virtual_') && canUseRealModeControls());
+  const footer = isCopNode
+    ? `<div style="border-top:1px solid var(--border);margin-top:12px;padding-top:10px;display:flex;justify-content:flex-end;">
+         <button data-action="deleteNode" data-id="${zone.id}" style="padding:6px 12px;background:var(--red);color:#fff;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;font-family:var(--mono);">🗑 刪除節點</button>
+       </div>`
+    : '';
+  el('modal-body').innerHTML = tabsHtml + body + footer;
   el('overlay').className = 'show';
 
   const autoEl = el('modal-body').querySelector('.l3-autoload');
