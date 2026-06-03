@@ -1025,10 +1025,10 @@ function _ensureEntityLayers() {
       {
         id: 'routes-line-solid', type: 'line',
         filter: ['!', ['coalesce', ['get', 'dash'], false]],
-        // P1-10e：hover 時加粗（3→4.5）
+        // P1-10e：hover 時加粗（2→3）。route 線細（base 2），讓箭頭相對更顯眼。
         paint: {
           'line-color': ['get', 'color'],
-          'line-width': ['case', ['boolean', ['feature-state', 'hover'], false], 4.5, 3],
+          'line-width': ['case', ['boolean', ['feature-state', 'hover'], false], 3, 2],
           'line-opacity': 0.9,
         },
       },
@@ -1049,7 +1049,7 @@ function _ensureEntityLayers() {
         filter: ['==', ['geometry-type'], 'LineString'],
         paint: {
           'line-color': ['get', 'color'],
-          'line-width': 5,
+          'line-width': 4,
           'line-dasharray': [2, 2],
           'line-opacity': ['case',
             ['boolean', ['feature-state', 'selected'], false],
@@ -1065,7 +1065,7 @@ function _ensureEntityLayers() {
           'symbol-placement': 'line',
           'symbol-spacing': 90,
           'icon-image': 'route-arrow',
-          'icon-size': 1.0,
+          'icon-size': 1.4,
           'icon-allow-overlap': true,
           'icon-ignore-placement': true,
           'icon-rotation-alignment': 'map',

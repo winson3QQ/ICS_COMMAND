@@ -282,7 +282,7 @@ export function bakeArrowSdf(map, id, opts = {}) {
   const ctx = canvas.getContext('2d');
   ctx.clearRect(0, 0, size, size);
   ctx.strokeStyle = '#ffffff';
-  ctx.lineWidth = 2;
+  ctx.lineWidth = 2.5;  // route 線細化後加粗箭頭 chevron（user 回饋）
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
   // Chevron（>）：左上 → 右中頂點 → 左下
