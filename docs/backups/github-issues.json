@@ -879,15 +879,15 @@
       "name": ""
     },
     "body": "## 背景\n\nP1-10b（Leaflet→MapLibre 地圖引擎改寫）時，**節點放置 UI** 與 **設施放置 UI** 變成空 stub：\n- `map.js`：`_openInfraForm` / `_startInfraPlace` / `_saveInfraPosition` / `_cancelNodePlace` 皆 `{}`（空）。\n- 圖層面板「＋ 新增設施」按鈕指向空 stub。\n\n但**每場演習地點不同** —— 節點（5 個常駐編組：收容組/醫療組/指揮部/前進組/安全組）與臨時設施（醫院/收容所/急救站/警局/消防）的位置都需逐場設定。現況：\n- **節點** 只能用 `map_config.seed.json` 寫死座標（換地點就全錯），無 UI 可搬/重放。\n- **設施** 完全無法新增（建立 UI 是空 stub）。\n\n這是 MapLibre 改寫掉的**功能 regression**，與 issue #29（即時同步）無關 —— #29 已備好 cop 管線，這個 issue 補「建立端」。\n\n## 需求\n\n1. 工具列「放置節點 / 放置設施」→ 點地圖放置 → 拖移 / 刪除。\n2. 落地為 **cop_entity**（`attributes.kind='zone'`（節點）/ `'infra'`（設施））→ 即時同步（沿用 #29 的 adapter/委派/WS 管線）+ 綁 exercise（對接 **P1-14** exercise data scoping）。\n3. 設施類型沿用既有 `INFRA_TYPES`（醫院/收容所/警局/消防/公用設施 + 圖示/字母）。\n\n## 關聯\n- 依賴 issue #29 已落地的 cop 即時同步管線（cop_stream / EntityLayer / `copEntityTo*` adapter）。\n- 與 P1-14（exercise data scoping）對接：放置物件綁定當前 active exercise。\n- 取代 PR-H 移除的「流向」？否 —— 流向是另一回事（已退役，route 取代）。\n\n🤖 via Claude Opus 4.8",
-    "closedAt": null,
+    "closedAt": "2026-06-03T14:55:05Z",
     "comments": [],
     "createdAt": "2026-06-01T01:31:13Z",
     "labels": [],
     "milestone": null,
     "number": 40,
-    "state": "OPEN",
+    "state": "CLOSED",
     "title": "節點 / 設施 placement UI（每場演習可在地圖放／搬／刪）",
-    "updatedAt": "2026-06-01T01:31:13Z",
+    "updatedAt": "2026-06-03T14:55:05Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/40"
   },
   {

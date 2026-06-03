@@ -1802,5 +1802,26 @@
     "title": "P1-14：Exercise data scoping wiring + 演習管理 UI + 跨 session 即時切場（#89）",
     "updatedAt": "2026-06-03T09:13:06Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/91"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "## P1-16 節點 / 設施 on-demand 放置（issue #40）\n\n把寫死的 5 常駐節點 regression 改成 on-demand：工具列選類型 → 點地圖放 → cop_entity，\nP1-14 自動綁 active exercise / 實戰。完整解鎖 P1-16 A-Full。\n\n### 功能\n- **節點(kind=zone)**：放置（5 編組）+ 拖移 + 刪除；收容=避難所屋頂象形、醫療=白十字、其餘 abbr\n- **設施(kind=infra)**：放置（醫院/收容所/警局/消防/公用）+ 刪除（拖移 follow-up）\n- adapter `copEntityToZone`/`copEntityToInfra` + `_allRenderedZones`/`_renderInfra` cutover 改讀 cop entities\n- `_scheduleCopRender` 即時重繪；`EventDragManager` 泛化（node 也可拖，event_id 分流）\n- **cutover**：移除 map_config.seed.json 寫死 5 zones（出廠開機無預設節點，全靠 on-demand）\n\n### RBAC（security review HIGH-1 後端落實）\n- 前端 `canUseRealModeControls()` gate UI；**後端** cop create/delete 對 kind∈{zone,infra} 加\n  `COMMAND_ROLES` gate（operator/observer 無法繞 API 建/刪；route/polygon/event 不受限）\n\n### 附帶\n- 移除 vestigial「指揮部設定」、區段改名「站內地圖」\n- 修歸檔鈕（只對 active 顯示）、稽核日誌 exercise_* 中文短標、放置 banner 重複 id\n\n### 測試\n- copEntityToZone/Infra vitest + TestNodeInfraRBAC（後端 4 測）；223 vitest + pytest 全綠\n- code review + security review 已過（HIGH-1/MED-1/LOW 全修）\n\n設施拖移、放置流程參數化收斂為 follow-up。\n\nCloses #40\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+    "closedAt": "2026-06-03T14:55:03Z",
+    "comments": [],
+    "createdAt": "2026-06-03T14:54:52Z",
+    "headRefName": "feat/issue-40-placement-ui",
+    "labels": [],
+    "mergedAt": "2026-06-03T14:55:03Z",
+    "number": 92,
+    "state": "MERGED",
+    "title": "P1-16：節點/設施 on-demand 放置（#40）",
+    "updatedAt": "2026-06-03T14:55:09Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/92"
   }
 ]
