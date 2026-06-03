@@ -13,7 +13,7 @@ from core.config import (
     STATIC_DIR,
 )
 from core.input_safety import validate_no_unsafe_strings
-from services import event_taxonomy_store, map_config_store
+from services import event_taxonomy_store, facilities_store, map_config_store
 from services.event_taxonomy_validate import validate_taxonomy
 
 router = APIRouter(tags=["map"])
@@ -112,6 +112,23 @@ def get_map_config():
         media_type="application/json",
         # runtime 檔頻繁變動，瀏覽器不准 cache（前端原本用 ?t=timestamp cache-bust 改 API 後集中於此）
         headers={"Cache-Control": "no-store"},
+    )
+
+
+@router.get("/api/facilities", tags=["system"])
+def get_facilities():
+    """P1-17（issue #88）永久設施公開資料底圖層 — **唯讀基準層**。
+
+    讀 static/facilities.seed.json（台灣政府開放資料，非中國；政府開放授權第1版）。
+    非 cop_entity / 非 map_config user-data / 不受 exercise scoping / reset 影響。
+    可長時間 cache（資料隨 release 走、runtime 不變）。
+    """
+    body = facilities_store.read()
+    return Response(
+        content=json.dumps(body, ensure_ascii=False),
+        media_type="application/json",
+        # 基準層隨 release 走、不隨 runtime 變 → 容許瀏覽器快取（換版以檔 mtime / release 區隔）
+        headers={"Cache-Control": "public, max-age=3600"},
     )
 
 

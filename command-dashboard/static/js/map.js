@@ -64,6 +64,13 @@ import {
   parseWgs84 as _parseWgs84,
   MgrsGrid,
 } from './map/coord_tools.js';
+// P1-17（issue #88）永久設施公開資料底圖層 — 獨立 facilities 層，**不碰既有層**。
+import {
+  FACILITY_TYPES,
+  FacilitiesLayer,
+  facilityToFeature,
+  bakeFacilityIcons,
+} from './map/facilities_layer.js';
 
 const API_BASE = location.origin;
 const el = id => document.getElementById(id);
@@ -99,6 +106,10 @@ let _polygonLayer = null;   // EntityLayer (Polygon fill+stroke)
 let _infraLayer = null;     // EntityLayer (Point circle)
 let _routeLayer = null;     // EntityLayer (LineString)
 let _zoneLayer = null;      // EntityLayer (Point circle) — step 7 階段 1
+let _facilitiesLayer = null;   // P1-17：永久設施唯讀基準層（獨立 facilities source）
+let _facilitiesData = null;    // /api/facilities 快取（lazy：首次開圖層才抓）
+let _facilitiesPopup = null;   // P1-17：hover tooltip（maplibregl.Popup）
+let _facilitiesHoverWired = false;
 let _drawPreview = null;       // DrawPreview — step 8（polygon / route 繪製預覽）
 let _polyLabelMgr = null;      // LabelMarkerManager (polygons)
 let _routeLabelMgr = null;     // LabelMarkerManager (routes)
@@ -121,7 +132,8 @@ let _mgrsGridVisible = sessionStorage.getItem('_mgrsGridVisible') !== '0';
 // PR-G1b：events 從 zones 拆出獨立可見性 —— 事件圖釘與永久節點同走 _zoneLayer，但分別
 // 由 _layerVis.zones（節點）/ _layerVis.events（事件）控制，feature-level 過濾（取消勾「節點」
 // 不再連帶把事件藏掉）。
-const _layerVis = { zones: true, events: true, polygons: true, infra: true, routes: true, mgrs: _mgrsGridVisible };
+// P1-17：facilities（永久設施基準層）預設**關**——唯讀參考層，需要才從面板開，避免雜訊。
+const _layerVis = { zones: true, events: true, polygons: true, infra: true, routes: true, facilities: false, mgrs: _mgrsGridVisible };
 
 const _HSINCHU_CENTER = [24.8283, 121.0149];
 const _HSINCHU_ZOOM = 15;
@@ -502,6 +514,65 @@ export function refreshLeafletMarkers() {
   _renderInfra();
   _renderRoutes();
   _renderZones();
+  _renderFacilities();  // P1-17：永久設施基準層（lazy + 預設關）
+}
+
+// P1-17：渲染永久設施基準層。lazy —— 預設關，首次開圖層才抓 /api/facilities（8000+ 點，
+// 不必要時不載）。資料抓回後快取，之後切換只 setVisible（淡入/淡出）。獨立於 map_config。
+async function _renderFacilities() {
+  if (!_facilitiesLayer) return;
+  _facilitiesLayer.setVisible(_layerVis.facilities);
+  if (!_layerVis.facilities) {
+    _facilitiesPopup?.remove();               // 關閉時收掉 hover tooltip（防游標停點上殘留）
+    return;
+  }
+  if (_facilitiesData !== null) return;       // 已載入：可見性已套用，不重抓
+  _facilitiesData = [];                        // 佔位，避免並發重抓（成功保留陣列、失敗回 null 可重試）
+  const map = _getMap();
+  if (map) await bakeFacilityIcons(map);       // 白色象形 icon（idempotent；icon-image 需先存在）
+  let data = null;
+  try {
+    const resp = await authFetch(API_BASE + '/api/facilities');
+    if (resp.ok) {
+      const body = await resp.json();
+      data = Array.isArray(body?.facilities) ? body.facilities : [];
+    }
+  } catch {
+    data = null;
+  }
+  if (data === null) {
+    _facilitiesData = null;   // 失敗 → 重置，下次開圖層可重試（不卡成永久空白）
+    return;
+  }
+  _facilitiesData = data;
+  _facilitiesLayer.update(data.map((f, i) => facilityToFeature(f, i)).filter(Boolean));
+}
+
+// P1-17：hover 設施 → 顯示名稱 + 類型 tooltip。一次性 wire（handler 掛 map，layer 後建也有效）。
+function _wireFacilitiesHover(map) {
+  if (_facilitiesHoverWired || !map || !window.maplibregl) return;
+  _facilitiesHoverWired = true;
+  _facilitiesPopup = new window.maplibregl.Popup({
+    closeButton: false, closeOnClick: false, offset: 12, className: 'facility-tip',
+  });
+  const show = (e) => {
+    const f = e.features?.[0];
+    if (!f) return;
+    map.getCanvas().style.cursor = 'pointer';
+    const p = f.properties || {};
+    const typeLabel = (FACILITY_TYPES[p.ftype] || FACILITY_TYPES._default).label;
+    const html = `<div style="font-size:12px;line-height:1.4;">`
+      + `<b>${_escapeHtml(p.name)}</b><br>`
+      + `<span style="color:var(--text3);font-size:11px;">${_escapeHtml(typeLabel)}</span></div>`;
+    // anchor 在設施點座標（非游標），tooltip 穩定貼在圓上
+    _facilitiesPopup.setLngLat(f.geometry.coordinates).setHTML(html).addTo(map);
+  };
+  map.on('mouseenter', 'facilities-circle', show);
+  map.on('mousemove', 'facilities-circle', show);
+  map.on('mouseleave', 'facilities-circle', () => {
+    map.getCanvas().style.cursor = '';
+    _facilitiesPopup?.remove();
+  });
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -588,6 +659,7 @@ function _rebuildLayerPanel() {
     { key: 'polygons', icon: '▱', label: '範圍' },
     { key: 'infra',    icon: '＋', label: '設施' },
     { key: 'routes',   icon: '↗', label: '路線' },
+    { key: 'facilities', icon: '⊕', label: '公共設施' },  // P1-17：永久設施基準層（唯讀）
     { key: 'mgrs',     icon: '⊞', label: 'MGRS 格線' },
   ];
   let html = '<h4>圖層</h4>';
@@ -897,6 +969,11 @@ function _ensureEntityLayers() {
     map.once('load', () => { _ensureEntityLayers(); refreshLeafletMarkers(); });
     return;
   }
+
+  // P1-17：永久設施基準層 —— **先建**（draw order 最底，退到戰術 entity 之後）。
+  // 自管 clustered facilities source，不碰既有層、不依賴 EntityLayer。lazy 由 _renderFacilities 抓。
+  _facilitiesLayer = new FacilitiesLayer(map);
+  _wireFacilitiesHover(map);   // P1-17：滑鼠移上去顯示設施名稱 tooltip
 
   // Polygons — fill + stroke + label（dash/solid 拆兩 layer + filter，因 MapLibre v4
   // line-dasharray 不支援 data-driven expression）
