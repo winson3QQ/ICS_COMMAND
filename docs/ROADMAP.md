@@ -107,9 +107,9 @@
 **實作順序**（**TAK 就緒度為優先排序原則**）：
 1. ✅ P1-10a（WaveInk DS + MIL-STD-2525 token + JetBrains Mono）— chrome T0→T1
 2. ✅ **P1-10b**（擴張版：MapLibre + entity layer 精緻化基底）— 地圖 T0→T2 基底；**為 P2-04/05 鋪路**（SDF + EntityLayer + source×affiliation 雙維度）— 完成 2026-06-01
-3. P1-10c（縮 scope：2 套 style + doctrine 文件）— 底圖 T2 完成
+3. ✅ P1-10c（縮 scope：2 套 style + doctrine 文件）— 底圖 T2 完成
 4. P1-10a-2（DS migration follow-up）— map.js 49 hex 占 P1-10a-2 39%，P1-10b 後重評殘餘
-5. P1-10d（SDF icon set + severity halo pulse）— T2→T2.5；SDF infra 已備
+5. ✅ P1-10d（SDF icon set + severity halo pulse）— T2→T2.5；SDF infra 已備
 6. ✅ P1-10e + P1-10g（hover-selected polish / 微動畫）— T3（**P1-10f clustering descoped**）— 完成 2026-06-03
 7. ✅ P1-10h（CSP enforce + integration test）— T3 鎖緊（安全層）— 完成 2026-06-03
 
