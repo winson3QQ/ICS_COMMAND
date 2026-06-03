@@ -1187,5 +1187,25 @@
     "title": "事件/群組 taxonomy 編輯器（admin CRUD,依賴 P1-10d 資料化地基）",
     "updatedAt": "2026-06-02T12:11:42Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/66"
+  },
+  {
+    "assignees": [],
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "body": "## 背景 / 定位（三層資料模型）\n\nP1-16 reality check（2026-06-03）釐清出三層資料模型（見 [`docs/ROADMAP.md`](docs/ROADMAP.md) P1-16 / P1-17、[`command-dashboard/docs/design/classification-crosswalk.md`](command-dashboard/docs/design/classification-crosswalk.md) §8）：\n\n1. **永久設施（本 issue / P1-17）** — 真實醫院 / 消防 / 警局 / 診所等，**唯讀基準參考層、不隨演習走**。\n2. 5 常駐節點（指揮/收容/醫療/前進/安全）— exercise-scoped（P1-16）。\n3. 臨時節點/物件 — exercise-scoped（P1-16）。\n\n**動機**：永久公共設施是現實常駐基礎設施、跨演習不變；**不該**被 P1-16 的放置 UI 逐場手放、**不該**被演習 reset 清掉。與 P1-16（隨演習走、可放/搬/刪/綁 exercise）明確分工。\n\n## 範圍\n\n- **來源**：台灣**政府開放資料**（醫療院所 / 消防分隊 / 警察機關位置等 dataset；NCDR / NFA 圖資生態）。\n- **落地**：匯入為**唯讀基準圖層** — **非 cop_entity、非 map_config user-data、不受 exercise scoping / reset 影響**；工具列可切換顯示。離線打包（專案離線優先 / air-gap）。\n- 沿用既有 `INFRA_TYPES` 圖示概念（醫院/消防/警局…），但與 P1-16 的可編輯設施分開。\n\n## 🔴 紅線（CLAUDE.md 供應鏈）— 最重要\n\n**禁用任何與中國相關的軟體 / 函式庫 / 服務 / 資料來源。** 每個 open-data 來源、每個處理用的套件都要**逐一確認非中國**；**不確定先停下來問使用者**，不要猜。來源確認結果**留痕在本 issue / PR**。\n\n## ⚠️ 協調（避免與 P1-14 / P1-16 衝突）\n\n另一台機器/另一條線正在做 **P1-14（exercise scoping）+ P1-16（placement UI）**，會動 map 前端（`command-dashboard/static/js/map.js`、`command-dashboard/static/js/map/entity_layer.js`）。\n\n- **請勿重構共用 map 管線**；P1-17 新增**自己的 EntityLayer + source（獨立 prefix，例如 `facilities`）**，**不要改既有 zones / infra / polygons / routes 層**。\n- 後端另開自己的 import 模組，**不碰 cop_entity / exercise 相關檔**。\n\n## 規則\n\n- 回覆與 comment 一律**繁體中文**（CLAUDE.md）。\n- 走 [`docs/PROCESS.md`](docs/PROCESS.md)：開 issue（本 issue）+ branch → 實作 + 補測 → verify → review → merge；**任何 git 操作一律等使用者明確指示**。\n- **缺測不算完成**。\n\n## 起手（先別寫 production code）\n\n先做 **reality check + `/plan`**：釐清「open-data 來源清單 + **各源供應鏈逐一確認** + 匯入 pipeline + 唯讀層渲染」，把來源與供應鏈確認結果**回報使用者**後再動 code。\n\n## 參考\n\n- [`docs/ROADMAP.md`](docs/ROADMAP.md) — P1-17（本項）、P1-16（分工對照）\n- [`command-dashboard/docs/design/classification-crosswalk.md`](command-dashboard/docs/design/classification-crosswalk.md) §8\n- 既有設施渲染：`command-dashboard/static/js/map.js` `_renderInfra` / `INFRA_TYPES`、`command-dashboard/static/js/map/entity_layer.js` `infraToFeature`\n\n---\n🤖 issue 由 P1-16 reality check 衍生（2026-06-03）；供跨機器協作接手。\n",
+    "closedAt": null,
+    "comments": [],
+    "createdAt": "2026-06-03T01:44:31Z",
+    "labels": [],
+    "milestone": null,
+    "number": 88,
+    "state": "OPEN",
+    "title": "P1-17：永久設施公開資料底圖層（唯讀基準層，不隨演習）",
+    "updatedAt": "2026-06-03T01:44:31Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/88"
   }
 ]
