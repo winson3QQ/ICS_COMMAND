@@ -1760,5 +1760,26 @@
     "title": "docs: NAPSG 象形字典歸 #66 C2 + 內部象形來源釐清",
     "updatedAt": "2026-06-02T12:11:25Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/87"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "Closes #88（v1；醫療 → v1.1）\n\n## 摘要\n台灣政府開放資料的永久公共設施（避難收容處所/消防/警察 3 源 8318 筆）落地為**唯讀基準層**——非 cop_entity、非 map_config user-data、不受 exercise scoping/reset。與 P1-16 的「設施(infra)」分離。\n\n- 維護者匯入腳本 `scripts/import_facilities.py` → `static/facilities.seed.json`（tracked factory default）\n- 唯讀 `GET /api/facilities` + `facilities_store`\n- 前端自管 `facilities` clustered source（MapLibre `cluster:true`，scope 限本層）：cluster 泡泡 + 110/119 數字徽 + ⌂象形 + hover tooltip；不碰 zones/infra/polygons/routes，不依賴 EntityLayer\n\n## 紅線\n- 供應鏈全台灣政府（非中國）、政府開放授權第1版；pyproj 僅匯入用不進 runtime\n- PII 剝除（管理人姓名/電話）\n- 縣市↔座標普查丟 78 筆來源座標錯（log 留痕）\n\n## §8 Verification\n- Human dogfood（站外地圖 → 圖層面板開「公共設施」）：8318 點 clustering 正常、110/119/象形顯示、hover tooltip、海上錯點經普查移除 — VERIFY-PASS\n- 測試：Python 13（store 5 + import 8）+ JS facilities 10（全套 198）全綠\n- `/code-review`：7 修正（cluster Promise / fetch 重試 / schema-drift guard 等）\n- `/security-review`：0 finding\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+    "closedAt": "2026-06-03T09:01:02Z",
+    "comments": [],
+    "createdAt": "2026-06-03T09:00:37Z",
+    "headRefName": "feat/issue-88-p1-17-facilities",
+    "labels": [],
+    "mergedAt": "2026-06-03T09:01:02Z",
+    "number": 90,
+    "state": "MERGED",
+    "title": "feat(facilities): P1-17 v1 永久設施公開資料底圖層（#88）",
+    "updatedAt": "2026-06-03T09:01:04Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/90"
   }
 ]
