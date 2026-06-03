@@ -20,7 +20,7 @@
  *   cop:refresh      → 立即執行 refresh()（不拉 API）
  */
 
-import { authFetch, isPollActive, setPollActive, getSessionType } from './ws.js';
+import { authFetch, isPollActive, setPollActive } from './ws.js';
 import {
   getSeries, setDashData, renderSparklines, setPill, buildSliceHtml,
   getExpandedSpark, rate, minsUntil,
@@ -221,7 +221,7 @@ export function switchLeftPanel(group) {
   });
   setTimeout(() => {
     const d = getSeries();
-    if (d) renderSparklines(d, getSessionType(), openZoneByType, showIpiBreakdown);
+    if (d) renderSparklines(d, 'real', openZoneByType, showIpiBreakdown);
   }, 50);
 }
 
@@ -293,9 +293,8 @@ async function _refreshCommandHealthLight() {
 export async function poll() {
   if (!isPollActive()) return;
   try {
-    const sessionType = getSessionType();
-    const dashUrl = API_BASE + '/api/dashboard' + (sessionType === 'exercise' ? '?session_type=exercise' : '');
-    const resp = await authFetch(dashUrl, { signal: AbortSignal.timeout(5000) });
+    // P1-14 PR-2：後端自動依 active exercise scope，前端不再送 session_type。
+    const resp = await authFetch(API_BASE + '/api/dashboard', { signal: AbortSignal.timeout(5000) });
     if (!resp.ok) throw new Error(resp.status);
     _data = await resp.json();
     setDashData(_data);
@@ -322,7 +321,7 @@ export function refresh() {
     _renderZoneANoSnap();
   } else {
     renderZoneA(d);
-    renderSparklines(d, getSessionType(), openZoneByType, showIpiBreakdown);
+    renderSparklines(d, 'real', openZoneByType, showIpiBreakdown);
   }
   _renderConnDots();
   renderZoneC(d);
@@ -542,7 +541,7 @@ export function initCop() {
   document.addEventListener('cop:refresh', () => refresh());
   document.addEventListener('charts:expandSparkChanged', () => {
     const d = getSeries();
-    if (d) renderSparklines(d, getSessionType(), openZoneByType, showIpiBreakdown);
+    if (d) renderSparklines(d, 'real', openZoneByType, showIpiBreakdown);
   });
 }
 

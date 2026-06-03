@@ -616,7 +616,11 @@ describe('C1-F commander modules', () => {
     expect(authSource).toMatch(/hasAnyRole\('sysadmin', 'commander', 'operator'\)/);
     expect(authSource).toMatch(/canAccessMapObjects\(\)/);
     expect(mainSource).toMatch(/if \(!canUseRealModeControls\(\)\) break;/);
-    expect(mainSource).toMatch(/ttxToggle\.style\.display = canUseRealModeControls\(\) \? '' : 'none'/);
+    // P1-14 PR-2：ttx-toggle 已退役 → 演習建立 / 啟動 / 歸檔 dispatch 沿用 canUseRealModeControls 守門。
+    expect(mainSource).toMatch(/case 'exCreate':[\s\S]{0,80}if \(!canUseRealModeControls\(\)\) break;/);
+    expect(mainSource).not.toMatch(/ttxToggle/);
+    expect(mainSource).not.toMatch(/toggleTTXMode/);
+    expect(mainSource).not.toMatch(/#FF6600/);
     expect(mainSource).toMatch(/if \(!canCreateEvents\(\)\) break;/);
     expect(eventsSource).toMatch(/if \(!canCreateEvents\(\)\) return;/);
     // P1-10b 步驟 4：長按 popup 改走 maplibre_core onLongPress callback；
