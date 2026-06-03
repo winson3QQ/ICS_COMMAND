@@ -83,6 +83,9 @@ def test_ws_broadcasts_exercise_switched_on_activate_and_archive(client):
         assert ws.receive_json()["op"] == "exercise_switched"
         assert client.post(f"/api/exercises/{ex['id']}/archive", json={}, headers=h).status_code == 200
         assert ws.receive_json()["op"] == "exercise_switched"
+        # 刪除（非 active）也廣播 → 其他 session 的演習清單即時更新
+        assert client.delete(f"/api/exercises/{ex['id']}", headers=h).status_code == 200
+        assert ws.receive_json()["op"] == "exercise_switched"
 
 
 def test_ws_receives_update_then_delete(client):

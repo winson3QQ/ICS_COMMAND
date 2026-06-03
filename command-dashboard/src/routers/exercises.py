@@ -61,7 +61,7 @@ async def do_archive(exercise_id: int, request: Request):
 
 
 @router.delete("/{exercise_id}")
-def delete_ex(exercise_id: int, request: Request):
+async def delete_ex(exercise_id: int, request: Request):
     # P1-14：硬刪一場 + 級聯其資料。SYSADMIN_ONLY（role_enum 守）；進行中不可刪（需先歸檔）。
     sess = validate_session(request)
     ex = get(exercise_id)
@@ -72,6 +72,8 @@ def delete_ex(exercise_id: int, request: Request):
     cleared = delete_exercise(exercise_id)
     # exercise_id=None → audit 本身不被級聯清掉（留存刪除軌跡）
     audit(sess["username"], None, "exercise_deleted", "exercises", str(exercise_id), {"cleared": cleared})
+    # 演習集合改變 → 廣播，其他 session 的演習清單 / chip 即時更新（即使非 active）
+    await cop_hub.broadcast_all({"op": "exercise_switched"})
     return {"ok": True, "cleared": cleared}
 
 

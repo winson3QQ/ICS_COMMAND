@@ -126,7 +126,12 @@ function _refreshAfterExerciseSwitch() {
 // 本 session 重新依新 scope 對帳（map/面板）+ 更新 header chip（顯示新的當前場 / 無場次）。
 document.addEventListener('exercise:switched', () => {
   _refreshAfterExerciseSwitch();
-  import('./exercises.js').then(m => m.initExerciseChip());
+  import('./exercises.js').then(m => {
+    // 設定面板開著（正在看演習清單）→ 重渲染清單（含 chip），讓刪除/狀態變更即時反映；
+    // 否則只更新 header chip。
+    const panelOpen = document.getElementById('settings-overlay')?.classList.contains('show');
+    if (panelOpen) m.renderExercisePanel(); else m.initExerciseChip();
+  });
 });
 
 // ══════════════════════════════════════════════════════════════
