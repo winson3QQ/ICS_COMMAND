@@ -55,6 +55,18 @@ _STALE_DEFAULT_HOURS = 24  # 手動建立未帶 stale 時的預設存活時間
 # （此處列出是為了在 router 層先回明確 422，不必等 repo 拋例外）。
 _PUT_FORBIDDEN_FIELDS = frozenset({"source", "uid", "version_clock", "updated_by", "updated_at", "received_at"})
 
+# P1-16（security review HIGH-1）：節點(zone)/設施(infra)的「建立 / 刪除」限指揮層。
+# 前端 canUseRealModeControls() 只是 UI 遮罩，非安全邊界；此處為後端真實授權。
+# 其餘 kind（event / route / polygon / 拖事件位置）維持 WRITE_ROLES（operator 日常可寫），
+# 故不整路徑升級、只針對這兩種 kind 加 gate，避免誤傷 operator 的合法 cop 寫入。
+_COMMAND_ONLY_KINDS = frozenset({"zone", "infra"})
+
+
+def _require_command_for_kind(request: Request, kind) -> None:
+    """kind ∈ {zone, infra} 的建立/刪除限 COMMAND_ROLES（sysadmin/commander），否則 403。"""
+    if kind in _COMMAND_ONLY_KINDS and not is_role_allowed(request.state.session, COMMAND_ROLES):
+        raise HTTPException(403, "節點 / 設施的建立與刪除限指揮層（sysadmin / commander）")
+
 
 def _etag(version_clock: int) -> str:
     """weak ETag = entity 的 version_clock。"""
@@ -173,6 +185,8 @@ async def create_entity(request: Request, response: Response):
     # P1-14：exercise_id 由 server 端 active 場決定（不信任 client；同 source 強制 doctrine）。
     # 無 active → NULL＝實戰/未分場。**這一行同時是 P1-16 placement 圖釘綁定 active 場的點**。
     body["exercise_id"] = current_exercise_id()
+    # P1-16：節點/設施建立限指揮層（後端授權邊界；event/route/polygon 不受限）
+    _require_command_for_kind(request, (body.get("attributes") or {}).get("kind"))
     body.setdefault("uid", f"manual:{uuid.uuid4()}")
     body.setdefault("time", now_iso)
     body.setdefault("start", now_iso)
@@ -232,6 +246,10 @@ async def update_entity(uid: str, request: Request, response: Response):
 async def delete_entity(uid: str, request: Request, response: Response):
     """TAK soft-delete：標 stale=now + bump version_clock（不 hard delete）。"""
     expected = _parse_if_match(request)
+    # P1-16：刪除節點/設施限指揮層（先取 entity 看 kind；不存在則交由下方 notfound 處理）
+    _ent = cop_entity_repo.get_cop_entity(uid)
+    if _ent is not None:
+        _require_command_for_kind(request, (_ent.get("attributes") or {}).get("kind"))
     result = cop_entity_repo.delete_cop_entity(uid, expected, actor=_actor(request))
 
     if result["status"] == "notfound":

@@ -2067,7 +2067,7 @@ function _syncEventDragHandles(eventZonesArg, nodeZonesArg) {
       const ent = _copStream?.getEntity(id);
       const eventId = ent?.attributes?.event_id;
       const ok = await _copStream?.updateEntity(id, { lat: latlng.lat, lon: latlng.lng });
-      if (!ok) { _flashMapMsg('✗ 事件位置儲存失敗（可能被他人同時修改），請重試'); return; }
+      if (!ok) { _flashMapMsg('✗ ' + (eventId ? '事件' : '節點') + '位置儲存失敗（可能被他人同時修改），請重試'); return; }
       if (eventId) {
         const newMgrs = _latlngToMGRS(latlng.lat, latlng.lng, 5);
         // 1. PATCH location_desc — events table 同步（僅在 cop 落地成功後）
@@ -2497,9 +2497,10 @@ export function _openNodePlacePicker() {
 
 export function _startNodePlace(nodeType) {
   if (!canUseRealModeControls()) return;  // 限指揮層
-  // 先取消其他繪製模式（互斥）
+  // 先取消其他繪製/放置模式（互斥；與 _startInfraPlace 對稱，避免殘留 _infraPlaceState 誤放設施）
   if (_routeDrawState) _cancelRouteDraw();
   if (_polyDrawState) _cancelPolyDraw();
+  if (_infraPlaceState) _cancelInfraPlace();
   if (_currentMap !== 'outdoor') switchMap('outdoor');
   _nodePlaceState = { nodeType: nodeType || 'command' };
   const banner = el('node-place-banner');

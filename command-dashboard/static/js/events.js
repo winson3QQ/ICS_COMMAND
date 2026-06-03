@@ -929,7 +929,7 @@ export function _renderZoneModal() {
   const isCopNode = !!(zone.id && !zone.event_id && zone.icon === 'pin' && !String(zone.id).startsWith('virtual_') && canUseRealModeControls());
   const footer = isCopNode
     ? `<div style="border-top:1px solid var(--border);margin-top:12px;padding-top:10px;display:flex;justify-content:flex-end;">
-         <button data-action="deleteNode" data-id="${zone.id}" style="padding:6px 12px;background:var(--red);color:#fff;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;font-family:var(--mono);">🗑 刪除節點</button>
+         <button data-action="deleteNode" data-id="${_esc(String(zone.id))}" style="padding:6px 12px;background:var(--red);color:#fff;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;font-family:var(--mono);">🗑 刪除節點</button>
        </div>`
     : '';
   el('modal-body').innerHTML = tabsHtml + body + footer;
