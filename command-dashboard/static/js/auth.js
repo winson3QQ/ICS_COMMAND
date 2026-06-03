@@ -582,31 +582,9 @@ export function closeSettings() {
   el('settings-panel').classList.remove('show');
 }
 
-export function openConfigModal() {
-  Promise.all([
-    authFetch(API_BASE + '/api/config/command_post_name').then(r => r.ok ? r.json() : {value:null}),
-    authFetch(API_BASE + '/api/config/command_post_location').then(r => r.ok ? r.json() : {value:null}),
-  ]).then(([nameRes, locRes]) => {
-    openModal('指揮部設定',
-      '<div style="display:flex;flex-direction:column;gap:12px;">' +
-        '<label style="font-size:11px;color:var(--text2);">指揮部名稱</label>' +
-        '<input id="cfg-name" class="login-input" value="' + (nameRes.value || '') + '" placeholder="例：校園災害應變指揮部">' +
-        '<label style="font-size:11px;color:var(--text2);">位置</label>' +
-        '<input id="cfg-location" class="login-input" value="' + (locRes.value || '') + '" placeholder="例：行政大樓 1F">' +
-      '</div>',
-      '<button class="adm-btn" data-action="close-modal">取消</button>' +
-      '<button class="login-btn" style="width:auto;padding:6px 16px;" data-action="save-config">儲存</button>'
-    );
-  });
-}
-
-export async function saveConfig() {
-  const name = el('cfg-name')?.value.trim();
-  const loc = el('cfg-location')?.value.trim();
-  if (name) await authFetch(API_BASE + '/api/config/command_post_name', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({value:name})});
-  if (loc) await authFetch(API_BASE + '/api/config/command_post_location', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({value:loc})});
-  closeModal();
-}
+// 「指揮部設定」（command_post_name / command_post_location）已移除：vestigial —
+// 全 codebase 無消費端（設了不顯示），且位置改由站內地圖 + on-demand 地圖節點承載。
+// 設定面板該區段改名「站內地圖」（只留地圖設定）。
 
 export function exportDashboardJSON(data) {
   if (!data) return;

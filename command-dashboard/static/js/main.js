@@ -15,8 +15,8 @@
 
 import {
   authInit, cmdLogout, PinLock,
-  openSettings, closeSettings, openConfigModal,
-  saveConfig, exportDashboardJSON, showAuditLog,
+  openSettings, closeSettings,
+  exportDashboardJSON, showAuditLog,
   openAdminPanel, closeAdminPanel, adminLogin,
   admShowTab, admShowSys, admChangeAdminPin,
   unlockPinLock, setModalHandlers,
@@ -156,9 +156,6 @@ document.addEventListener('click', function (e) {
     case 'sessionLogout':  logoutFromSessionWarning(); break;
     case 'openSettings':   openSettings(); import('./exercises.js').then(m => m.renderExercisePanel()); break;
     case 'closeSettings':  closeSettings(); break;
-    case 'openConfigModal': openConfigModal(); break;
-    case 'saveConfig':
-    case 'save-config':    saveConfig(); break;
     case 'exportJSON': {
       import('./cop.js').then(m => exportDashboardJSON(m.getData()));
       break;
