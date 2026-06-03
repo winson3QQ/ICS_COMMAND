@@ -61,6 +61,19 @@ def test_csp_header_no_unsafe_inline_on_commander(client, monkeypatch):
     assert "'unsafe-inline'" not in script_src
 
 
+def test_csp_enforce_covers_maplibre_pmtiles_on_commander(client, monkeypatch):
+    # #64-3 / P1-10h：enforce CSP 須涵蓋 MapLibre worker（worker-src 'self' blob:）
+    # 與 PMTiles range fetch（connect-src 含 'self'，底圖 /static/tiles 同源）。鎖定不被誤砍。
+    import core.security_headers as security_headers
+
+    monkeypatch.setattr(security_headers, "CSP_MODE", "enforce")
+    header = client.get("/static/commander_dashboard.html").headers["Content-Security-Policy"]
+    directives = [p.strip() for p in header.split(";")]
+    assert "worker-src 'self' blob:" in directives
+    connect = next(d for d in directives if d.startswith("connect-src"))
+    assert "'self'" in connect
+
+
 def test_csp_report_only_on_admin_and_other_paths(client, monkeypatch):
     import core.security_headers as security_headers
 

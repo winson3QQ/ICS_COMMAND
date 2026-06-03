@@ -56,7 +56,10 @@ ALLOWED_ORIGINS: list[str] = [o.strip() for o in os.getenv("ALLOWED_ORIGINS", _d
 # CSP_MODE: "report-only"（觀察期）→ "enforce"（正式擋）
 # 由 nginx 反代終結 TLS 並注入 HSTS（避免 FastAPI 在 HTTP dev 環境也送 HSTS 鎖死瀏覽器），
 # CSP / X-Frame-Options / X-Content-Type-Options 由 FastAPI middleware 負責（與應用語義耦合）。
-CSP_MODE: str = os.getenv("CSP_MODE", "report-only")  # "report-only" | "enforce"
+# P1-10h：觀察期（report-only）已驗證乾淨（commander 無 inline、MapLibre/PMTiles directive 已備），
+# 預設翻為 enforce —— 僅 ENFORCE_PATHS（commander_dashboard.html）實際 enforce，其餘路徑
+# 仍 report-only（見 security_headers.py 雙白名單 fallback）。dev 可用 CSP_MODE=report-only 退回觀察。
+CSP_MODE: str = os.getenv("CSP_MODE", "enforce")  # "report-only" | "enforce"
 CSP_REPORT_URI: str = os.getenv("CSP_REPORT_URI", "/api/security/csp-report")
 ENABLE_SECURITY_HEADERS: bool = os.getenv("ENABLE_SECURITY_HEADERS", "true").lower() == "true"
 
