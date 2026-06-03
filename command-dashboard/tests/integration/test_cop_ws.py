@@ -71,6 +71,20 @@ def test_ws_receives_create(client):
         assert msg["uid"] == r.json()["uid"]
 
 
+def test_ws_broadcasts_exercise_switched_on_activate_and_archive(client):
+    # P1-14：他人 activate/archive 演習 → broadcast_all → 所有連線收到 exercise_switched
+    #（各 client 據此重新依新 scope 對帳 map/面板/chip）。
+    tok = _login(client)
+    h = {"X-Session-Token": tok}
+    ex = client.post("/api/exercises", json={"name": "WS切場", "type": "ttx"}, headers=h).json()
+    with _connect(client, tok) as ws:
+        assert ws.receive_json()["op"] == "hello"
+        assert client.post(f"/api/exercises/{ex['id']}/activate", json={}, headers=h).status_code == 200
+        assert ws.receive_json()["op"] == "exercise_switched"
+        assert client.post(f"/api/exercises/{ex['id']}/archive", json={}, headers=h).status_code == 200
+        assert ws.receive_json()["op"] == "exercise_switched"
+
+
 def test_ws_receives_update_then_delete(client):
     tok = _login(client)
     h = {"X-Session-Token": tok}

@@ -122,6 +122,13 @@ function _refreshAfterExerciseSwitch() {
   if (_copStream) { _copStream.stop(); _copStream.connect(); }
 }
 
+// P1-14：他人 activate/archive 演習 → server broadcast_all → cop_stream 轉發 'exercise:switched'。
+// 本 session 重新依新 scope 對帳（map/面板）+ 更新 header chip（顯示新的當前場 / 無場次）。
+document.addEventListener('exercise:switched', () => {
+  _refreshAfterExerciseSwitch();
+  import('./exercises.js').then(m => m.initExerciseChip());
+});
+
 // ══════════════════════════════════════════════════════════════
 // 全局 click 事件委派（取代所有 inline onclick=）
 // ══════════════════════════════════════════════════════════════
