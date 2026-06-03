@@ -44,6 +44,7 @@ import {
   copEntityToPolygon,
   copEntityToEventZone,
   copEntityToZone,
+  copEntityToInfra,
   bakeTextSdf,
   bakeArrowSdf,
   bakeDiamondSdf,
@@ -123,6 +124,7 @@ let _coordPin = null;            // 雙擊放置的藍色十字 marker
 let _polyDrawState = null;       // { latlngs, markers, previewPoly }
 let _routeDrawState = null;      // { latlngs, markers, previewLine }
 let _nodePlaceState = null;      // P1-16：{ nodeType } —— on-demand 放置節點模式（點地圖即放）
+let _infraPlaceState = null;     // P1-16 PR-2：{ infraType } —— on-demand 放置設施模式（點地圖即放）
 let _pendingPolyLatlngs = null;  // _openPolyForm → _savePolygon 暫存
 let _pendingRouteLatlngs = null; // _openRouteForm → _saveRoute 暫存
 let _pinEditMode = false;
@@ -378,11 +380,12 @@ function _initMaplibre() {
   }
 
   _leafletMap = initMaplibre('leaflet-map', {
-    shouldSuppressInteraction: () => !!(_polyDrawState || _routeDrawState || _nodePlaceState),
+    shouldSuppressInteraction: () => !!(_polyDrawState || _routeDrawState || _nodePlaceState || _infraPlaceState),
 
-    // 單擊：繪製模式時新增頂點 / 放置節點
+    // 單擊：繪製模式時新增頂點 / 放置節點 / 放置設施
     onClick: ({ lat, lng }) => {
       if (_nodePlaceState) { _placeNodeAt(lat, lng); return; }
+      if (_infraPlaceState) { _placeInfraAt(lat, lng); return; }
       if (_polyDrawState) { _addPolyVertex(lat, lng); return; }
       if (_routeDrawState) { _addRouteVertex(lat, lng); return; }
     },
@@ -523,6 +526,7 @@ function _scheduleCopRender() {
     _renderRoutes();
     _renderPolygons();
     _renderZones(); // PR-G1b：事件位置圖釘也在 cop_entities，即時重繪
+    _renderInfra(); // P1-16 PR-2：設施（kind='infra'）cutover 進 cop_entities，即時重繪
   };
   if (typeof requestAnimationFrame !== 'undefined') requestAnimationFrame(run);
   else setTimeout(run, 0);
@@ -696,8 +700,11 @@ function _rebuildLayerPanel() {
     html += `</div>`;
   }
   html += `<div style="border-top:1px solid var(--border);margin:4px 0 2px;padding:4px 12px 2px;font-size:9px;color:var(--text3);letter-spacing:.1em;text-transform:uppercase;">地圖設定</div>`;
-  html += `<div class="layer-row" data-action="openInfraForm">
-    <span style="font-size:11px;color:var(--text2);">＋ 新增設施</span></div>`;
+  // P1-16 PR-2：on-demand 放置設施入口（限指揮層；operator/observer 不顯示，mirror 放置節點）
+  if (canUseRealModeControls()) {
+    html += `<div class="layer-row" data-action="openInfraForm">
+      <span style="font-size:11px;color:var(--text2);">＋ 新增設施</span></div>`;
+  }
   // P1-16：on-demand 放置節點入口（限指揮層；operator/observer 不顯示）
   if (canUseRealModeControls()) {
     html += `<div class="layer-row" data-action="openNodePlace">
@@ -1746,10 +1753,19 @@ function _onPolygonClick(e) {
 function _onInfraClick(e) {
   if (!canAccessMapObjects()) return;
   const id = e.features?.[0]?.properties?.id;
-  const item = _findById(_mapConfig?.maps?.outdoor?.infrastructure, id);
+  // P1-16 PR-2 cutover：設施已搬進 cop_entities（id=uid），從 cop_stream 回查。
+  const item = copEntityToInfra(_copStream?.getEntity(id));
   if (!item) return;
   const def = INFRA_TYPES[item.infra_type] || INFRA_TYPES.utility;
-  _deps.openModal?.(`${def.abbr} ${item.label}`, _featureInfo(def.label, 'deleteInfra', item.id));
+  const desc = `${def.label}　${item.lat != null ? _coordValueHTML(item.lat, item.lng) : ''}`;
+  // 刪除設施限指揮層（與放置一致）；operator/observer 只看 detail。
+  let body = `<div style="font-size:12px;line-height:1.7;color:var(--text2);margin-bottom:12px;">${desc}</div>`;
+  if (canUseRealModeControls() && item.id) {
+    body += `<button data-action="deleteInfra" data-id="${_escapeHtml(String(item.id))}"
+      style="width:100%;padding:8px;background:var(--red);color:#fff;border:none;border-radius:6px;
+      font-weight:700;cursor:pointer;font-family:var(--mono);font-size:12px;">🗑 刪除設施</button>`;
+  }
+  _deps.openModal?.(`${def.abbr} ${item.label || def.label}`, body);
 }
 
 function _onRouteClick(e) {
@@ -1868,7 +1884,12 @@ function _renderInfra() {
   if (!_infraLayer) return;
   _infraLayer.setVisible(_layerVis.infra);
   if (!_layerVis.infra) { _infraLayer.clear(); return; }
-  const features = (_mapConfig?.maps?.outdoor?.infrastructure || [])
+  // P1-16 PR-2 cutover：資料來源從 _mapConfig.infrastructure 改為 cop_entities
+  // （attributes.kind='infra'），經 copEntityToInfra adapter 轉成 infraToFeature 吃的 shape，
+  // 渲染管線不變。color / abbr 由 INFRA_TYPES 對映補上。
+  const features = (_copStream?.getEntitiesByKind('infra') || [])
+    .map(copEntityToInfra)
+    .filter(Boolean)
     .map((item) => {
       const def = INFRA_TYPES[item.infra_type] || INFRA_TYPES.utility;
       return infraToFeature({ ...item, color: def.color, abbr: def.abbr });
@@ -2283,20 +2304,75 @@ export async function _resetPolyLabelAnchor(id) {
   if (!ok) _flashMapMsg('✗ 重設標籤位置失敗，請重試');
 }
 
-// 設施新增（_openInfraForm / _startInfraPlace / _saveInfraPosition）— 暫未實作
-// 目前用「圖層面板 → 新增設施」進入點，待後續補上
-export function _openInfraForm() {}
-export function _startInfraPlace() {}
+// ══════════════════════════════════════════════════════════════
+// P1-16 PR-2：on-demand 放置設施（kind='infra'）
+//   mirror 節點放置流程：開類型選擇 modal → 點地圖 → 建 cop_entity（attributes.kind='infra'）。
+//   後端零新工：POST /api/cop/entities + P1-14 自動蓋 active exercise（或實戰 NULL）。
+//   v1 = 放 + 刪；拖移留 follow-up（OUT of scope）。
+// ══════════════════════════════════════════════════════════════
 
-export async function _deleteInfra(id) {
-  if (!_mapConfig?.maps?.outdoor?.infrastructure || !id) return;
-  _mapConfig.maps.outdoor.infrastructure = _mapConfig.maps.outdoor.infrastructure.filter(i => i.id !== id);
-  await saveMapConfig();
-  _deps.closeModal?.();
-  _renderInfra();
+// 圖層面板「＋ 新增設施」→ 開類型選擇 modal（5 類設施）。
+export function _openInfraForm() {
+  // 放置/管理設施限指揮層（sysadmin/commander）；operator/observer 不可開。
+  if (!canUseRealModeControls()) return;
+  const BTN = 'display:block;width:100%;padding:10px;margin-bottom:8px;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:6px;cursor:pointer;font-family:var(--mono);font-size:13px;text-align:left;';
+  let html = '<div style="font-size:11px;color:var(--text3);margin-bottom:12px;">選擇設施類型，接著點地圖放置：</div>';
+  for (const [type, def] of Object.entries(INFRA_TYPES)) {
+    if (type === '__proto__' || type === 'constructor' || type === 'prototype') continue;
+    html += `<button data-action="startInfraPlace" data-infra-type="${_escapeHtml(type)}" style="${BTN}">${_escapeHtml(def.label)}</button>`;
+  }
+  _deps.openModal?.('＋ 新增設施', html);
 }
 
-export function _saveInfraPosition() {}
+export function _startInfraPlace(infraType) {
+  if (!canUseRealModeControls()) return;  // 限指揮層
+  // 先取消其他繪製/放置模式（互斥）
+  if (_routeDrawState) _cancelRouteDraw();
+  if (_polyDrawState) _cancelPolyDraw();
+  if (_nodePlaceState) _cancelNodePlace();
+  if (_currentMap !== 'outdoor') switchMap('outdoor');
+  _infraPlaceState = { infraType: INFRA_TYPES[infraType] ? infraType : 'utility' };
+  // 重用節點放置的 banner（提示「點地圖放置，Esc 取消」）。
+  const banner = el('node-place-banner');
+  if (banner) banner.style.display = 'flex';
+  if (el('map-coord-panel')) el('map-coord-panel').style.display = 'none';
+  if (_leafletMap) _leafletMap.getCanvas().style.cursor = 'crosshair';
+}
+
+export function _cancelInfraPlace() {
+  if (!_infraPlaceState) return;
+  _infraPlaceState = null;
+  const banner = el('node-place-banner');
+  if (banner) banner.style.display = 'none';
+  if (_leafletMap) _leafletMap.getCanvas().style.cursor = '';
+}
+
+async function _placeInfraAt(lat, lng) {
+  if (!_infraPlaceState || !_copStream) return;
+  const t = _infraPlaceState.infraType;
+  const def = INFRA_TYPES[t] || INFRA_TYPES.utility;
+  const created = await _copStream.createEntity({
+    type: 'a-f-G-I',
+    lat: +(+lat).toFixed(6),
+    lon: +(+lng).toFixed(6),
+    callsign: def.label,
+    attributes: { kind: 'infra', infra_type: t },
+  });
+  if (!created) {
+    _flashMapMsg('✗ 設施放置失敗，請重試');
+    return;
+  }
+  // createEntity 內部 upsert + onChange 自動重繪（_scheduleCopRender → _renderInfra），不必手動 render。
+  _cancelInfraPlace();
+}
+
+export async function _deleteInfra(id) {
+  if (!canUseRealModeControls()) return;  // 限指揮層（與放置一致）
+  if (!_copStream || !id) return;
+  const ok = await _copStream.deleteEntity(id);
+  _deps.closeModal?.();
+  if (!ok) _flashMapMsg('✗ 設施刪除失敗，請重試');
+}
 
 // PR-H：流向（Flow）功能整組退役 —— 與「繪製路線」重疊（route 是有向多段線、對齊
 // CoT b-m-r，已即時同步），且 cutover 後 flow 連不到事件。_openFlowForm / _saveFlow /

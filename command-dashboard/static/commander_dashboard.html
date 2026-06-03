@@ -1012,13 +1012,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(
     <div id="leaflet-map">
       <!-- 中央浮島：座標顯示 -->
       <div id="map-coord-panel" class="map-island" data-action="panToCoordTarget"></div>
-      <!-- 據點定位提示 banner（點地圖設定單位位置時顯示） -->
-      <div id="node-place-banner" style="display:none;position:absolute;top:8px;left:50%;transform:translateX(-50%);
-        z-index:1001;background:rgba(210,144,0,.92);color:#fff;font-family:var(--mono);font-size:11px;
-        padding:5px 14px;border-radius:5px;white-space:nowrap;display:none;align-items:center;gap:10px;">
-        <span>📍 點擊地圖設定「<b id="node-place-label"></b>」駐守位置</span>
-        <span data-action="cancelNodePlace" style="cursor:pointer;opacity:.8;font-size:13px;" title="取消">✕</span>
-      </div>
+      <!-- P1-16：舊「據點定位」banner 已移除（與下方 P1-16 banner 重複 id；node-place-label 已無人使用）。 -->
       <!-- 事件地圖標記提示 banner（從表單送出後，詢問是否標記位置） -->
       <div id="event-pin-banner" style="display:none;position:absolute;top:8px;left:50%;transform:translateX(-50%);
         z-index:1001;background:rgba(13,17,23,.95);border:1px solid rgba(255,255,255,.18);color:#e6edf3;font-family:var(--mono);font-size:11px;
@@ -1038,9 +1032,9 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(
         <button id="route-finish-btn" class="ok" data-action="finishRouteDraw" disabled>完成</button>
         <button data-action="cancelRouteDraw">取消</button>
       </div>
-      <!-- P1-16 放置節點 banner -->
+      <!-- P1-16 放置 banner（節點 / 設施共用：點地圖放置） -->
       <div id="node-place-banner">
-        <span>⊙ 放置節點　點擊地圖放置</span>
+        <span>⊙ 點擊地圖放置</span>
         <button data-action="cancelNodePlace">取消</button>
       </div>
       <!-- 圖層面板 -->

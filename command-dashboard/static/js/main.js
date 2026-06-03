@@ -64,9 +64,9 @@ import {
   onPlaceTypeChange,
   l3SubTab, openL4Detail, backToL3,
   loadL3Records, _loadPwaIncidents,
-  saveMapConfig, _saveInfraPosition,
+  saveMapConfig,
   openMapConfigPanel, closeMapConfigPanel, admUploadMapImage,
-  admRemoveMapImage, _cancelNodePlace, _cancelEventPin,
+  admRemoveMapImage, _cancelNodePlace, _cancelInfraPlace, _cancelEventPin,
   _openNodePlacePicker, _startNodePlace, _deleteNode,
   applyMapRoleUiGuards,
   _toggleLayer, _closeLayerPanel,
@@ -262,7 +262,7 @@ document.addEventListener('click', function (e) {
     // ── 地圖 ──
     case 'switchMap':      switchMap(btn.dataset.map); break;
     case 'cancelPlaceMode': cancelPlaceMode(); break;
-    case 'cancelNodePlace': _cancelNodePlace(); break;
+    case 'cancelNodePlace': _cancelNodePlace(); _cancelInfraPlace(); break;
     case 'cancelEventPin': _cancelEventPin(); break;
     case 'togglePinEditMode': togglePinEditMode(); break;
     case 'toggleCsel':     toggleCsel(); break;
@@ -308,6 +308,7 @@ document.addEventListener('click', function (e) {
     }
     case 'startInfraPlace': {
       if (!canAccessMapObjects()) break;
+      closeModal?.();
       _startInfraPlace(btn.dataset.infraType);
       break;
     }
