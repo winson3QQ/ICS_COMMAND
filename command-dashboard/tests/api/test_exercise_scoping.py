@@ -92,6 +92,24 @@ def _mk_exercise(client, auth, name):
     return client.post("/api/exercises", json={"name": name, "type": "ttx"}, headers=auth).json()
 
 
+class TestCopByUidScope:
+    def test_operator_cannot_read_other_exercise_entity_by_uid(self, client, auth, operator_auth):
+        # A 啟動→建 entity（綁 A）→封存；B 啟動
+        a = _mk_exercise(client, auth, "A")
+        client.post(f"/api/exercises/{a['id']}/activate", json={}, headers=auth)
+        uid_a = client.post("/api/cop/entities", json=_COP, headers=auth).json()["uid"]
+        client.post(f"/api/exercises/{a['id']}/archive", json={}, headers=auth)
+        b = _mk_exercise(client, auth, "B")
+        client.post(f"/api/exercises/{b['id']}/activate", json={}, headers=auth)
+        # operator（scope=B）by-uid 取 A 的 entity → 404（不在 scope，不洩漏存在性）
+        assert client.get(f"/api/cop/entities/{uid_a}", headers=operator_auth).status_code == 404
+        # 指揮層（admin）可取任意 uid（對齊 list override）
+        assert client.get(f"/api/cop/entities/{uid_a}", headers=auth).status_code == 200
+        # operator 取當前 scope（B）內 entity → 200
+        uid_b = client.post("/api/cop/entities", json=_COP, headers=auth).json()["uid"]
+        assert client.get(f"/api/cop/entities/{uid_b}", headers=operator_auth).status_code == 200
+
+
 class TestStrictIsolation:
     def test_active_view_excludes_realops_null_events(self, client, auth):
         # 無 active → 建「實戰」事件（exercise_id NULL）

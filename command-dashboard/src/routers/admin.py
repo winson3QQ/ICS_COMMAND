@@ -246,10 +246,11 @@ async def reset_db(request: Request):
 @router.post("/reset-exercise", tags=["system"])
 async def reset_exercise(request: Request):
     sess = _check_system_admin(request)
-    ex_tables = ["ttx_injects", "exercises", "resource_snapshots", "aar_entries", "ai_recommendations"]
+    ex_tables = ["ttx_injects", "exercises", "resource_snapshots", "aar_entries",
+                 "ai_recommendations", "exercise_kpis"]
     # issue #29 PR-G1b：cop_entities 有 exercise_id，演習重設一併清演習場域的 COP 圖釘
-    # （事件/route/polygon）。tracks/links 無 exercise_id（references uid）；演習事件目前不建
-    # tracks/links，故此處不處理，待 P2 TAK 移動軌跡落地時再補 orphan 清理。
+    # （事件/route/polygon）。tracks/links 無 exercise_id（references uid ON DELETE CASCADE）；
+    # PRAGMA foreign_keys=ON，故刪 cop_entities 時 tracks/links 自動級聯，無 orphan。
     data_tables = ["snapshots", "events", "decisions", "manual_records", "audit_log", "cop_entities"]
     cleared = {}
     with get_conn() as conn:

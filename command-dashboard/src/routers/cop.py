@@ -35,10 +35,11 @@ from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 from starlette.websockets import WebSocketDisconnect
 
-from auth.role_enum import READ_ROLES, is_role_allowed
+from auth.role_enum import COMMAND_ROLES, READ_ROLES, is_role_allowed
 from auth.service import check_session
 from core.input_safety import validate_no_unsafe_strings
 from repositories import cop_entity_repo
+from repositories._helpers import NULL_SCOPE
 from schemas.cop import CoPEntity
 from services.exercise_service import current_exercise_id, resolve_scope
 from services.realtime_hub import cop_hub
@@ -138,10 +139,19 @@ def list_entities(
 
 
 @router.get("/entities/{uid}")
-def get_entity(uid: str, response: Response):
+def get_entity(uid: str, request: Request, response: Response):
     ent = cop_entity_repo.get_cop_entity(uid)
     if ent is None:
         raise HTTPException(404, f"entity 不存在：{uid}")
+    # P1-14：非指揮層只能取當前 scope 內的 entity（防 by-uid 跨場讀取）。
+    # 指揮層（sysadmin/commander）可取任意 uid，對齊 list endpoint 的 ?exercise_id override。
+    # 不在 scope → 404（不洩漏存在性，與 None 同一回應）。
+    if not is_role_allowed(request.state.session, COMMAND_ROLES):
+        scope = resolve_scope(request.state.session, None)  # active id 或 NULL_SCOPE（實戰池）
+        ent_ex = ent.get("exercise_id")
+        in_scope = (ent_ex is None) if scope is NULL_SCOPE else (ent_ex == scope)
+        if not in_scope:
+            raise HTTPException(404, f"entity 不存在：{uid}")
     response.headers["ETag"] = _etag(ent["version_clock"])
     return ent
 
