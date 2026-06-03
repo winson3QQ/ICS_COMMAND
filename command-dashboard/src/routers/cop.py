@@ -40,6 +40,7 @@ from auth.service import check_session
 from core.input_safety import validate_no_unsafe_strings
 from repositories import cop_entity_repo
 from schemas.cop import CoPEntity
+from services.exercise_service import current_exercise_id, resolve_scope
 from services.realtime_hub import cop_hub
 
 router = APIRouter(prefix="/api/cop", tags=["COP"])
@@ -118,16 +119,18 @@ async def _broadcast(op: str, entity: dict) -> None:
 
 @router.get("/entities")
 def list_entities(
+    request: Request,
     source: str | None = None,
     exercise_id: int | None = None,
     include_stale: bool = False,
     limit: int = 500,
 ):
-    """列出 COP entity（預設過濾 stale）。前線 client 啟動 / WS 重連時全量 resync 用。"""
+    """列出 COP entity（預設過濾 stale）。前線 client 啟動 / WS 重連時全量 resync 用。
+    P1-14：預設只回當前 active 場；commander 顯式帶 exercise_id 才看歷史（resolve_scope 守門）。"""
     return {
         "entities": cop_entity_repo.list_cop_entities(
             source=source,
-            exercise_id=exercise_id,
+            exercise_id=resolve_scope(request.state.session, exercise_id),
             include_stale=include_stale,
             limit=limit,
         )
@@ -157,6 +160,9 @@ async def create_entity(request: Request, response: Response):
     now = datetime.now(UTC)
     now_iso = now.strftime("%Y-%m-%dT%H:%M:%SZ")
     body["source"] = "manual"  # 強制：manual endpoint 不得偽造 tak / pi-node
+    # P1-14：exercise_id 由 server 端 active 場決定（不信任 client；同 source 強制 doctrine）。
+    # 無 active → NULL＝實戰/未分場。**這一行同時是 P1-16 placement 圖釘綁定 active 場的點**。
+    body["exercise_id"] = current_exercise_id()
     body.setdefault("uid", f"manual:{uuid.uuid4()}")
     body.setdefault("time", now_iso)
     body.setdefault("start", now_iso)
@@ -281,10 +287,13 @@ async def cop_ws_updates(websocket: WebSocket):
 
     raw_ex = websocket.query_params.get("exercise_id")
     try:
-        exercise_id = int(raw_ex) if raw_ex not in (None, "") else None
+        requested_ex = int(raw_ex) if raw_ex not in (None, "") else None
     except ValueError:
         await websocket.close(code=_WS_BAD_REQUEST)
         return
+    # P1-14 安全收緊：原本直接信任 client query param → 任何 READ_ROLE 可訂閱任意場（越權）。
+    # 改走 resolve_scope：預設訂當前 active；顯式指定歷史場限 COMMAND_ROLES，否則強制回 active。
+    exercise_id = resolve_scope(sess, requested_ex)
 
     # echo 常數協定（不含 token）；client 必須 offer 它，否則 handshake 不成立
     await websocket.accept(subprotocol=_WS_SUBPROTOCOL)

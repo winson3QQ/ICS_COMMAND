@@ -6,7 +6,7 @@ import time
 from datetime import UTC, datetime
 from pathlib import Path
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 
 from core.config import (
     APP_VERSION, CMD_VERSION, DB_PATH,
@@ -16,14 +16,16 @@ from core.database import get_health_schema_version
 from repositories.audit_repo import get_audit_log
 from repositories.snapshot_repo import get_latest_snapshot
 from services.dashboard_service import build_dashboard
+from services.exercise_service import resolve_scope
 
 router = APIRouter(tags=["儀表板"])
 
 
 @router.get("/api/dashboard")
-def get_dashboard(exercise_id: int | None = None):
-    """前端每 10 秒 polling 的主要端點"""
-    return build_dashboard(exercise_id)
+def get_dashboard(request: Request, exercise_id: int | None = None):
+    """前端每 10 秒 polling 的主要端點。
+    P1-14：預設只回當前 active 場；commander 顯式帶 exercise_id 才看歷史（resolve_scope 守門）。"""
+    return build_dashboard(resolve_scope(request.state.session, exercise_id))
 
 
 @router.get("/api/staff", tags=["人員"])
