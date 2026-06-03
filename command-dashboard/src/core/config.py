@@ -26,6 +26,11 @@ MAP_CONFIG_PATH: Path = DATA_DIR / "map_config.json"
 EVENT_TAXONOMY_SEED: Path = STATIC_DIR / "event_taxonomy.seed.json"
 EVENT_TAXONOMY_PATH: Path = DATA_DIR / "event_taxonomy.json"
 
+# P1-17（issue #88）永久設施公開資料底圖層：唯讀基準層，**只讀 static seed**，
+# 無 runtime/data 副本、非 user-data、不受 exercise scoping / reset 影響。
+# 資料由維護者腳本 scripts/import_facilities.py 從台灣政府開放資料產生（非中國）。
+FACILITIES_SEED: Path = STATIC_DIR / "facilities.seed.json"
+
 # 磁碟剩餘百分比低於此值 → degraded（黃燈）
 HEALTH_DISK_DEGRADED_PCT_THRESHOLD: float = float(os.getenv("HEALTH_DISK_DEGRADED_PCT_THRESHOLD", "20"))
 # DB 查詢延遲超過此值（ms）→ degraded（黃燈）
@@ -82,9 +87,7 @@ AUTH_EXEMPT_EXACT: frozenset[tuple[str, str]] = frozenset(
 # path 前綴匹配（任何 method）
 # 註：tile 路由是 /tiles/...（非 /api/ 底下），auth_middleware 只 gate /api/* → tiles 本就不需
 # exempt。舊有 "/api/map/tiles/" 條目 match 不到任何路由（dead/誤導），已移除（#64-1）。
-AUTH_EXEMPT_PREFIXES: tuple[str, ...] = (
-    "/static/",
-)
+AUTH_EXEMPT_PREFIXES: tuple[str, ...] = ("/static/",)
 
 # ── Trusted Ingest（TI-01）────────────────────────────────────────────────
 # HMAC 時間戳記容差（ms）。超出此窗口的請求一律拒絕。
