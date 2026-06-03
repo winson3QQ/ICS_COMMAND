@@ -64,8 +64,8 @@ export async function archiveExercise(id) {
 
 /**
  * 決定 chip 的顯示內容與 class（純函式，便於單測）。
- * 演練(ttx) → ☀ + 名稱、ex-chip--ttx；實戰(real) → ☾ + 名稱、ex-chip--real；
- * 無 active → 「無進行中場次」、ex-chip--idle。圖示沿用底圖 day/night 語言。
+ * 演習(ttx) → 「演習／名稱」、ex-chip--ttx（琥珀）；實戰(real) → 「實戰／名稱」、ex-chip--real（紅）；
+ * 無 active → 「無進行中場次」、ex-chip--idle。文字標籤（非圖示），顏色區分 real/ttx。
  * 樣式一律走 CSS class（DS token），不在此寫死任何顏色。
  */
 export function exerciseChipView(activeExercise) {
@@ -74,9 +74,9 @@ export function exerciseChipView(activeExercise) {
   if (activeExercise && activeExercise.name) {
     const isReal = activeExercise.type === 'real';
     return {
-      text: (isReal ? '☾ ' : '☀ ') + activeExercise.name,
+      text: (isReal ? '實戰／' : '演習／') + activeExercise.name,
       className: 'ex-chip ' + (isReal ? 'ex-chip--real' : 'ex-chip--ttx'),
-      title: (isReal ? '實戰進行中：' : '演練進行中：') + activeExercise.name + '（點擊查看演習管理）',
+      title: (isReal ? '實戰進行中：' : '演習進行中：') + activeExercise.name + '（點擊查看演習管理）',
     };
   }
   // 無 active＝未開任何場次（≠「實戰」；實戰要開一場 type=real 才會被記錄）

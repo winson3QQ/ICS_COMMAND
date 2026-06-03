@@ -60,21 +60,21 @@ const ACTIVE = { id: 1, name: '北區大震演練', type: 'ttx', status: 'active
 const SETUP  = { id: 2, name: '化災桌推', type: 'ttx', status: 'setup', created_at: '2026-06-02T00:00:00Z' };
 
 describe('exercises 純函式', () => {
-  test('exerciseChipView：演練(ttx) → ☀ + 名稱、ex-chip--ttx、無字面 hex', async () => {
+  test('exerciseChipView：演習(ttx) → 「演習／名稱」、ex-chip--ttx、無字面 hex', async () => {
     const m = await import('../../static/js/exercises.js');
     const v = m.exerciseChipView(ACTIVE);  // type='ttx'
     expect(v.text).toContain('北區大震演練');
-    expect(v.text).toContain('☀');
+    expect(v.text).toContain('演習／');
     expect(v.className).toMatch(/ex-chip--ttx/);
     expect(v.className).not.toMatch(HEX_RE);
     expect(v.title).not.toMatch(HEX_RE);
   });
 
-  test('exerciseChipView：實戰(real) → ☾ + 名稱、ex-chip--real', async () => {
+  test('exerciseChipView：實戰(real) → 「實戰／名稱」、ex-chip--real', async () => {
     const m = await import('../../static/js/exercises.js');
     const v = m.exerciseChipView({ id: 3, name: '颱風應變', type: 'real', status: 'active' });
     expect(v.text).toContain('颱風應變');
-    expect(v.text).toContain('☾');
+    expect(v.text).toContain('實戰／');
     expect(v.className).toMatch(/ex-chip--real/);
     expect(v.className).not.toMatch(HEX_RE);
   });

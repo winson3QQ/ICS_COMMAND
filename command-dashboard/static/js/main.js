@@ -114,6 +114,14 @@ window.addEventListener('beforeunload', () => {
   if (_copStream) _copStream.stop();
 });
 
+// P1-14：切換 active 演習後，前端要依新 scope 重抓資料（否則 map 圖釘 / 面板停在舊場，
+// 要 hard reload 才更新）。poll() 重抓 dashboard；cop_stream 重連 → server 依新 active 重 scope
+// WS + 上線自動全量 resync（zone/route/event 圖釘）→ map onChange 重繪。
+function _refreshAfterExerciseSwitch() {
+  try { poll(); } catch (e) { /* poll 失敗不阻斷 */ }
+  if (_copStream) { _copStream.stop(); _copStream.connect(); }
+}
+
 // ══════════════════════════════════════════════════════════════
 // 全局 click 事件委派（取代所有 inline onclick=）
 // ══════════════════════════════════════════════════════════════
@@ -133,7 +141,7 @@ document.addEventListener('click', function (e) {
     case 'cmdLogout':      cmdLogout(); break;
     case 'sessionContinue': continueSessionFromWarning(); break;
     case 'sessionLogout':  logoutFromSessionWarning(); break;
-    case 'openSettings':   openSettings(); break;
+    case 'openSettings':   openSettings(); import('./exercises.js').then(m => m.renderExercisePanel()); break;
     case 'closeSettings':  closeSettings(); break;
     case 'openConfigModal': openConfigModal(); break;
     case 'saveConfig':
@@ -375,12 +383,12 @@ document.addEventListener('click', function (e) {
     }
     case 'exActivate': {
       if (!canUseRealModeControls()) break;
-      import('./exercises.js').then(m => m.handleExActivate(btn.dataset.id));
+      import('./exercises.js').then(m => m.handleExActivate(btn.dataset.id).then(_refreshAfterExerciseSwitch));
       break;
     }
     case 'exArchive': {
       if (!canUseRealModeControls()) break;
-      import('./exercises.js').then(m => m.handleExArchive(btn.dataset.id));
+      import('./exercises.js').then(m => m.handleExArchive(btn.dataset.id).then(_refreshAfterExerciseSwitch));
       break;
     }
     case 'exRefresh': {

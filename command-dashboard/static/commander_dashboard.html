@@ -946,9 +946,13 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(
   <!-- 中：左半時鐘 / 右半人數+摘要 -->
   <div id="zone-a-mid">
     <div id="zone-a-top">
-      <div class="za-col" style="align-items:center;">
+      <div class="za-col" style="align-items:center;gap:2px;">
         <span class="za-clock" id="clock">--:--:--</span>
-        <span id="date-label" style="font-size:12px;color:var(--text3);"></span>
+        <!-- P1-14：日期 + 演習場次 chip 同一行，置於時鐘正下方（zone-a 固定 64px，不壓縮 map）。 -->
+        <div style="display:flex;align-items:center;gap:10px;">
+          <span id="date-label" style="font-size:12px;color:var(--text3);"></span>
+          <span id="exercise-chip" data-action="openExercisePanel" class="ex-chip ex-chip--idle" title="演習場次">無進行中場次</span>
+        </div>
       </div>
       <div class="za-col za-col-r">
         <!-- counts-shelter / counts-medical 已於 P1-11 移除（PWA-specific 計數） -->
@@ -965,7 +969,6 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(
       <span id="idle-countdown"></span>
       <span data-action="openSettings" style="font-size:14px;cursor:pointer;color:var(--text3);" title="設定">&#9881;</span>
       <span class="h-ver" id="h-ver"></span>
-      <span id="exercise-chip" data-action="openExercisePanel" class="ex-chip ex-chip--idle" title="演習場次">實戰</span>
       <button data-action="cmdLogout" style="padding:2px 8px;border:1px solid var(--red);border-radius:4px;background:transparent;color:var(--red);font-size:10px;font-weight:600;cursor:pointer;font-family:var(--mono);transition:all .2s;"  >登出</button>
     </div>
   </div>
