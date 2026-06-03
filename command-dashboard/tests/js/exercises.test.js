@@ -60,20 +60,29 @@ const ACTIVE = { id: 1, name: '北區大震演練', type: 'ttx', status: 'active
 const SETUP  = { id: 2, name: '化災桌推', type: 'ttx', status: 'setup', created_at: '2026-06-02T00:00:00Z' };
 
 describe('exercises 純函式', () => {
-  test('exerciseChipView：active 含演習名、無字面 hex', async () => {
+  test('exerciseChipView：演練(ttx) → ☀ + 名稱、ex-chip--ttx、無字面 hex', async () => {
     const m = await import('../../static/js/exercises.js');
-    const v = m.exerciseChipView(ACTIVE);
+    const v = m.exerciseChipView(ACTIVE);  // type='ttx'
     expect(v.text).toContain('北區大震演練');
-    expect(v.text).toContain('🎯');
-    expect(v.className).toMatch(/ex-chip--active/);
+    expect(v.text).toContain('☀');
+    expect(v.className).toMatch(/ex-chip--ttx/);
     expect(v.className).not.toMatch(HEX_RE);
     expect(v.title).not.toMatch(HEX_RE);
   });
 
-  test('exerciseChipView：無 active → 「實戰」、無字面 hex', async () => {
+  test('exerciseChipView：實戰(real) → ☾ + 名稱、ex-chip--real', async () => {
+    const m = await import('../../static/js/exercises.js');
+    const v = m.exerciseChipView({ id: 3, name: '颱風應變', type: 'real', status: 'active' });
+    expect(v.text).toContain('颱風應變');
+    expect(v.text).toContain('☾');
+    expect(v.className).toMatch(/ex-chip--real/);
+    expect(v.className).not.toMatch(HEX_RE);
+  });
+
+  test('exerciseChipView：無 active → 「無進行中場次」、idle、無字面 hex', async () => {
     const m = await import('../../static/js/exercises.js');
     const v = m.exerciseChipView(null);
-    expect(v.text).toBe('實戰');
+    expect(v.text).toBe('無進行中場次');
     expect(v.className).toMatch(/ex-chip--idle/);
     expect(v.className).not.toMatch(HEX_RE);
   });
@@ -102,14 +111,14 @@ describe('renderExerciseChip', () => {
     expect(chip.textContent).toContain('北區大震演練');
     expect(chip.className).not.toMatch(HEX_RE);
     expect(chip.title).not.toMatch(HEX_RE);
-    expect(chip.className).toMatch(/ex-chip--active/);
+    expect(chip.className).toMatch(/ex-chip--ttx/);
   });
 
-  test('無 active → 「實戰」', async () => {
+  test('無 active → 「無進行中場次」', async () => {
     const get = installDom();
     const m = await import('../../static/js/exercises.js');
     m.renderExerciseChip(null);
-    expect(get('exercise-chip').textContent).toBe('實戰');
+    expect(get('exercise-chip').textContent).toBe('無進行中場次');
     expect(get('exercise-chip').className).toMatch(/ex-chip--idle/);
   });
 });

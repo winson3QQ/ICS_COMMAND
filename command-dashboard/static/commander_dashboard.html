@@ -519,9 +519,14 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(
   cursor:pointer;transition:all .2s;white-space:nowrap;border:1px solid transparent;
 }
 .ex-chip--idle{color:var(--text3);border-color:var(--text3);background:transparent;}
-.ex-chip--active{
+/* ☀ 演練（ttx）= 白天/琥珀；☾ 實戰（real）= 黑夜/紅（嚴肅）。沿用底圖 day/night 圖示語言。 */
+.ex-chip--ttx{
   color:var(--orange);border-color:var(--orange);font-weight:800;
   background:color-mix(in srgb, var(--orange) 15%, transparent);
+}
+.ex-chip--real{
+  color:var(--red);border-color:var(--red);font-weight:800;
+  background:color-mix(in srgb, var(--red) 15%, transparent);
 }
 .ex-panel{display:flex;flex-direction:column;gap:8px;}
 .ex-panel-head{display:flex;align-items:center;justify-content:space-between;gap:8px;}
