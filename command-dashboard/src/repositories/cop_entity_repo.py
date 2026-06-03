@@ -17,7 +17,7 @@ from datetime import UTC, datetime
 from core.database import get_conn
 from schemas.cop import CoPEntity, CoPEntityLink, CoPEntityTrack
 
-from ._helpers import row_to_dict
+from ._helpers import NULL_SCOPE, row_to_dict
 
 _log = logging.getLogger(__name__)
 
@@ -65,16 +65,22 @@ def get_cop_entity(uid: str) -> dict | None:
 
 def list_cop_entities(
     source: str | None = None,
-    exercise_id: int | None = None,
+    exercise_id=None,
     include_stale: bool = False,
     limit: int = 500,
 ) -> list[dict]:
-    """列出 CoP entity。預設過濾 stale（stale > now）。"""
+    """列出 CoP entity。預設過濾 stale（stale > now）。
+
+    exercise_id 三態（見 _helpers.NULL_SCOPE）——
+      int → exact / NULL_SCOPE → IS NULL（實戰池）/ None → 不過濾（內部 caller）。
+    """
     clauses, params = [], []
     if source is not None:
         clauses.append("source = ?")
         params.append(source)
-    if exercise_id is not None:
+    if exercise_id is NULL_SCOPE:
+        clauses.append("exercise_id IS NULL")
+    elif exercise_id is not None:
         clauses.append("exercise_id = ?")
         params.append(exercise_id)
     if not include_stale:

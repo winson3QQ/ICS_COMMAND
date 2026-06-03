@@ -1,8 +1,9 @@
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 
 from repositories.manual_repo import create_manual_record, get_manual_records, mark_manual_record_synced
 from schemas.manual import ManualRecordIn
+from services.exercise_service import current_exercise_id, resolve_scope
 
 router = APIRouter(prefix="/api/manual_records", tags=["手動輸入"])
 
@@ -23,12 +24,15 @@ def post_manual(body: ManualRecordIn):
     data   = body.model_dump()
     data["form_type"]    = meta[0]
     data["target_table"] = meta[1]
-    return create_manual_record(data, body.exercise_id)
+    # P1-14：exercise_id 由 server active 場決定，不信任 client（含 PII，需嚴格 scoping）。
+    return create_manual_record(data, current_exercise_id())
 
 
 @router.get("")
-def get_manual(sync_status: str | None = None, limit: int = 100):
-    return get_manual_records(sync_status, limit)
+def get_manual(request: Request, sync_status: str | None = None, limit: int = 100,
+               exercise_id: int | None = None):
+    # P1-14：manual_records 含 PII → 預設只回當前 active 場；commander 顯式帶才看歷史。
+    return get_manual_records(sync_status, limit, resolve_scope(request.state.session, exercise_id))
 
 
 @router.patch("/{record_id}/synced")

@@ -46,8 +46,9 @@ def get_staff():
 
 
 @router.get("/api/audit_log", tags=["系統"])
-def audit_log_endpoint(limit: int = 100):
-    return get_audit_log(limit)
+def audit_log_endpoint(request: Request, limit: int = 100, exercise_id: int | None = None):
+    # P1-14（MED-5）：稽核軌跡預設只回當前 active 場；commander 顯式帶才看歷史。
+    return get_audit_log(limit, resolve_scope(request.state.session, exercise_id))
 
 
 @router.get("/api/version", tags=["系統"])

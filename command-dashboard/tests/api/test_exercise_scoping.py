@@ -10,7 +10,27 @@ api/test_exercise_scoping.py — P1-14 exercise scoping wiring 測試（issue #8
 
 import pytest
 
+from repositories.account_repo import create_account
+
 pytestmark = pytest.mark.api
+
+
+def _login(client, username, pin):
+    r = client.post("/api/auth/login", json={"username": username, "pin": pin})
+    assert r.status_code == 200, r.text
+    return {"X-Session-Token": r.json()["session_id"]}
+
+
+@pytest.fixture
+def operator_auth(client):
+    create_account("op1", "5678", "操作員", "前進組", "operator")
+    return _login(client, "op1", "5678")
+
+
+@pytest.fixture
+def observer_auth(client):
+    create_account("ob1", "5678", "觀察員", "", "observer")
+    return _login(client, "ob1", "5678")
 
 _EVENT = {
     "reported_by_unit": "shelter",
@@ -60,3 +80,50 @@ class TestCopScoping:
         r = client.post("/api/cop/entities", json=_COP, headers=auth)
         assert r.status_code == 201
         assert r.json()["exercise_id"] is None
+
+
+def _mk_exercise(client, auth, name):
+    return client.post("/api/exercises", json={"name": name, "type": "ttx"}, headers=auth).json()
+
+
+class TestStrictIsolation:
+    def test_active_view_excludes_realops_null_events(self, client, auth):
+        # 無 active → 建「實戰」事件（exercise_id NULL）
+        client.post("/api/events", json={**_EVENT, "description": "實戰事件"}, headers=auth)
+        # 啟動 A → 建 A 事件
+        a = _mk_exercise(client, auth, "A")
+        client.post(f"/api/exercises/{a['id']}/activate", json={}, headers=auth)
+        client.post("/api/events", json={**_EVENT, "description": "A事件"}, headers=auth)
+        # active=A 的 GET（strict）→ 看得到 A、看不到實戰 NULL
+        evs = client.get("/api/events", headers=auth).json()
+        descs = [e["description"] for e in evs]
+        assert "A事件" in descs
+        assert "實戰事件" not in descs
+
+
+class TestScopeRoleGate:
+    def test_operator_cannot_override_to_historical(self, client, auth, operator_auth):
+        # A 啟動→建 A 事件→封存；B 啟動→建 B 事件
+        a = _mk_exercise(client, auth, "A")
+        client.post(f"/api/exercises/{a['id']}/activate", json={}, headers=auth)
+        client.post("/api/events", json={**_EVENT, "description": "在A"}, headers=auth)
+        client.post(f"/api/exercises/{a['id']}/archive", json={}, headers=auth)
+        b = _mk_exercise(client, auth, "B")
+        client.post(f"/api/exercises/{b['id']}/activate", json={}, headers=auth)
+        client.post("/api/events", json={**_EVENT, "description": "在B"}, headers=auth)
+        # operator 帶 ?exercise_id=A（歷史）→ 被 resolve_scope 擋回 active=B
+        evs = client.get(f"/api/events?exercise_id={a['id']}", headers=operator_auth).json()
+        descs = [e["description"] for e in evs]
+        assert "在B" in descs and "在A" not in descs
+        # commander/sysadmin（admin）帶 ?exercise_id=A → 看得到歷史 A
+        descs2 = [e["description"] for e in
+                  client.get(f"/api/events?exercise_id={a['id']}", headers=auth).json()]
+        assert "在A" in descs2
+
+    def test_observer_blocked_from_historical_aar_and_ai_report(self, client, auth, observer_auth, active_exercise):
+        # HIGH-3/4：observer 帶任意 exercise_id 撈 AAR / 後分析 → 403（role gate）
+        exid = active_exercise["id"]
+        assert client.get(f"/api/exercises/{exid}/aar", headers=observer_auth).status_code == 403
+        assert client.get(f"/api/ai/report/{exid}", headers=observer_auth).status_code == 403
+        # 對照：sysadmin 不被擋（200 或非 403）
+        assert client.get(f"/api/exercises/{exid}/aar", headers=auth).status_code != 403

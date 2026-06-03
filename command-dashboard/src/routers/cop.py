@@ -299,7 +299,9 @@ async def cop_ws_updates(websocket: WebSocket):
     await websocket.accept(subprotocol=_WS_SUBPROTOCOL)
     conn = await cop_hub.connect(websocket, exercise_id)
     try:
-        await websocket.send_json({"op": "hello", "exercise_id": exercise_id})
+        # P1-14：exercise_id 可能是 NULL_SCOPE（object，無 active＝實戰池），不可序列化 → 送 None
+        hello_ex = exercise_id if isinstance(exercise_id, int) else None
+        await websocket.send_json({"op": "hello", "exercise_id": hello_ex})
         # server→client push only；仍 loop receive 以偵測斷線（client 不需送任何東西）
         while True:
             await websocket.receive_text()

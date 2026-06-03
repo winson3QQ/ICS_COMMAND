@@ -22,6 +22,8 @@ import logging
 
 from fastapi import WebSocket
 
+from repositories._helpers import NULL_SCOPE
+
 _log = logging.getLogger(__name__)
 
 _SEND_TIMEOUT_S = 5.0  # 單一 client send 逾時即視為死連線，避免拖垮整個 broadcast / HTTP response
@@ -32,19 +34,24 @@ class _Conn:
 
     __slots__ = ("ws", "exercise_id")
 
-    def __init__(self, ws: WebSocket, exercise_id: int | None):
+    def __init__(self, ws: WebSocket, exercise_id):
         self.ws = ws
-        self.exercise_id = exercise_id
+        self.exercise_id = exercise_id  # int | NULL_SCOPE（client 連線）| None（內部 overview）
 
     def wants(self, msg_exercise_id: int | None) -> bool:
-        """本連線是否該收到這則訊息。
+        """本連線是否該收到這則 entity 訊息（P1-14 strict isolation）。
 
-        - 連線未指定 exercise（exercise_id=None）→ 訂閱全部（指揮台總覽）。
-        - 連線指定某 exercise N → 收 N 的 entity，以及無 exercise 歸屬（None）的全域 entity。
+        連線範圍由 resolve_scope 決定（int 或 NULL_SCOPE）：
+        - NULL_SCOPE（無 active＝實戰池）→ 只收 exercise_id 為 None 的實戰 entity。
+        - int N（active 場 / 指揮層看歷史）→ **只收 N 的 entity**（exact；不再收 None 全域）。
+        - None（內部 overview，client 不會是此值）→ 全收。
+        ⚠ 控制訊息（reset resync）走 broadcast_all，不經本過濾。
         """
+        if self.exercise_id is NULL_SCOPE:
+            return msg_exercise_id is None
         if self.exercise_id is None:
             return True
-        return msg_exercise_id is None or msg_exercise_id == self.exercise_id
+        return msg_exercise_id == self.exercise_id
 
 
 class CopHub:
@@ -54,7 +61,8 @@ class CopHub:
         self._conns: set[_Conn] = set()
         self._lock = asyncio.Lock()
 
-    async def connect(self, ws: WebSocket, exercise_id: int | None) -> _Conn:
+    async def connect(self, ws: WebSocket, exercise_id) -> _Conn:
+        # exercise_id：int（某場）| NULL_SCOPE（實戰池）| None（內部 overview）
         conn = _Conn(ws, exercise_id)
         async with self._lock:
             self._conns.add(conn)
@@ -64,14 +72,8 @@ class CopHub:
         async with self._lock:
             self._conns.discard(conn)
 
-    async def broadcast(self, message: dict, exercise_id: int | None = None) -> None:
-        """把 message push 給所有符合 exercise filter 的連線。
-
-        對每條連線獨立 try / timeout；單一死連線不影響其他 client，也不阻塞呼叫端
-        （HTTP handler）。送失敗 / 逾時的連線就地剔除。
-        """
-        async with self._lock:
-            targets = [c for c in self._conns if c.wants(exercise_id)]
+    async def _send(self, targets: list[_Conn], message: dict) -> None:
+        """送 message 給 targets；對每條獨立 try / timeout，死連線就地剔除。"""
         dead: list[_Conn] = []
         for c in targets:
             try:
@@ -83,6 +85,20 @@ class CopHub:
             async with self._lock:
                 for c in dead:
                     self._conns.discard(c)
+
+    async def broadcast(self, message: dict, exercise_id: int | None = None) -> None:
+        """把 entity message push 給所有符合 exercise filter（wants）的連線。"""
+        async with self._lock:
+            targets = [c for c in self._conns if c.wants(exercise_id)]
+        await self._send(targets, message)
+
+    async def broadcast_all(self, message: dict) -> None:
+        """把控制訊息（如 reset resync）push 給**所有**連線，不經 exercise filter。
+        P1-14：strict wants 後，reset 的 resync 不能再靠 exercise_id=None 命中全部，
+        故走本 method 確保每條連線都收到、各自重新對帳。"""
+        async with self._lock:
+            targets = list(self._conns)
+        await self._send(targets, message)
 
     async def close_all(self) -> None:
         """shutdown 時關閉所有連線（lifespan teardown 呼叫）。"""

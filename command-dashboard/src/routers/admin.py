@@ -239,7 +239,7 @@ async def reset_db(request: Request):
     # issue #29 PR-G1b：cop_entities 被 raw SQL 清空、不會自動發 per-entity WS delete。
     # 廣播 resync → 各 client 重新 GET /api/cop/entities 對帳（清掉 server 已無者），
     # 否則其他瀏覽器的事件/圖釘殘留到手動 reload。exercise_id=None → 廣播給所有連線。
-    await cop_hub.broadcast({"op": "resync"})
+    await cop_hub.broadcast_all({"op": "resync"})  # P1-14：strict wants 後改 broadcast_all 確保全連線收到
     return {"ok": True, "cleared_tables": tables}
 
 
@@ -266,7 +266,7 @@ async def reset_exercise(request: Request):
             except Exception:
                 pass
     audit(sess["username"], None, "exercise_reset", "system", "all", {"cleared": cleared})
-    await cop_hub.broadcast({"op": "resync"})  # 同 reset-db：各 client 對帳清掉演習場域圖釘
+    await cop_hub.broadcast_all({"op": "resync"})  # P1-14：strict wants 後改 broadcast_all 確保全連線收到  # 同 reset-db：各 client 對帳清掉演習場域圖釘
     return {"ok": True, "cleared": cleared}
 
 
