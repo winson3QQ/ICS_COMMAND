@@ -123,8 +123,7 @@ let _mgrsGrid = null;        // MgrsGrid instance — step 10 port 到 MapLibre 
 let _coordPin = null;            // 雙擊放置的藍色十字 marker
 let _polyDrawState = null;       // { latlngs, markers, previewPoly }
 let _routeDrawState = null;      // { latlngs, markers, previewLine }
-let _nodePlaceState = null;      // P1-16：{ nodeType } —— on-demand 放置節點模式（點地圖即放）
-let _infraPlaceState = null;     // P1-16 PR-2：{ infraType } —— on-demand 放置設施模式（點地圖即放）
+let _placeState = null;          // P1-16：{ kind:'zone'|'infra', type } —— on-demand 放置模式（節點/設施共用；單一 state 根除互斥殘留）
 let _pendingPolyLatlngs = null;  // _openPolyForm → _savePolygon 暫存
 let _pendingRouteLatlngs = null; // _openRouteForm → _saveRoute 暫存
 let _pinEditMode = false;
@@ -380,12 +379,11 @@ function _initMaplibre() {
   }
 
   _leafletMap = initMaplibre('leaflet-map', {
-    shouldSuppressInteraction: () => !!(_polyDrawState || _routeDrawState || _nodePlaceState || _infraPlaceState),
+    shouldSuppressInteraction: () => !!(_polyDrawState || _routeDrawState || _placeState),
 
     // 單擊：繪製模式時新增頂點 / 放置節點 / 放置設施
     onClick: ({ lat, lng }) => {
-      if (_nodePlaceState) { _placeNodeAt(lat, lng); return; }
-      if (_infraPlaceState) { _placeInfraAt(lat, lng); return; }
+      if (_placeState) { _placeAt(lat, lng); return; }
       if (_polyDrawState) { _addPolyVertex(lat, lng); return; }
       if (_routeDrawState) { _addRouteVertex(lat, lng); return; }
     },
@@ -2055,15 +2053,20 @@ function _syncEventDragHandles(eventZonesArg, nodeZonesArg) {
   // P1-16：節點 zone（cop entity，無 event_id）也可拖。無「結案」概念，全數 sync。
   // dragend / onDrag / onClick callback 用 entity 有無 event_id 區分行為（見下）。
   const nodeZones = nodeZonesArg || _allRenderedZones().nodeZones;
+  // P1-16 follow-up：設施(kind='infra')也可拖。infra 在獨立 _infraLayer，_renderZones 不帶它，
+  // 故此處自取；圖層隱藏（_layerVis.infra=false）時不掛 handle。callback 按 kind 分支（見下）。
+  const infraZones = _layerVis.infra
+    ? (_copStream?.getEntitiesByKind('infra') || []).map(copEntityToInfra).filter(Boolean)
+    : [];
   _eventDragMgr.sync(
-    [...eventZones, ...nodeZones],
+    [...eventZones, ...nodeZones, ...infraZones],
     async (id, latlng, from) => {
       // dragend：① cop 落地位置（PUT + If-Match，會清 dragging）。失敗（409/網路）則 cop 已
       // 採 server 現值（pin 彈回），**不可**再寫 events 表，否則 location_desc 與 pin 分歧。
       const ent = _copStream?.getEntity(id);
       const eventId = ent?.attributes?.event_id;
       const ok = await _copStream?.updateEntity(id, { lat: latlng.lat, lon: latlng.lng });
-      if (!ok) { _flashMapMsg('✗ ' + (eventId ? '事件' : '節點') + '位置儲存失敗（可能被他人同時修改），請重試'); return; }
+      if (!ok) { const _k = ent?.attributes?.kind; _flashMapMsg('✗ ' + (eventId ? '事件' : _k === 'infra' ? '設施' : '節點') + '位置儲存失敗（可能被他人同時修改），請重試'); return; }
       if (eventId) {
         const newMgrs = _latlngToMGRS(latlng.lat, latlng.lng, 5);
         // 1. PATCH location_desc — events table 同步（僅在 cop 落地成功後）
@@ -2098,14 +2101,17 @@ function _syncEventDragHandles(eventZonesArg, nodeZonesArg) {
       // updateEntity 成功 → onChange 已即時重繪；此處不需手動 render。
     },
     (id) => {
-      // 仿真 zones-base click 事件結構，重用既有 _onZoneClick
-      _onZoneClick({ features: [{ properties: { id } }] });
+      // 仿真 layer click 結構；設施 → _onInfraClick、其餘（事件/節點）→ _onZoneClick。
+      const evt = { features: [{ properties: { id } }] };
+      if (_copStream?.getEntity(id)?.attributes?.kind === 'infra') { _onInfraClick(evt); return; }
+      _onZoneClick(evt);
     },
     (id, latlng) => {
-      // drag per-frame：cop 本地樂觀位移（不 POST）+ 重畫 zones（skipHandleSync 避免動到
-      // 正在被拖的 handle 自己）。落地在 dragend 的 updateEntity。
+      // drag per-frame：cop 本地樂觀位移（不 POST）。設施重畫 _infraLayer、其餘重畫 zones
+      // （skipHandleSync 避免動到正在被拖的 handle 自己）。落地在 dragend 的 updateEntity。
       _copStream?.dragLocal(id, latlng.lat, latlng.lng);
-      _renderZones({ skipHandleSync: true });
+      if (_copStream?.getEntity(id)?.attributes?.kind === 'infra') _renderInfra();
+      else _renderZones({ skipHandleSync: true });
     },
   );
 }
@@ -2320,47 +2326,9 @@ export function _openInfraForm() {
   _deps.openModal?.('＋ 新增設施', html);
 }
 
-export function _startInfraPlace(infraType) {
-  if (!canUseRealModeControls()) return;  // 限指揮層
-  // 先取消其他繪製/放置模式（互斥）
-  if (_routeDrawState) _cancelRouteDraw();
-  if (_polyDrawState) _cancelPolyDraw();
-  if (_nodePlaceState) _cancelNodePlace();
-  if (_currentMap !== 'outdoor') switchMap('outdoor');
-  _infraPlaceState = { infraType: INFRA_TYPES[infraType] ? infraType : 'utility' };
-  // 重用節點放置的 banner（提示「點地圖放置，Esc 取消」）。
-  const banner = el('node-place-banner');
-  if (banner) banner.style.display = 'flex';
-  if (el('map-coord-panel')) el('map-coord-panel').style.display = 'none';
-  if (_leafletMap) _leafletMap.getCanvas().style.cursor = 'crosshair';
-}
-
-export function _cancelInfraPlace() {
-  if (!_infraPlaceState) return;
-  _infraPlaceState = null;
-  const banner = el('node-place-banner');
-  if (banner) banner.style.display = 'none';
-  if (_leafletMap) _leafletMap.getCanvas().style.cursor = '';
-}
-
-async function _placeInfraAt(lat, lng) {
-  if (!_infraPlaceState || !_copStream) return;
-  const t = _infraPlaceState.infraType;
-  const def = INFRA_TYPES[t] || INFRA_TYPES.utility;
-  const created = await _copStream.createEntity({
-    type: 'a-f-G-I',
-    lat: +(+lat).toFixed(6),
-    lon: +(+lng).toFixed(6),
-    callsign: def.label,
-    attributes: { kind: 'infra', infra_type: t },
-  });
-  if (!created) {
-    _flashMapMsg('✗ 設施放置失敗，請重試');
-    return;
-  }
-  // createEntity 內部 upsert + onChange 自動重繪（_scheduleCopRender → _renderInfra），不必手動 render。
-  _cancelInfraPlace();
-}
+// thin wrapper（共用實作 _startPlace / _cancelPlace / _placeAt 見節點區）。
+export function _startInfraPlace(infraType) { _startPlace('infra', INFRA_TYPES[infraType] ? infraType : 'utility'); }
+export function _cancelInfraPlace() { _cancelPlace(); }
 
 export async function _deleteInfra(id) {
   if (!canUseRealModeControls()) return;  // 限指揮層（與放置一致）
@@ -2491,46 +2459,58 @@ export function _openNodePlacePicker() {
   _deps.openModal?.('⊙ 放置節點', html);
 }
 
-export function _startNodePlace(nodeType) {
+// thin wrapper（保留 export 給 main.js dispatch；實作見下方 _startPlace / _cancelPlace / _placeAt）。
+export function _startNodePlace(nodeType) { _startPlace('zone', nodeType || 'command'); }
+export function _cancelNodePlace() { _cancelPlace(); }
+
+// P1-16 follow-up：節點/設施放置共用實作（取代原 _startNodePlace/_startInfraPlace、
+// _cancelNodePlace/_cancelInfraPlace、_placeNodeAt/_placeInfraAt 的近重複）。單一 `_placeState`
+// 同時根除「兩個 state 殘留互斥」隱患（原 MED-1）。kind='zone'→_PERM_NODES/node_type；
+// 'infra'→INFRA_TYPES/infra_type。CoT type 與 createEntity 流程兩者一致（a-f-G-I + P1-14 綁 scope）。
+function _startPlace(kind, type) {
   if (!canUseRealModeControls()) return;  // 限指揮層
-  // 先取消其他繪製/放置模式（互斥；與 _startInfraPlace 對稱，避免殘留 _infraPlaceState 誤放設施）
   if (_routeDrawState) _cancelRouteDraw();
   if (_polyDrawState) _cancelPolyDraw();
-  if (_infraPlaceState) _cancelInfraPlace();
   if (_currentMap !== 'outdoor') switchMap('outdoor');
-  _nodePlaceState = { nodeType: nodeType || 'command' };
+  _placeState = { kind, type };
   const banner = el('node-place-banner');
   if (banner) banner.style.display = 'flex';
   if (el('map-coord-panel')) el('map-coord-panel').style.display = 'none';
   if (_leafletMap) _leafletMap.getCanvas().style.cursor = 'crosshair';
 }
 
-export function _cancelNodePlace() {
-  if (!_nodePlaceState) return;
-  _nodePlaceState = null;
+function _cancelPlace() {
+  if (!_placeState) return;
+  _placeState = null;
   const banner = el('node-place-banner');
   if (banner) banner.style.display = 'none';
   if (_leafletMap) _leafletMap.getCanvas().style.cursor = '';
 }
 
-async function _placeNodeAt(lat, lng) {
-  if (!_nodePlaceState || !_copStream) return;
-  const nodeType = _nodePlaceState.nodeType;
-  const def = _PERM_NODES.find((n) => n.node_type === nodeType);
-  const label = def?.label || '';
+async function _placeAt(lat, lng) {
+  if (!_placeState || !_copStream) return;
+  const { kind, type } = _placeState;
+  let label, attributes;
+  if (kind === 'zone') {
+    label = _PERM_NODES.find((n) => n.node_type === type)?.label || '';
+    attributes = { kind: 'zone', node_type: type };
+  } else {
+    label = (INFRA_TYPES[type] || INFRA_TYPES.utility).label;
+    attributes = { kind: 'infra', infra_type: type };
+  }
   const created = await _copStream.createEntity({
     type: 'a-f-G-I',
     lat: +(+lat).toFixed(6),
     lon: +(+lng).toFixed(6),
     callsign: label,
-    attributes: { kind: 'zone', node_type: nodeType },
+    attributes,
   });
   if (!created) {
-    _flashMapMsg('✗ 節點放置失敗，請重試');
+    _flashMapMsg('✗ ' + (kind === 'zone' ? '節點' : '設施') + '放置失敗，請重試');
     return;
   }
-  // createEntity 內部 upsert + onChange 自動重繪，不必手動 render。
-  _cancelNodePlace();
+  // createEntity 內部 upsert + onChange 自動重繪（_scheduleCopRender），不必手動 render。
+  _cancelPlace();
 }
 export function _cancelEventPin() {}
 export function admUploadMapImage() {}
