@@ -36,10 +36,17 @@ deploy/step-ca/issue-cert.sh medical.ics.local 127.0.0.1
 echo '127.0.0.1 command.ics.local shelter.ics.local medical.ics.local' | sudo tee -a /etc/hosts
 ```
 
-日常啟動（HTTPS full stack）：
+日常啟動（HTTPS full stack）。**目前無單一 wrapper script**（`start_mac_https.sh` 尚未實作，收斂留 C3-B `install.sh`）；三個元件分別啟動：
 
 ```bash
-./start_mac_https.sh
+# 1. FastAPI（:8000，loopback）
+./start_mac.sh
+
+# 2. step-ca daemon（背景，:8443）
+nohup deploy/step-ca/start-ca.sh > ~/.step/ca.log 2>&1 &
+
+# 3. nginx 反代（:80→:443→127.0.0.1:8000；macOS :443/:80 需 sudo）
+deploy/nginx/start-dev.sh
 ```
 
 或保留純 HTTP fast path（dev iteration）：
@@ -169,7 +176,7 @@ C1-D 上線後合併進系統 `audit_log` 表（hash chain 防竄改）。
 - ✅ step-ca 內網 PKI 腳本：init / start / trust / issue / renew / uninstall
 - ✅ Pi TLS 啟動腳本（step-ca 優先，mkcert fallback）
 - ✅ Pi push 走 HTTPS（`server/sync.js` 已支援，由 env 控制）
-- ✅ 演練前 stack 啟動：`start_mac_https.sh`
+- ✅ 演練前 nginx 反代啟動腳本：`deploy/nginx/start-dev.sh`（HTTPS full stack 三步驟見上方 §C1-B；單一 wrapper `start_mac_https.sh` 待 C3-B `install.sh`）
 
 ## C1-B 範圍外（後續 cX 階段）
 
