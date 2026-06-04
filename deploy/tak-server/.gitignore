@@ -1,0 +1,15 @@
+# 官方 TAK Server release（tak.gov EULA 物，569MB）—— 絕不入版控
+release/
+*.zip
+*.deb
+
+# 執行期密鑰 / keystore / 真實設定（含密碼；keystore 實際產在 release/tak/certs/files/）
+.env
+*.jks
+*.p12
+*.pem
+*.key
+
+# 解壓殘留 / DB dump
+tak/
+*.log

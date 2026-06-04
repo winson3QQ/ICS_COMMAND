@@ -1,0 +1,66 @@
+# docker-compose.yml — 官方 TAK Server 5.7（Docker）部署（ICS_Command P2-01 / issue #99）
+#
+# 官方 Docker 包（takserver-docker-5.7-RELEASE-43.zip，tak.gov）只附 2 個 Dockerfile，
+# 不含 compose / .env —— 本檔即補上的部分。設計依包內實際腳本 ground（非憑空）：
+#   - CoreConfig 連 DB：jdbc:postgresql://tak-database:5432/cot（故 DB service 名/hostname 必為 tak-database）
+#   - 兩個 Dockerfile 皆無 COPY → tak/ payload 以 volume mount 進 /opt/tak（configureInDocker.sh 在容器內 init）
+#   - base image：eclipse-temurin:17-jammy（app）/ postgres:15.1（db），皆 multi-arch → M1(arm64) 原生 build
+#
+# 前置：把官方 release 解壓到 ./release/（gitignored），使 ./release/docker/ 與 ./release/tak/ 存在。
+# 啟動：cp .env.example .env → 改密碼 → pki/issue-tak-certs.sh（step-ca 簽憑證）→ docker compose up -d --build
+# 詳見 README.md。
+
+name: ics-tak
+
+services:
+  # ── PostgreSQL 15 + PostGIS（TAK marti schema）────────────────────────────
+  tak-database:
+    build:
+      context: ./release
+      dockerfile: docker/Dockerfile.takserver-db
+    image: ics-takserver-db:5.7
+    container_name: tak-database
+    hostname: tak-database            # ← CoreConfig.xml 寫死 jdbc://tak-database:5432/cot，勿改
+    restart: unless-stopped
+    shm_size: "512m"                  # postgres shared_buffers=2560MB 需要較大 shm
+    volumes:
+      - ./release/tak:/opt/tak        # payload（含 db-utils/configureInDocker.sh、SchemaManager.jar）
+      - tak-db-data:/var/lib/postgresql/15/data   # DB 持久化（initdb 目標路徑，見 configureInDocker.sh）
+    networks: [tak-net]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U martiuser -d cot || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 120s             # 首啟要 initdb + SchemaManager upgrade，給足時間
+
+  # ── TAK Server（5 個 JVM：config / messaging / api / retention / plugin-mgr）──
+  takserver:
+    build:
+      context: ./release
+      dockerfile: docker/Dockerfile.takserver
+    image: ics-takserver:5.7
+    container_name: takserver
+    hostname: takserver
+    restart: unless-stopped
+    depends_on:
+      tak-database:
+        condition: service_healthy
+    env_file: .env
+    volumes:
+      - ./release/tak:/opt/tak        # 同一份 payload（含 CoreConfig.xml、certs/files/*.jks）
+    ports:
+      - "${TAK_STREAMING_PORT:-8089}:8089"   # CoT TLS streaming ← ICS_Command tak_service 連這裡（P2-02）
+      - "${TAK_WEBUI_PORT:-8443}:8443"       # web UI / REST（https）
+      - "${TAK_CERTENROLL_PORT:-8446}:8446"  # 憑證註冊（clientAuth=false）
+      # ── P2-07 federation 才開（單機 dev 不需要）──
+      # - "8444:8444"   # fed_https
+      # - "9000:9000"   # federation-server
+    networks: [tak-net]
+
+volumes:
+  tak-db-data:
+
+networks:
+  tak-net:
+    driver: bridge
