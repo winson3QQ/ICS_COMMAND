@@ -6,6 +6,7 @@ APP_ENV=production → INFO+，mask PII，不輸出 traceback 路徑，寫 /var/
 APP_ENV=development（預設）→ DEBUG+，完整輸出，寫 /var/log/ics/command.log
 寫入失敗 → fallback stderr，每 60s 最多警告一次（Q11）
 """
+
 import contextvars
 import logging
 import os
@@ -18,9 +19,7 @@ import structlog
 from starlette.requests import Request
 
 # ── Correlation ID context var（Q10, D-12）────────────────────────
-_correlation_id: contextvars.ContextVar[str] = contextvars.ContextVar(
-    "correlation_id", default=""
-)
+_correlation_id: contextvars.ContextVar[str] = contextvars.ContextVar("correlation_id", default="")
 
 
 def get_correlation_id() -> str:
@@ -28,11 +27,12 @@ def get_correlation_id() -> str:
 
 
 # ── Constants ─────────────────────────────────────────────────────
-IS_PROD   = os.getenv("APP_ENV", "development") == "production"
-LOG_DIR   = Path("/var/log/ics")
-LOG_FILE  = LOG_DIR / "command.log"
+IS_PROD = os.getenv("APP_ENV", "development") == "production"
+LOG_DIR = Path("/var/log/ics")
+LOG_FILE = LOG_DIR / "command.log"
 COMPONENT = "command"
-VERSION   = os.getenv("APP_VERSION", "v2.1.0")
+VERSION = os.getenv("APP_VERSION", "v2.2.0")
+
 
 # ── /var/log/ics/ 自建（D-6）──────────────────────────────────────
 def _ensure_log_dir() -> bool:
@@ -53,16 +53,18 @@ def _stderr_fallback(reason: str) -> None:
     if now - _fallback_warned_at >= 60.0:
         print(
             f"[ICS-LOG-FALLBACK] log file unavailable, falling back to stderr: {reason}",
-            file=sys.stderr, flush=True,
+            file=sys.stderr,
+            flush=True,
         )
         _fallback_warned_at = now
 
 
 # ── structlog processors ──────────────────────────────────────────
 
+
 def _inject_meta(logger, method, event_dict):
     event_dict.setdefault("component", COMPONENT)
-    event_dict.setdefault("version",   VERSION)
+    event_dict.setdefault("version", VERSION)
     return event_dict
 
 
@@ -97,22 +99,23 @@ def _mask_pii(logger, method, event_dict):
 def _strip_traceback_in_prod(logger, method, event_dict):
     """PROD：移除 exc_info 防止 stack trace 路徑洩漏（SI-11）"""
     if IS_PROD:
-        event_dict.pop("exc_info",  None)
+        event_dict.pop("exc_info", None)
         event_dict.pop("exception", None)
     return event_dict
 
 
 # ── init ──────────────────────────────────────────────────────────
 
+
 def init_logging() -> None:
     """應用程式啟動時呼叫一次（main.py）。"""
     _ensure_log_dir()
     try:
-        file_handler  = logging.FileHandler(LOG_FILE, encoding="utf-8")
+        file_handler = logging.FileHandler(LOG_FILE, encoding="utf-8")
         output_stream = file_handler.stream
     except OSError as exc:
         _stderr_fallback(str(exc))
-        file_handler  = logging.StreamHandler(sys.stderr)
+        file_handler = logging.StreamHandler(sys.stderr)
         output_stream = sys.stderr
 
     root = logging.getLogger()
@@ -130,9 +133,7 @@ def init_logging() -> None:
             _strip_traceback_in_prod,
             structlog.processors.JSONRenderer(),
         ],
-        wrapper_class=structlog.make_filtering_bound_logger(
-            logging.DEBUG if not IS_PROD else logging.INFO
-        ),
+        wrapper_class=structlog.make_filtering_bound_logger(logging.DEBUG if not IS_PROD else logging.INFO),
         context_class=dict,
         logger_factory=structlog.PrintLoggerFactory(file=output_stream),
     )
@@ -140,6 +141,7 @@ def init_logging() -> None:
 
 # ── HTTP correlation middleware（Q10, D-12）───────────────────────
 # main.py 以 LAST app.middleware("http") 加入 → 最外層先執行（LIFO）
+
 
 def _is_valid_uuid4(value: str) -> bool:
     try:
@@ -158,7 +160,7 @@ async def correlation_middleware(request: Request, call_next):
         response.headers["X-Correlation-ID"] = cid
         return response
     finally:
-        _correlation_id.reset(token)   # 避免 context 在 worker 間洩漏
+        _correlation_id.reset(token)  # 避免 context 在 worker 間洩漏
 
 
 # module-level convenience

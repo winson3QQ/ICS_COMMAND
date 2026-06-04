@@ -253,6 +253,7 @@ function _healthLightLevel(health) {
 function _healthTooltip(health) {
   return [
     'Command health',
+    `version: ${_healthValue(health?.version)}`,
     `status: ${_healthValue(health?.status)}`,
     `db_writable: ${_healthValue(health?.db_writable)}`,
     `disk_free_mb: ${_healthValue(health?.disk_free_mb)}`,

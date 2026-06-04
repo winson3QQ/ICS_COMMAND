@@ -61,7 +61,7 @@
 - [ ] `pi_*_repo` + `sync_repo` 通過「federation 介面相容性」測試（模擬非 PWA 上游節點推送）
 - [ ] MapLibre GL JS 已上線、24/7 主題切換可運作、entity layer 抽象介面已定義
 - [ ] 規格書 v3.0 merged
-- [ ] **Tag**：`command-v1.0.0`
+- [ ] **Tag**：`command-v2.2.0`（原規劃 1.0.0；後端因 #24/#26 RBAC/deploy 早期已躍 2.x，故版號階梯 rebase 到 2.x 線）
 
 ### Compliance touchpoints
 
@@ -355,7 +355,7 @@ Phase 1 內部建議順序：P1-10 全部完成 → P1-12a → **P1-12b+14 合�
 - [ ] CoT `stale` 過期自動從 COP 移除
 - [ ] XXE 防護測試通過（`defusedxml` 或等效）
 - [ ] Federation 雙向流測試（兩台 TAK Server 互推）
-- [ ] **Tag**：`command-v1.1.0`
+- [ ] **Tag**：`command-v2.3.0`（TAK 整合 MINOR；原規劃 1.1.0，rebase 至 2.x）
 
 ### Compliance touchpoints
 
@@ -399,7 +399,7 @@ Phase 1 內部建議順序：P1-10 全部完成 → P1-12a → **P1-12b+14 合�
 - [ ] Prompt injection 測試 green
 - [ ] MEDEVAC 9-line demo：模擬語音 → 自動填好 incident card
 - [ ] **負向測試**：ingress 收到含 base64 / binary audio 欄位的 payload 應 reject 並 audit
-- [ ] **Tag**：`command-v1.2.0`
+- [ ] **Tag**：`command-v2.4.0`（WaveInk 整合 MINOR；原規劃 1.2.0，rebase 至 2.x）
 
 ### Compliance touchpoints
 

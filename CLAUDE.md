@@ -78,6 +78,10 @@
 
 ## 版號規則
 
+**兩軌版本，不可混用**（`/api/version` 同時回兩者）：
+
+### 後端 SemVer — `command-vX.Y.Z`（`APP_VERSION`，code SoT = `core/config.py`）
+
 - `command-vX.Y.Z` — 指揮部後端 + 儀表板（git tag）
 - `server-vX.Y.Z` — Node.js relay（若獨立演進才打）
 
@@ -87,7 +91,19 @@
 | MINOR +1 | 一個功能完整可用 |
 | MAJOR +1 | 介面或資料格式破壞性變更（API、DB schema） |
 
-每次 commit 包含版號遞增**必須同時打對應 git tag**。
+### 前端 UI — `cmd-vX.Y.Z`（`CMD_VERSION`，SoT = `core/config.py`，dashboard chrome 顯示）
+
+追蹤**前端使用者可感的 UI 演進**，與後端 SemVer 脫鉤（後端只動 API、前端零變動時不進前端版，反之亦然）。
+
+| 位號 | 觸發 |
+|---|---|
+| PATCH +1 | 零星 UI 修補 / 視覺微調 |
+| MINOR +1 | 一個 UI 功能組完整可用（如：演習面板、放置工具、稽核日誌 UX）|
+| MAJOR +1 | 前端大紀元（如：地圖引擎全換、PWA→command-only 拆分、整體 redesign）|
+
+> `v1.0.0` 起算點：拆分自 ICS_DMAS 後首個完整可用形態（MapLibre 全換 + PWA 移除 + 演習/放置/稽核 UI）。v0.x 為繼承自 DMAS 的 pre-1.0 開發線。
+
+每次 commit 包含**任一軌**版號遞增**必須同時打對應 git tag**（`command-v*` 或 `cmd-v*`）。
 
 ## 功能完成定義（Definition of Done）
 
