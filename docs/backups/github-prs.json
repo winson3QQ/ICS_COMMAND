@@ -1823,5 +1823,68 @@
     "title": "P1-16：節點/設施 on-demand 放置（#40）",
     "updatedAt": "2026-06-03T14:55:09Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/92"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "P1-16 ROADMAP 記的 2 個 follow-up（驗證通過）：\n\n1. **設施拖移**：`_syncEventDragHandles` 納入 infra entities（respect `_layerVis.infra`），\n   drag callback 按 kind 分支（click→`_onInfraClick`、per-frame→`_renderInfra`；dragend\n   `updateEntity` 本就泛型，無 event_id → 只落位置）。補上「節點可拖、設施不可」的 UX 不一致。\n2. **放置流程參數化**：`_nodePlaceState` + `_infraPlaceState` 合一為單一 `_placeState`；\n   `_startNodePlace`/`_startInfraPlace`、`_cancel*`、`_placeNodeAt`/`_placeInfraAt` 共用\n   `_startPlace`/`_cancelPlace`/`_placeAt`（public export 保留 thin wrapper，main.js 不動）。\n   消 ~50 行近重複 + 單一 state 根除互斥隱患。\n\n淨 −20 行。223 vitest + node --check 過；in-browser 驗放置/拖移/切換通過（另一台機器）。\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+    "closedAt": "2026-06-04T00:39:08Z",
+    "comments": [],
+    "createdAt": "2026-06-04T00:39:05Z",
+    "headRefName": "chore/p1-16-followup",
+    "labels": [],
+    "mergedAt": "2026-06-04T00:39:08Z",
+    "number": 94,
+    "state": "MERGED",
+    "title": "P1-16 follow-up：設施拖移 + 放置流程參數化",
+    "updatedAt": "2026-06-04T00:39:11Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/94"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "## 問題\nmuted-day 淺底圖上 marker/label overlay 對比不足、整體糊（dogfood）。P1-10c 出白天底圖時未 tune overlay 對比。\n\n## 修法（業界 figure-ground：淺去飽和底圖當 ground、overlay 自拉對比當 figure；對齊 Carto Positron / Esri Light Gray Canvas + TAK/2525 顯示哲學）\n- `_applyOverlayThemeContrast(theme)`：marker 外框隨主題翻（夜間白 / 白天深 `#0d1117`），接 setBasemapTheme + 初始化。\n- **底圖維持原淺色**（業界做法不靠調暗底圖，靠 overlay 對比；研究後確認）。\n- **只調外框對比、不改 severity/affiliation 戰術語意色**（兩主題恆定 → 2525 符號日夜一致、不違 doctrine）。\n- 三類 marker 外框寬度統一（以設施為準 1.5）：節點圓 / 設施圓 circle-stroke 1.5；\n  事件 ◆ 菱形改用「下層墊大菱形」當外框（icon-size 1.32 vs 1.1，theme-aware icon-color）——\n  因 bakeDiamondSdf 是實心 alpha、SDF icon-halo 無法加寬。\n\ndark / muted-day 兩主題 in-browser 驗過（另一台機器）。223 vitest + node --check 過。\n為 P2-05 (2525) 鋪 overlay 對比基建。\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+    "closedAt": "2026-06-04T02:15:28Z",
+    "comments": [],
+    "createdAt": "2026-06-04T02:15:25Z",
+    "headRefName": "fix/muted-day-overlay-contrast",
+    "labels": [],
+    "mergedAt": "2026-06-04T02:15:28Z",
+    "number": 95,
+    "state": "MERGED",
+    "title": "fix: 白天底圖(muted-day) overlay 對比(figure-ground)",
+    "updatedAt": "2026-06-04T02:15:32Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/95"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "Closes #93\n\n## 摘要\n稽核日誌兩塊修補，讓 AAR 能查/回放任一 session（演習 ttx / 實戰 real）的完整時間軸。\n\n**Model B — audit 綁 active session**：`audit()` 未明傳 exercise_id → 自動戳當前 active session；無 active → NULL。`exercise_*` 生命週期 audit 例外保 NULL（否則被該場 cascade 刪除、刪除/狀態軌跡遺失）。active 查詢複用 audit 既有連線（不另開、免 circular import）。\n\n**COP 操作 audit**：原本 cop create/update/delete 完全沒 audit（畫/移/刪 zone/route/polygon/設施/事件圖釘）。\n- create → `cop_entity_created`（跳過 event kind，event_created 已涵蓋、避免雙記）\n- update → `cop_entity_updated`（全 kind 含 event，記新位置+fields = **QRF/事件移動軌跡**）\n- delete → `cop_entity_deleted`\n- best-effort（記帳失敗不擋地圖即時同步）\n\n## 不影響顯示/TAK\naudit 正交：顯示與 TAK 吃 `events` + `cop_entities`，不吃 audit_log。\n\n## §8 Verification\n- 測試：新增 7（Model B 綁定/NULL + create 跳 event + update 捕捉移動 + lifecycle NULL）+ 全套 pytest 回歸綠 — VERIFY-PASS（後端 audit 無瀏覽器可驗，測試即驗證）\n- `/code-review`：1 修正（exercise_* lifecycle NULL durability）+ 連線複用\n- `/security-review`：0 finding\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+    "closedAt": "2026-06-04T02:42:25Z",
+    "comments": [],
+    "createdAt": "2026-06-04T02:42:09Z",
+    "headRefName": "fix/issue-93-audit-active-exercise",
+    "labels": [],
+    "mergedAt": "2026-06-04T02:42:25Z",
+    "number": 96,
+    "state": "MERGED",
+    "title": "fix(audit): #93 稽核日誌綁 active session（Model B）+ COP 操作 audit",
+    "updatedAt": "2026-06-04T02:42:27Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/96"
   }
 ]

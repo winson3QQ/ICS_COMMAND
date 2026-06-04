@@ -1237,15 +1237,15 @@
       "name": ""
     },
     "body": "## 來源\nP1-16 follow-up（`chore/p1-16-followup`）dogfood 副發現（2026-06-04）。非該 PR scope，獨立記錄。\n\n## 背景修正（重要）\n**P1-14（#89 / PR #91 `34b61cd`）已完成**——已做：① `resolve_scope` + `NULL_SCOPE` 三態過濾套 6 repo（含 audit **讀取**）；② create 由 server 蓋 active `exercise_id`（events/cop/manual 已綁）。本 issue 是其 **follow-up**，非與進行中工作協調。\n\n## 事實（查 post-#91 main）\n- `audit()`（`repositories/_helpers.py`）**無條件 INSERT**——每個動作都有記，**不是不記**。\n- 全專案 **49 個 `audit(...)` 呼叫，僅 5 個帶 `exercise_id`**（event 狀態/note、manual sync — P1-14 create binding 涵蓋）。\n- 其餘 44 個 default `None` → `exercise_id=NULL`。其中分兩類：\n  - **系統層（NULL 正確）**：`accounts`/`system`/`admin`/`config`/`login`/`sessions`/`pi_nodes` 等——帳號/認證/設定/管理動作，**跨演習**，綁演習語意反而怪 → 維持 NULL。\n  - **演習相關（真缺口，該綁卻沒綁）**：\n    - `decision_created` / `decision_made`（`decision_repo.py:52,74`）\n    - `ttx_inject_fired`（`ttx_repo.py:75`）\n    - pi-node sync：`snapshot_received` / `three_pass_sync` / `sync_log`\n    這些在演習中發生、卻落 `exercise_id=NULL`，複盤/AAR 時無法歸到該場次。\n\n## 現象（dogfood）\ndev DB 未啟動任何場次 → 全部 audit 落 NULL → 稽核日誌場次欄全顯示「無進行中場次」。啟動場次後 event/cop 類會綁，但 **decision/ttx/sync 類仍 NULL**。\n\n## 修法（小）\n1. decision / ttx / pi-sync 的 `audit(...)` 補帶 `get_active_exercise()` 的 id（與 P1-14 既有 pattern 一致）。\n2. 系統層 audit（accounts/login/config…）維持 NULL=未分場（確認此為 intended，文件註明）。\n3. 補測：啟動場次 → decision/ttx → audit_log.exercise_id 應 = active。\n\n## 範圍\n小型 follow-up，非阻塞。建議併入下一次 exercise-scoping / AAR 相關工作。\n\n相關：P1-14（#89 / #91）、P1-16 follow-up dogfood",
-    "closedAt": null,
+    "closedAt": "2026-06-04T02:42:26Z",
     "comments": [],
     "createdAt": "2026-06-04T00:29:23Z",
     "labels": [],
     "milestone": null,
     "number": 93,
-    "state": "OPEN",
+    "state": "CLOSED",
     "title": "稽核日誌：decision/ttx/sync 等演習相關動作未綁 active exercise（P1-14 #91 follow-up）",
-    "updatedAt": "2026-06-04T00:31:58Z",
+    "updatedAt": "2026-06-04T02:42:26Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/93"
   }
 ]
