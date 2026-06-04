@@ -4,6 +4,7 @@ Server-side session service.
 
 from __future__ import annotations
 
+import logging
 import secrets
 from datetime import UTC, datetime, timedelta
 
@@ -13,6 +14,8 @@ import core.config as config
 from core.database import get_conn
 
 from .role_enum import normalize_role_pair
+
+log = logging.getLogger(__name__)
 
 SESSION_TIMEOUT = config.SESSION_TIMEOUT
 IDLE_TIMEOUT = config.IDLE_TIMEOUT
@@ -224,19 +227,22 @@ def session_status(token: str) -> dict:
 
 def cleanup_expired_sessions() -> int:
     now_iso = _now_iso()
-    # #93(b)：idle cutoff 與 check_session 一致用 min(IDLE_TIMEOUT, SESSION_TIMEOUT)（預設 15 分），
+    # #93(b)：idle cutoff 閾值與 check_session 一致用 min(IDLE_TIMEOUT, SESSION_TIMEOUT)（預設 15 分），
     # 原本誤用 SESSION_TIMEOUT(14h) → abandoned session 卡 14h 才清。改後閒置 15 分即清 + audit。
+    # 判定軸用 last_active：本 codebase 每次 touch 都同步寫 last_active=idle_at（見 check_session），
+    # 故與 check_session 的 min(idle_at, last_active) 等價；若日後兩者分流更新需同步調整此處。
     idle_secs = min(IDLE_TIMEOUT, SESSION_TIMEOUT)
     idle_cutoff = (_now() - timedelta(seconds=idle_secs)).strftime("%Y-%m-%dT%H:%M:%SZ")
     where = "status='active' AND (expires_at < ? OR last_active < ?)"
     params = (now_iso, idle_cutoff)
     with get_conn() as conn:
-        # #93(b)：先撈出要清的 session（取 username）→ DELETE。被丟棄（切帳號/關頁，token 不再被用）
-        # 的 session 逾時只能靠本批次清，原本不 audit → 登出無痕。此處補記，AAR 可查「誰逾時掉線」。
-        expired = conn.execute(f"SELECT username FROM sessions WHERE {where}", params).fetchall()
-        cur = conn.execute(f"DELETE FROM sessions WHERE {where}", params)
-        n = cur.rowcount
-    # audit 在 conn 區塊外（audit() 自開連線，避免巢狀）；best-effort：清理不因記帳失敗中斷。
+        # #93(b)：DELETE ... RETURNING 取「本語句實際刪到」的列（被丟棄 session：切帳號/關頁，token
+        # 不再被用，逾時只能靠本批次清，原本不 audit → 登出無痕）。用 RETURNING 而非先 SELECT 再 DELETE：
+        # 兩個 cleanup 並發時各自只拿到自己刪到的列（SQLite 寫入序列化），避免同一 session 被重複 audit。
+        expired = conn.execute(f"DELETE FROM sessions WHERE {where} RETURNING username", params).fetchall()
+    n = len(expired)
+    # audit 在 conn 區塊外（audit() 自開連線，避免巢狀 get_conn lock）；best-effort：清理不因記帳失敗中斷。
+    # 殘餘窗口：DELETE 已 commit 但 audit 尚未寫入時 crash → 該筆登出無痕（可接受，非安全關鍵路徑）。
     from repositories._helpers import audit
 
     for row in expired:
@@ -250,5 +256,6 @@ def cleanup_expired_sessions() -> int:
                 {"reason": "idle_or_expired_cleanup", "decision": "auto-logout"},
             )
         except Exception:
-            pass
+            # 黙殺會讓「session 已清但 audit 漏記」無從察覺，故至少留 warning（不中斷批次）。
+            log.warning("[session] cleanup audit 寫入失敗 user=%s（best-effort）", row["username"], exc_info=True)
     return n

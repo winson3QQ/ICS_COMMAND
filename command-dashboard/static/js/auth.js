@@ -706,7 +706,8 @@ function _auditRenderModal(logs, activeFilter) {
 
     const _at = log.action_type || '';
     // fallback：未在 _AUDIT_BADGE 的 action_type 截斷顯示，避免長英文（如新 cop_entity_*）撐破 badge 欄
-    let badge = _AUDIT_BADGE[_at] || { c: '#8b949e', zh: _at.length > 8 ? _at.slice(0, 7) + '…' : _at };
+    // _escAudit：action_type 雖為後端固定 enum（非外部輸入），仍與本檔其他 innerHTML 欄位一致跳脫（belt-and-braces）
+    let badge = _AUDIT_BADGE[_at] || { c: '#8b949e', zh: _escAudit(_at.length > 8 ? _at.slice(0, 7) + '…' : _at) };
     // #93：cop_entity_* 依 detail.kind 給具體名詞（節點/路線/範圍/設施/圖釘），比泛稱「標繪」清楚；
     //   update 若改到座標 → 「移動」否則「更新」。target 欄顯實際名稱（callsign）。
     let _copLabel = '';
@@ -735,7 +736,7 @@ function _auditRenderModal(logs, activeFilter) {
     rows += `<div style="display:grid;grid-template-columns:90px 88px 80px 1fr;gap:6px;align-items:center;padding:5px 2px;border-bottom:1px solid rgba(255,255,255,.04);">
       <span style="font-family:var(--mono);font-size:10px;color:var(--text3);">${dt.slice(11)}</span>
       ${badgeHtml}
-      <span style="font-size:11px;color:var(--text3);">${log.operator || '—'}</span>
+      <span style="font-size:11px;color:var(--text3);">${_escAudit(log.operator || '—')}</span>
       ${targetHtml}
     </div>`;
   }

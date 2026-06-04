@@ -9,22 +9,24 @@ tests/security/test_session_config.py — Session 設定邊界測試
   - session 並發安全：同一 token 同時送多個請求
 """
 
-import pytest
 import threading
 import time
-
+from datetime import UTC
 
 # ─────────────────────────────────────────────────────────────────
 # SESSION_TIMEOUT 環境變數覆寫
 # ─────────────────────────────────────────────────────────────────
 
+
 class TestSessionTimeoutConfig:
     def test_custom_short_timeout_expires_session(self, tmp_db, monkeypatch):
         """SESSION_TIMEOUT=2 秒：2 秒後 session 過期"""
         import core.config as cfg
+
         monkeypatch.setattr(cfg, "SESSION_TIMEOUT", 2)
 
         import auth.service as svc
+
         # monkeypatch 讓 service 使用新 timeout
         monkeypatch.setattr(svc, "SESSION_TIMEOUT", 2)
 
@@ -32,9 +34,11 @@ class TestSessionTimeoutConfig:
         assert svc.check_and_touch(token) is not None  # 建立後立刻有效
 
         # 直接改 DB last_active 為 3 秒前（超過 timeout=2）
-        from datetime import datetime, timezone, timedelta
+        from datetime import datetime, timedelta
+
         from core.database import get_conn
-        old = (datetime.now(timezone.utc) - timedelta(seconds=3)).strftime('%Y-%m-%dT%H:%M:%SZ')
+
+        old = (datetime.now(UTC) - timedelta(seconds=3)).strftime("%Y-%m-%dT%H:%M:%SZ")
         with get_conn() as conn:
             conn.execute("UPDATE sessions SET last_active=? WHERE token=?", (old, token))
             conn.commit()
@@ -45,13 +49,16 @@ class TestSessionTimeoutConfig:
     def test_zero_timeout_immediately_expires(self, tmp_db, monkeypatch):
         """SESSION_TIMEOUT=0：任何 session 立即過期（邊界值）"""
         import auth.service as svc
+
         monkeypatch.setattr(svc, "SESSION_TIMEOUT", 0)
 
         token = svc.create_session({"username": "u2", "role": "op", "display_name": "U2"})
         # 讓 DB 的 last_active 稍舊（1 秒前）
-        from datetime import datetime, timezone, timedelta
+        from datetime import datetime, timedelta
+
         from core.database import get_conn
-        old = (datetime.now(timezone.utc) - timedelta(seconds=1)).strftime('%Y-%m-%dT%H:%M:%SZ')
+
+        old = (datetime.now(UTC) - timedelta(seconds=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
         with get_conn() as conn:
             conn.execute("UPDATE sessions SET last_active=? WHERE token=?", (old, token))
             conn.commit()
@@ -64,26 +71,23 @@ class TestSessionTimeoutConfig:
 # cleanup_expired_sessions()
 # ─────────────────────────────────────────────────────────────────
 
+
 class TestCleanupExpiredSessions:
     def test_cleanup_removes_expired_sessions(self, tmp_db):
         """cleanup_expired_sessions() 移除所有過期 session"""
-        from auth.service import create_session, cleanup_expired_sessions
+        from datetime import datetime, timedelta
+
+        from auth.service import cleanup_expired_sessions, create_session
         from core.config import SESSION_TIMEOUT
-        from datetime import datetime, timezone, timedelta
         from core.database import get_conn
 
         # 建立 3 個 session
-        tokens = [
-            create_session({"username": f"u{i}", "role": "op", "display_name": f"U{i}"})
-            for i in range(3)
-        ]
+        tokens = [create_session({"username": f"u{i}", "role": "op", "display_name": f"U{i}"}) for i in range(3)]
 
         # 把前 2 個設為過期
-        old = (datetime.now(timezone.utc) - timedelta(seconds=SESSION_TIMEOUT + 60)
-               ).strftime('%Y-%m-%dT%H:%M:%SZ')
+        old = (datetime.now(UTC) - timedelta(seconds=SESSION_TIMEOUT + 60)).strftime("%Y-%m-%dT%H:%M:%SZ")
         with get_conn() as conn:
-            conn.execute("UPDATE sessions SET last_active=? WHERE token IN (?, ?)",
-                         (old, tokens[0], tokens[1]))
+            conn.execute("UPDATE sessions SET last_active=? WHERE token IN (?, ?)", (old, tokens[0], tokens[1]))
             conn.commit()
 
         deleted = cleanup_expired_sessions()
@@ -96,15 +100,68 @@ class TestCleanupExpiredSessions:
 
     def test_cleanup_returns_zero_when_nothing_expired(self, tmp_db):
         """沒有過期 session 時 cleanup 回傳 0"""
-        from auth.service import create_session, cleanup_expired_sessions
+        from auth.service import cleanup_expired_sessions, create_session
+
         create_session({"username": "fresh", "role": "op", "display_name": "Fresh"})
         deleted = cleanup_expired_sessions()
         assert deleted == 0
+
+    def test_cleanup_writes_audit_for_each_expired(self, tmp_db):
+        """#93(b)：批次清理被丟棄（abandoned）的逾時 session → 每筆留 SESSION_EXPIRED 痕跡，AAR 可查。"""
+        from datetime import datetime, timedelta
+
+        from auth.service import cleanup_expired_sessions, create_session
+        from core.config import SESSION_TIMEOUT
+        from core.database import get_conn
+
+        tokens = {
+            f"abandoned{i}": create_session({"username": f"abandoned{i}", "role": "op", "display_name": f"A{i}"})
+            for i in range(2)
+        }
+        # 兩個都設為逾時（超過 SESSION_TIMEOUT，確定落入清理範圍）
+        old = (datetime.now(UTC) - timedelta(seconds=SESSION_TIMEOUT + 60)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        with get_conn() as conn:
+            conn.execute("UPDATE sessions SET last_active=?", (old,))
+            conn.commit()
+
+        deleted = cleanup_expired_sessions()
+        assert deleted == 2
+
+        # 每個被清的 username 都應有一筆 SESSION_EXPIRED audit
+        with get_conn() as conn:
+            rows = conn.execute("SELECT operator FROM audit_log WHERE action_type='SESSION_EXPIRED'").fetchall()
+        operators = {r["operator"] for r in rows}
+        assert operators == set(tokens.keys()), f"audit 留痕不齊：{operators}"
+
+    def test_cleanup_idle_cutoff_uses_idle_timeout_not_session_timeout(self, tmp_db):
+        """#93(b) 回歸守門：idle cutoff 用 min(IDLE_TIMEOUT, SESSION_TIMEOUT)（預設 15 分），
+        非 SESSION_TIMEOUT（14h）。閒置超過 IDLE_TIMEOUT 但 expires_at 尚未到的 abandoned
+        session 也應被清（修正前卡 14h 才清）。"""
+        from datetime import datetime, timedelta
+
+        from auth.service import cleanup_expired_sessions, create_session
+        from core.config import IDLE_TIMEOUT, SESSION_TIMEOUT
+        from core.database import get_conn
+
+        # 前提：IDLE_TIMEOUT < SESSION_TIMEOUT，否則本回歸場景不成立（預設 900 < 50400）
+        assert IDLE_TIMEOUT < SESSION_TIMEOUT
+
+        create_session({"username": "idle_only", "role": "op", "display_name": "Idle"})
+        # last_active 設為「超過 idle 上限但遠未達 absolute 上限」：修正前不清、修正後清
+        idle_old = (datetime.now(UTC) - timedelta(seconds=IDLE_TIMEOUT + 60)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        with get_conn() as conn:
+            # 僅改 last_active；expires_at 維持 create_session 設的未來時間（+SESSION_TIMEOUT）
+            conn.execute("UPDATE sessions SET last_active=?", (idle_old,))
+            conn.commit()
+
+        deleted = cleanup_expired_sessions()
+        assert deleted == 1, "閒置逾 IDLE_TIMEOUT 的 session 應被清（idle cutoff 修正）"
 
 
 # ─────────────────────────────────────────────────────────────────
 # 並發 Session 安全
 # ─────────────────────────────────────────────────────────────────
+
 
 class TestConcurrentSession:
     def test_concurrent_requests_with_same_token(self, client):
@@ -133,22 +190,18 @@ class TestConcurrentSession:
 
     def test_session_touch_updates_last_active(self, client, tmp_db):
         """每次 check_and_touch 都更新 last_active（確認非 read-only）"""
+        from auth.service import check_and_touch, create_session
         from core.database import get_conn
-        from auth.service import create_session, check_and_touch
 
         token = create_session({"username": "u", "role": "op", "display_name": "U"})
 
         with get_conn() as conn:
-            before = conn.execute(
-                "SELECT last_active FROM sessions WHERE token=?", (token,)
-            ).fetchone()["last_active"]
+            before = conn.execute("SELECT last_active FROM sessions WHERE token=?", (token,)).fetchone()["last_active"]
 
         time.sleep(1.1)
         check_and_touch(token)
 
         with get_conn() as conn:
-            after = conn.execute(
-                "SELECT last_active FROM sessions WHERE token=?", (token,)
-            ).fetchone()["last_active"]
+            after = conn.execute("SELECT last_active FROM sessions WHERE token=?", (token,)).fetchone()["last_active"]
 
         assert after > before

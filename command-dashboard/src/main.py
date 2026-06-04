@@ -9,7 +9,7 @@ main.py — ICS 指揮部後端 API（C0 重構版）
 
 import asyncio
 import logging
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -86,7 +86,10 @@ async def lifespan(app: FastAPI):
     _cleanup_task = asyncio.create_task(_periodic_session_cleanup())
     yield
     # shutdown：停週期清理 + 關閉所有 COP WS 連線（issue #29 PR-D in-process hub）
+    # cancel 後 await 回收任務（否則 task 仍 pending → asyncio「Task was destroyed」警告 / 殘留）。
     _cleanup_task.cancel()
+    with suppress(asyncio.CancelledError):
+        await _cleanup_task
     from services.realtime_hub import cop_hub
 
     await cop_hub.close_all()
