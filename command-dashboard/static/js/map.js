@@ -456,7 +456,27 @@ export function setBasemapTheme(theme) {
     if (!ok) return;
     _syncThemeButtons(theme);
     _mgrsGrid?.applyTheme(theme);   // grid 配色跟著底圖主題走（淺底改深色，避免淺藍糊掉）
+    _applyOverlayThemeContrast(theme);  // marker 外框對比跟主題（figure-ground：白天深、夜間白）
   });
+}
+
+// 白天 overlay 對比（業界 figure-ground：底圖去飽和當 ground、overlay 自己拉對比當 figure；
+// 對齊 Carto Positron / Esri Light Gray Canvas 慣例 + TAK/2525 顯示哲學）。
+// marker 外框隨主題翻：夜間深底 → 白外框（跳）；muted-day 淺底 → 白外框會消失，改深外框定義邊緣。
+// **只調外框對比、不改戰術語意色**（severity/affiliation 兩主題恆定 → 2525 符號日夜一致、不違 doctrine）。
+// label halo 維持深色（亮/白字在兩主題都以深 halo 當外框；翻白會讓白字 label 消失）。
+// setBasemapTheme 走「只抽換底圖層、overlay 不動」路徑，故 setPaintProperty 值持久。
+function _applyOverlayThemeContrast(theme) {
+  const map = _getMap();
+  if (!map?.getLayer) return;
+  const stroke = theme === 'muted-day' ? '#0d1117' : '#ffffff';  // marker 外框：白天深、夜間白
+  const set = (id, prop, val) => {
+    if (map.getLayer(id)) {
+      try { map.setPaintProperty(id, prop, val); } catch (e) { /* layer 未就緒，忽略 */ }
+    }
+  };
+  set('zones-base', 'circle-stroke-color', stroke);    // 節點 + 事件圖釘
+  set('infra-circle', 'circle-stroke-color', stroke);  // 設施
 }
 
 export function renderMapOverlay() {
@@ -1499,6 +1519,7 @@ function _ensureEntityLayers() {
   // layer。Toggle 走 setVisible()，redraw() 在 moveend 自動 trigger。
   _mgrsGrid = new MgrsGrid(map);
   _mgrsGrid.applyTheme(_getBasemapTheme());   // 依目前底圖主題定 grid 配色（淺底用深色，對比）
+  _applyOverlayThemeContrast(_getBasemapTheme());  // 依目前主題定 marker 外框對比（figure-ground）
   // 跨 refresh 持久化（issue #24 step 1）：sessionStorage 載到的 _mgrsGridVisible
   // 若是 true，map style ready 後立刻 restore 視覺 — 用 _drawMgrsGrid 統一路徑
   // 同步 button .active class 給 toolbar 顯示對的狀態。
