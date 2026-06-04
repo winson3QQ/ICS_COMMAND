@@ -1247,5 +1247,25 @@
     "title": "稽核日誌：decision/ttx/sync 等演習相關動作未綁 active exercise（P1-14 #91 follow-up）",
     "updatedAt": "2026-06-04T02:42:26Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/93"
+  },
+  {
+    "assignees": [],
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "body": "## 來源\n2026-06-04 對 Phase 2（TAK Server 整合）做的 source-grounded reality check（比照 P1-14/P1-16 慣例）。盤 main `0db382f` 實際 code，記錄缺口 + 動工前必處理的 drift。\n\n## 核心結論\n與 P1-14「模型早建好、只缺接線」**相反又相同**：\n- **TAK 上行鏈路（部署/解析/訂閱）零實作**（純 greenfield，無 C0 可繼承）。\n- **下游落地層（P2-04 目標）已被 P1 完整建好且刻意對齊 CoT** → P2-04 工作量大幅縮小。\n\n## 逐項現況\n\n| Item | 現況 | 標記 |\n|---|---|---|\n| P2-01 部署 TAK Server | `deploy/tak-server/` 不存在；無 docker-compose / cert SOP | 全缺 |\n| P2-02 `services/tak_service.py` | 檔案不存在；無 XML parse、無 8089/9000 訂閱；XML lib 未選 | 全缺（最重）|\n| P2-03 `routers/tak.py` | 已掛載 main.py，`CoTEventIn` schema + RBAC 已建，handler 回 `stub_received` 不 normalize | stub |\n| P2-04 `cop_service.normalize_cot` | `cop_service.py:35` = `NotImplementedError`；**但 `CoPEntity` v1 凍結（CoT 對齊、`source=\"tak\"` 預留）+ `cop_entity_repo`（version_clock CAS / stale 過濾 / TAK 風 soft-delete）全建好** | 本體缺、下游全建 |\n| P2-05 2525/MGRS/線面 | 設計 LOCKED（crosswalk §6/§8）、管線預建；但 milsymbol 未 vendored、2525 框零、`POLY/ROUTE_TYPES` 仍寫死 hex、affiliation property 全 null。**疊加非全換** | 設計已建 / code 全缺 |\n| P2-06 stale + 快照回放 | entity 層 stale 已建；**但 `snapshot_repo` 是 unit-KPI 聚合，非 per-entity COP 時間軸**（見下方 drift 1）| 缺 + drift |\n| P2-07 Federation | schema 預留，零實作（計畫本標可選）| 全缺 |\n| P2-08 測試 | 唯一 CoT 測試＝斷言 normalize 丟 NotImplementedError；無 parse/integration/XXE | 全缺 |\n\n## ⚠️ 動工前必處理的 3 個 drift / 前置\n\n1. **P2-06 ROADMAP 指向錯層**：ROADMAP 寫「COP 快照寫 `snapshot_repo`」，但 `snapshot_repo` 實際是 unit 級 KPI 聚合（傷亡/床位/等候），**不是** per-entity COP 逐格時間軸。回放資料路徑更可能走 `cop_entity_tracks` 或新表。**動工前需重新確認**。\n\n2. **step-ca 憑證現為 24h，且 federation 缺 peer cert**：`issue-cert.sh` 預設 step-ca max 24h，90 天 patch「留 C3-B」——TAK 長跑服務不可行，**P2 須提早 patch 效期**。且 federation(9000)=mTLS，現有腳本只簽 server cert，缺 client/peer cert profile + TAK Server Java keystore 信任 SOP。（`tier3-mtls.conf.disabled` 證明 CA 有 mTLS 能力，只是用在 nginx 北向。）\n\n3. **CSP wasm 接點**：P1-10h 刻意沒預放 `wasm-unsafe-eval`。若 milsymbol 走 wasm fallback，P2-05 要回頭補 CSP；純 JS canvas 則免——動工時先確認。\n\n## 供應鏈\n現況乾淨無中國來源。P2 三相依（TAK Server Apache-2.0、milsymbol MIT、defusedxml）ROADMAP 已預先圈定 license + 標「非中國」，lock 前逐一驗維護者。TAK Server 只用 core CoT + federation，不碰 commercial plugin。\n\n## 建議關鍵路徑\n- 重活＝ **P2-01 + P2-02**（部署 + CoT XML 解析/訂閱/XXE，無 C0 繼承）。\n- 接上後 **P2-03 wire + P2-04 normalize 很輕**（下游全建）。\n- **P2-05 可並行**（設計 LOCKED）；**MGRS #56 完全獨立於 TAK**，可隨時做；2525 affiliation 框需 P2-04 的 cot_type 才填色，略後於 normalize。\n- **P2-06 先重新確認資料路徑**再動。\n\n相關：ROADMAP Phase 2、#56（MGRS P2-05 子缺口）、P1-03/#15（CoPEntity v1 凍結）、P1-15/#29（即時 COP 管線）。",
+    "closedAt": null,
+    "comments": [],
+    "createdAt": "2026-06-04T07:35:53Z",
+    "labels": [],
+    "milestone": null,
+    "number": 98,
+    "state": "OPEN",
+    "title": "P2（TAK 整合）reality check：上行鏈路全 greenfield、下游已建，3 個前置 drift 待修",
+    "updatedAt": "2026-06-04T07:35:53Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/98"
   }
 ]

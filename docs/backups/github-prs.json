@@ -1920,7 +1920,7 @@
     "number": 97,
     "state": "MERGED",
     "title": "fix(audit): #93 follow-up — 稽核日誌具體化 + 逾時登出留痕 + idle session 清理（補測 + review 修正）",
-    "updatedAt": "2026-06-04T03:57:43Z",
+    "updatedAt": "2026-06-04T04:10:57Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/97"
   }
 ]
