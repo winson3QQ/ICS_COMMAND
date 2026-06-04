@@ -622,6 +622,11 @@ const _fmtLocalDT = fmtLocalDT;
 const _AUDIT_BADGE = {
   'login':                  { c:'#388bfd', zh:'登入' },
   'logout':                 { c:'#8b949e', zh:'登出' },
+  'SESSION_LOGOUT':         { c:'#8b949e', zh:'登出' },  // 後端實際 action_type（auth.py logout）
+  'SESSION_EXPIRED':        { c:'#8b949e', zh:'逾時登出' },  // session 逾時失效（含批次清理被丟棄 session）
+  'IDLE_KICKED':            { c:'#e3b341', zh:'閒置登出' },  // idle 逾時踢出
+  'BINDING_MISMATCH_IP':    { c:'#f85149', zh:'IP變更' },    // session 綁定不符（安全）
+  'BINDING_MISMATCH_UA':    { c:'#f85149', zh:'裝置變更' },
   'event_created':          { c:'#3fb950', zh:'新增事件' },
   'event_status_updated':   { c:'#e3b341', zh:'更新狀態' },
   'event_note_added':       { c:'#79c0ff', zh:'補充備註' },
@@ -644,6 +649,12 @@ const _AUDIT_BADGE = {
   'manual_input':           { c:'#56d364', zh:'手動輸入' },
   'pi_node_created':        { c:'#388bfd', zh:'新增Pi節點' },
   'pi_node_deleted':        { c:'#f85149', zh:'刪除Pi節點' },
+  // #93：COP 地圖操作（標繪 = zone/route/polygon/設施/事件圖釘）。短 label 避免撐破 badge 欄。
+  'cop_entity_created':     { c:'#3fb950', zh:'新增標繪' },
+  'cop_entity_updated':     { c:'#e3b341', zh:'移動標繪' },
+  'cop_entity_deleted':     { c:'#f85149', zh:'刪除標繪' },
+  'ttx_inject_fired':       { c:'#d2a8ff', zh:'注入觸發' },
+  'manual_record_synced':   { c:'#56d364', zh:'手動同步' },
 };
 
 function _auditEventLabel(log) {
@@ -655,9 +666,16 @@ function _auditEventLabel(log) {
   return (log.target_id || '').slice(0,8) || '—';
 }
 
+// 稽核日誌欄位 render 進 innerHTML 前的 escape（belt-and-braces；callsign 等已過後端
+// validate_no_unsafe_strings，這層防未來驗證鬆動成 XSS sink）。
+function _escAudit(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, (c) =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+}
+
 const _AUDIT_FILTERS = [
   { key:'all',     zh:'全部' },
-  { key:'account', zh:'帳號', match: a => a.startsWith('login') || a.startsWith('logout') || a.startsWith('account') },
+  { key:'account', zh:'帳號', match: a => a.startsWith('login') || a.toLowerCase().includes('logout') || a.startsWith('account') || a.startsWith('SESSION_') || a === 'IDLE_KICKED' || a.startsWith('BINDING_') },
   { key:'event',   zh:'事件', match: a => a.startsWith('event') || a.startsWith('decision') },
   { key:'system',  zh:'系統', match: a => ['snapshot_received','db_reset','exercise_reset','config_updated','three_pass_sync','conflict_resolved','pi_node_created','pi_node_deleted','manual_input'].includes(a) },
 ];
@@ -686,14 +704,31 @@ function _auditRenderModal(logs, activeFilter) {
       rows += `<div style="font-size:10px;color:var(--text3);padding:8px 0 4px;border-top:1px solid var(--border);margin-top:4px;">${dateStr}</div>`;
     }
 
-    const badge = _AUDIT_BADGE[log.action_type] || { c:'#8b949e', zh: log.action_type };
-    const badgeHtml = `<span style="display:inline-block;padding:1px 7px;border-radius:10px;font-size:10px;font-weight:600;background:${badge.c}22;color:${badge.c};border:1px solid ${badge.c}55;white-space:nowrap;">${badge.zh}</span>`;
+    const _at = log.action_type || '';
+    // fallback：未在 _AUDIT_BADGE 的 action_type 截斷顯示，避免長英文（如新 cop_entity_*）撐破 badge 欄
+    // _escAudit：action_type 雖為後端固定 enum（非外部輸入），仍與本檔其他 innerHTML 欄位一致跳脫（belt-and-braces）
+    let badge = _AUDIT_BADGE[_at] || { c: '#8b949e', zh: _escAudit(_at.length > 8 ? _at.slice(0, 7) + '…' : _at) };
+    // #93：cop_entity_* 依 detail.kind 給具體名詞（節點/路線/範圍/設施/圖釘），比泛稱「標繪」清楚；
+    //   update 若改到座標 → 「移動」否則「更新」。target 欄顯實際名稱（callsign）。
+    let _copLabel = '';
+    if (_at.startsWith('cop_entity_')) {
+      let _d = {};
+      try { _d = JSON.parse(log.detail || '{}'); } catch (e) {}
+      const _kindZh = { zone: '節點', route: '路線', polygon: '範圍', infra: '設施', event: '圖釘' };
+      const _isMove = Array.isArray(_d.fields) && _d.fields.some(f => f === 'lat' || f === 'lon');
+      const _verb = _at.endsWith('_created') ? '新增' : _at.endsWith('_deleted') ? '刪除' : (_isMove ? '移動' : '更新');
+      badge = { c: badge.c, zh: _verb + (_kindZh[_d.kind] || '標繪') };
+      _copLabel = _d.label || '';
+    }
+    const badgeHtml = `<span style="display:inline-block;max-width:100%;overflow:hidden;text-overflow:ellipsis;padding:1px 7px;border-radius:10px;font-size:10px;font-weight:600;background:${badge.c}22;color:${badge.c};border:1px solid ${badge.c}55;white-space:nowrap;">${badge.zh}</span>`;
 
     let targetHtml = '';
     if (log.target_table === 'events') {
       targetHtml = `<span style="color:var(--text2);font-size:11px;">${_auditEventLabel(log)}</span>`;
     } else if (log.target_table === 'accounts') {
-      targetHtml = `<span style="color:var(--text2);font-size:11px;">${log.target_id || ''}</span>`;
+      targetHtml = `<span style="color:var(--text2);font-size:11px;">${_escAudit(log.target_id || '')}</span>`;
+    } else if (log.target_table === 'cop_entities') {
+      targetHtml = `<span style="color:var(--text2);font-size:11px;">${_escAudit(_copLabel) || (log.target_id || '').slice(0, 12)}</span>`;
     } else if (log.target_table) {
       targetHtml = `<span style="color:var(--text3);font-size:10px;">${log.target_table}</span>`;
     }
@@ -701,7 +736,7 @@ function _auditRenderModal(logs, activeFilter) {
     rows += `<div style="display:grid;grid-template-columns:90px 88px 80px 1fr;gap:6px;align-items:center;padding:5px 2px;border-bottom:1px solid rgba(255,255,255,.04);">
       <span style="font-family:var(--mono);font-size:10px;color:var(--text3);">${dt.slice(11)}</span>
       ${badgeHtml}
-      <span style="font-size:11px;color:var(--text3);">${log.operator || '—'}</span>
+      <span style="font-size:11px;color:var(--text3);">${_escAudit(log.operator || '—')}</span>
       ${targetHtml}
     </div>`;
   }
