@@ -1319,7 +1319,7 @@ function _ensureEntityLayers() {
           ],
           'circle-color': ['get', 'color'],
           'circle-stroke-color': '#ffffff',
-          'circle-stroke-width': 2,
+          'circle-stroke-width': 1.5,   // 與設施(infra)外框一致（以設施為準）
           'circle-stroke-opacity': [
             'case',
             ['boolean', ['feature-state', 'dimmed'], false], 0.15,
@@ -1350,7 +1350,7 @@ function _ensureEntityLayers() {
         paint: {
           'icon-color': ['get', 'color'],
           'icon-halo-color': '#ffffff',
-          'icon-halo-width': 1.8,
+          'icon-halo-width': 1.5,   // 與設施/節點外框一致（以設施為準）
           'icon-opacity': [
             'case',
             ['boolean', ['feature-state', 'dimmed'], false], 0.15,
