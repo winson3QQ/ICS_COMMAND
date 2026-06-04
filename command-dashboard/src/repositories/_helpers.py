@@ -82,6 +82,14 @@ def audit(
         VALUES (?,?,?,?,?,?,?,?,?,?)
     """
     with get_conn() as conn:
+        # Model B（issue #93）：未明傳 exercise_id → 戳當前 active session（演習/實戰），使 AAR
+        # 能回放該場完整時間軸（含登入/設定/COP 操作等大小事）；無 active → NULL（實戰未分場）。
+        # **exercise_* 生命週期 audit 例外**：保持 NULL，否則會被該場 cascade 刪除
+        # （audit_log ∈ _EXERCISE_SCOPED_TABLES）→ 刪除/狀態軌跡無法留存（review #93-1）。
+        # 查詢複用本連線（不另開連線、不 import exercise_repo）：避免循環 import 與額外連線 lock 面。
+        if exercise_id is None and not action_type.startswith("exercise_"):
+            _row = conn.execute("SELECT id FROM exercises WHERE status='active' LIMIT 1").fetchone()
+            exercise_id = _row[0] if _row else None
         hash_prev = compute_next_hash_prev(conn)
         conn.execute(
             sql,

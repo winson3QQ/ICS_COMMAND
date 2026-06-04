@@ -26,6 +26,7 @@ XSS：所有寫入 body 先過 core.input_safety.validate_no_unsafe_strings（is
 """
 
 import json
+import logging
 import sqlite3
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -39,12 +40,13 @@ from auth.role_enum import COMMAND_ROLES, READ_ROLES, is_role_allowed
 from auth.service import check_session
 from core.input_safety import validate_no_unsafe_strings
 from repositories import cop_entity_repo
-from repositories._helpers import NULL_SCOPE
+from repositories._helpers import NULL_SCOPE, audit
 from schemas.cop import CoPEntity
 from services.exercise_service import current_exercise_id, resolve_scope
 from services.realtime_hub import cop_hub
 
 router = APIRouter(prefix="/api/cop", tags=["COP"])
+log = logging.getLogger(__name__)
 
 _MAX_BODY_BYTES = 256 * 1024  # 256 KB，與 map_config 一致
 _STALE_DEFAULT_HOURS = 24  # 手動建立未帶 stale 時的預設存活時間
@@ -125,6 +127,23 @@ async def _broadcast(op: str, entity: dict) -> None:
         },
         exercise_id=entity.get("exercise_id"),
     )
+
+
+def _audit_cop(action: str, actor: str, entity: dict, extra: dict | None = None) -> None:
+    """COP 操作寫 audit（issue #93）。best-effort —— 記帳失敗**不得**影響 cop 寫入 / 即時同步
+    （否則 logging 故障會反過來擋住地圖更新）。exercise_id 走 Model B（audit() 自動戳 active）。"""
+    try:
+        detail = {
+            "kind": (entity.get("attributes") or {}).get("kind"),
+            "label": entity.get("callsign"),
+            "lat": entity.get("lat"),
+            "lon": entity.get("lon"),
+        }
+        if extra:
+            detail.update(extra)
+        audit(actor, None, action, "cop_entities", entity["uid"], detail)
+    except Exception:
+        log.warning("[cop] audit 失敗（best-effort，不影響寫入）", exc_info=True)
 
 
 # ── read ─────────────────────────────────────────────────────────────────────
@@ -209,6 +228,10 @@ async def create_entity(request: Request, response: Response):
         raise HTTPException(409, f"uid 已存在：{entity.uid}") from e
 
     await _broadcast("create", created)
+    # #93：COP 建立 audit。**跳過 event kind**（event_created 已涵蓋，避免同動作雙記）；
+    # zone/route/polygon/infra 等才是真正未被 audit 的地圖物件。
+    if (created.get("attributes") or {}).get("kind") != "event":
+        _audit_cop("cop_entity_created", _actor(request), created)
     response.headers["ETag"] = _etag(created["version_clock"])
     return created
 
@@ -238,6 +261,9 @@ async def update_entity(uid: str, request: Request, response: Response):
     if result["status"] == "conflict":
         return _conflict_response(result["entity"])
     await _broadcast("update", result["entity"])
+    # #93：COP 更新 audit（**全 kind 含 event**）—— 捕捉 QRF/事件等「移動」軌跡（位置變更只走
+    # 此路徑，events 表不 audit location）。fields 記本次改了哪些欄；移動路徑＝updated 列序列。
+    _audit_cop("cop_entity_updated", _actor(request), result["entity"], {"fields": sorted(body)})
     response.headers["ETag"] = _etag(result["entity"]["version_clock"])
     return result["entity"]
 
@@ -258,6 +284,8 @@ async def delete_entity(uid: str, request: Request, response: Response):
         return _conflict_response(result["entity"])
     # delete 也廣播（op=delete）：訂閱端據此把 entity 從畫面移除（TAK 語意）
     await _broadcast("delete", result["entity"])
+    # #93：COP 刪除 audit（全 kind 含 event；事件圖釘移除/結案也留痕）。
+    _audit_cop("cop_entity_deleted", _actor(request), result["entity"])
     # 與 PUT-ok / 409 一致：成功也回 ETag（soft-delete 後的新 version_clock）
     response.headers["ETag"] = _etag(result["entity"]["version_clock"])
     return {
