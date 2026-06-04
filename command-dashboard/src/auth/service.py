@@ -216,24 +216,39 @@ def session_status(token: str) -> dict:
         "username": sess["username"],
         "role": sess["role"],
         "role_detail": sess.get("role_detail"),
-        "idle_remaining_seconds": max(
-            0, int(IDLE_TIMEOUT - (now - _iso_to_dt(sess.get("idle_at"))).total_seconds())
-        ),
-        "absolute_remaining_seconds": max(
-            0, int((_iso_to_dt(sess.get("expires_at")) - now).total_seconds())
-        ),
+        "idle_remaining_seconds": max(0, int(IDLE_TIMEOUT - (now - _iso_to_dt(sess.get("idle_at"))).total_seconds())),
+        "absolute_remaining_seconds": max(0, int((_iso_to_dt(sess.get("expires_at")) - now).total_seconds())),
         "warning_threshold_seconds": WARNING_THRESHOLD_SECONDS,
     }
 
 
 def cleanup_expired_sessions() -> int:
     now_iso = _now_iso()
-    idle_cutoff = (_now() - timedelta(seconds=SESSION_TIMEOUT)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    # #93(b)：idle cutoff 與 check_session 一致用 min(IDLE_TIMEOUT, SESSION_TIMEOUT)（預設 15 分），
+    # 原本誤用 SESSION_TIMEOUT(14h) → abandoned session 卡 14h 才清。改後閒置 15 分即清 + audit。
+    idle_secs = min(IDLE_TIMEOUT, SESSION_TIMEOUT)
+    idle_cutoff = (_now() - timedelta(seconds=idle_secs)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    where = "status='active' AND (expires_at < ? OR last_active < ?)"
+    params = (now_iso, idle_cutoff)
     with get_conn() as conn:
-        cur = conn.execute(
-            """DELETE FROM sessions
-                WHERE status='active'
-                  AND (expires_at < ? OR last_active < ?)""",
-            (now_iso, idle_cutoff),
-        )
-        return cur.rowcount
+        # #93(b)：先撈出要清的 session（取 username）→ DELETE。被丟棄（切帳號/關頁，token 不再被用）
+        # 的 session 逾時只能靠本批次清，原本不 audit → 登出無痕。此處補記，AAR 可查「誰逾時掉線」。
+        expired = conn.execute(f"SELECT username FROM sessions WHERE {where}", params).fetchall()
+        cur = conn.execute(f"DELETE FROM sessions WHERE {where}", params)
+        n = cur.rowcount
+    # audit 在 conn 區塊外（audit() 自開連線，避免巢狀）；best-effort：清理不因記帳失敗中斷。
+    from repositories._helpers import audit
+
+    for row in expired:
+        try:
+            audit(
+                row["username"],
+                None,
+                "SESSION_EXPIRED",
+                "sessions",
+                row["username"],
+                {"reason": "idle_or_expired_cleanup", "decision": "auto-logout"},
+            )
+        except Exception:
+            pass
+    return n

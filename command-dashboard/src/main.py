@@ -7,6 +7,8 @@ main.py — ICS 指揮部後端 API（C0 重構版）
 版本：command-v2.0.0（C0 架構重構）
 """
 
+import asyncio
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -47,8 +49,23 @@ from routers import (
     ttx,
 )
 
-
 # ─────────────────────────────────────────────────────────────────────────────
+log = logging.getLogger(__name__)
+_SESSION_CLEANUP_INTERVAL = 300  # 秒：週期清理閒置/逾時 session 的間隔
+
+
+async def _periodic_session_cleanup():
+    """#93(b)：週期清理 abandoned（關頁/切帳號 → token 不再被用）的逾時 session。
+    cleanup_expired_sessions 內含 audit（逾時登出留痕），故 abandoned 登出 ~閒置逾時內即記，
+    不必等下次啟動。best-effort：單次失敗不中斷迴圈。"""
+    while True:
+        await asyncio.sleep(_SESSION_CLEANUP_INTERVAL)
+        try:
+            await asyncio.to_thread(cleanup_expired_sessions)
+        except Exception:
+            log.warning("[session] 週期清理失敗（best-effort）", exc_info=True)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
@@ -65,8 +82,11 @@ async def lifespan(app: FastAPI):
     from services import event_taxonomy_store
 
     event_taxonomy_store.ensure()
+    # #93(b)：啟動週期 session 清理任務（abandoned 逾時登出及時 audit）
+    _cleanup_task = asyncio.create_task(_periodic_session_cleanup())
     yield
-    # shutdown：關閉所有 COP WS 連線（issue #29 PR-D in-process hub）
+    # shutdown：停週期清理 + 關閉所有 COP WS 連線（issue #29 PR-D in-process hub）
+    _cleanup_task.cancel()
     from services.realtime_hub import cop_hub
 
     await cop_hub.close_all()
