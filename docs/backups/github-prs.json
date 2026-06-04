@@ -1896,7 +1896,7 @@
     },
     "baseRefName": "main",
     "body": "## ROADMAP item\n\nP1-14 / #93 audit-log 線的 dogfood follow-up（2026-06-04，源於 P1-16 follow-up dogfood）。\n本分支無專屬 issue；延續 [#93](https://github.com/winson3QQ/ICS_COMMAND/issues/93)（已由 [#96](https://github.com/winson3QQ/ICS_COMMAND/pull/96) `156eb65` 關閉）的稽核日誌完整性線。\n\n- Relates #93\n\n## What changed\n\n兩個 commit：\n1. `3a3447a` — 稽核日誌 UX 具體化（cop_entity_* 依 kind 顯「新增/移動/刪除＋節點/路線/範圍/設施/圖釘」）、`_escAudit` XSS 跳脫、session 事件納入「帳號」篩選；**後端** `cleanup_expired_sessions` 補 SESSION_EXPIRED audit（abandoned session 逾時登出留痕）、idle cutoff `14h→min(IDLE,SESSION)=15分`、`main.py` lifespan 加每 5 分週期 session 清理。\n2. `54331a8`（本次收尾）— 補齊 DoD 缺測 + code-review/security-review 修正（見下）。\n\n## DoD checklist\n\n- [x] Tests added / updated — `test_cleanup_writes_audit_for_each_expired` + `test_cleanup_idle_cutoff_uses_idle_timeout_not_session_timeout`（idle cutoff 回歸守門）\n- [x] `pytest` green — 607 passed / 1 skipped\n- [ ] `npm test` green — auth.js 改動為純渲染/跳脫，無對應 JS 測試；UI 行為待 §8 手動驗\n- [ ] 規格書更新 — 無介面/資料格式變更（行為變更為 session 清理時機，已於 commit/註解記錄）\n- [x] ROADMAP item — P1-14 row 補本 PR# + hash（merge 後同輪）\n\n## §8 Human Verification Script\n\n\\`\\`\\`bash\n# Step 1: 後端全套測試（含本 PR 新增 session 清理測試）\ncd command-dashboard && python -m pytest -p no:warnings\n# 預期：607 passed, 1 skipped（test_session_edge 邊界測試偶發 flaky，全套執行時 pass）\n\n# Step 2: 針對性看新行為測試\ncd command-dashboard && python -m pytest tests/security/test_session_config.py -p no:warnings -v\n# 預期：8 passed，含 test_cleanup_writes_audit_for_each_expired / test_cleanup_idle_cutoff_uses_idle_timeout_not_session_timeout\n\n# Step 3: lint\ncd command-dashboard && python -m ruff check src/auth/service.py src/main.py tests/security/test_session_config.py\n# 預期：All checks passed!\n\n# Step 4（UI，需登入正式 DB）：開儀表板 → 稽核日誌 modal\n#   - 確認 COP 地圖操作顯「新增/移動/刪除＋節點/設施…」具體 badge（非泛稱「標繪」）\n#   - target 欄顯實際名稱（callsign）\n#   - 「帳號」篩選含登入/登出/逾時登出/閒置登出/綁定不符\n#   - 放置一個節點再移動 → 稽核應出現「移動節點」\n# 預期：badge 具體化、無破版、篩選正確\n\\`\\`\\`\n\n## Out of scope / known limitations\n\n- **UI 最終驗（§8 Step 4）尚未在瀏覽器跑過**：本 worktree runtime（底圖/DB）未備，且 auth.js 改動為presentational；留待 human `/verify` 或正式 DB 手動驗。\n- 不做 `beforeunload` beacon（reload 也會誤登出；heartbeat 已天然區分 tab 開/關）。\n- `cleanup_expired_sessions` 殘餘窗口：DELETE 已 commit 但 audit 未寫入時 crash → 該筆登出無痕（已於註解明示，非安全關鍵路徑，可接受）。\n- 既有 flaky：`test_session_edge` 邊界測試 1 秒裕度 wall-clock 依賴（元 commit `3a3447a` 即存在，與本 PR 無關，已另開 task 追蹤）。\n\n## Notes for reviewer\n\n- 後端重點：`cleanup_expired_sessions` 的 `DELETE ... RETURNING username`（取代 SELECT→DELETE，解並發重複 audit）；`main.py` 週期 task 的 shutdown cancel+await 回收。\n- `/code-review`（後端 session 邏輯）+ `/security-review`（auth/session/XSS/SQLi/供應鏈）皆已跑：**無 HIGH 以上新破口**。security-review 的 belt-and-braces 建議已落地（operator / badge fallback 也包 `_escAudit`）。",
-    "closedAt": null,
+    "closedAt": "2026-06-04T03:57:43Z",
     "comments": [
       {
         "author": {
@@ -1916,11 +1916,11 @@
     "createdAt": "2026-06-04T03:57:00Z",
     "headRefName": "fix/audit-log-followup",
     "labels": [],
-    "mergedAt": null,
+    "mergedAt": "2026-06-04T03:57:43Z",
     "number": 97,
-    "state": "OPEN",
+    "state": "MERGED",
     "title": "fix(audit): #93 follow-up — 稽核日誌具體化 + 逾時登出留痕 + idle session 清理（補測 + review 修正）",
-    "updatedAt": "2026-06-04T03:57:27Z",
+    "updatedAt": "2026-06-04T03:57:43Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/97"
   }
 ]
