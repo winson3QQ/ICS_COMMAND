@@ -1227,5 +1227,25 @@
     "title": "P1-14：Exercise data scoping — 點亮休眠 scoping + 前端演習 UI",
     "updatedAt": "2026-06-03T09:13:03Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/89"
+  },
+  {
+    "assignees": [],
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "body": "## 來源\nP1-16 follow-up（`chore/p1-16-followup`）dogfood 驗證時的副發現（2026-06-04）。**非該 PR scope**，獨立記錄。\n\n## 觀察\n稽核日誌的「演習場次」欄幾乎全部顯示「無進行中場次」，看起來像「演習/實戰都沒被綁到場次」。\n\n## 事實（查 code 確認）\n- **`audit()` 一定會記**：`repositories/_helpers.py` 的 `audit()` 是無條件 `INSERT INTO audit_log`，每個可稽核動作都有寫一筆。**不是不記。**\n- **但 exercise 綁定大多休眠**：全專案 **49 個 `audit(...)` 呼叫，只有 5 個傳 `exercise_id`**（`manual_repo` / `event_repo` ×2 / `exercises` meta ×2），其餘 **44 個用預設 `None` → 寫成 `exercise_id=NULL`**（未分場 / 實戰池）。\n- **`get_active_exercise()` 幾乎沒接線**：全專案僅 `services/exercise_service.py:47` 一處呼叫。\n- **設計意圖已存在但未落實**：exercise chip 文字明寫「實戰／演練皆需在演習管理**啟動一場**才會被記錄」（`static/js/exercises.js`）——但因 active-exercise 機制休眠，沒啟動場次時全部落 NULL。\n\n## 根因\n與 **P1-14（#89, `feat/issue-89-exercise-scoping`）** reality check 抓到的 dormant-scoping 同源：`get_active_exercise()` 沒被呼叫、前端無/未接演習 active 機制 → 建立/查詢/稽核都 `exercise_id=NULL` 未 scoped。\n\n## 待決策（範圍問題）\nP1-14（#89）主要講 **events / cop / map_config** 的 scoping。**「44 個 NULL-default 的 audit 呼叫是否也該綁 active exercise」未必在 #89 明確 scope 內**：\n- 演習相關動作（event 建立/狀態/note、manual record…）→ 應綁當前 active exercise（與 #89 一併）\n- 系統層動作（login / account / config / reset…）→ **是否該綁演習是設計決策**（這些跨演習，綁了反而語意怪；或應記「當下 active exercise 為背景 context」？）\n\n## 建議\n1. #89 落地 active-exercise 接線後，**演習相關 audit 一併帶 `get_active_exercise()` 的 id**。\n2. 系統層 audit 的 exercise 綁定語意，需明確決策（建議：記為背景 context 而非 scope，或維持 NULL=未分場）。\n3. 與 #89 協調，避免重工。\n\n相關：#89（P1-14 exercise scoping）、P1-16 follow-up dogfood",
+    "closedAt": null,
+    "comments": [],
+    "createdAt": "2026-06-04T00:29:23Z",
+    "labels": [],
+    "milestone": null,
+    "number": 93,
+    "state": "OPEN",
+    "title": "稽核日誌未綁 active exercise — 49 個 audit 呼叫僅 5 個帶 exercise_id（P1-14 dormant-scoping 衍生）",
+    "updatedAt": "2026-06-04T00:29:23Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/93"
   }
 ]
