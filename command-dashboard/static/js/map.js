@@ -1341,7 +1341,7 @@ function _ensureEntityLayers() {
         filter: ['==', ['coalesce', ['get', 'is_event'], false], true],
         layout: {
           'icon-image': 'zone-diamond',
-          'icon-size': 1.22,   // > zones-event 1.1：外露一圈即外框
+          'icon-size': 1.32,   // > zones-event 1.1：外露一圈即外框（差越大框越粗）
           'icon-allow-overlap': true,
           'icon-ignore-placement': true,
           'symbol-sort-key': ['case', ['==', ['get', 'severity'], 'critical'], 0, 1],
