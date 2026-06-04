@@ -475,8 +475,9 @@ function _applyOverlayThemeContrast(theme) {
       try { map.setPaintProperty(id, prop, val); } catch (e) { /* layer 未就緒，忽略 */ }
     }
   };
-  set('zones-base', 'circle-stroke-color', stroke);    // 節點 + 事件圖釘
-  set('infra-circle', 'circle-stroke-color', stroke);  // 設施
+  set('zones-base', 'circle-stroke-color', stroke);    // 節點圓外框
+  set('zones-event', 'icon-halo-color', stroke);       // 事件 ◆ 菱形外框（icon-halo 取代 circle stroke）
+  set('infra-circle', 'circle-stroke-color', stroke);  // 設施圓外框
 }
 
 export function renderMapOverlay() {
@@ -1127,7 +1128,7 @@ function _ensureEntityLayers() {
         id: 'infra-circle', type: 'circle',
         paint: {
           'circle-radius': 12, 'circle-color': ['get', 'color'],
-          'circle-stroke-width': 2, 'circle-stroke-color': '#ffffff', 'circle-opacity': 0.92,
+          'circle-stroke-width': 1.5, 'circle-stroke-color': '#ffffff', 'circle-opacity': 0.92,
         },
       },
       {
