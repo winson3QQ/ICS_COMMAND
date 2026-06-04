@@ -475,9 +475,9 @@ function _applyOverlayThemeContrast(theme) {
       try { map.setPaintProperty(id, prop, val); } catch (e) { /* layer 未就緒，忽略 */ }
     }
   };
-  set('zones-base', 'circle-stroke-color', stroke);    // 節點圓外框
-  set('zones-event', 'icon-halo-color', stroke);       // 事件 ◆ 菱形外框（icon-halo 取代 circle stroke）
-  set('infra-circle', 'circle-stroke-color', stroke);  // 設施圓外框
+  set('zones-base', 'circle-stroke-color', stroke);       // 節點圓外框
+  set('zones-event-outline', 'icon-color', stroke);       // 事件 ◆ 菱形外框（下層墊大菱形）
+  set('infra-circle', 'circle-stroke-color', stroke);     // 設施圓外框
 }
 
 export function renderMapOverlay() {
@@ -1333,14 +1333,36 @@ function _ensureEntityLayers() {
           ],
         },
       },
-      // P1-10d：事件 ◆ diamond（NAPSG hazard 形狀）。icon-color = severity 色，
-      // icon-halo 白邊取代 circle 的 white stroke。只 render is_event=true。
+      // 事件 ◆ 外框：墊一個稍大的菱形在 severity 菱形「下面」（取代失效的 SDF icon-halo —
+      // bakeDiamondSdf 是實心 alpha、非真 distance-field，halo 無法加寬）。icon-color = 主題外框色
+      // （白天深 / 夜間白，由 _applyOverlayThemeContrast 翻）。外露的 size 差 = 框粗，目視對齊圓的 1.5 stroke。
+      {
+        id: 'zones-event-outline', type: 'symbol',
+        filter: ['==', ['coalesce', ['get', 'is_event'], false], true],
+        layout: {
+          'icon-image': 'zone-diamond',
+          'icon-size': 1.22,   // > zones-event 1.1：外露一圈即外框
+          'icon-allow-overlap': true,
+          'icon-ignore-placement': true,
+          'symbol-sort-key': ['case', ['==', ['get', 'severity'], 'critical'], 0, 1],
+        },
+        paint: {
+          'icon-color': '#ffffff',   // 由 _applyOverlayThemeContrast 翻主題（白天深 / 夜間白）
+          'icon-opacity': [
+            'case',
+            ['boolean', ['feature-state', 'dimmed'], false], 0.15,
+            ['==', ['coalesce', ['get', 'stale'], false], true], 0.55,
+            0.95,
+          ],
+        },
+      },
+      // P1-10d：事件 ◆ diamond（NAPSG hazard 形狀）。icon-color = severity 色。只 render is_event=true。
       {
         id: 'zones-event', type: 'symbol',
         filter: ['==', ['coalesce', ['get', 'is_event'], false], true],
         layout: {
           'icon-image': 'zone-diamond',
-          'icon-size': 1.1,   // 事件(hazard)為焦點：比節點圓更醒目（dogfood：原 0.62 太小；含 SDF halo pad）
+          'icon-size': 1.1,   // 事件(hazard)為焦點：比節點圓更醒目（外框由下層 zones-event-outline 提供）
           'icon-allow-overlap': true,
           'icon-ignore-placement': true,
           'symbol-sort-key': [
@@ -1349,10 +1371,7 @@ function _ensureEntityLayers() {
         },
         paint: {
           'icon-color': ['get', 'color'],
-          'icon-halo-color': '#ffffff',
-          // SDF icon-halo 羽化 + 菱形 icon-size 1.1 較大 → 數值需高於圓的 circle-stroke 1.5
-          // 才視覺一致（經驗值，目視定 4.0）。目標：看起來與設施/節點 1.5 外框同粗。
-          'icon-halo-width': 4.0,
+          // 外框改由下層 zones-event-outline 墊大菱形提供（icon-halo 對實心 alpha SDF 無法加寬，已棄用）。
           'icon-opacity': [
             'case',
             ['boolean', ['feature-state', 'dimmed'], false], 0.15,
