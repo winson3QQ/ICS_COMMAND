@@ -104,6 +104,7 @@ _Session D 填入。初步清單：_
 - 錯誤訊息洩漏內部路徑 / stack trace（→ C2-F 生產模式）
 - Log 檔案含敏感資訊（→ structlog 過濾規則）
 - Browser cache 殘留敏感資料（→ Cache-Control: no-store）
+- **At-rest 加密的邊界（P1-12，2026-06-04 釐清）**：SQLCipher live-DB 加密 + Fernet 備份加密**只防「資料靜止」洩漏** —— 硬碟被偷 / 備份檔外洩 / 系統關機時的離線檔案複製。**不防 runtime 存取**：系統運行時 DB 已解密（金鑰在 process memory，FIDO2 啟動時解出、app 持有已解密連線），任何能碰到運行中 process / app API / service 帳號 / root 的主體都讀得到甚至改得到**明文**。**勿把 at-rest 加密誤當「進到系統也看不到」** —— 那是兩個不同層的防護（at-rest vs in-use）。
 
 ### 3.5 Denial of Service
 
@@ -151,6 +152,12 @@ _Session D 填入 5×5 矩陣，評估 §3 清單項目_
 
 _Session D 填入。例：Pi 實體被盜之資料外洩風險無法完全消除，靠政策 + 保險轉移_
 
+- **特權 runtime 存取（含自動化 / AI agent）— 2026-06-04 記錄**：能 shell 進指揮部主機、或以 service 帳號 / root 運行的主體（**含被授權的 AI agent / 自動化工具**），可繞過 app RBAC 直接讀 / 改 DB（runtime 已解密、金鑰在記憶體）。**at-rest 加密（P1-12）無法緩解此風險** —— 加密只擋「拿走檔案 / 備份」那條路。緩解屬「OS 層 + 政策」而非加解密層：
+  - ① **OS 存取控制 + 最小權限**：限制誰能登入主機 / 用 service 帳號；systemd 硬化（ProtectHome / 受限能力）。
+  - ② **防竄改稽核**：簽章式 append-only audit（hash chain，§3.2 已列 task），至少讓「偷改」留下無法抹除的證據（偵測，非預防）。
+  - ③ **對 AI / 自動化的存取邊界**：**不給 prod 機器 shell / DB 金鑰 / service 憑證**；在 sandbox / 受限環境運行；一旦 agent 取得 box 特權，加密與 RBAC 皆失效，**唯一防線是「一開始就不給存取」**。
+  - 殘餘：上述為政策 + OS 層緩解，**無法以應用層或加密完全消除**；high-trust 部署需依賴實體 / OS / 人員管控。
+
 ---
 
 ## 8. 審查歷程
@@ -158,3 +165,4 @@ _Session D 填入。例：Pi 實體被盜之資料外洩風險無法完全消除
 | 日期 | Version | 變更 |
 |---|---|---|
 | 2026-04-25 | 0.1 | 骨架建立（Session D 完稿）|
+| 2026-06-04 | 0.2 | §3.4 加 at-rest 加密邊界（only 防靜止，不防 runtime）；§7 加「特權 runtime 存取（含 AI agent）」殘餘風險 + OS/政策緩解（dogfood 提問衍生）|
