@@ -1298,14 +1298,29 @@
     },
     "body": "## 來源\nP2-01（#99 / PR #100）實機 boot 驗證（2026-06-05，M1/16GB、Docker Desktop 10GB）。DB tier 與 CoT streaming 已通，**web/API tier 未起**，獨立追蹤。\n\n## 已通過（事實，log 實證）\n- ✅ images build（arm64 原生）\n- ✅ DB tier：initdb + SchemaManager + `cot`/`martiuser`，容器 **healthy**（修了 volume chown + CoreConfig 密碼）\n- ✅ Ignite 叢集 `state=ACTIVE`（修了 TAKIgniteConfig race）\n- ✅ **CoT streaming `:8089` 開**（ICS_Command 整合接點，P2-02 不卡）\n\n## 未解：`:8443` web/API 不起\n- **現象**：`api` JVM（spring.profiles.active=api）起動，連上 DB（Hikari pool active），但**其 Tomcat 從未綁 :8443**（容器內 `netstat` 無 8443），對外 curl 永遠 `000`。無乾淨 logged 例外（`Stopping service [Tomcat]` 後接的是 Hikari 執行緒未收的 shutdown 警告，非例外）。\n- **heap 實驗（已排除為單一主因）**：\n  - API_MAX_HEAP=1024 → api JVM **OOM 死**（進程消失）\n  - =4096（總 ~7.5G）→ api 活著但 Ignite 報 `Nodes started require >80% physical RAM ... swapping` → 太慢，8443 仍不綁\n  - =2048（總 ~4.75G，避開 swap）→ api 活著、無 swap，**8443 仍不綁**（~5 分）\n  → heap 影響 api 存活，但**不是 8443 不綁的根因**。\n- **retention JVM** 持續 `Waiting for the Retention Query process...`（疑與 api 未完全起有依賴關係）。\n\n## 環境\n- M1 iMac 16GB / macOS Tahoe 26.5.1 / Docker Desktop 4.76 / 10GB VM、32GB disk\n- 全 arm64 原生 image；`docker compose` v5.1.4\n- 單容器 5-JVM（官方 `configureInDocker.sh` 同時起 config/messaging/api/retention/pm）\n\n## 下一步（建議，未做）\n1. **對照社群 TAK docker**（[Cloud-RF/tak-server](https://github.com/Cloud-RF/tak-server) / [atakhq/tak-server-docker](https://github.com/atakhq/tak-server-docker)）的 JVM 啟動順序 — 疑似需 config 先起、生成 config 後再起 api（非同時），單容器同起為已知脆弱點。\n2. 撈 api JVM 完整啟動 log（非 grep）讀 Spring context 到底卡在哪個 bean / 為何 Tomcat 不綁 8443。確認 CoreConfig `<connector port=8443>` + keystore 是否被 api 正確載入。\n3. 確認 10GB Docker RAM 是否對 TAK 5-JVM 偏緊（官方 8GB min 是「能跑」非「跑順」），必要時 12GB 重試。\n4. 確認非首啟 race 殘留：乾淨 `down -v` + 刪 TAKIgniteConfig.xml 全新一輪。\n\n## 不卡 P2-02\n整合走 `:8089`（已通）。web UI 是人類 admin 介面，非 ICS_Command 整合路徑。P2-02 設計可並行。\n\n相關：#99（P2-01）、PR #100、ROADMAP P2、`deploy/tak-server/README.md` 已知問題段。",
     "closedAt": null,
-    "comments": [],
+    "comments": [
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## 進展（2026-06-05 debug session）：根因 #1 找到並修，根因 #2 精確定位\n\n### ✅ 根因 #1（已修）：server 憑證必須 RSA，不能 EC\n讀對 log 檔（`/opt/tak/logs/takserver-api.log`，非合併的 takserver.log）後現形：\n```\nCaused by: java.lang.ClassCastException:\n  class sun.security.ec.ECPublicKeyImpl cannot be cast to RSAPublicKey\n  at tak.server.ServerConfiguration.jwkSource(ServerConfiguration.java:1365)\n```\n- **TAK api 的 `jwkSource` bean 用 server 憑證的 key 建 JWT/JWK 簽章源，寫死轉型 RSAPublicKey**。我們的 step-ca 憑證是 ECDSA P-256 → ClassCastException → api context 死（在 web connector/clientAuth 之前就死，故 clientAuth 是 red herring）。\n- **修正**：`pki/issue-tak-certs.sh` 改用 `step ca certificate --kty RSA --size 2048` 簽 RSA 憑證（不走 issue-cert.sh 的 EC 預設）。**已驗證 jwkSource 通過**（api 推進到下一個 bean 才失敗）。\n\n### ❌ 根因 #2（精確定位，未解）：Ignite client 斷線（結構性）\nRSA 修好後，api 前進到 federation bean 才失敗：\n```\nBeanCreationException: 'distributedFederationHttpConnectorManager'\nCaused by: org.apache.ignite.IgniteClientDisconnectedException: Client node disconnected: null\n  at tak.server.config.ApiConfiguration.distributedFederationHttpConnectorManager\n```\n- **可重現**：乾淨 `docker compose restart takserver` 兩次都一樣（04:04、04:14 皆 `Application run failed`）。\n- **非資源**：takserver 僅用 1.9G/9.7G（19%），無 swapping。\n- **非 timeout**：TAKIgniteConfig 空（用預設），`igniteFailureDetectionTimeoutSeconds=600`（10 分，很寬）。\n- **非 federation 設定**：`enableFederation` 預設 false，但 bean 仍實例化用 Ignite → 斷線。\n- **現象**：api(Ignite client) 啟動時從叢集斷線；JVM 數 5→4（有 JVM 掉）。\n→ 單容器 5-JVM（官方 configureInDocker.sh 同時起）的 Ignite 叢集脆弱性。\n\n### 下一步（候選，未做）\n1. **staggered JVM 啟動**：config(Ignite server) 先起且穩定 → 再起 messaging/api/retention/pm（改 entrypoint，不同時 fire）。\n2. 對照社群 docker（Cloud-RF/atakhq）是否拆多容器或有啟動序處理。\n3. 確認 config JVM(Ignite server) 是否穩定（client 斷線常因 server 重啟）。\n\n### 已 commit\nRSA 修正（`issue-tak-certs.sh`）+ README 更新待 push。",
+        "createdAt": "2026-06-05T04:22:20Z",
+        "id": "IC_kwDOSnBjpc8AAAABE9uEkQ",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/101#issuecomment-4628120721"
+      }
+    ],
     "createdAt": "2026-06-05T02:10:47Z",
     "labels": [],
     "milestone": null,
     "number": 101,
     "state": "OPEN",
     "title": "P2-01 follow-up：TAK Server web/API tier（:8443）未起 — api JVM 活著但 Tomcat 不綁",
-    "updatedAt": "2026-06-05T02:10:47Z",
+    "updatedAt": "2026-06-05T04:22:20Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/101"
   },
   {
