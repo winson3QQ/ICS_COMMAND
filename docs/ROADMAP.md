@@ -560,10 +560,55 @@ P3 整合的前提是 WaveInk 採以下五原則設計訓練 / 運行資料平�
 
 ---
 
+## 紅隊審查發現待辦（2026-06-05）
+
+> 以紅軍視角審視全系統後的發現，**僅記錄事實 + 歸屬，未動程式碼**（待排程）。
+> 分級已**按部署範圍校正**——先前疑似 CRITICAL 的項目經查落在「未部署的休眠 Node 層」，在 ICS_COMMAND 非現役攻擊面。每項標明 事實 / 推論，便於後續 session 直接接手不必重查。
+>
+> **代號與狀態約定（別的 session START HERE）**：
+> - **`RT-x#` 代號**：`RT` = Red Team（2026-06-05 全系統紅隊審查）；字母 `H`/`M`/`L` = 該次審查原始嚴重度（High/Medium/Low）；數字 = 流水號。代號是**穩定 anchor**，本節與 commit / issue / branch 名互引時用它（例：`fix/issue-NN-rt-h1-snapshots-auth`）。
+> - **這些是「發現 backlog」，尚未升為 GitHub issue**（無 issue 號 = 還沒排程）。狀態 marker 沿用本文件全域約定（**無 marker = pending**／⏳ = branch 已開／✅ = merged）；本節各項目前皆 pending。
+> - **怎麼動工（升 issue → 收尾）**：排到某項時 →（1）開 GitHub issue，標題帶 RT 代號 + 一句事實；（2）開 branch `fix/issue-NN-rt-x#-*`；（3）走 [`docs/PROCESS.md`](PROCESS.md) 10 步 lifecycle（含 `/security-review`）；（4）merged 後**回到本節該列標 ✅ + `(#PR, hash)`**，與其他 ROADMAP item 同規格。**動工前先讀同列「動工時機」與〈三陷阱〉**。
+> - **什麼時候動工**：見各表「動工時機」欄（已寫成具體觸發條件，非空泛 phase 名）。RT-H1/L4 無依賴、隨時可做；其餘綁特定 item 或 deploy 里程碑。
+>
+> **動工前的範圍鐵則（決定一切分級）**：`server/` Node.js relay **在 ICS_COMMAND 未被部署**——
+> 事實證據：① `systemd/` 只有 `ics-command.service`（FastAPI uvicorn）+ `ics-backup`，無任何 unit 跑 node；
+> ② `server/package.json` 不存在；③ `start_*.sh` / CI / `deploy/` 皆未引用 `server/index.js`；
+> ④ `server/config.js` 只認 `--unit shelter|medical`（PWA 單元，CLAUDE.md 明文不在本 repo 範圍）。
+> 故 `server/` = P1-04 保留的 federation infra（休眠），其內漏洞在 ICS_DMAS（PWA+Pi 真跑）才現役。
+
+### 現役（command-dashboard，已部署）— 需排程修補
+
+| 編號 | 事實 | 性質 / 推論 | 動工時機（觸發）+ 怎麼動 |
+|---|---|---|---|
+| **RT-H1** | `auth/middleware.py:46` 豁免 `GET /api/snapshots/{node_type}`，handler（`routers/snapshots.py:30`）無任何 auth；全 repo grep **查無前端/Pi 呼叫者**（dashboard 走 service 層 `get_snapshots`，非此路由） | 推論：孤兒豁免 → 匿名可讀資源快照（床位/傷亡聚合）。屬 P1-14 exercise scoping 的漏網（6 repo 套了 `resolve_scope`，此路由整條繞過 session） | **觸發：無依賴，隨時可做；建議 P2-06 動工前清掉**（趁 snapshots 路由還沒被 TAK 流量加複雜度）。**怎麼動**：middleware 移除該 GET 豁免行 → handler 走預設 `READ_ROLES`；或路由確認無人用就刪。⚠️**必須保住同檔 `POST /api/snapshots` 的 HMAC 豁免**（Pi push 命脈，line 42-44 / verify_hmac），別連坐。與 RT-L4 併一個獨立 hardening PR |
+| **RT-L4** | `routers/admin.py:282` `audit_log(limit:int=100)` 無服務端上限，`?limit=` 由呼叫端全控 | 推論：`?limit=999999` → 記憶體/慢查詢壓力（DoS 弱面，需 sysadmin session，影響有限） | **觸發：同 RT-H1 同一 PR**。**怎麼動**：`limit = min(limit, 1000)` clamp + 補一條負向測試。低風險 |
+| **RT-M1** | `auth/rate_limit.py:29` + `auth/service.py:45` 皆優先信 `X-Forwarded-For`。nginx 已覆寫 XFF（P1-09 `command.conf:62`），但 `ics-command.service:18` 綁 `--host 0.0.0.0:8000` | 事實：走 nginx(443) 安全；推論：**直連 :8000** 可偽造 XFF 繞 10 次/分 login 限速 + IP binding | **觸發：正式上線前的部署 hardening checklist（非 app code）**。**怎麼動**：把 `ics-command.service` 的 `--host` 改 `127.0.0.1`（只讓 nginx 對外），或 OS firewall 擋外部 :8000；同步記 `threat_model.md §3.5 DoS`。⚠️不要改 app 內 XFF 解析邏輯（會壞掉 nginx 後的合法取值） |
+| **RT-M3** | `core/input_safety.py:23` `_UNSAFE_CHAR_RE` 擋 `<>` `{}` 反引號 `&#` `&entity;` `javascript:`/`data:`/`vbscript:`，**未擋** `"` `'` | 推論：`<>` 已擋 → 開新 tag 受阻；殘餘=attribute 跳脫（`" onmouseover=`）需既有 innerHTML sink 未跳脫引號才成立。屬縱深不足非破口 | **觸發：P2-07 或 P2-12 動工時**（那兩項 DoD 已要求前端 `textContent` 禁 `innerHTML`，同批做）。**怎麼動**：改 sink 端輸出編碼（innerHTML→textContent），不是改本 validator。⚠️**禁擴張此 blocklist**（見下方陷阱 1） |
+
+### 休眠 / 非 bug — 不在 ICS_COMMAND 動
+
+| 編號 | 事實 | 為何不動 | 動工時機（觸發）+ 去向 |
+|---|---|---|---|
+| **RT-C1** | `server/ws_handler.js:220` WS `auth_result` 把 `HMAC_SECRET`（= Pi→Command ingress 的 `trusted_keys` secret，見 `config.js:95` 註）明文下發給每個已認證 WS client | 事實：此檔在 ICS_COMMAND 未部署（見上方鐵則）。在 ICS_DMAS 是現役且嚴重（低權帳號可拿 ingress 偽造金鑰） | **觸發：Wave 7+ PWA 回流 kickoff，且列為其 DoD 前置**（啟用 `server/` 前必先解此 secret 共用設計）。**去向**：另開上游 ICS_DMAS issue（該 repo 才現役）+ 本 repo Wave 7+ 規劃引用本代號 |
+| **RT-H2** | `middleware.py:44` 放行 `POST /api/sync/push`（無 session） | 事實：仍受 `verify_hmac` Depends 把關，**非無認證**；只有 RT-C1 洩 secret 才可偽造。RT-C1 休眠 → 此項在 ICS_COMMAND 不可獨立利用 | 隨 RT-C1（Wave 7+）一併評估 |
+| **RT-L3** | `server/config.js:64` 無憑證時退回明文 WS（`STRICT_TLS` 預設 false） | 同 RT-C1：休眠 Node 層；且 `STRICT_TLS=true` 已可 fail-fast | Wave 7+ |
+| **RT-M2** | `routers/admin.py:61` `_check_admin_pin` 實際只驗 sysadmin role，無第二因素 | 推論：非 bug——「admin PIN 第二因素」是 P1-12 key-mgmt 概念，現況 backup 路由 sysadmin-role gate 是當前設計 | **P1-12**（要做第二因素才談） |
+| **RT-M4** | `auth/service.py:54` session IP binding 只比 /24 前綴 | 事實：刻意取捨，容忍現場 iPad 同網段漫遊。收緊 /32 會誤踢登出（見陷阱 2） | 不動，記 residual risk |
+| **RT-L1/L2** | HMAC skew 預設 5 分（`config.py:97`）；TAK insecure TLS flag（`config.py:109`） | nonce 已蓋重放；TAK TLS 已 fail-closed（P2-02 security review 落實） | 不動 / 已緩解 |
+
+### ⚠️「補完又產生別的」三陷阱（修補前必讀）
+
+1. **RT-M3 別擴張 regex**：把 `"` `'` 加進 blocklist 會**誤殺合法輸入**（人名 `O'Brien`、座標/label 含引號 → 全 422）。XSS 正解 = sink 改 `textContent`，不是擴張輸入過濾。
+2. **RT-M4 別收緊成 /32**：現場 iPad 同網段換 IP 會被**誤踢登出**。設計取捨要保留。
+3. **RT-H1/L4 別夾帶進 feature PR**：這兩個與任何 feature item 無關，硬塞進 P2 PR 違反 PROCESS.md 一 task 一 PR 紀律（這本身就是管理面的「補一個生一個」）→ 開**獨立 hardening issue/PR**。
+
+---
+
 ## Phase 之後（未規劃，意見區）
 
 - Wave 6 時間軸回放 UI（COP 快照已在 P2 預埋）
-- Wave 7+：**Medical / Shelter PWA 重新對接**——P1-04 保留的 `pi_*_repo` + `sync_repo` federation 介面可直接承接，無需架構翻修
+- Wave 7+：**Medical / Shelter PWA 重新對接**——P1-04 保留的 `pi_*_repo` + `sync_repo` federation 介面可直接承接，無需架構翻修。⚠️ **啟用 `server/` Node relay 前必先解 RT-C1/H2/L3**（見〈紅隊審查發現待辦〉）：現休眠所以無害，一通電 `HMAC_SECRET` WS 明文下發即成現役破口
 - TAK Federation 大網部署（跨機關互通）
 - 多上游節點中樞：ICS_Command 同時對接多個 Pi 站台 / 友軍 TAK Server / 多個 WaveInk 錄音站
 
