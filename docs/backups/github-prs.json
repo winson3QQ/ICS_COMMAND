@@ -2132,7 +2132,7 @@
     },
     "baseRefName": "main",
     "body": "## ROADMAP item\n- Closes #107（P2-03）\n\n## ⚠️ 先別 merge — 等 P2-05 + 視覺驗收\n後端資料鏈已驗到瀏覽器，但**地圖上看不到 TAK marker**：TAK entity 是 2525-type（`a-f-G-U-C`）、`kind=null`，而 map.js 只按 `kind` 渲染（zone/event/polygon/infra/route）→ **2525 渲染是 P2-05**（另一 session 進行中）。等 P2-05 接上、能在地圖看到 TAK 點、Human 視覺驗過，再 merge。\n\n## What changed\nP2-02 W2 的 `subscribe()` 接進運行中 app + `routers/tak.py` 升真 endpoint。**只動後端/infra**（main.py / core/config.py / routers/tak.py / issue-tak-certs.sh + 自己 test），**不碰** cop_service / tak_service / static（契約）。\n\n- **lifespan**：`TAK_ENABLED` → 啟動 `subscribe()` 背景 task + shutdown cancel；啟動任何失敗只 log 不擋 app 開機。\n- **config**：`TAK_ENABLED/COT_URL/CLIENT_CERT/CLIENT_KEY/CAFILE/ALLOW_INSECURE_TLS`（env，預設 off）。\n- **router**：`receive_cot_event` async → `await cop_service.ingest_cot_event`（REST/federation push）；status 反映 TAK_ENABLED。\n- **cert**：`issue-tak-certs.sh` Section 5 離線簽 COP subscriber fullchain client cert。\n\n## DoD checklist\n- [x] Tests（11：router ingest/CAS/skip/RBAC 401·403/422/status + lifespan gate）\n- [x] `pytest` green（662 passed / 1 skipped）\n- [x] /code-review（1 修正：啟動永不擋 app）/ /security-review（0 finding）\n- [ ] **Human 視覺驗收（待 P2-05）** ← merge gate\n\n## §8 Human Verification Script\n```bash\ncd command-dashboard\npython -m pytest tests/integration/test_tak_events.py tests/unit/test_tak_lifespan.py -p no:warnings -v\n# 預期：11 passed（REST ingest / RBAC / lifespan 啟停）\n\n# 活 server 端到端（需 TAK :8089 + client cert；見 PR 實測）：\n# app(TAK_ENABLED) 啟動 → 推 CoT → 落 cop_entities + GET /api/cop/entities 回 tak entity\n```\n\n## 活 app 端到端實測（已驗，DB→API→瀏覽器三層）\n- 起 app（TAK_ENABLED=true）→ lifespan 自動連 :8089 → 推 CoT `P2-03-APP-E2E` → 落 `cop_entities`（source=tak）。\n- 從**瀏覽器** `GET /api/cop/entities` → 200 回 tak entity（`type=a-f-G-U-C, kind=null`）。\n- 地圖未顯示 = 缺 2525 渲染路徑（P2-05），非本 PR bug。\n\n## Out of scope\n- **2525/marker 渲染（static/js/map.js）= P2-05**（另一 session）。\n- federation peer cert（P2-07）、track 時間軸（P2-06）。\n\n## Notes for reviewer\n- `_start_tak_subscriber` 用 broad `except` 確保 TAK 啟動失敗永不擋 app 開機（code-review）。\n- TLS 沿用 W2 的 fail-closed（無 cafile 須 `TAK_ALLOW_INSECURE_TLS=true`）。\n",
-    "closedAt": null,
+    "closedAt": "2026-06-05T10:51:57Z",
     "comments": [
       {
         "author": {
@@ -2152,11 +2152,11 @@
     "createdAt": "2026-06-05T09:36:11Z",
     "headRefName": "feat/issue-107-p2-03-tak-wire",
     "labels": [],
-    "mergedAt": null,
+    "mergedAt": "2026-06-05T10:51:57Z",
     "number": 112,
-    "state": "OPEN",
+    "state": "MERGED",
     "title": "feat(tak): P2-03 — CoT ingestion wire 進 app（lifespan + REST + client cert）[等 P2-05 再 merge]",
-    "updatedAt": "2026-06-05T09:37:07Z",
+    "updatedAt": "2026-06-05T10:51:57Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/112"
   },
   {
@@ -2219,7 +2219,7 @@
     "number": 115,
     "state": "MERGED",
     "title": "feat(map): P2-05(c) milsymbol MIL-STD-2525 符號渲染（closes #110）",
-    "updatedAt": "2026-06-05T10:39:50Z",
+    "updatedAt": "2026-06-05T10:44:11Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/115"
   }
 ]
