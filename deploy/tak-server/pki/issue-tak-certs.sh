@@ -91,12 +91,40 @@ keytool -importcert -noprompt -alias step-ca-root \
   -file "$ROOT_CA" \
   -keystore "$OUT_DIR/fed-truststore.jks" -storetype JKS -storepass "$TAK_KEYSTORE_PASS"
 
+# ── 5. COP subscriber client 憑證（P2-03 #107：tak_service.subscribe 連 :8089 用）──
+# ★ :8089 mTLS 需 client 憑證。改用**離線**簽（step certificate create，不靠 daemon）——
+#   step-ca daemon 預設聽 :8443 會跟 TAK web tier 撞，離線簽 daemon 不在也能跑（#106 實測）。
+# ★ 輸出 **fullchain（leaf+intermediate）**：TAK truststore 只有 root，client 只送 leaf →
+#   `peer not verified`（#106 log 實證）；須 leaf+intermediate 補齊鏈才握手過。
+# ★ client cert 可 EC（不像 server 的 jwkSource 寫死 RSA）。:8089 streaming 只需 CA-trusted
+#   fullchain，**不需** UserManager enroll（enroll 是 :8443 web UI admin 才要）。
+STEP_INT_CA="${STEP_INTERMEDIATE_CA:-$HOME/.step/certs/intermediate_ca.crt}"
+STEP_INT_KEY="${STEP_INTERMEDIATE_KEY:-$HOME/.step/secrets/intermediate_ca_key}"
+STEP_PASS_FILE="${STEP_CA_PASSWORD_FILE:-$HOME/.step/secrets/password}"
+CLIENT_DIR="$STEP_CA_DIR/certs/cop-subscriber"
+if [[ -f "$STEP_INT_CA" && -f "$STEP_INT_KEY" && -f "$STEP_PASS_FILE" ]]; then
+  mkdir -p "$CLIENT_DIR"
+  step certificate create "cop-subscriber" "$CLIENT_DIR/client.crt" "$CLIENT_DIR/client.key" \
+    --ca "$STEP_INT_CA" --ca-key "$STEP_INT_KEY" --ca-password-file "$STEP_PASS_FILE" \
+    --not-after="${TAK_CLIENT_CERT_DURATION:-2160h}" --no-password --insecure --force
+  chmod 600 "$CLIENT_DIR/client.key"
+  # fullchain = leaf + intermediate（餵 dashboard 的 TAK_CLIENT_CERT，補齊 TAK 端信任鏈）
+  cat "$CLIENT_DIR/client.crt" "$STEP_INT_CA" > "$CLIENT_DIR/client-fullchain.crt"
+  CLIENT_NOTE="    $CLIENT_DIR/client-fullchain.crt（→ TAK_CLIENT_CERT）+ client.key（→ TAK_CLIENT_KEY）"
+else
+  CLIENT_NOTE="    ⚠ client 憑證跳過：找不到 intermediate CA/key/password（$STEP_INT_CA）"
+fi
+
 echo "✓ 已產出："
 echo "    $OUT_DIR/takserver.jks"
 echo "    $OUT_DIR/truststore-root.jks"
 echo "    $OUT_DIR/fed-truststore.jks"
+echo "$CLIENT_NOTE"
 echo ""
 echo "下一步："
+echo "  0. dashboard 訂閱 :8089：設 env TAK_ENABLED=true、TAK_COT_URL=tls://<host>:8089、"
+echo "     TAK_CLIENT_CERT=<上面 client-fullchain.crt>、TAK_CLIENT_KEY=<client.key>、"
+echo "     TAK_CAFILE=$ROOT_CA（驗 server 憑證；不設則須 TAK_ALLOW_INSECURE_TLS=true，有 MITM 風險）。"
 echo "  1. 確認 release/tak/CoreConfig.xml 的 <tls> keystoreFile 指向 certs/files/takserver.jks，"
 echo "     keystorePass/truststorePass = $TAK_KEYSTORE_PASS（官方 default 'atakatak'）。"
 echo "  2. federation（P2-07）與外部 TAK 對端互通時 → 把對端 CA / peer cert 也匯入 fed-truststore.jks。"

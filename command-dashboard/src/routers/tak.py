@@ -1,39 +1,50 @@
 """
-tak.py — TAK（Team Awareness Kit）整合 stub
+tak.py — TAK（Team Awareness Kit）CoT REST ingest endpoint（P2-03 / #107）
 
-協議：CoT（Cursor on Target），對齊 MIL-STD-2525
-欄位：見 `schemas/tak.py` 的 CoTEventIn（忠實對齊 CoT 2.0 規格）
+協議：CoT（Cursor on Target），對齊 MIL-STD-2525。欄位見 `schemas/tak.py` 的 CoTEventIn。
 
-C0：endpoint 仍是 stub。CoT 解析 = P2-02（`services/tak_service.py`）、
-endpoint 升級為真 = P2-03、COP 正規化 = P2-04。
-CoTEventIn schema 於 P2-02（#102）由本檔 inline 移至 `schemas/tak.py` 並補齊
-start/how/version 等 CoT 必填欄位。
+ingestion 兩條路徑（共用 #105 的 `cop_service.ingest_cot_event` 接縫）：
+- **:8089 串流訂閱** → `tak_service.subscribe()`（P2-02 W2，由 main.py lifespan 跑背景 task）
+- **REST/federation push** → 本檔 `POST /api/tak/events`（本 issue 升真）
+
+協調契約（#105/#107）：本檔**只呼叫** `ingest_cot_event`，不定義（接縫是 cop_service 的）；
+RBAC 由 `auth/role_enum.py` 中央 gate（POST=WRITE_ROLES）。
 """
 
 from fastapi import APIRouter
 
+from core import config
 from schemas.tak import CoTEventIn
+from services import cop_service
 
 router = APIRouter(prefix="/api/tak", tags=["TAK"])
 
 
 @router.post("/events")
-def receive_cot_event(body: CoTEventIn):
-    """接收 CoT 事件（Wave 7 接 COP 正規化層）"""
-    # C0 stub：驗證格式正確，回傳 ack
+async def receive_cot_event(body: CoTEventIn):
+    """接收 REST/federation push 的 CoT 事件 → 走 #105 接縫落 COP（persist + 廣播）。
+
+    回傳真實結果：
+    - 落地（create/update）→ `status="ingested"` + uid + version_clock
+    - 被守門丟棄（out-of-order / 重送 / stale / CAS 重試耗盡）→ `status="skipped"`
+    """
+    result = await cop_service.ingest_cot_event(body)
+    if result is None:
+        return {"ok": True, "uid": body.uid, "status": "skipped"}
     return {
         "ok": True,
-        "uid": body.uid,
-        "status": "stub_received",
-        "message": "TAK 整合 Wave 7 啟用，目前僅驗證格式",
+        "uid": result["uid"],
+        "version_clock": result["version_clock"],
+        "status": "ingested",
     }
 
 
 @router.get("/status")
 def tak_status():
+    """回報 TAK 整合啟用狀態（:8089 訂閱由 lifespan 依 TAK_ENABLED 啟動）。"""
     return {
-        "enabled": False,
-        "phase": "Wave 7 stub",
-        "protocol": "CoT XML (Cursor on Target)",
+        "enabled": config.TAK_ENABLED,
+        "cot_url": config.TAK_COT_URL if config.TAK_ENABLED else None,
+        "protocol": "CoT (Cursor on Target)",
         "standard": "MIL-STD-2525",
     }
