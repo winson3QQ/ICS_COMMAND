@@ -1258,14 +1258,29 @@
     },
     "body": "## 來源\n2026-06-04 對 Phase 2（TAK Server 整合）做的 source-grounded reality check（比照 P1-14/P1-16 慣例）。盤 main `0db382f` 實際 code，記錄缺口 + 動工前必處理的 drift。\n\n## 核心結論\n與 P1-14「模型早建好、只缺接線」**相反又相同**：\n- **TAK 上行鏈路（部署/解析/訂閱）零實作**（純 greenfield，無 C0 可繼承）。\n- **下游落地層（P2-04 目標）已被 P1 完整建好且刻意對齊 CoT** → P2-04 工作量大幅縮小。\n\n## 逐項現況\n\n| Item | 現況 | 標記 |\n|---|---|---|\n| P2-01 部署 TAK Server | `deploy/tak-server/` 不存在；無 docker-compose / cert SOP | 全缺 |\n| P2-02 `services/tak_service.py` | 檔案不存在；無 XML parse、無 8089/9000 訂閱；XML lib 未選 | 全缺（最重）|\n| P2-03 `routers/tak.py` | 已掛載 main.py，`CoTEventIn` schema + RBAC 已建，handler 回 `stub_received` 不 normalize | stub |\n| P2-04 `cop_service.normalize_cot` | `cop_service.py:35` = `NotImplementedError`；**但 `CoPEntity` v1 凍結（CoT 對齊、`source=\"tak\"` 預留）+ `cop_entity_repo`（version_clock CAS / stale 過濾 / TAK 風 soft-delete）全建好** | 本體缺、下游全建 |\n| P2-05 2525/MGRS/線面 | 設計 LOCKED（crosswalk §6/§8）、管線預建；但 milsymbol 未 vendored、2525 框零、`POLY/ROUTE_TYPES` 仍寫死 hex、affiliation property 全 null。**疊加非全換** | 設計已建 / code 全缺 |\n| P2-06 stale + 快照回放 | entity 層 stale 已建；**但 `snapshot_repo` 是 unit-KPI 聚合，非 per-entity COP 時間軸**（見下方 drift 1）| 缺 + drift |\n| P2-07 Federation | schema 預留，零實作（計畫本標可選）| 全缺 |\n| P2-08 測試 | 唯一 CoT 測試＝斷言 normalize 丟 NotImplementedError；無 parse/integration/XXE | 全缺 |\n\n## ⚠️ 動工前必處理的 3 個 drift / 前置\n\n1. **P2-06 ROADMAP 指向錯層**：ROADMAP 寫「COP 快照寫 `snapshot_repo`」，但 `snapshot_repo` 實際是 unit 級 KPI 聚合（傷亡/床位/等候），**不是** per-entity COP 逐格時間軸。回放資料路徑更可能走 `cop_entity_tracks` 或新表。**動工前需重新確認**。\n\n2. **step-ca 憑證現為 24h，且 federation 缺 peer cert**：`issue-cert.sh` 預設 step-ca max 24h，90 天 patch「留 C3-B」——TAK 長跑服務不可行，**P2 須提早 patch 效期**。且 federation(9000)=mTLS，現有腳本只簽 server cert，缺 client/peer cert profile + TAK Server Java keystore 信任 SOP。（`tier3-mtls.conf.disabled` 證明 CA 有 mTLS 能力，只是用在 nginx 北向。）\n\n3. **CSP wasm 接點**：P1-10h 刻意沒預放 `wasm-unsafe-eval`。若 milsymbol 走 wasm fallback，P2-05 要回頭補 CSP；純 JS canvas 則免——動工時先確認。\n\n## 供應鏈\n現況乾淨無中國來源。P2 三相依（TAK Server Apache-2.0、milsymbol MIT、defusedxml）ROADMAP 已預先圈定 license + 標「非中國」，lock 前逐一驗維護者。TAK Server 只用 core CoT + federation，不碰 commercial plugin。\n\n## 建議關鍵路徑\n- 重活＝ **P2-01 + P2-02**（部署 + CoT XML 解析/訂閱/XXE，無 C0 繼承）。\n- 接上後 **P2-03 wire + P2-04 normalize 很輕**（下游全建）。\n- **P2-05 可並行**（設計 LOCKED）；**MGRS #56 完全獨立於 TAK**，可隨時做；2525 affiliation 框需 P2-04 的 cot_type 才填色，略後於 normalize。\n- **P2-06 先重新確認資料路徑**再動。\n\n相關：ROADMAP Phase 2、#56（MGRS P2-05 子缺口）、P1-03/#15（CoPEntity v1 凍結）、P1-15/#29（即時 COP 管線）。",
     "closedAt": null,
-    "comments": [],
+    "comments": [
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## Update（2026-06-05）：P2-01 全通、drift 2（憑證）有重大新發現\n\n### P2-01 完成度修正：→ **web/API tier 也起來了**\n原 reality check 時 P2-01「不存在」；現已 merged（#100）**且實機 boot 全通**。原追蹤的 `:8443` 未起問題（#101）兩根因皆解、VERIFY-PASS（messaging/api Started、:8443 綁定、mutual-TLS + admin RBAC、web GUI 可登入）。`command-v2.2.1`。\n\n### ⚠️ drift 2（step-ca 憑證 + federation）大幅刷新\n#101 debug 挖出兩個 reality check 當時不知道的**硬約束**，都跟 drift 2 同源（憑證），動 P2-07 / 長跑前必知：\n\n1. **TAK server 憑證必須 RSA，不能 EC**。api `jwkSource` bean 用 server cert key 建 JWT 簽章源、寫死轉型 RSAPublicKey；step-ca 預設簽 ECDSA → `ClassCastException` → api context 死。`issue-tak-certs.sh` 已改 `--kty RSA --size 2048`（`14b5373`）。→ **drift 2「federation peer cert profile」要補時，記得 peer/client cert 也得確認 TAK 各 bean 對 key 型別的假設。**\n\n2. **`fed-truststore.jks` 即使不開 federation 也必須存在**。messaging（Ignite **server** node）**無條件部署** `distributed-federation-manager` Ignite service，其 SSLConfig 載 `fed-truststore.jks`；缺檔 → SSLContext 失敗 → service 部署失敗 → server node 掛 → 全 client 斷線 → :8443 不綁。`issue-tak-certs.sh` 已補產（內容=step-ca root）（PR #104 `fa38200`）。→ **這是 drift 2「federation=mTLS、現有腳本只簽 server cert」的第一個具體落地**：fed truststore 已就位；真正跟外部 TAK 對端互信（P2-07）時再把對端 CA / peer cert 匯入。\n\n3. **效期 24h 問題仍在（drift 2 主訴未解）**。`issue-tak-certs.sh` 仍只警告、未自動 patch ca.json 到 90 天。長跑 / P2-07 前仍須處理（admin client 憑證這次已用 `--not-after 2160h` 個案處理，但 server cert 走 issue-tak-certs 預設）。\n\n4. **admin web UI enroll SOP 已建**（step-ca 離線簽 client 憑證 → UserManager certmod -A → p12 用 homebrew openssl@3 非 LibreSSL）。詳見 memory `p2-tak-deploy-issue101.md`。\n\n### 對關鍵路徑的影響\nP2-01 完成 + `:8089`/`:8443` 皆通 → **P2-02（`services/tak_service.py` 接 CoT :8089）為當前最重、無阻塞的下一步**。drift 1（P2-06 snapshot 層）、drift 3（CSP wasm）不受 #101 影響，維持原狀待動工前確認。\n\n相關：#101（closed）、PR #104、ROADMAP P2-01。",
+        "createdAt": "2026-06-05T06:26:38Z",
+        "id": "IC_kwDOSnBjpc8AAAABE-Y6AA",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/98#issuecomment-4628822528"
+      }
+    ],
     "createdAt": "2026-06-04T07:35:53Z",
     "labels": [],
     "milestone": null,
     "number": 98,
     "state": "OPEN",
     "title": "P2（TAK 整合）reality check：上行鏈路全 greenfield、下游已建，3 個前置 drift 待修",
-    "updatedAt": "2026-06-04T07:35:53Z",
+    "updatedAt": "2026-06-05T06:26:38Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/98"
   },
   {
