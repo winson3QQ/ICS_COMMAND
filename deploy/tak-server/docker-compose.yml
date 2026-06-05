@@ -23,6 +23,9 @@ services:
     hostname: tak-database            # ← CoreConfig.xml 寫死 jdbc://tak-database:5432/cot，勿改
     restart: unless-stopped
     shm_size: "512m"                  # postgres shared_buffers=2560MB 需要較大 shm
+    # named volume 掛載點預設 root:root，但 configureInDocker.sh 用 `su - postgres` 跑 initdb
+    # → postgres 無法在 root 目錄 initdb（Operation not permitted）。先 chown 再執行原 entrypoint。
+    entrypoint: ["/bin/bash", "-c", "chown -R postgres:postgres /var/lib/postgresql/15 && exec /opt/tak/db-utils/configureInDocker.sh"]
     volumes:
       - ./release/tak:/opt/tak        # payload（含 db-utils/configureInDocker.sh、SchemaManager.jar）
       - tak-db-data:/var/lib/postgresql/15/data   # DB 持久化（initdb 目標路徑，見 configureInDocker.sh）

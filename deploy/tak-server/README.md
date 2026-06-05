@@ -40,15 +40,19 @@ mv /tmp/tak-x/takserver-docker-5.7-RELEASE-43/* release/
 # 3. 參數
 cp .env.example .env && $EDITOR .env          # 改 TAK_KEYSTORE_PASS、TAK_HOSTNAME、heap
 
-# 4. CoreConfig.xml（從範本複製；範本已含 jdbc://tak-database + certs/files 路徑）
+# 4. 設定檔（從範本複製 + 補必要值）—— 兩個都要，否則 boot 失敗（dogfood 驗證所得）
 cp release/tak/CoreConfig.example.xml release/tak/CoreConfig.xml
-#    確認 <repository><connection> host=tak-database；<tls> keystoreFile=certs/files/takserver.jks
-#    keystorePass 與 .env 的 TAK_KEYSTORE_PASS 一致（官方 default 'atakatak'）
+cp release/tak/TAKIgniteConfig.example.xml release/tak/TAKIgniteConfig.xml   # ★ 不補→5 JVM 搶建會 race crash
+#    CoreConfig.xml 必改：
+#    - <repository><connection ... password="...">  ★ 留空→setup-db 跳過建 cot/martiuser，DB healthcheck 永遠 fail
+#    - <tls> keystoreFile=certs/files/takserver.jks、keystorePass 與 .env 的 TAK_KEYSTORE_PASS 一致（default 'atakatak'）
 
 # 5. 憑證（step-ca → JKS；先確保 deploy/step-ca/ 已 init 且 daemon 在跑）
 #    ⚠ 先 patch step-ca 效期到 90 天（見腳本結尾警告 / reality check #98 drift 2）
 ../step-ca/start-ca.sh &        # 若尚未啟動
 pki/issue-tak-certs.sh          # 產 release/tak/certs/files/{takserver,truststore-root}.jks
+#    ★ step-ca 監聽 8443，與 TAK web UI(8443) 衝突 → 簽完憑證後停 step-ca（或把其一改埠）再 up
+pkill -f 'step-ca .*ca.json'    # 簽完即停，釋放 8443
 
 # 6. build + 啟動
 docker compose up -d --build    # 首啟久（initdb + SchemaManager upgrade，~數分鐘）
@@ -87,4 +91,12 @@ nc -zv localhost 8089 2>&1            # 期望 succeeded
 - **本 task 不含**：實機 boot 驗證（需 release 在手 + 目標機，交付時做）、Federation Hub / federation（P2-07）、commercial plugin（只用 core CoT）、Pi 原生 `.deb` 實裝（僅文件指路）。
 - **憑證效期**：step-ca 預設 24h；TAK 長跑前務必 patch `ca.json` 至 90 天（`maxTLSCertDuration: 2160h`），見 `pki/issue-tak-certs.sh` 結尾。
 - **供應鏈**：TAK Server = tak.gov 官方（Apache-2.0 core，非中國）；base image eclipse-temurin（Adoptium）/ postgres 官方。release zip 不入版控。
-</content>
+
+## 已知問題（dogfood 2026-06-05，M1/16GB Docker 10GB 實測）
+
+實機 boot 已跑通 **DB tier**（initdb + SchemaManager + `cot`/`martiuser` 建好、healthy）與 **CoT streaming `:8089`**；Ignite 叢集一度 `state=ACTIVE`。**但 web/API tier（`:8443`）尚未穩定**：
+
+- **現象**：`api` JVM 起來、連上 DB（Hikari pool）、跑一下即退出 → `:8443` 容器內外皆未綁；無乾淨 logged 例外。
+- **可能因（未定論）**：① 單容器 5-JVM 同起的脆弱性（首啟 `TAKIgniteConfig.xml` race，已用「先 cp 範本」緩解，叢集能組但 api 仍不留存）；② `.env` 的 `API_MAX_HEAP` 壓太低（dev 省記憶體設 1GB，TAK api 為大型 Spring app，可能不足）。
+- **待辦（追蹤於 follow-up issue）**：(a) 對照社群 TAK docker（Cloud-RF / atakhq）的 JVM 啟動順序（config 先、生成 TAKIgniteConfig 後再起其餘）；(b) API_MAX_HEAP 調 2-4GB 重試；(c) 乾淨 `down -v` + 刪 TAKIgniteConfig.xml 重來，確認非 raced 殘留。
+- **不卡 P2-02**：整合走 `:8089`（已通），web UI 是人類 admin 介面，非 ICS_Command 整合路徑。
