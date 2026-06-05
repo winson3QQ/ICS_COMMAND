@@ -49,9 +49,11 @@ import {
   bakeArrowSdf,
   bakeDiamondSdf,
   bakeSvgIcon,
+  bakeMilSymbol,
   pickForeground,
 } from './map/entity_layer.js';
 import { NAPSG_GLYPH_SVG, hasNapsgGlyph } from './map/napsg_glyphs.js';
+import { cotToSidc, affiliationFromCot } from './map/mil_symbol.js';
 import { DrawPreview } from './map/draw_tools.js';
 import { LabelMarkerManager } from './map/label_markers.js';
 import { EventPopup } from './map/event_popup.js';
@@ -109,6 +111,7 @@ let _infraLayer = null;     // EntityLayer (Point circle)
 let _routeLayer = null;     // EntityLayer (LineString)
 let _zoneLayer = null;      // EntityLayer (Point circle) — step 7 階段 1
 let _facilitiesLayer = null;   // P1-17：永久設施唯讀基準層（獨立 facilities source）
+let _takLayer = null;       // P2-05(c)：TAK 單位 MIL-STD-2525 符號層（milsymbol frame icon）
 let _facilitiesData = null;    // /api/facilities 快取（lazy：首次開圖層才抓）
 let _facilitiesPopup = null;   // P1-17：hover tooltip（maplibregl.Popup）
 let _facilitiesHoverWired = false;
@@ -576,6 +579,7 @@ function _scheduleCopRender() {
     _renderPolygons();
     _renderZones(); // PR-G1b：事件位置圖釘也在 cop_entities，即時重繪
     _renderInfra(); // P1-16 PR-2：設施（kind='infra'）cutover 進 cop_entities，即時重繪
+    _renderTakUnits(); // P2-05(c)：TAK 單位 2525 符號（source='tak' atom），即時重繪
   };
   if (typeof requestAnimationFrame !== 'undefined') requestAnimationFrame(run);
   else setTimeout(run, 0);
@@ -592,6 +596,42 @@ export function refreshLeafletMarkers() {
   _renderRoutes();
   _renderZones();
   _renderFacilities();  // P1-17：永久設施基準層（lazy + 預設關）
+  _renderTakUnits();    // P2-05(c)：TAK 單位 MIL-STD-2525 符號
+}
+
+/**
+ * P2-05(c)：render source='tak' 的 atom 單位為 MIL-STD-2525 符號（milsymbol frame）。
+ * cot_type → SIDC（mil_symbol.cotToSidc；非 atom→null 跳過）→ bakeMilSymbol（async）。
+ * milsymbol 未載（window.ms 不在）→ bake resolve(false)、icon-image 找不到 → 該 feature
+ * 不顯示（fallback：無框，不致報錯）。
+ */
+function _renderTakUnits() {
+  if (!_takLayer) return;
+  if (!_copStream) { _takLayer.clear(); return; }
+  const map = _getMap();
+  const units = _copStream.getEntitiesBySource('tak')
+    .filter((e) => e.lat != null && e.lon != null && cotToSidc(e.type));
+  const features = [];
+  const bakes = [];
+  for (const e of units) {
+    const sidc = cotToSidc(e.type);
+    if (map) bakes.push(bakeMilSymbol(map, sidc));
+    features.push({
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: [Number(e.lon), Number(e.lat)] },
+      properties: {
+        id: e.uid,
+        iconId: 'mil-' + sidc,
+        affiliation: affiliationFromCot(e.type),
+        label: e.callsign || e.uid,
+      },
+    });
+  }
+  _takLayer.update(features);
+  // bake 為 async SVG raster：完成後若有新 icon → 再 update 一次讓 frame 顯示。
+  if (bakes.length) {
+    Promise.all(bakes).then((rs) => { if (rs.some(Boolean) && _takLayer) _takLayer.update(features); });
+  }
 }
 
 // P1-17：渲染永久設施基準層。lazy —— 預設關，首次開圖層才抓 /api/facilities（8000+ 點，
@@ -1069,6 +1109,22 @@ function _ensureEntityLayers() {
   // 自管 clustered facilities source，不碰既有層、不依賴 EntityLayer。lazy 由 _renderFacilities 抓。
   _facilitiesLayer = new FacilitiesLayer(map);
   _wireFacilitiesHover(map);   // P1-17：滑鼠移上去顯示設施名稱 tooltip
+
+  // P2-05(c)：TAK 單位 MIL-STD-2525 符號層。icon = milsymbol baked frame（全彩非 SDF，
+  // 不套 icon-color；色彩語意由 SIDC 內建）。allow-overlap：戰術單位密集時不互相吃掉。
+  _takLayer = new EntityLayer(map, 'tak-units', {
+    layers: [
+      {
+        id: 'tak-units-icon',
+        type: 'symbol',
+        layout: {
+          'icon-image': ['get', 'iconId'],
+          'icon-allow-overlap': true,
+          'icon-ignore-placement': true,
+        },
+      },
+    ],
+  });
 
   // Polygons — fill + stroke + label（dash/solid 拆兩 layer + filter，因 MapLibre v4
   // line-dasharray 不支援 data-driven expression）
