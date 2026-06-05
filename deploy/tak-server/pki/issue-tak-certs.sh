@@ -7,6 +7,10 @@
 # 產出（放進 CoreConfig.xml 指定路徑 /opt/tak/certs/files/）：
 #   - takserver.jks         server 憑證 + 私鑰（step-ca 簽）
 #   - truststore-root.jks   step-ca root（讓 TAK 信任同 CA 簽的 client / peer）
+#   - fed-truststore.jks    federation 信任庫（裝 step-ca root，同官方 makeCert.sh 的 fed-truststore）
+#       ★ 即使不開 federation 也必須有：messaging JVM 無條件部署 distributed-federation-manager
+#         Ignite service，其 SSLConfig 載此檔；缺檔 → SSLContext 未初始化 → service 部署失敗
+#         → messaging（Ignite server node）整個掛 → config/api 等 client 全斷線 → :8443 不綁（#101 根因#2）。
 #
 # 前置：
 #   1. step-ca daemon 已啟動（deploy/step-ca/start-ca.sh）
@@ -77,14 +81,25 @@ keytool -importcert -noprompt -alias step-ca-root \
   -file "$ROOT_CA" \
   -keystore "$OUT_DIR/truststore-root.jks" -storetype JKS -storepass "$TAK_KEYSTORE_PASS"
 
+# ── 4. fed-truststore.jks（CoreConfig <federation-server> 引用，messaging 無條件部署需要）──
+# ★ 缺此檔 = #101 根因#2：messaging 部署 distributed-federation-manager Ignite service 時
+#   SSLConfig 載 fed-truststore.jks 失敗 → SSLContext 未初始化 → service 部署失敗 → messaging 掛
+#   → Ignite server node 死 → config/api client 全 disconnect → api 卡 federation bean → :8443 不綁。
+# 內容 = step-ca root（單 CA PoC 下與 truststore-root 同；federation 對端若用不同 CA，P2-07 再加匯入）。
+rm -f "$OUT_DIR/fed-truststore.jks"
+keytool -importcert -noprompt -alias step-ca-root \
+  -file "$ROOT_CA" \
+  -keystore "$OUT_DIR/fed-truststore.jks" -storetype JKS -storepass "$TAK_KEYSTORE_PASS"
+
 echo "✓ 已產出："
 echo "    $OUT_DIR/takserver.jks"
 echo "    $OUT_DIR/truststore-root.jks"
+echo "    $OUT_DIR/fed-truststore.jks"
 echo ""
 echo "下一步："
 echo "  1. 確認 release/tak/CoreConfig.xml 的 <tls> keystoreFile 指向 certs/files/takserver.jks，"
 echo "     keystorePass/truststorePass = $TAK_KEYSTORE_PASS（官方 default 'atakatak'）。"
-echo "  2. federation（P2-07）另需 peer cert → 同法簽一張 client-auth 憑證匯入 fed-truststore.jks。"
+echo "  2. federation（P2-07）與外部 TAK 對端互通時 → 把對端 CA / peer cert 也匯入 fed-truststore.jks。"
 echo ""
 echo "⚠ 效期警告（reality check #98 drift 2）：step-ca 預設簽 24h，TAK 長跑服務不可行。"
 echo "  簽前先把 ~/.step/config/ca.json 的 provisioner.claims 加："

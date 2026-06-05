@@ -94,9 +94,9 @@ nc -zv localhost 8089 2>&1            # 期望 succeeded
 
 ## 已知問題（dogfood 2026-06-05，M1/16GB Docker 10GB 實測）
 
-實機 boot 已跑通 **DB tier**（initdb + SchemaManager + `cot`/`martiuser` healthy）與 **CoT streaming `:8089`**；Ignite 叢集可達 `state=ACTIVE`。**web/API tier（`:8443`）：根因 #1 已修、根因 #2 待解**（詳 [#101](https://github.com/winson3QQ/ICS_COMMAND/issues/101)）：
+實機 boot 已跑通 **DB tier**（initdb + SchemaManager + `cot`/`martiuser` healthy）與 **CoT streaming `:8089`**；Ignite 叢集可達 `state=ACTIVE`。**web/API tier（`:8443`）：兩個根因皆已定位並修**（詳 [#101](https://github.com/winson3QQ/ICS_COMMAND/issues/101)）：
 
 - ✅ **根因 #1（已修）：server 憑證必須 RSA**。TAK api 的 `jwkSource` bean 用 server cert 的 key 建 JWT 簽章源，**寫死 RSAPublicKey**；step-ca 預設 ECDSA → `ClassCastException` → api 死。`pki/issue-tak-certs.sh` 已改 `--kty RSA --size 2048`。**只看 `/opt/tak/logs/takserver-api.log`（api 專屬），別看合併的 takserver.log。**
-- ❌ **根因 #2（待解）：Ignite client 斷線**。RSA 修好後 api 前進到 `distributedFederationHttpConnectorManager` bean，因 `IgniteClientDisconnectedException` 失敗。**可重現、非資源（1.9G/9.7G）、非 timeout（預設 600s）**。研判為單容器 5-JVM 同時啟動的 Ignite 叢集脆弱性。
-- **待辦（#101）**：staggered JVM 啟動（config 先穩→再起其餘）／對照社群 docker 拓樸／確認 config(Ignite server) 穩定性。
+- ✅ **根因 #2（已修）：缺 `fed-truststore.jks`**（**非 staggered start，非資源/timeout**）。讀 `takserver-messaging.log` 現形：messaging（Ignite **server** node）部署 `distributed-federation-manager` Ignite service 時，`SSLConfig` 載 `certs/files/fed-truststore.jks` → `FileNotFoundException` → `SSLContext is not initialized` → `ServiceDeploymentException` → messaging `Application run failed`。**messaging 一掛，Ignite server node 消失 → config/api 等 client 全 `IgniteClientDisconnectedException`**——api 卡 federation bean 是**症狀不是根因**（同根因#1 的 red herring 模式）。即使不開 federation（`CoreConfig.xml` 仍含 `<federation>` 區塊），此 service 無條件部署，故 `fed-truststore.jks` 必須存在。`pki/issue-tak-certs.sh` 已補產（內容 = step-ca root，同官方 `makeCert.sh` 的 fed-truststore）。
+- **驗證指引**：messaging 起來看 `grep 'Started TAK Server messaging' takserver-messaging.log`；api 綁 8443 看 `netstat -tlnp | grep 8443`（容器內）。
 - **不卡 P2-02**：整合走 `:8089`（已通），web UI 是人類 admin 介面，非整合路徑。
