@@ -1423,14 +1423,29 @@
     },
     "body": "## 來源 / 定位\nROADMAP **P2-03**。`routers/tak.py` 現為 stub（`POST /api/tak/events` 回 `stub_received`）。schema（`CoTEventIn`）+ RBAC 已建。本 issue 把它接上 #105 的 ingest 接縫，成為 **第二條 ingestion 路徑**（HTTP/federation push；與 P2-02 Wave 2 的 :8089 串流並列）。\n\n## Scope\n- `receive_cot_event` handler：\n  - 接受 `CoTEventIn`（已驗證 schema）；若有 raw-XML push 變體，走 `tak_service.parse_cot_xml` → CoTEventIn。\n  - 呼叫 **`cop_service.ingest_cot_event(event)`**（#105 接縫）。\n  - 回真實狀態（persisted uid / version_clock / stale-skipped），取代 `stub_received`。\n- `/api/tak/status`：反映真實啟用狀態（訂閱是否連線等，視 P2-02 W2 暴露的狀態）。\n- 維持既有 RBAC（CoT 推送端點的權限）。\n\n## ⚠️ 協調契約（依 #105，凍結）\n- **檔案產權**：本 issue **只動** `routers/tak.py` + 自己的 test。**不准碰** `cop_service.py`（#105）與 `tak_service.py`（P2-02 W2）。\n- **接縫**：**只呼叫** `ingest_cot_event`，不定義。\n- **排序**：#105 先 merge；本 issue rebase main 後接。與 P2-02 W2 互不重疊（不同檔），可並行。\n\n## 測試（DoD）\n- `POST /api/tak/events` 合法 CoTEventIn → 200 + 真實 persisted 結果（非 stub）；entity 進 `cop_entities` + 廣播。\n- 重複 uid → CAS version_clock +1；stale 落後 → 被擋的回應。\n- RBAC：無權限角色被拒。\n- 全綠 + `doc_sync_check` exit 0。\n\n## 不在本 issue\n- ingest 接縫本體（#105）、:8089 串流訂閱（P2-02 W2 / #106）、2525 視覺（P2-05）、track 時間軸（P2-06）。\n\n相關：#105（接縫契約）、#106（P2-02 W2）、#98（reality check）。",
     "closedAt": null,
-    "comments": [],
+    "comments": [
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## 就緒更新 + 並行協調基準（P2-02 W2 移交後）\n\n依賴皆已 merged → **P2-03 現在 ready 可開工**：\n- #105 `ingest_cot_event` 接縫（`28490cf`）✅\n- #109 `tak_service.subscribe()`（`72d390d`，活 server 端到端實測過）✅\n\n### 本 issue scope（= P2-02 W2 移交的 production 整合 + 原 router wire）\n1. **lifespan wiring** — `main.py` FastAPI lifespan startup 把 `tak_service.subscribe()` launch 成背景 task + shutdown cancel。**沒這步 CoT 不會在 production 流入**（subscribe 目前沒人跑）。\n2. **client cert 正式簽發** — 擴 `deploy/tak-server/pki/issue-tak-certs.sh` 出 COP subscriber 的 **fullchain** client cert（leaf+intermediate；現只簽 server/truststore/fed-truststore）。⚠ :8089 streaming 只需 CA-trusted fullchain cert，**不需** UserManager enroll（enroll 是 :8443 web UI 才要）。\n3. **config plumbing** — `core/config.py` env-driven `cot_url` + cert 路徑餵 `build_subscribe_config`。\n4. **`routers/tak.py`** stub → 真 endpoint：REST/federation push 也呼叫 `cop_service.ingest_cot_event`（**只呼叫、不定義** —— 接縫是 #105 的）。\n\n### ⚠️ 產權邊界（與 P2-05 並行，零重疊）\n- 本 issue **只動後端/infra**：`main.py` / `core/config.py` / `routers/tak.py` / `deploy/tak-server/pki/issue-tak-certs.sh` / 自己的 test。\n- **不碰** `static/js/*`（前端符號是 P2-05）、**不碰** `cop_service.py`（接縫 #105）、**不碰** `tak_service.py` 的既有 subscribe/parse 主體（#106/#109，必要時只新增呼叫點）。\n- 與 **P2-05（前端 2525 符號）完全不同層 → 可同時開**，無共用接縫。\n\nDoD：app 啟動後真 CoT 從 :8089 流入 `cop_entities` 並廣播；REST push 路徑同樣落 ingest；doc_sync + pytest 綠 + /code-review + /security-review。",
+        "createdAt": "2026-06-05T08:33:07Z",
+        "id": "IC_kwDOSnBjpc8AAAABE_K7bw",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/107#issuecomment-4629642095"
+      }
+    ],
     "createdAt": "2026-06-05T06:43:54Z",
     "labels": [],
     "milestone": null,
     "number": 107,
     "state": "OPEN",
     "title": "P2-03: routers/tak.py — stub 升真 endpoint（REST/federation push → ingest）",
-    "updatedAt": "2026-06-05T06:43:54Z",
+    "updatedAt": "2026-06-05T08:33:07Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/107"
   }
 ]
