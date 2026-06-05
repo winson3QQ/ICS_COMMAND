@@ -19,6 +19,11 @@ import {
   mgrsGridLabel,
   mgrs100kmSquare,
   MgrsGrid,
+  GZD_ZOOM,
+  GRID_LEVELS,
+  utmZoneFromLng,
+  latBandFromLat,
+  computeGzdFeatures,
 } from '../../static/js/map/coord_tools.js';
 
 describe('latlngToUtm / utmToLatLng round-trip', () => {
@@ -153,6 +158,12 @@ describe('mgrsGridSpacing', () => {
     expect(mgrsGridSpacing(null, 24.8)).toBe(100000);
     expect(mgrsGridSpacing(14, null)).toBe(100000);
   });
+
+  it('1-2-5 半階：zoom 14 落 500m（原十進制為 1km）→ 標籤多一位', () => {
+    expect(mgrsGridSpacing(14, 24.8)).toBe(500);
+    // 回傳值一律在 1-2-5 階梯內
+    expect(GRID_LEVELS).toContain(mgrsGridSpacing(14, 24.8));
+  });
 });
 
 describe('mgrsGridLabel (MGRS-standard digit counts, no floor)', () => {
@@ -189,6 +200,22 @@ describe('mgrsGridLabel (MGRS-standard digit counts, no floor)', () => {
 
   it('100km 整邊界 (val=200000 / 1km spacing) → "00"', () => {
     expect(mgrsGridLabel(200000, 1000)).toBe('00');
+  });
+
+  // #56 follow-up：1-2-5 半階 → 標籤多取一位使相鄰格線可區分
+  it('500m 半階 → 3 位（455 / 450，比 1km 的 45 多一位）', () => {
+    expect(mgrsGridLabel(45500, 500)).toBe('455');
+    expect(mgrsGridLabel(45000, 500)).toBe('450');
+  });
+  it('200m 半階 → 3 位（相鄰 200m 線可區分）', () => {
+    expect(mgrsGridLabel(45200, 200)).toBe('452');
+    expect(mgrsGridLabel(45400, 200)).toBe('454');
+  });
+  it('50m 半階 → 4 位', () => {
+    expect(mgrsGridLabel(45050, 50)).toBe('4505');
+  });
+  it('十進制階梯位數不變（ceil≡round）：1km 仍 2 位', () => {
+    expect(mgrsGridLabel(45000, 1000)).toBe('45');
   });
 });
 
@@ -260,13 +287,13 @@ describe('MgrsGrid', () => {
     const lines = map.getSource('mgrs-grid')._data.features.filter(
       (f) => f.geometry.type === 'LineString',
     );
-    // Test env zoom=14 + 緯度 24.8 → primary=1000m (1km), secondary=100m (100m)
+    // Test env zoom=14 + 緯度 24.8 → 1-2-5 階梯下 primary=500m，secondary=100m（500/5 nesting）
     // 兩 tier 都應該出現
     const primaryCount = lines.filter((f) => f.properties.tier === 'primary').length;
     const secondaryCount = lines.filter((f) => f.properties.tier === 'secondary').length;
     expect(primaryCount).toBeGreaterThan(0);
     expect(secondaryCount).toBeGreaterThan(0);
-    // Secondary 應該比 primary 多（10× density）
+    // Secondary（100m）比 primary（500m）密 → 線更多
     expect(secondaryCount).toBeGreaterThan(primaryCount);
   });
 
@@ -331,8 +358,8 @@ describe('MgrsGrid', () => {
   });
 
   it('低 zoom（primary=100km tier）→ 每 100km 方格中央 emit designator label', () => {
-    // zoom 8 + 緯度 24.8 → metersPerPx ~674 → primary=100km
-    const lowZoomMap = makeMockMap(24.8, 121.0, 8);
+    // zoom 7 + 緯度 24.8 → primary=100km（1-2-5 階梯下 zoom 8 已是 50km，故用 7）→ 100km designator
+    const lowZoomMap = makeMockMap(24.8, 121.0, 7);
     // 撐大 bounds 跨多個 100km square
     lowZoomMap.getBounds = () => ({
       getSouth: () => 24.0, getNorth: () => 25.5,
@@ -377,11 +404,24 @@ describe('MgrsGrid', () => {
 });
 
 describe('mgrsGridSecondaryTier', () => {
-  it('primary 1km → secondary 100m，zoom 高密度足 → visible', () => {
-    // zoom 14 在台灣緯度大約 10.5 m/px，secondary 100m → 約 9.5 px，剛好過 8 px 門檻
+  it('primary 1km → secondary 500m（/2 nesting），zoom 14 → visible', () => {
+    // #56：1-2-5 階梯下 secondary = 能整除 primary 的相鄰細階（1000/2=500，nesting）
     const t = mgrsGridSecondaryTier(1000, 14, 24.8);
-    expect(t.spacing).toBe(100);
+    expect(t.spacing).toBe(500);
     expect(t.visible).toBe(true);
+  });
+
+  it('primary 500m → secondary 100m（/5 nesting，250 不在階梯）', () => {
+    const t = mgrsGridSecondaryTier(500, 14, 24.8);
+    expect(t.spacing).toBe(100); // 500/2=250 不在 GRID_LEVELS → 退 500/5=100
+  });
+
+  it('secondary 一律整除 primary（nesting 不變式）', () => {
+    for (const p of GRID_LEVELS.filter((s) => s > 1)) {
+      const t = mgrsGridSecondaryTier(p, 14, 24.8);
+      expect(GRID_LEVELS).toContain(t.spacing); // 在階梯內
+      expect(p % t.spacing).toBe(0);            // 整除 → 格網對齊
+    }
   });
 
   it('primary 1m → 無法再細，spacing null', () => {
@@ -390,11 +430,10 @@ describe('mgrsGridSecondaryTier', () => {
     expect(t.visible).toBe(false);
   });
 
-  it('低 zoom（primary 100km / secondary 10km）→ 10km secondary 在低 zoom 像素太密 → 不可見', () => {
-    // zoom 6 在台灣緯度大約 2700 m/px，secondary 10000m → 約 3.7 px，低於 8 px → not visible
+  it('低 zoom（primary 100km）→ secondary 50km（/2），zoom 6 約 18px → visible', () => {
     const t = mgrsGridSecondaryTier(100000, 6, 24.8);
-    expect(t.spacing).toBe(10000);
-    expect(t.visible).toBe(false);
+    expect(t.spacing).toBe(50000);
+    expect(t.visible).toBe(true);
   });
 });
 
@@ -411,5 +450,92 @@ describe('mgrs100kmSquare', () => {
   it('回 2 字母 ASCII', () => {
     const id = mgrs100kmSquare(24.5, 121.0);
     expect(id).toMatch(/^[A-Z]{2}$/);
+  });
+});
+
+// ── #56：MGRS 多 zone 投影 + 低 zoom GZD 帶 ──────────────────────────────────
+
+function makeWideMockMap(south, north, west, east, zoom) {
+  const sources = new Map();
+  return {
+    addSource(id, spec) { sources.set(id, { ...spec, _data: spec.data, setData(d) { this._data = d; } }); },
+    getSource(id) { return sources.get(id) || null; },
+    removeSource(id) { sources.delete(id); },
+    addLayer() {}, getLayer() { return null; }, removeLayer() {},
+    getBounds() {
+      return { getSouth: () => south, getNorth: () => north, getWest: () => west, getEast: () => east };
+    },
+    getZoom: () => zoom,
+    getCenter: () => ({ lat: (south + north) / 2, lng: (west + east) / 2 }),
+    getCanvas: () => ({ clientWidth: 1024, clientHeight: 768 }),
+    unproject: ([x, y]) => ({ lat: north - (y / 768) * (north - south), lng: west + (x / 1024) * (east - west) }),
+  };
+}
+
+function allLineCoordsFinite(fc) {
+  return fc.features
+    .filter((f) => f.geometry.type === 'LineString')
+    .every((f) => f.geometry.coordinates.every(([lng, lat]) => Number.isFinite(lng) && Number.isFinite(lat)));
+}
+
+describe('#56 MGRS 多 zone + GZD', () => {
+  it('utmZoneFromLng：台灣 51、跨界 50/52', () => {
+    expect(utmZoneFromLng(121)).toBe(51);
+    expect(utmZoneFromLng(119)).toBe(50);
+    expect(utmZoneFromLng(127)).toBe(52);
+  });
+
+  it('latBandFromLat：台灣 R 帶 / 邊界 / 範圍外', () => {
+    expect(latBandFromLat(24.8)).toBe('R');
+    expect(latBandFromLat(-80)).toBe('C');
+    expect(latBandFromLat(83)).toBe('X');
+    expect(latBandFromLat(90)).toBe('');
+  });
+
+  it('computeGzdFeatures：跨 zone → 6° 經線 + designator 51R，座標全有限', () => {
+    const fc = { features: computeGzdFeatures(119, 127, 21, 29) };
+    const lonLines = fc.features.filter(
+      (f) => f.geometry.type === 'LineString' && f.geometry.coordinates[0][0] === f.geometry.coordinates[1][0],
+    );
+    const lons = lonLines.map((f) => f.geometry.coordinates[0][0]);
+    expect(lons).toContain(120); // zone 50/51 界
+    expect(lons).toContain(126); // zone 51/52 界
+    const desigs = fc.features.filter((f) => f.properties.axis === 'designator').map((f) => f.properties.label);
+    expect(desigs).toContain('51R'); // 台灣 GZD
+    expect(allLineCoordsFinite(fc)).toBe(true);
+  });
+
+  it('redraw 低 zoom（< GZD_ZOOM）跨 zone → GZD 非空且全有限（#56：格線不再消失）', () => {
+    const map = makeWideMockMap(21, 29, 119, 127, GZD_ZOOM - 2);
+    const grid = new MgrsGrid(map);
+    grid.setVisible(true); // _install + redraw
+    const fc = map.getSource('mgrs-grid')._data;
+    expect(fc.features.length).toBeGreaterThan(0);
+    expect(allLineCoordsFinite(fc)).toBe(true);
+  });
+
+  it('redraw 低 zoom 視野不寬 → 疊加 100km 細格（secondary）讓 GZD 不稀疏', () => {
+    const map = makeWideMockMap(22, 28, 119, 125, GZD_ZOOM - 1); // 6°×6° < 門檻
+    const grid = new MgrsGrid(map);
+    grid.setVisible(true);
+    const fc = map.getSource('mgrs-grid')._data;
+    const hasGzd = fc.features.some((f) => f.properties.axis === 'designator'); // GZD 帶在
+    const hasFine = fc.features.some((f) => f.properties.tier === 'secondary'); // 100km 細格疊加
+    expect(hasGzd).toBe(true);
+    expect(hasFine).toBe(true);
+    expect(allLineCoordsFinite(fc)).toBe(true);
+  });
+
+  it('redraw 中 zoom 跨多 zone → 細格線橫跨多 zone 皆有限（原 bug：遠 zone 線變 NaN 被丟）', () => {
+    const map = makeWideMockMap(23, 26, 119.5, 126.5, GZD_ZOOM + 1);
+    const grid = new MgrsGrid(map);
+    grid.setVisible(true);
+    const fc = map.getSource('mgrs-grid')._data;
+    expect(fc.features.length).toBeGreaterThan(0);
+    expect(allLineCoordsFinite(fc)).toBe(true);
+    const lngs = fc.features
+      .filter((f) => f.geometry.type === 'LineString')
+      .flatMap((f) => f.geometry.coordinates.map((c) => c[0]));
+    expect(Math.max(...lngs) - Math.min(...lngs)).toBeGreaterThan(5); // 跨 >5° 證明非只畫中心 zone
   });
 });

@@ -185,15 +185,18 @@ export function mgrs100kmSquare(lat, lng) {
  *
  * @param {number} zoom MapLibre zoom level
  * @param {number} centerLat 畫面中心緯度（用於計算實際公尺對 pixel 比例）
- * @returns {number} 公尺（1 / 10 / 100 / 1000 / 10000 / 100000）
+ * @returns {number} 公尺（GRID_LEVELS 之一）
  */
+// 1-2-5 半階階梯（非純十進制）：讓中間 zoom 落更細格距 → 標籤多一位精度、少內插（#56 follow-up）。
+// secondary tier 取能整除 primary 的相鄰細階（primary/2 或 /5）以保持 nesting（格網對齊）。
+export const GRID_LEVELS = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000];
+
 export function mgrsGridSpacing(zoom, centerLat) {
   const MIN_PX = 40;
   if (zoom == null || centerLat == null) return 100000;
   const metersPerPx = metersPerPixel(zoom, centerLat);
   const minMeters = metersPerPx * MIN_PX;
-  const levels = [1, 10, 100, 1000, 10000, 100000];
-  return levels.find((s) => s >= minMeters) || 100000;
+  return GRID_LEVELS.find((s) => s >= minMeters) || 100000;
 }
 
 /** 工具：MapLibre Web Mercator 在指定 zoom + 緯度的公尺 / 像素比 */
@@ -214,7 +217,9 @@ export function metersPerPixel(zoom, centerLat) {
  */
 export function mgrsGridSecondaryTier(primary, zoom, centerLat) {
   if (primary <= 1) return { spacing: null, visible: false };
-  const spacing = primary / 10;
+  // 取能整除 primary 的相鄰細階（/2 優先，否則 /5），確保 secondary 線在 primary 線上 nesting。
+  const half = primary / 2;
+  const spacing = GRID_LEVELS.includes(half) ? half : primary / 5;
   const pxSpacing = spacing / metersPerPixel(zoom, centerLat);
   return { spacing, visible: pxSpacing >= 8 };
 }
@@ -235,11 +240,72 @@ export function mgrsGridSecondaryTier(primary, zoom, centerLat) {
  * 在 10km/1km grid 時顯示 '980', '981' 看起來像 100m grid，誤導判讀。
  */
 export function mgrsGridLabel(val, spacing) {
-  const digits = Math.round(Math.log10(100000 / spacing));
+  // ceil（非 round）：十進制階梯下與 round 等價（既有行為不變），半階格距（500/200/50…）
+  // 則多取一位，使相鄰格線可區分（如 500m → '455' 而非 '45'）。#56 follow-up。
+  const digits = Math.ceil(Math.log10(100000 / spacing));
   if (digits <= 0) return '';
   const divisor = Math.pow(10, 5 - digits);
   const v = Math.round(val % 100000);
   return String(Math.floor(v / divisor)).padStart(digits, '0');
+}
+
+// #56：低於此 zoom 改畫 GZD 帶（100km 細格在世界尺度過密、且跨多 UTM zone 投影失真）。
+export const GZD_ZOOM = 6;
+// GZD 區間密度補強：視野跨度小於此才疊加 100km 多 zone 細格（避免世界尺度橫線爆量）。
+export const GZD_FINE_MAX_LON_SPAN = 40;
+export const GZD_FINE_MAX_LAT_SPAN = 30;
+
+// 經度 → UTM zone（1..60，wrap-safe）。
+export function utmZoneFromLng(lng) {
+  return ((Math.floor((lng + 180) / 6) % 60) + 60) % 60 + 1;
+}
+
+// 緯度 → MGRS 緯度帶字母（C..X，每 8°，X 帶 72..84 為 12°）。範圍外回 ''。
+export function latBandFromLat(lat) {
+  if (lat < -80 || lat > 84) return '';
+  let i = Math.floor((lat + 80) / 8);
+  if (i > 19) i = 19;            // 80..84 → X
+  return LAT_BANDS[i] || '';
+}
+
+// #56：GZD 帶 features（純函式，可測）。6° 經度 zone 界 + 8° 緯度帶界 + designator（如 '51R'）。
+// 線走 tier='primary'（沿用既有 primary line layer）、designator 走 axis='designator'。
+export function computeGzdFeatures(west, east, south, north) {
+  const feats = [];
+  const s = Math.max(south, -80);
+  const n = Math.min(north, 84);
+  if (n <= s) return feats;
+  const line = (coords) => feats.push({ type: 'Feature', geometry: { type: 'LineString', coordinates: coords }, properties: { tier: 'primary' } });
+  // 6° 經度 zone 界線（垂直）
+  const k0 = Math.floor((west + 180) / 6);
+  const k1 = Math.ceil((east + 180) / 6);
+  for (let k = k0; k <= k1; k++) {
+    const lng = k * 6 - 180;
+    line([[lng, s], [lng, n]]);
+  }
+  // 8° 緯度帶界線（水平）：-80..72 每 8° + 頂界 84
+  const latLines = [];
+  for (let lat = -80; lat <= 72; lat += 8) latLines.push(lat);
+  latLines.push(84);
+  for (const lat of latLines) {
+    if (lat < s - 1e-6 || lat > n + 1e-6) continue;
+    line([[west, lat], [east, lat]]);
+  }
+  // designator '51R' 等：每個可見 zone×band 中央
+  for (let k = k0; k < k1; k++) {
+    const lngC = k * 6 - 180 + 3;
+    if (lngC < west || lngC > east) continue;
+    const zoneNum = ((k % 60) + 60) % 60 + 1;
+    for (let lat = -80; lat < 84; lat += 8) {
+      const top = lat === 72 ? 84 : lat + 8;
+      const latC = (lat + top) / 2;
+      if (latC < s || latC > n) continue;
+      const band = latBandFromLat(latC);
+      if (!band) continue;
+      feats.push({ type: 'Feature', geometry: { type: 'Point', coordinates: [lngC, latC] }, properties: { label: `${zoneNum}${band}`, axis: 'designator' } });
+    }
+  }
+  return feats;
 }
 
 // ── MgrsGrid 渲染 class ──────────────────────────────────────
@@ -459,10 +525,38 @@ export class MgrsGrid {
     const bounds = map.getBounds();
     const zoom = map.getZoom();
     const center = map.getCenter();
+    const west = bounds.getWest();
+    const east = bounds.getEast();
+    const south = bounds.getSouth();
+    const north = bounds.getNorth();
+
+    const features = [];
+
+    // #56：低 zoom（世界/區域尺度）→ GZD 帶（6° 經 zone 界 + 8° 緯帶界 + designator）。
+    // 跨多 UTM zone 用單一中心 zone 投影會失真到非有限（原 bug）；改逐 zone 投影。
+    if (zoom < GZD_ZOOM) {
+      for (const f of computeGzdFeatures(west, east, south, north)) features.push(f);
+      // 密度補強：純 6°/8° GZD 在中間 zoom 太稀疏（看起來像斷線）→ 視野不過寬時
+      // 疊加多 zone 100km 細格（secondary tier），與 zoom≥GZD_ZOOM 的細格平滑銜接。
+      // 真世界尺度（跨度過大）才只留 GZD 帶，避免上萬條橫線爆掉。
+      if (east - west < GZD_FINE_MAX_LON_SPAN && north - south < GZD_FINE_MAX_LAT_SPAN) {
+        const zW = utmZoneFromLng(west);
+        const zE = utmZoneFromLng(east);
+        for (let z = zW; z <= zE; z++) {
+          const lonW = Math.max(west, (z - 1) * 6 - 180);
+          const lonE = Math.min(east, z * 6 - 180);
+          if (lonE - lonW < 1e-6) continue;
+          this._emitZoneLines(features, z, lonW, lonE, south, north, 100000, 'secondary');
+        }
+      }
+      this.map.getSource('mgrs-grid')?.setData({ type: 'FeatureCollection', features });
+      return;
+    }
+
     const primary = mgrsGridSpacing(zoom, center.lat);
     const sec = mgrsGridSecondaryTier(primary, zoom, center.lat);
-    const sw = latlngToUtm(bounds.getSouth(), bounds.getWest());
-    const ne = latlngToUtm(bounds.getNorth(), bounds.getEast());
+    const sw = latlngToUtm(south, west);
+    const ne = latlngToUtm(north, east);
     const ctr = latlngToUtm(center.lat, center.lng);
     const zn = ctr.zoneNum;
 
@@ -480,42 +574,17 @@ export class MgrsGrid {
     const labelN_top    = latlngToUtm(llTop.lat, llTop.lng).northing;
     const labelN_bottom = latlngToUtm(llBottom.lat, llBottom.lng).northing;
 
-    const features = [];
-
-    // Helper：emit 一個 tier 的所有格線（不含 label）
-    const emitTier = (spacing, tier) => {
-      // 東西向 northing 線
-      const n0 = Math.floor(sw.northing / spacing) * spacing;
-      const n1 = Math.ceil(ne.northing / spacing) * spacing;
-      for (let n = n0; n <= n1; n += spacing) {
-        const p1 = utmToLatLng(zn, sw.easting - spacing, n);
-        const p2 = utmToLatLng(zn, ne.easting + spacing, n);
-        if (!Number.isFinite(p1.lat) || !Number.isFinite(p2.lat)) continue;
-        features.push({
-          type: 'Feature',
-          geometry: { type: 'LineString', coordinates: [[p1.lng, p1.lat], [p2.lng, p2.lat]] },
-          properties: { tier },
-        });
-      }
-      // 南北向 easting 線
-      const e0 = Math.floor(sw.easting / spacing) * spacing;
-      const e1 = Math.ceil(ne.easting / spacing) * spacing;
-      for (let e = e0; e <= e1; e += spacing) {
-        const p1 = utmToLatLng(zn, e, sw.northing - spacing);
-        const p2 = utmToLatLng(zn, e, ne.northing + spacing);
-        if (!Number.isFinite(p1.lat) || !Number.isFinite(p2.lat)) continue;
-        features.push({
-          type: 'Feature',
-          geometry: { type: 'LineString', coordinates: [[p1.lng, p1.lat], [p2.lng, p2.lat]] },
-          properties: { tier },
-        });
-      }
-    };
-
-    // 1. Secondary tier（如果像素密度允許）— 先 emit，z-order 下；layer filter 用 tier
-    if (sec.visible) emitTier(sec.spacing, 'secondary');
-    // 2. Primary tier — 永遠 emit
-    emitTier(primary, 'primary');
+    // #56：格線逐 UTM zone 繪製並 clip 到各自 6° 經度帶。原本整畫面用中心 zone（zn）投影，
+    // 跨 zone 時離中央經線越遠越失真 → 點變非有限被丟（格線消失）。窗只跨單 zone 時退化為原行為。
+    const zMin = utmZoneFromLng(west);
+    const zMax = utmZoneFromLng(east);
+    for (let z = zMin; z <= zMax; z++) {
+      const lonW = Math.max(west, (z - 1) * 6 - 180);
+      const lonE = Math.min(east, z * 6 - 180);
+      if (lonE - lonW < 1e-6) continue;
+      if (sec.visible) this._emitZoneLines(features, z, lonW, lonE, south, north, sec.spacing, 'secondary');
+      this._emitZoneLines(features, z, lonW, lonE, south, north, primary, 'primary');
+    }
 
     // 3. 100km square designator labels（如 'UH' / 'TH'）— 對齊 TAK 慣例
     //    primary 已是 100km 時 edge labels 是空（沒位數可標），改在每個 100km 方格
@@ -579,6 +648,46 @@ export class MgrsGrid {
       type: 'FeatureCollection',
       features,
     });
+  }
+
+  // #56：emit 單一 UTM zone z 的格線，clip 到該 zone 可見經度窗 [lonW, lonE]。
+  // 每條線端點在 z 帶內投影 → 有限；clip lng 讓相鄰 zone 的線在帶界接合不溢出。
+  _emitZoneLines(features, z, lonW, lonE, south, north, spacing, tier) {
+    const mid = (south + north) / 2;
+    const cs = [
+      latlngToUtm(south, lonW), latlngToUtm(south, lonE),
+      latlngToUtm(north, lonW), latlngToUtm(north, lonE),
+      latlngToUtm(mid, lonW), latlngToUtm(mid, lonE),
+    ];
+    const es = cs.map((c) => c.easting);
+    const ns = cs.map((c) => c.northing);
+    const eMin = Math.min(...es), eMax = Math.max(...es);
+    const nMin = Math.min(...ns), nMax = Math.max(...ns);
+    const clip = (lng) => (lng < lonW ? lonW : lng > lonE ? lonE : lng);
+    const push = (p1, p2) => features.push({
+      type: 'Feature',
+      geometry: { type: 'LineString', coordinates: [[clip(p1.lng), p1.lat], [clip(p2.lng), p2.lat]] },
+      properties: { tier },
+    });
+    // 橫線（northing 固定）
+    const n0 = Math.floor(nMin / spacing) * spacing;
+    const n1 = Math.ceil(nMax / spacing) * spacing;
+    for (let n = n0; n <= n1; n += spacing) {
+      const p1 = utmToLatLng(z, eMin - spacing, n);
+      const p2 = utmToLatLng(z, eMax + spacing, n);
+      if (!Number.isFinite(p1.lat) || !Number.isFinite(p2.lat)) continue;
+      push(p1, p2);
+    }
+    // 直線（easting 固定）
+    const e0 = Math.floor(eMin / spacing) * spacing;
+    const e1 = Math.ceil(eMax / spacing) * spacing;
+    for (let e = e0; e <= e1; e += spacing) {
+      const p1 = utmToLatLng(z, e, nMin - spacing);
+      const p2 = utmToLatLng(z, e, nMax + spacing);
+      if (!Number.isFinite(p1.lat) || !Number.isFinite(p2.lat)) continue;
+      if ((p1.lng < lonW && p2.lng < lonW) || (p1.lng > lonE && p2.lng > lonE)) continue;
+      push(p1, p2);
+    }
   }
 
   destroy() {
