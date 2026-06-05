@@ -20,11 +20,11 @@
 
 // CoT affiliation char（type 第 2 段）→ 內部 4 態（對映 --mil-* 色 token / frame）。
 // j(joker)/k(faker) 為演習用敵對擬態 → 色彩歸 hostile；a(assumed friend)→friendly。
+// 只列「異於 default」者；u/p/o 等未知系與未列字母一律走 default 'unknown'。
 const _COT_AFFILIATION = {
   f: 'friendly', a: 'friendly',
   h: 'hostile', s: 'hostile', j: 'hostile', k: 'hostile',
   n: 'neutral',
-  u: 'unknown', p: 'unknown', o: 'unknown', g: 'unknown', w: 'unknown',
 };
 
 // 內部 4 態 → 2525C SIDC affiliation code（位 2）。

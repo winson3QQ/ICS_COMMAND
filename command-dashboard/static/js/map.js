@@ -605,32 +605,38 @@ export function refreshLeafletMarkers() {
  * milsymbol 未載（window.ms 不在）→ bake resolve(false)、icon-image 找不到 → 該 feature
  * 不顯示（fallback：無框，不致報錯）。
  */
+let _takRenderSeq = 0;
 function _renderTakUnits() {
   if (!_takLayer) return;
+  const seq = ++_takRenderSeq;  // 每輪遞增；async bake 回來時憑此判斷是否仍是最新一輪
   if (!_copStream) { _takLayer.clear(); return; }
   const map = _getMap();
-  const units = _copStream.getEntitiesBySource('tak')
-    .filter((e) => e.lat != null && e.lon != null && cotToSidc(e.type));
   const features = [];
-  const bakes = [];
-  for (const e of units) {
+  const sidcs = new Set();      // 依 SIDC dedupe bake（同型單位共用一張 icon）
+  for (const e of _copStream.getEntitiesBySource('tak')) {
+    const lat = Number(e.lat);
+    const lon = Number(e.lon);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
     const sidc = cotToSidc(e.type);
-    if (map) bakes.push(bakeMilSymbol(map, sidc));
+    if (!sidc) continue;         // 非 atom（route/polygon 等）→ 走既有渲染
+    sidcs.add(sidc);
     features.push({
       type: 'Feature',
-      geometry: { type: 'Point', coordinates: [Number(e.lon), Number(e.lat)] },
+      geometry: { type: 'Point', coordinates: [lon, lat] },
       properties: {
         id: e.uid,
         iconId: 'mil-' + sidc,
-        affiliation: affiliationFromCot(e.type),
+        affiliation: affiliationFromCot(e.type),  // 預留 hover/filter（icon 色已由 SIDC 內建）
         label: e.callsign || e.uid,
       },
     });
   }
   _takLayer.update(features);
-  // bake 為 async SVG raster：完成後若有新 icon → 再 update 一次讓 frame 顯示。
-  if (bakes.length) {
-    Promise.all(bakes).then((rs) => { if (rs.some(Boolean) && _takLayer) _takLayer.update(features); });
+  // bake 為 async SVG raster：每個不同 SIDC bake 一次；完成後若有新 icon **且本輪仍最新**
+  // → re-update 顯框（seq guard 防舊輪 .then 用過時 features 蓋掉新位置）。
+  if (map && sidcs.size) {
+    Promise.all([...sidcs].map((s) => bakeMilSymbol(map, s)))
+      .then((rs) => { if (rs.some(Boolean) && _takLayer && seq === _takRenderSeq) _takLayer.update(features); });
   }
 }
 
