@@ -2101,5 +2101,62 @@
     "title": "feat(tak): P2-02 Wave 2 — tak_service.subscribe() :8089 CoT 訂閱（pytak mTLS）",
     "updatedAt": "2026-06-05T08:16:36Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/109"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "## 定位\nROADMAP **P2-05** 子塊 **(b)**（§8 線/面 + 設施色走 design token）。P2-05 拆三：(a) MGRS 多 zone(#56)、**(b) hex→token（本 PR）**、(c) milsymbol 2525 核心。\n\n## 變更\n- 新增 **`cssVar(name, fallback)` 橋接**（`getComputedStyle` 讀 ds-tokens，fallback 兜底無 DOM/未載 CSS）—— codebase 首個 CSS-token→MapLibre 單一來源機制。\n- 6 個 type-palette 色表（`_NODE_COLORS`/`_SEV_COLORS`/`_RAG_COLORS`/`POLY_TYPES`/`INFRA_TYPES`/`ROUTE_TYPES`）改讀標準 token。\n- **遊離 hex 收斂到標準調色盤**（決策：對齊 §8 標準盤，非保色）：\n  - `#e05555`/`#c0392b`（control/danger/hospital/medical/emergency）→ `--red`\n  - `#56d364`（primary route）→ `--green`；`#ff7f50`/`#f0883e`（fire/shelter-node）→ `--orange`\n  - ops/police/forward→`--accent`；utility/command→`--text-secondary`\n  - severity/RAG exact-match：僅來源改 token，**零視覺變化**\n\n## §8 驗證\n```\nnpx vitest run        → 224 passed（含新增 p2_05b 守門：無遊離 hex 殘留）\nnpx eslint            → clean\ndoc_sync_check.py     → exit 0\n```\n**實機視覺驗收 PASS**：登入畫 zone/route + 設施/節點，色相一致對齊標準盤（control/danger/hospital 統一 #f85149、primary route #3fb950、fire #d29922）。\n\n## 視覺差異（意圖內）\ncontrol/danger/hospital/medical 紅微調（#e05555/#c0392b→#f85149）、primary route 綠（#56d364→#3fb950）、fire/shelter 橘（#ff7f50/#f0883e→#d29922）。色相不變、僅對齊標準盤。\n\n## 範圍\nPart of #110（不 close）。(a) MGRS #56 / (c) milsymbol 2525 另出 PR。版號：使用者可感 UI 微調 → 建議 `cmd-v1.0.0`→`v1.0.1`（待 P2-05 收尾或本 PR 進版時打）。",
+    "closedAt": null,
+    "comments": [],
+    "createdAt": "2026-06-05T09:09:45Z",
+    "headRefName": "feat/issue-110-symbol-tokens",
+    "labels": [],
+    "mergedAt": null,
+    "number": 111,
+    "state": "OPEN",
+    "title": "refactor(map): P2-05(b) type-palette hex → ds-tokens 調色盤對齊（#110）",
+    "updatedAt": "2026-06-05T09:09:45Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/111"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "## ROADMAP item\n- Closes #107（P2-03）\n\n## ⚠️ 先別 merge — 等 P2-05 + 視覺驗收\n後端資料鏈已驗到瀏覽器，但**地圖上看不到 TAK marker**：TAK entity 是 2525-type（`a-f-G-U-C`）、`kind=null`，而 map.js 只按 `kind` 渲染（zone/event/polygon/infra/route）→ **2525 渲染是 P2-05**（另一 session 進行中）。等 P2-05 接上、能在地圖看到 TAK 點、Human 視覺驗過，再 merge。\n\n## What changed\nP2-02 W2 的 `subscribe()` 接進運行中 app + `routers/tak.py` 升真 endpoint。**只動後端/infra**（main.py / core/config.py / routers/tak.py / issue-tak-certs.sh + 自己 test），**不碰** cop_service / tak_service / static（契約）。\n\n- **lifespan**：`TAK_ENABLED` → 啟動 `subscribe()` 背景 task + shutdown cancel；啟動任何失敗只 log 不擋 app 開機。\n- **config**：`TAK_ENABLED/COT_URL/CLIENT_CERT/CLIENT_KEY/CAFILE/ALLOW_INSECURE_TLS`（env，預設 off）。\n- **router**：`receive_cot_event` async → `await cop_service.ingest_cot_event`（REST/federation push）；status 反映 TAK_ENABLED。\n- **cert**：`issue-tak-certs.sh` Section 5 離線簽 COP subscriber fullchain client cert。\n\n## DoD checklist\n- [x] Tests（11：router ingest/CAS/skip/RBAC 401·403/422/status + lifespan gate）\n- [x] `pytest` green（662 passed / 1 skipped）\n- [x] /code-review（1 修正：啟動永不擋 app）/ /security-review（0 finding）\n- [ ] **Human 視覺驗收（待 P2-05）** ← merge gate\n\n## §8 Human Verification Script\n```bash\ncd command-dashboard\npython -m pytest tests/integration/test_tak_events.py tests/unit/test_tak_lifespan.py -p no:warnings -v\n# 預期：11 passed（REST ingest / RBAC / lifespan 啟停）\n\n# 活 server 端到端（需 TAK :8089 + client cert；見 PR 實測）：\n# app(TAK_ENABLED) 啟動 → 推 CoT → 落 cop_entities + GET /api/cop/entities 回 tak entity\n```\n\n## 活 app 端到端實測（已驗，DB→API→瀏覽器三層）\n- 起 app（TAK_ENABLED=true）→ lifespan 自動連 :8089 → 推 CoT `P2-03-APP-E2E` → 落 `cop_entities`（source=tak）。\n- 從**瀏覽器** `GET /api/cop/entities` → 200 回 tak entity（`type=a-f-G-U-C, kind=null`）。\n- 地圖未顯示 = 缺 2525 渲染路徑（P2-05），非本 PR bug。\n\n## Out of scope\n- **2525/marker 渲染（static/js/map.js）= P2-05**（另一 session）。\n- federation peer cert（P2-07）、track 時間軸（P2-06）。\n\n## Notes for reviewer\n- `_start_tak_subscriber` 用 broad `except` 確保 TAK 啟動失敗永不擋 app 開機（code-review）。\n- TLS 沿用 W2 的 fail-closed（無 cafile 須 `TAK_ALLOW_INSECURE_TLS=true`）。\n",
+    "closedAt": null,
+    "comments": [
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "### Verification evidence\n```\n$ python -m pytest -p no:warnings -q   # 全套\n...............                                                          [100%]\n$ python -m pytest tests/integration/test_tak_events.py tests/unit/test_tak_lifespan.py -q\n...........                                                              [100%]\n$ ruff check\nAll checks passed!\n$ doc_sync_check\n✓ doc-sync check passed\n```\n\n**瀏覽器層證據**（user dogfood）：`GET /api/cop/entities` → 200 回 2 筆 tak entity（`type=a-f-G-U-C, kind=null`）；地圖未畫 = 缺 2525 渲染路徑（P2-05），資料鏈本身完整。\n",
+        "createdAt": "2026-06-05T09:37:07Z",
+        "id": "IC_kwDOSnBjpc8AAAABE_o8Og",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/112#issuecomment-4630133818"
+      }
+    ],
+    "createdAt": "2026-06-05T09:36:11Z",
+    "headRefName": "feat/issue-107-p2-03-tak-wire",
+    "labels": [],
+    "mergedAt": null,
+    "number": 112,
+    "state": "OPEN",
+    "title": "feat(tak): P2-03 — CoT ingestion wire 進 app（lifespan + REST + client cert）[等 P2-05 再 merge]",
+    "updatedAt": "2026-06-05T09:37:07Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/112"
   }
 ]
