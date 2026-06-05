@@ -390,6 +390,7 @@ Phase 1 內部建議順序：P1-10 全部完成 → P1-12a → **P1-12b+14 合�
 | 12 | **AAR 頁面 layout 未定** | 無現成頁面；嵌主 dashboard 與即時 ops 模式衝突 | P2-20 | 獨立頁面 `/aar/{exercise_id}` |
 | 13 | **軌跡 PII retention policy 未定義** | `cop_entity_tracks` 累積 = 人員移動時間序列（高度敏感）；無清除 SOP | P2-06a/P2-20 | 90 天 TTL 或 exercise 刪除 cascade；文件化於 threat_model.md（P2-17）|
 | 14 | **Scenario runner 並發控制** | 無 per-exercise mutex；兩腳本同時跑 → 學員地圖混亂 | P2-19 | `exercises.scenario_running` 欄位；第二個 run 請求 409 |
+| 15 | **REST ingest 端點缺機器間認證**（→ TAK-A）| `POST /api/tak/events` 要求 WRITE_ROLES session token；外部 TAK server / federation 無 session 取得機制（無 API key / HMAC inbound / service account 路徑）→ 端點對「REST federation push」用途事實上不可呼叫 | P2-03 後 / 任何需要 REST federation push 的場景前 | **三選一**：(A) HMAC inbound（對齊 Pi-node `verify_hmac` 模式）；(B) mTLS inbound client cert；(C) 只保留 :8089 pull、標此端點 internal-only。動工前先確認 TAK federation 架構需求（影響 P2-11 M2M auth 設計） |
 
 #### 確認架構決策（後續 PR 的 SoT）
 
@@ -596,6 +597,31 @@ P3 整合的前提是 WaveInk 採以下五原則設計訓練 / 運行資料平�
 | **RT-M2** | `routers/admin.py:61` `_check_admin_pin` 實際只驗 sysadmin role，無第二因素 | 推論：非 bug——「admin PIN 第二因素」是 P1-12 key-mgmt 概念，現況 backup 路由 sysadmin-role gate 是當前設計 | **P1-12**（要做第二因素才談） |
 | **RT-M4** | `auth/service.py:54` session IP binding 只比 /24 前綴 | 事實：刻意取捨，容忍現場 iPad 同網段漫遊。收緊 /32 會誤踢登出（見陷阱 2） | 不動，記 residual risk |
 | **RT-L1/L2** | HMAC skew 預設 5 分（`config.py:97`）；TAK insecure TLS flag（`config.py:109`） | nonce 已蓋重放；TAK TLS 已 fail-closed（P2-02 security review 落實） | 不動 / 已緩解 |
+
+### TAK 介面安全（TAK_ENABLED=false 時休眠，啟用前必查）
+
+> 以下六項在 `TAK_ENABLED=false`（現役預設）時不可觸達，**不影響當前系統**。TAK-A 屬架構決策（啟用前必解）；其餘依對應 P2 子項動工時機處理。代號 `TAK-x` 為本次審查 TAK 介面專項，與 RT-* 並列追蹤。
+
+| 代號 | 事實 | 性質 / 推論 | 動工時機（觸發）+ 怎麼動 |
+|---|---|---|---|
+| **TAK-A** | `POST /api/tak/events` 走 WRITE_ROLES session token；外部 TAK server / federation 無機器間 session 取得機制（無 API key / HMAC inbound / service account 路徑），端點對「REST federation push」用途不可呼叫 | 設計間隙（非 bug）；見缺口 #15 | **TAK 上線前必解**。三選一（詳缺口 #15）：(A) HMAC inbound；(B) mTLS inbound；(C) 廢棄 REST push 只留 :8089 pull。⚠️決策影響 P2-11 M2M auth 設計方向 |
+| **TAK-B** | `cop_entities.uid` 無命名空間隔離；TAK CoT uid 與 ICS 本地 entity uid 相同 + 時間戳更新 → `ingest_cot_event` CAS update 覆蓋本地 entity 的 type/lat/lon/callsign/remarks（`_TAK_UPDATE_FIELDS`，`cop_service.py:50`） | 完整性風險（Tampering）；意外碰撞或惡意偽造 uid 均可觸發 | P2-10（CoT 內容層驗證里程碑）。**怎麼動**：`normalize_cot` 前加 `tak:` uid 前綴（`tak:{original_uid}`），使 TAK uid 命名空間與本地 `manual:*` 隔離。⚠️改前綴後 TAK entity 改為 create 路徑，version_clock 從 1 重計 |
+| **TAK-C** | `CoTEventIn.opex` 欄位被接收（`schemas/tak.py:41`）但 `normalize_cot()` 完全不讀；`exercise_id` 由 `current_exercise_id()` 決定；演習中 TAK 推 `opex="o"`（真實作戰）的 CoT 被標 exercise_id → 演習 archive/reset 時隨場清掉 | 資料完整性：演習 / 實戰混池（Tampering）；無演習時影響 NULL 池不受 exercise reset | P2-04 follow-up 或 P2-19（需 P2-11b `simulated` 欄位）。**怎麼動**：`normalize_cot` 讀 `opex`：`"e"` → 綁 active exercise；`"o"` → 強制 `exercise_id=None`（NULL 池）；`"s"` → 設 `simulated=True`（需 P2-11b 先落） |
+| **TAK-D** | `CoPEntity.visible_to` schema 預設 `["all"]`（`schemas/cop.py:85`）；`normalize_cot()` 不覆寫此欄位 → 所有 TAK entity 對全部 COP 訂閱者可見（含 observer）；`cop_hub` broadcast 亦無分級過濾 | 未來多分類環境的資訊洩漏（Information Disclosure）；現況 observer = read-only 非敏感部署下無害 | P2-12（UI 面板分層顯示）評估時考慮。**怎麼動**：建立 CoT `access` 欄位 → `visible_to` 映射規則（如 `access="FOUO"` → `["commander","sysadmin"]`）；無多分類需求可延後 |
+| **TAK-E** | `:8089` 串流訂閱（`subscribe()`）無流量管制；每 uid 有 1s 精度保護（`_normalize_iso8601` 秒 floor + `_is_newer` 比較），但 uid 數量無上限；50 ATAK @ 1Hz = 50 DB write + 50 WS broadcast/s 持續壓 | DoS 弱面（多 uid 高頻 burst）；單 uid 已有 1s 保護，uid 爆量未擋 | P2-06a（軌跡寫入接線）同批。**怎麼動**：per-exercise uid count 上限（configurable env）+ global async token bucket（如 60 events/s）；超量 `log.warning` 不中斷串流 |
+| **TAK-F** | ATAK 醫療擴充（CasEvac / 9-line）在 `<detail>` 放傷患 PII；`_extract_detail()` 全部進 `attributes` → 明文 JSON 存 `cop_entities`；`cop_hub` broadcast 傳給所有訂閱者；Pi push 傷患資料有 Fernet 加密，TAK 側無同等保護 | PII 洩漏（Information Disclosure）；影響範圍視部署是否使用醫療 CoT 擴充（CasEvac type prefix `b-a-o-tbl`） | P2-09（MEDEVAC 9-line 正規化）動工時。**怎麼動**：`b-a-o-tbl-*` type CoT 分流到 P2-09 `medical_records`，**不進** `cop_entities.attributes`；其餘 entity `attributes` 加密邊界靠 P1-12c SQLCipher（確認 P1-12c 優先於 TAK 醫療 CoT 上線）|
+
+### 使用者操作安全風險（合法操作者誤操作）
+
+> 以下五項不需攻擊者，普通 sysadmin 在壓力下誤操作即可觸發。分級以「系統損害」為主軸。代號 `OP-x` 為本次審查操作安全專項。
+
+| 代號 | 事實 | 性質 / 推論 | 動工時機（觸發）+ 怎麼動 |
+|---|---|---|---|
+| **OP-1** | `account_repo.suspend_all_accounts()` SQL：`WHERE status='active'` 無排除發起者本人；執行後零 active 帳號，系統進入「需主機 shell 直操 DB 才能解救」狀態 | 自鎖風險（Denial of Access，操作失誤）；`POST /api/admin/accounts/suspend-all` 一次觸發不可逆 | **隨時可做，建議 P1-12 前**。**怎麼動**：SQL 加 `AND username != :operator`；強制 body 帶 `confirm: "SUSPEND_ALL"` 確認字串（422 強制）；補測試「sysadmin 不被自鎖」 |
+| **OP-2** | `POST /api/admin/reset-db` / `reset-exercise` 後端接受空 body，無確認欄位；前端若只靠 JS `confirm()` dialog，一次誤點觸發不可逆清除；`reset-db` 無 L3 防呆 backup（P1-12b 尚未完成） | 不可逆破壞（演習中觸發 = 全毀）；需要 sysadmin session，但誤操作門檻低 | **P1-12b（L3 防呆 hook）同批**。**怎麼動**：後端強制 body 帶 `confirm: "RESET"` 欄位（422 強制，不依賴前端 dialog）；P1-12b L3 hook 完成後自動備份再清 |
+| **OP-3** | `IDLE_TIMEOUT=900s`（15 分）；`WARNING_THRESHOLD_SECONDS=120` 已存於 `core/config.py:42` 但前端尚未實作倒數 banner；session 到期後若前端靜默回 401 → 操作員誤以為資料已送出 | UX 可靠性（資料遺失風險）；壓力演習中影響最大 | P1-14 follow-up。**怎麼動**：前端於 `WARNING_THRESHOLD_SECONDS=120` 時彈 session 警示 banner（config 已備，補 UI 即可）；全域 fetch error handler 攔 401 明確提示「已登出，資料**未**送出」 |
+| **OP-4** | `GET /api/admin/backups/{name}/restore-cmd` 回傳完整 CLI 還原指令（含路徑），為「系統關機後離線執行」設計；系統**運行中**執行 `cp` 覆蓋熱 DB → SQLite WAL 不一致 / 損壞；endpoint 無任何「需先停服務」警示 | 資料損壞風險（操作情境誤解）；P1-12b restore GUI 完成後此端點應廢棄 | **P1-12b（restore GUI）同批**。**怎麼動**：response 加 `warning: "stop service before running this command"` 欄位；P1-12b 完成後廢棄此端點（GUI restore 取代）|
+| **OP-5** | `ensure_default_admin(default_pin="1234")` 舊函式仍在 `account_repo.py:226`；`is_first_run_required()` 有 `is_default_pin=1` 警示但只是 UI 提醒，無強制換 PIN 流程；operator 可忽略警示繼續使用預設 PIN | 預設弱憑證留存（Spoofing）；`ensure_initial_admin_token`（亂數 6 碼）是新路徑但舊函式未刪，兩者並存有混用風險 | P1-12a（初始憑證管理）前或任何時候獨立修。**怎麼動**：`ensure_default_admin` 廢棄（或刪除）；登入後偵測 `is_default_pin=1` → 強制導向 change-PIN 流程（不得繞過 API）；補測試「預設 PIN 登入後強制換」 |
 
 ### ⚠️「補完又產生別的」三陷阱（修補前必讀）
 
