@@ -95,3 +95,13 @@ AUTH_EXEMPT_PREFIXES: tuple[str, ...] = ("/static/",)
 HMAC_TIMESTAMP_SKEW_MS: int = int(os.getenv("HMAC_TIMESTAMP_SKEW_MS", "300000"))
 # Nonce TTL（ms）：Lazy Expiry 清理週期。應 ≥ HMAC_TIMESTAMP_SKEW_MS。
 NONCE_TTL_MS: int = int(os.getenv("NONCE_TTL_MS", "600000"))
+
+# ── TAK CoT 訂閱（P2-03 / #107）────────────────────────────────────────────
+# 預設 OFF：未設定 TAK 時 app 不嘗試連線（dev/CI 安全）。設了才在 lifespan launch 背景 task。
+TAK_ENABLED: bool = os.getenv("TAK_ENABLED", "false").lower() == "true"
+TAK_COT_URL: str = os.getenv("TAK_COT_URL", "")  # tls://<host>:8089（TAK CoT streaming）
+TAK_CLIENT_CERT: str = os.getenv("TAK_CLIENT_CERT", "")  # client 憑證 PEM，須含完整鏈（leaf+intermediate）
+TAK_CLIENT_KEY: str = os.getenv("TAK_CLIENT_KEY", "")  # client 私鑰 PEM
+TAK_CAFILE: str | None = os.getenv("TAK_CAFILE") or None  # 驗 server 憑證的 CA（step-ca root）；正式部署必填
+# 顯式允許「無 cafile → 完全不驗 server」（僅 dev/PoC，有 MITM 風險，build_subscribe_config 會 warn）
+TAK_ALLOW_INSECURE_TLS: bool = os.getenv("TAK_ALLOW_INSECURE_TLS", "false").lower() == "true"
