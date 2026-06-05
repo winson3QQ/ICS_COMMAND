@@ -203,15 +203,24 @@ def build_subscribe_config(
     client_key: str,
     cafile: str | None = None,
     check_hostname: bool = False,
+    allow_insecure_tls: bool = False,
 ):
     """組 pytak 連線設定（回 ConfigParser SectionProxy，相容 pytak 的 .get/.getboolean）。
+
+    **安全（fail-closed）**：server 憑證驗證**預設開啟**。沒給 `cafile` 又沒顯式
+    `allow_insecure_tls=True` → raise，不靜默放行。關掉 server 驗證 = MITM 可冒充 TAK
+    server、把偽造 CoT 注入 COP（對作戰圖的完整性攻擊），故須刻意 opt-in（security-review #106）。
 
     Args:
         cot_url:     `tls://<host>:8089`（TAK CoT streaming）。
         client_cert: client 憑證 PEM，**須含完整鏈（leaf + intermediate）**。
         client_key:  client 私鑰 PEM。
-        cafile:      驗 server 憑證的 CA（step-ca root）。None → 不驗 server（僅 PoC/dev）。
-        check_hostname: 是否驗 server SAN（dev 預設 False，因 SAN=tak.ics.local 非 IP）。
+        cafile:      驗 server 憑證的 CA（step-ca root）。**正式部署必填。**
+        check_hostname: 是否驗 server SAN。dev 預設 False（SAN=tak.ics.local 非連線 IP）；
+                        與驗證脫鉤 —— 給 cafile + check_hostname=False = 驗憑證鏈但不卡 hostname。
+        allow_insecure_tls: 顯式允許「無 cafile → 完全不驗 server」（僅 PoC/dev，會大聲 warn）。
+    Raises:
+        ValueError: 無 cafile 且未顯式 allow_insecure_tls。
     """
     from configparser import ConfigParser
 
@@ -224,9 +233,19 @@ def build_subscribe_config(
         "TAK_PROTO": "0",
     }
     if cafile:
-        section["PYTAK_TLS_CLIENT_CAFILE"] = cafile
-    else:
+        section["PYTAK_TLS_CLIENT_CAFILE"] = cafile  # 驗 server 憑證（對 step-ca 信任鏈）
+    elif allow_insecure_tls:
         section["PYTAK_TLS_DONT_VERIFY"] = "1"
+        log.warning(
+            "tak.tls_verification_disabled",
+            reason="無 cafile + allow_insecure_tls",
+            risk="MITM 可冒充 TAK server 注入偽造 CoT 進 COP；僅限 dev/PoC",
+        )
+    else:
+        raise ValueError(
+            "build_subscribe_config：須提供 cafile 驗 server 憑證；"
+            "dev 無 CA 時須顯式傳 allow_insecure_tls=True（會關閉 server 驗證，有 MITM 風險）"
+        )
     if not check_hostname:
         section["PYTAK_TLS_DONT_CHECK_HOSTNAME"] = "1"
     cp["tak_subscribe"] = section

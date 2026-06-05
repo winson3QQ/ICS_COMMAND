@@ -74,8 +74,16 @@ def test_config_with_cafile_verifies_server():
     assert cfg.get("TAK_PROTO") == "0"  # v0 CoT XML
 
 
-def test_config_without_cafile_sets_dont_verify():
-    cfg = build_subscribe_config(cot_url="tls://h:8089", client_cert="/c", client_key="/k")
+def test_config_without_cafile_raises_unless_opt_in():
+    # fail-closed：沒 cafile 又沒顯式 allow_insecure_tls → raise（不靜默關閉 server 驗證）
+    import pytest
+
+    with pytest.raises(ValueError, match="cafile"):
+        build_subscribe_config(cot_url="tls://h:8089", client_cert="/c", client_key="/k")
+
+
+def test_config_insecure_opt_in_sets_dont_verify():
+    cfg = build_subscribe_config(cot_url="tls://h:8089", client_cert="/c", client_key="/k", allow_insecure_tls=True)
     assert cfg.get("PYTAK_TLS_DONT_VERIFY") == "1"
     assert cfg.get("PYTAK_TLS_DONT_CHECK_HOSTNAME") == "1"
 
@@ -119,7 +127,7 @@ def test_subscribe_ingests_entities_filters_control_and_stops(monkeypatch):
 
     async def run():
         stop = asyncio.Event()
-        cfg = build_subscribe_config(cot_url="tls://h:8089", client_cert="/c", client_key="/k")
+        cfg = build_subscribe_config(cot_url="tls://h:8089", client_cert="/c", client_key="/k", allow_insecure_tls=True)
         task = asyncio.create_task(
             tak_service.subscribe(cfg, ingest=got.append, stop_event=stop, backoff_initial=0.01, backoff_max=0.01)
         )
@@ -159,7 +167,7 @@ def test_subscribe_ingest_error_does_not_break_stream(monkeypatch):
 
     async def run():
         stop = asyncio.Event()
-        cfg = build_subscribe_config(cot_url="tls://h:8089", client_cert="/c", client_key="/k")
+        cfg = build_subscribe_config(cot_url="tls://h:8089", client_cert="/c", client_key="/k", allow_insecure_tls=True)
         task = asyncio.create_task(
             tak_service.subscribe(cfg, ingest=flaky_ingest, stop_event=stop, backoff_initial=0.01, backoff_max=0.01)
         )
@@ -189,7 +197,7 @@ def test_subscribe_reconnects_on_connect_failure_then_stops(monkeypatch):
 
     async def run():
         stop = asyncio.Event()
-        cfg = build_subscribe_config(cot_url="tls://h:8089", client_cert="/c", client_key="/k")
+        cfg = build_subscribe_config(cot_url="tls://h:8089", client_cert="/c", client_key="/k", allow_insecure_tls=True)
         task = asyncio.create_task(
             tak_service.subscribe(cfg, ingest=lambda e: None, stop_event=stop, backoff_initial=0.01, backoff_max=0.01)
         )
