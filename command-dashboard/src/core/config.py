@@ -43,7 +43,7 @@ WARNING_THRESHOLD_SECONDS: int = int(os.getenv("ICS_WARNING_THRESHOLD_SECONDS", 
 # 注意：PinLock（UI 層 idle 鎖定）是獨立機制，與此 server-side timeout 無關
 
 # ── App ───────────────────────────────────
-APP_VERSION = "2.2.0"  # MINOR：P1-14 exercise scoping + P1-16 placement UI 等功能（補功能債；2.1.0 起累積未進版）
+APP_VERSION = "2.2.1"  # PATCH：#101 TAK web tier 兩根因修正（RSA 憑證 + fed-truststore.jks）→ :8443 起來
 
 # CMD_VERSION：前端 UI 功能版本（不同於後端 SemVer APP_VERSION；規則見 CLAUDE.md 版號規則）
 # 兩軌版本命名，不可混用。由 /api/version 提供給前端，是唯一 source-of-truth；release 時更新此值。
