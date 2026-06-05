@@ -1447,5 +1447,25 @@
     "title": "P2-03: routers/tak.py — stub 升真 endpoint（REST/federation push → ingest）",
     "updatedAt": "2026-06-05T08:33:07Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/107"
+  },
+  {
+    "assignees": [],
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "body": "## 定位\nROADMAP **P2-05**。把 TAK / Command 的符號**視覺統一**——Command 前端用 milsymbol 把已對齊的 CoT/2525 grammar 畫成與 ATAK 一致的符號。分類代碼層早已統一（P1-03 凍 `CoPEntity.type` = 2525 grammar）；本 issue 是**渲染層收斂**。\n\n## 就緒度（現在可開工）\n- 設計 SoT **LOCKED**：`command-dashboard/docs/design/classification-crosswalk.md` §6（點狀單位 affiliation-aware）/ §8（線/面 control measures）。\n- **P2-04（#105）已完成 → `cot_type` 已能灌進 COP → affiliation 著色現在有資料吃**（先前 affiliation property 全 null 的阻塞解除）。\n- 色彩 token 地基已備：P1-10a 的 `--mil-friendly/hostile/neutral/unknown`；P1-10d 的 NAPSG 象形 + severity token。\n- **與後端 P2-03 完全不同層 → 可並行**。\n\n## Scope\n1. **vendored milsymbol**（MIT，spatialillusions，非中國）→ `static/`，CSP 確認（純 JS canvas 免 wasm；若走 wasm fallback 才需補 `wasm-unsafe-eval`，見 #98 drift 3）。\n2. **點狀單位渲染**：affiliation 框（friend 矩形 / hostile 菱形 / neutral 方 / unknown 四葉草）由 cot_type 前綴分流（情境表 A–E，§6）；類型 = NAPSG 象形；severity = halo。\n3. **線/面 Tactical Graphics**（§8）：route≈axis-of-advance、polygon≈area-control，**收斂現有寫死 hex `POLY_TYPES`/`ROUTE_TYPES` → design token**（違 POLICY hex doctrine，本項正規化）。\n4. **MGRS grid** — 併本項；**[#56](https://github.com/winson3QQ/ICS_COMMAND/issues/56) 是其子缺口**（低 zoom <6 / 跨 UTM zone + GZD 帶），完全獨立於 TAK，可先做。\n5. **疊加非全換**：接 P1-10b 已建的 MapLibre Symbol Layer / SDF icon-color 接點,不重寫殼。\n\n## ⚠️ 產權邊界（與 P2-03 並行，零重疊）\n- 本 issue **只動前端**：`static/js/map.js` 及其子檔（entity_layer / draw_tools 等）、`static/`（milsymbol vendor）、相關 CSS token、前端 test（vitest）。\n- **不碰**任何後端（`cop_service.py` / `tak_service.py` / `routers/` / `core/`）—— 那是 P2-03/接縫的。\n- 與 **P2-03（後端 wiring）完全不同層 → 可同時開**。\n\n## DoD\n- 同一 CoT type 在 Command 畫出與 ATAK/2525 一致的符號（4 affiliation × N 象形）；線/面走 token 非寫死 hex；MGRS 多 zoom/跨 zone 正常。\n- 不違 POLICY 戰術底圖 doctrine（唯一 saturated = affiliation + severity）。\n- 前端 test 綠 + /code-review + /security-review（CSP）。\n\n## 不在本 issue\nP2-03 後端 wiring、P2-06 時間軸、P2-04 normalize（已完成）。milsymbol/2525 精確 symbol set 擴充若超量可再拆子票。\n\n相關：#56（MGRS 子缺口）、#98（P2 reality check：milsymbol 未 vendored / 2525 框零 / hex 待收斂 / CSP wasm）、P1-10a（2525 色 token）、P1-10d（NAPSG）、`classification-crosswalk.md` §6/§8。",
+    "closedAt": null,
+    "comments": [],
+    "createdAt": "2026-06-05T08:33:42Z",
+    "labels": [],
+    "milestone": null,
+    "number": 110,
+    "state": "OPEN",
+    "title": "P2-05: MIL-STD-2525 符號渲染（milsymbol）+ 線/面 Tactical Graphics + MGRS",
+    "updatedAt": "2026-06-05T08:33:42Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/110"
   }
 ]
