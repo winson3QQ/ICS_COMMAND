@@ -1367,15 +1367,15 @@
       "name": ""
     },
     "body": "## 來源 / 定位\nROADMAP **P2-04**。接 P2-02 Wave 0+1（已 merged，PR #103 `d5deaad`：`parse_cot_xml` → `CoTEventIn`）。本 issue 是 **P2 ingestion 管線的 keystone**，也是 **P2-04 ↔ P2-02 Wave 2 並行的協調基準點**（見 #98 reality check）。\n\n## 管線位置\n```\nsubscribe(:8089)     parse_cot_xml()     normalize_cot()        ingest_cot_event()              前端\n[P2-02 W2 另開]   →  [W0+1 ✅]       →   [本 issue]         →   [本 issue：persist+broadcast] →  地圖\n                     raw→CoTEventIn      CoTEventIn→CoPEntity     CAS upsert + WS 廣播（下游 P1 全建）\n```\n\n## Scope（本 issue）\n\n### A. `normalize_cot(cot_event: CoTEventIn) -> CoPEntity`（純函式）\n`cop_service.py:31`，現為 `NotImplementedError`。欄位**已刻意對齊**，多為直通：\n- 直通：`uid / type / time / start / stale / how / version / lat / lon / hae / ce / le / callsign / remarks`\n- `source = \"tak\"`（固定）\n- `detail`(dict) → `CoPEntity.attributes`（CoT detail extensions 收進來；route/polygon/event 分類用 `attributes.kind` 慣例，沿用 #29 cutover）\n- `access` 直通；`heading_deg / speed_mps` 若 detail 有 track 子元素則填，否則 None\n- `severity`：CoT 無此概念 → 預設 `\"info\"`（或由 type/detail 推導，本 issue 先 info，視覺 severity 是 P2-05 範圍）\n- **禁自創欄位**（CLAUDE.md / P1-03 doctrine）；映射不到的 CoT 欄位收進 attributes，不硬塞\n\n### B. `ingest_cot_event(event: CoTEventIn) -> CoPEntity | None`（共用消費者 = **接縫**）\n落點 `cop_service.py`（transport 無關）。職責：\n1. `normalize_cot(event)` → CoPEntity\n2. **upsert**：`get_cop_entity(uid)` 存在 → `update_cop_entity_cas`（version_clock 樂觀鎖、stale 過濾）；否則 `insert_cop_entity`\n3. broadcast：`RealtimeHub.broadcast(...)`（依 exercise scope）通知前端 resync\n4. 回傳 CoPEntity（或 stale/CAS 落敗時 None）\n\n> per-entity **track 時間軸寫入（`insert_cop_track`）= P2-06 範圍**，本 issue 不做（只寫 entity 主體）。\n\n## ⚠️ 協調契約（凍結 — P2-02 Wave 2 / P2-03 依此）\n- **`ingest_cot_event` 簽名與落點由本 issue（P2-04）擁有並實作**。`subscribe`(:8089) 與 `routers/tak.py`(REST push) **只呼叫、不定義**。\n- **檔案產權**（避免 merge conflict）：\n  - 本 issue **只動** `cop_service.py` + `tests/unit/test_cop_normalize*.py`（可加 `tests/unit/test_cop_ingest*.py`）。\n  - **不准碰** `tak_service.py`（那是 P2-02 Wave 2 的）。\n- **排序**：本 issue（純函式 + 接縫，無外部依賴，用 Wave 0+1 已建的 `tests/fixtures/cot/*.xml` 即可測完整）**先 merge**；Wave 2 後接，rebase main 後呼叫已在 main 的 `ingest_cot_event`。\n\n## 測試（DoD）\n- `normalize_cot` 單元：用 `tests/fixtures/cot/valid_friendly.xml` / `valid_minimal.xml` 經 `parse_cot_xml` → normalize → 斷言每欄位映射（含 detail→attributes、source=tak、severity 預設）。\n- `ingest_cot_event`：insert 新 uid / 同 uid 二次（CAS version_clock +1）/ stale 落後被擋 / broadcast 被呼叫（mock hub）。\n- 全綠 + `doc_sync_check` exit 0。\n\n## 不在本 issue\n- P2-02 Wave 2 `subscribe`（:8089 pytak 訂閱）— 另開 issue。\n- P2-03 `routers/tak.py` wire（REST push 呼叫 ingest）— 另開 issue。\n- P2-05 視覺（2525/severity 色）、P2-06 track 時間軸、P2-08 端到端 integration（第二落地者收尾）。\n\n相關：#98（P2 reality check）、#102/#103（Wave 0+1）、P1-03/#15（CoPEntity v1 凍結）、P1-15/#29（cop_entity_repo CAS + 即時管線）、`classification-crosswalk.md` §6/§8。",
-    "closedAt": null,
+    "closedAt": "2026-06-05T07:33:27Z",
     "comments": [],
     "createdAt": "2026-06-05T06:40:57Z",
     "labels": [],
     "milestone": null,
     "number": 105,
-    "state": "OPEN",
+    "state": "CLOSED",
     "title": "P2-04: cop_service.normalize_cot 實作 + ingest_cot_event 共用接縫",
-    "updatedAt": "2026-06-05T06:40:57Z",
+    "updatedAt": "2026-06-05T07:33:27Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/105"
   },
   {

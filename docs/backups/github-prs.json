@@ -2029,5 +2029,41 @@
     "title": "fix(deploy): TAK web tier 根因#2 — 補產 fed-truststore.jks（#101）",
     "updatedAt": "2026-06-05T06:15:30Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/104"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "## 定位\nROADMAP **P2-04**。P2 ingestion 管線 **keystone**，接 P2-02 Wave 0+1（`parse_cot_xml` → `CoTEventIn`，#103）。\n\n## 管線\n```\nsubscribe(:8089)/REST push → parse_cot_xml → normalize_cot → ingest_cot_event → cop_entity_repo(CAS) → cop_hub 廣播 → 前端\n   [P2-02W2 #106]/[P2-03 #107]   [W0+1 ✅]      [本 PR]          [本 PR：接縫]        [P1 ✅]            [P1 ✅]\n```\n\n## 變更\n- **`normalize_cot(CoTEventIn) -> CoPEntity`**（純函式）：欄位直通（CoT 對齊、不自創欄位）、`source='tak'`、`detail→attributes`、track course/speed 安全取值（超界/garbage→None，不炸 ingest）。\n- **`ingest_cot_event(CoTEventIn) -> dict | None`**（共用接縫）：normalize → upsert（`version_clock` CAS + 並發重試）→ `cop_hub` 廣播。**out-of-order/重送守門**（不倒退位置、不無謂 bump）；create 綁 `current_exercise_id()`。\n- 更新 `test_cop_schema_v1` stub 測試（normalize_cot 已落地）。\n\n## ⚠️ 契約微調（vs #105 body，同步 #106/#107）\n接縫回傳 **`dict | None`（持久化 DB row）** 而非 `CoPEntity | None`：`CoPEntity` 是 `extra=\"forbid\"` 無法由 DB row 重建，且 caller（subscribe/router）需要 `version_clock` 等 DB 欄位。**名稱 / 職責 / 檔案產權邊界不變**。\n\n## §8 驗證\n```\ncd command-dashboard && python3 -m pytest -q -p no:warnings\n→ 641 passed, 1 skipped\npython3 -m pytest tests/unit/test_cop_normalize.py tests/unit/test_cop_ingest.py -v\n→ 13 passed（normalize 映射 / insert / update+version bump / 順序守門 / exercise 綁定 / 真實 parse 管線）\nruff check + format：clean（pre-commit pass）\nscripts/doc_sync_check.py：exit 0\n```\n> 純後端邏輯，無 UI；端到端「CoT→地圖」視覺驗收屬 P2-02 W2(#106)/P2-03(#107)。\n\n## 不在本 PR\nP2-02 W2 subscribe（#106）、P2-03 router wire（#107）、P2-05 視覺、P2-06 track 時間軸、P2-08 端到端 integration。\n\ncloses #105",
+    "closedAt": "2026-06-05T07:33:26Z",
+    "comments": [
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## Review 結果\n\n### /code-review（medium，7 角度 × 獨立 verify）— 4 findings\n| # | Finding | 處置 |\n|---|---|---|\n| 1 | CAS 重試耗盡靜默丟棄較新事件（高並發同 uid 下 data loss）| ✅ `log.warning` 留痕（`f3dc686`）|\n| 2 | `_is_newer` 秒精度比較丟同秒內 sub-second 更新 | ✅ 加註解說明 tradeoff；sub-second 保真須上游 parse 層（非本檔產權）保留毫秒，留 P2-06 決策 |\n| 3 | `log` 定義未用（dead code）+ 靜默失敗路徑 | ✅ 已用於 #1 留痕，消除 dead import |\n| 4 | `_broadcast_cop` 與 `routers/cop.py._broadcast` 重複 | ⏸ 不同層、docstring 已標註對齊，暫留（抽共用會跨 P2-03 產權，避免 scope creep）|\n\n### /security-review — 0 findings\n- SQL injection：N/A — `insert`/`update_cop_entity_cas` 全參數化；column 名來自 hardcoded `_TAK_UPDATE_FIELDS` + repo 的 `PRAGMA table_info` 白名單。\n- Stored XSS：邊界在前端（`textContent`/MapLibre SDF text-field，非 innerHTML sink）+ CSP enforce；與既有 `routers/cop.py` attributes 管線一致，無新 sink。\n- Authz：`source='tak'` / `exercise_id` 由 server 設定，`CoTEventIn` + `CoPEntity` 皆 `extra=forbid`，外部無法夾帶 `visible_to`/`exercise_id`/`source` 跨場。\n- 無反序列化 / eval / path traversal / 命令注入。\n\n§8 驗證：641 passed / 1 skipped、ruff clean、doc_sync_check exit 0。",
+        "createdAt": "2026-06-05T07:33:23Z",
+        "id": "IC_kwDOSnBjpc8AAAABE-xg3A",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/108#issuecomment-4629225692"
+      }
+    ],
+    "createdAt": "2026-06-05T07:25:54Z",
+    "headRefName": "feat/issue-105-p2-04-normalize-cot",
+    "labels": [],
+    "mergedAt": "2026-06-05T07:33:26Z",
+    "number": 108,
+    "state": "MERGED",
+    "title": "feat(cop): P2-04 normalize_cot + ingest_cot_event 共用接縫（#105）",
+    "updatedAt": "2026-06-05T07:33:26Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/108"
   }
 ]
