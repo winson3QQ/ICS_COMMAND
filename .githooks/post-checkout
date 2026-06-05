@@ -10,3 +10,14 @@ if [ "$3" = "1" ]; then
   cp "$REPO/.claude/memory/"* "$DEST/"
   echo "[memory sync] Claude memory 已同步 → $DEST"
 fi
+
+# 新 worktree / fresh checkout：底圖缺則自動補（重用本機現成副本，免重下載 247MB）。
+# cheap gate：只在「底圖檔不存在」時才動作（不在每次 branch 切換都 hash 247MB）。
+# stale（manifest 升版而檔還在舊版）不由此處理 → 走 start_mac.sh preflight 警告 + 手動 provision。
+if [ "$3" = "1" ]; then
+  REPO=$(git rev-parse --show-toplevel)
+  TILE="$REPO/command-dashboard/static/tiles/taiwan.pmtiles"
+  if [ ! -f "$TILE" ] && [ -x "$REPO/scripts/ensure_basemap.sh" ]; then
+    bash "$REPO/scripts/ensure_basemap.sh" || true   # best-effort，不擋 checkout
+  fi
+fi
