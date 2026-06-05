@@ -341,7 +341,7 @@ Phase 1 內部建議順序：P1-10 全部完成 → P1-12a → **P1-12b+14 合�
 
 | Item | 說明 |
 |---|---|
-| P2-01 | 部署官方 TAK Server（Docker compose，Java/Spring + Postgres）；產出 `deploy/tak-server/` 部署文件與 cert 設定 SOP |
+| ✅ P2-01 | 部署官方 TAK Server（Docker compose，Java/Spring + Postgres）；產出 `deploy/tak-server/` 部署文件與 cert 設定 SOP。**[完成 — [#100](https://github.com/winson3QQ/ICS_COMMAND/pull/100) `35ed3d8`（issue #99）]**：`deploy/tak-server/`（compose + `.env.example` + `pki/issue-tak-certs.sh` step-ca→JKS + README）；TAK Server 5.7（官方 Docker 包不含 compose/.env，本目錄補）；M1 原生 arm64 build。**實機 boot dogfood（M1/16GB）**：DB tier 通（initdb+SchemaManager+cot/martiuser healthy）、Ignite 叢集 ACTIVE、**CoT streaming `:8089` 開**（P2-02 接點解鎖）；過程抓並修 3 整合 bug（volume chown / CoreConfig 密碼 / TAKIgniteConfig race）。**未解：web/API `:8443` 未起**（api JVM 活但 Tomcat 不綁）→ 追蹤於 **[#101](https://github.com/winson3QQ/ICS_COMMAND/issues/101)**，不卡 P2-02。 |
 | P2-02 | `services/tak_service.py`：CoT XML 解析（規格相容，禁止自創欄位）；TAK Server 推播訂閱（TCP/SSL 8089 或 federation port 9000） |
 | P2-03 | `routers/tak.py`：從 stub 升級為真實 endpoint（接 TAK Server federation push + REST 查詢）；schema 已存在於 Stage 1 帶過來的 stub |
 | P2-04 | `cop_service.normalize_cot(event)` — CoT → COP entity 映射（type / uid / time / stale / lat / lon → COP `entity` + `track`） |
