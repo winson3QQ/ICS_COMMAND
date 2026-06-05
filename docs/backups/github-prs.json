@@ -2120,7 +2120,7 @@
     "number": 111,
     "state": "MERGED",
     "title": "refactor(map): P2-05(b) type-palette hex → ds-tokens 調色盤對齊（#110）",
-    "updatedAt": "2026-06-05T09:49:26Z",
+    "updatedAt": "2026-06-05T09:52:48Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/111"
   },
   {
@@ -2177,7 +2177,7 @@
     "number": 113,
     "state": "MERGED",
     "title": "feat(map): P2-05(a) MGRS 多 zone + GZD 帶 + 1-2-5 精度（#56）",
-    "updatedAt": "2026-06-05T09:50:05Z",
+    "updatedAt": "2026-06-05T09:52:48Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/113"
   },
   {
@@ -2200,5 +2200,26 @@
     "title": "chore(basemap): 新 worktree 自動補底圖（post-checkout hook + ensure_basemap）",
     "updatedAt": "2026-06-05T09:49:25Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/114"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "## 定位\nROADMAP **P2-05** 子塊 **(c)** —— P2-05 最後一塊，**closes #110**。(a) MGRS #56（#113）/ (b) hex→token（#111）已 merged。\n\n## 變更\n**地基（`b494c85`）**\n- vendor `static/lib/milsymbol.js`（3.0.4，MIT，Måns Beckman/spatialillusions，**Sweden 非中國**；UMD `window.ms`；**純 JS 無 wasm** → #98 drift 3 CSP wasm 對 milsymbol N/A）。\n- `static/js/map/mil_symbol.js`：`affiliationFromCot`（cot 第2段→4態）+ `cotToSidc`（atom→2525C SIDC；非 atom→null）。reality check：milsymbol 不直接吃 cot_type，只吃 SIDC → 必須自建轉換。\n- 10 單元測試（含 cotToSidc ↔ 真 milsymbol isValid/asSVG 對接）。\n\n**渲染（`0a34b9d`）**\n- `main.js` 動態載 milsymbol（同 maplibre；失敗不阻擋地圖）。\n- `entity_layer.bakeMilSymbol`：SIDC→全彩 frame icon→addImage（複用 bakeSvgIcon，非 SDF；window.ms 未載→fallback 不顯示不報錯）。\n- `cop_stream.getEntitiesBySource`：TAK 單位無 attributes.kind → 改 source 過濾。\n- `map.js` `_takLayer` + `_renderTakUnits`（cot→SIDC→bake→feature，async bake 完成後 re-update）+ 接 refresh / cop onChange。\n\n## §8 驗證\n```\nnpx vitest run → 247 passed（mil_symbol 10 + 既有全綠）\nnpx eslint     → clean\n```\n**實機視覺驗收 PASS**（注入 4 筆合成 TAK 單位，已清）：friendly 青矩形 / hostile 紅菱 / neutral 綠方 / unknown 黃四葉 —— 敵我框型+框色正確、與 ATAK 同款（§6 LOCKED affiliation-aware 模型落地）。\n\n## 範圍 / 已知\n- 框內 entity function 細分（兵種/裝備圖）為長尾 → 先給 generic 框（affiliation 為主視覺）；function 字典擴充後續。\n- `_takLayer` 目前常開無 toggle；TAK 單位視覺「全鏈」（ATAK→TAK→Command）驗收與 **P2-03（#112）** 一起做（需 CoT producer）。\n- 供應鏈：milsymbol MIT/Sweden/非中國、純 JS（無 wasm/無傳遞中國相依）。\n\ncloses #110（P2-05 完成：(a)+(b)+(c)）。",
+    "closedAt": "2026-06-05T10:39:50Z",
+    "comments": [],
+    "createdAt": "2026-06-05T10:30:04Z",
+    "headRefName": "feat/issue-110-milsymbol-2525",
+    "labels": [],
+    "mergedAt": "2026-06-05T10:39:50Z",
+    "number": 115,
+    "state": "MERGED",
+    "title": "feat(map): P2-05(c) milsymbol MIL-STD-2525 符號渲染（closes #110）",
+    "updatedAt": "2026-06-05T10:39:50Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/115"
   }
 ]
