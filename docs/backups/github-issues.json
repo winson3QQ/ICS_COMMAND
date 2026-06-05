@@ -1347,15 +1347,15 @@
       "name": ""
     },
     "body": "## 目標\n實作 `services/tak_service.py`（ROADMAP P2-02）：CoT 解析 + TAK Server 訂閱。本 issue 涵蓋 **Wave 0（前置）+ Wave 1（parser）**；Wave 2（8089 訂閱）因需活 TAK server 另行解鎖。\n\n## Scope 邊界\n- ✅ 本 issue：CoT XML → `CoTEventIn` 解析（XXE-safe）、CoTEventIn schema 補欄、CoT fixtures、unit + security 測試\n- ❌ `normalize_cot()` 實作 → P2-04\n- ❌ `routers/tak.py` 升級為真 endpoint → P2-03\n- ❌ 8089 mTLS 訂閱 client → Wave 2（需 client cert + 活 server）\n- ❌ 2525 渲染 → P2-05\n\n## Reality check 事實（2026-06-05，進實作前留痕）\n**Codebase（已驗）**\n- `CoTEventIn`（`routers/tak.py:17-29`）inline 定義，欄位 type/uid/time/stale/lat/lon/hae/ce/le/callsign/remarks\n- `CoPEntity` v1 凍結（`schemas/cop.py:44-101`，#15）：**必填 `how`/`start`/`version`**，source enum 含 `\"tak\"`，soft-delete 走 `stale`，version_clock CAS\n- `normalize_cot`（`cop_service.py:35-42`）`(CoTEventIn) -> CoPEntity`，`NotImplementedError(\"P2-04\")`\n- `cop_entity_repo`：insert/list（預設濾 stale）/mark_stale/update_cas/soft-delete 完整\n- `/api/tak/` RBAC 經 `role_enum.py:123` 中央 gate（POST=WRITE_ROLES、GET=READ_ROLES）\n- repo 內**零 CoT 樣本 / 零 TAK 測試**\n\n**Contract gap（本 issue 修）**\n- `CoTEventIn` 缺 `start`/`how`/`version`，但 CoPEntity 必填 → P2-04 無法產合法 CoPEntity。CoT 2.0 XSD 確認 `version/type/uid/time/start/stale/how` 為 event 必填。\n\n**外部規格（已驗）**\n- CoT 2.0：event 7 必填 + 3 選（access/qos/opex）；point 5 必填（lat/lon/hae/ce/le）；detail = lax any-XML\n- **TAK :8089 非純 XML** = TAK Protocol（v0 XML / v1 protobuf，框格 `0xBF<varint>`），mTLS → Wave 2 處理\n\n**供應鏈（已驗，過 CLAUDE.md 紅線）**\n- `defusedxml`（Christian Heimes / CPython core，PSF/MIT）→ XXE 防護，本 issue 採用\n- `pytak`+`takproto`（snstac，美國，Apache2/MIT）→ Wave 2 訂閱層，不自刻 socket/mTLS/協定\n\n## Wave 0\n- [ ] `requirements.txt` 加 `defusedxml`（pin）\n- [ ] CoTEventIn 移到 `schemas/tak.py` + 補 `start`/`how`/`version`/`access`/`qos`/`opex`，routers/tak.py 改 import\n- [ ] CoT golden fixtures（`tests/fixtures/cot/`：正常/含 detail/缺欄/壞座標/XXE/billion-laughs）\n\n## Wave 1\n- [ ] `tak_service.parse_cot_xml(raw) -> CoTEventIn`（defusedxml，DTD/entity 全關）\n- [ ] detail 提取 callsign/remarks + 結構化 detail dict（交 P2-04）\n- [ ] time/start/stale normalize 成 ISO8601 `%Y-%m-%dT%H:%M:%SZ`（對齊 repo stale 字典序比較）\n- [ ] unit + security（XXE/billion-laughs）測試\n\n## DoD（本 issue 子集）\n- [ ] parse 對 fixtures 全綠；XXE 防護測試通過；pytest 全綠\n- [ ] defusedxml pin + 供應鏈確認入 commit\n",
-    "closedAt": null,
+    "closedAt": "2026-06-05T06:28:14Z",
     "comments": [],
     "createdAt": "2026-06-05T04:20:36Z",
     "labels": [],
     "milestone": null,
     "number": 102,
-    "state": "OPEN",
+    "state": "CLOSED",
     "title": "P2-02: tak_service CoT 解析 + schema 補欄（Wave 0+1）",
-    "updatedAt": "2026-06-05T04:20:36Z",
+    "updatedAt": "2026-06-05T06:28:14Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/102"
   }
 ]

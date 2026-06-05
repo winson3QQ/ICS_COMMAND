@@ -1968,7 +1968,7 @@
     },
     "baseRefName": "main",
     "body": "## ROADMAP item\n\n- Closes #102（**P2-02 的 Wave 0+1 子任務**）\n- **⚠️ 不完成 P2-02** — Wave 2（8089 mTLS 訂閱）未做，P2-02 ROADMAP item 維持未勾，待 Wave 2 落地才打 ✅。\n\n## What changed\n\nP2-02 Wave 0+1：CoT XML 解析層 + schema 補欄。把外部 TAK CoT XML 安全解析成 `CoTEventIn`，交給下游 P2-04 `normalize_cot`。**純後端、無 UI、不碰 DB**。\n\n- `schemas/tak.py`（新）：`CoTEventIn` 移出 `routers/tak.py` inline，補 CoT 必填 `start`/`how`/`version` + 選填 `access`/`qos`/`opex` + 結構化 `detail` dict。修 **CoTEventIn↔CoPEntity contract gap**（CoPEntity 必填 `how`/`start`，舊 stub schema 沒有）。\n- `services/tak_service.py`（新）：`parse_cot_xml()` 走 **defusedxml**（`forbid_dtd`/`forbid_entities`/`forbid_external`），detail 抽 callsign/remarks，時間戳 normalize 成秒精度 `Z`。\n- `routers/tak.py` / `cop_service.py`：import 與 docstring 對齊。\n- `requirements.txt`：`defusedxml==0.7.1`。\n\n## DoD checklist\n\n- [x] Tests added（11 unit + 4 security + 8 CoT fixtures）\n- [x] `pytest` green（627 passed / 1 skipped）\n- [ ] `npm test`（無 JS 改動，N/A）\n- [x] 規格書：CoTEventIn schema doc 同步（routers/tak.py + cop_service docstring）\n- [ ] **ROADMAP P2-02 維持未勾**（本 PR 僅子任務 #102；P2-02 待 Wave 2）\n\n## §8 Human Verification Script\n\n> 本 PR 純後端 parser，**無 UI、`/verify` 啟 app 無可觀察項**。驗證走 pytest + parser demo。\n\n```bash\ncd command-dashboard\n\n# Step 1: 全套測試\npython -m pytest -p no:warnings -q\n# 預期：627 passed, 1 skipped；exit 0\n\n# Step 2: 新增測試單獨跑\npython -m pytest tests/unit/test_tak_cot_parse.py tests/security/test_tak_cot_xxe.py -p no:warnings\n# 預期：20 passed\n\n# Step 3: parser 實際解析 + XXE 防禦 demo\nPYTHONPATH=src python3 - <<'PY'\nfrom services.tak_service import parse_cot_xml, CoTParseError\nfrom pathlib import Path\nfx = Path(\"tests/fixtures/cot\")\ne = parse_cot_xml((fx/\"valid_friendly.xml\").read_text())\nprint(\"正常解析:\", e.uid, e.type, e.callsign, (e.lat, e.lon), e.time)\nfor bomb in (\"xxe_external_file.xml\", \"billion_laughs.xml\"):\n    try:\n        parse_cot_xml((fx/bomb).read_text()); print(\"✗\", bomb, \"未擋\")\n    except CoTParseError as ex:\n        print(\"✓ 擋下\", bomb, \"→\", str(ex)[:40])\nPY\n# 預期：正常解析印出 ALPHA-1 / 座標 / 秒精度時間；兩個攻擊 payload 皆「✓ 擋下」\n```\n\n## Out of scope / known limitations\n\n- **Wave 2（8089 訂閱 client）未做** — `tak_service.subscribe()` 尚未實作。需 (a) 擴充 `deploy/tak-server/pki/issue-tak-certs.sh` 簽 client cert、(b) 活 TAK server 驗 8089 協定協商（v0 XML / v1 protobuf）。blocked-on-other-session（web tier #101）。\n- `normalize_cot`（CoT→CoPEntity 落 DB）仍是 P2-04，不在本 PR。\n- `routers/tak.py` endpoint 仍是 stub（升級 = P2-03）。\n- 8089 協定：reality check 確認 **非純 XML**，是 TAK Protocol（Wave 2 用 pytak 處理，不自刻）。\n\n## Notes for reviewer\n\n- 特別看 `_normalize_iso8601`：時間戳正規化是**正確性關鍵** — `cop_entity_repo` 用字串字典序比 stale，CoT 毫秒/時區偏移不正規化會讓過期過濾失準（已測 `test_millis_stripped` / `test_offset_tz_converted_to_utc`）。\n- 供應鏈：`defusedxml`（Christian Heimes / CPython core，PSF/MIT，非中國）— `/security-review` 請確認。\n- `CoTEventIn` 用 `extra=\"forbid\"`：CoT detail 擴充走 `detail` dict 不放頂層。\n",
-    "closedAt": null,
+    "closedAt": "2026-06-05T06:28:13Z",
     "comments": [
       {
         "author": {
@@ -1983,16 +1983,30 @@
         "minimizedReason": "",
         "reactionGroups": [],
         "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/103#issuecomment-4628314415"
+      },
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "### 步驟 6/7 review 結果\n\n**`/code-review`（medium effort）**：7 finder angle → 驗證後 **2 finding 修正**（commit 3707e00）：\n1. `_extract_detail` callsign 用 `.iter()` 掃全後代 → 改只認 `<detail>` 直接子（與 remarks 一致，避免誤撈巢狀 callsign）\n2. `parse_cot_xml` 無大小上限 → 加 `_MAX_COT_BYTES=256KB`（防巨型 well-formed XML 記憶體 DoS）\n\n證偽的 false positive：`float('  ')→0.0`（實為 raise）、`{raw!r}` log injection（repr 跳脫換行）、ce/le 9999→9999999（對齊 CoPEntity 既有預設的修正）、import shim。\n情報：`iso_utc()` 對 `Z`+毫秒不剝（既有 latent bug，非本 PR scope）。\n\n**`/security-review`**：**無 findings**。XXE 防護 sound（defusedxml forbid_dtd/entities/external，無 stdlib xml fallback）；無可達 injection（normalize_cot 是 NotImplementedError、detail dict 未進 sink）；auth 經 role_enum 中央 middleware 完整；無 secrets/PII/deserialization。\n\n**驗證**：pytest 629 passed / 1 skipped；ruff clean；doc_sync exit 0。\n",
+        "createdAt": "2026-06-05T06:28:10Z",
+        "id": "IC_kwDOSnBjpc8AAAABE-Za9Q",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/103#issuecomment-4628830965"
       }
     ],
     "createdAt": "2026-06-05T04:51:26Z",
     "headRefName": "feat/issue-102-p2-02-tak-service",
     "labels": [],
-    "mergedAt": null,
+    "mergedAt": "2026-06-05T06:28:13Z",
     "number": 103,
-    "state": "OPEN",
+    "state": "MERGED",
     "title": "feat(tak): P2-02 Wave 0+1 — CoT XXE-safe 解析（partial，不完成 P2-02）",
-    "updatedAt": "2026-06-05T04:52:19Z",
+    "updatedAt": "2026-06-05T06:28:13Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/103"
   },
   {
