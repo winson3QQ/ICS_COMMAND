@@ -2063,7 +2063,43 @@
     "number": 108,
     "state": "MERGED",
     "title": "feat(cop): P2-04 normalize_cot + ingest_cot_event 共用接縫（#105）",
-    "updatedAt": "2026-06-05T07:33:26Z",
+    "updatedAt": "2026-06-05T07:35:13Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/108"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "## ROADMAP item\n- Closes #106（P2-02 **Wave 2** = `tak_service.subscribe()`）\n- 與 Wave 0+1（#102/#103）合起來 = **P2-02 tak_service.py 全範圍**（解析 + 訂閱）。\n\n## What changed\nP2-02 Wave 2：`tak_service.subscribe()` — mTLS 連 TAK `:8089` 訂閱 CoT 串流，逐筆 → `ingest_cot_event`（#105 擁有，本 PR 只呼叫）。**只動 tak_service.py + requirements + test**（契約）。\n\n- `subscribe()`：pytak `protocol_factory` mTLS + `RXWorker.readuntil(b\"</event>\")` 分幀；斷線指數退避重連（只在收到資料後重置退避）；`stop_event` 軟停 / `task.cancel()` 立即停。\n- `_consume_cot`：`parse_cot_xml` → 濾 `t-x-takp-v` TakControl → ingest；**parse 與 ingest 例外都只 log 不中斷串流**；sync/async ingest 皆 await（相容 #105 async 簽名）。\n- `build_subscribe_config`：**TLS fail-closed** — 無 cafile 須顯式 `allow_insecure_tls=True` 才關 server 驗證（security-review）。\n- `requirements`：`pytak[with_takproto]==7.3.10`（snstac/美國/Apache-2.0，非中國）。\n\n## DoD checklist\n- [x] Tests added（10 unit：_consume 濾控制/不中斷/async、subscribe mock 重連/ingest 例外不斷流、config fail-closed）\n- [x] `pytest` green（651 passed / 1 skipped）\n- [x] `/code-review`（2 修正：ingest 例外不斷流 + 退避只在收資料後重置）\n- [x] `/security-review`（1 修正：TLS fail-closed；其餘 clear）\n- [x] **活 server 端到端閉環實測**（見下）\n\n## §8 Human Verification Script\n```bash\ncd command-dashboard\n# Step 1: 全套 + Wave 2 測試\npython -m pytest -p no:warnings -q\npython -m pytest tests/unit/test_tak_subscribe.py -p no:warnings -v\n# 預期：全綠；10 個 subscribe 測試 pass\n\n# Step 2: 活 TAK server 端到端（需 dev TAK :8089 活著 + client fullchain cert）\n#   推一筆 CoT → subscribe 收到 → 真 ingest 落 cop_entities DB\n#   （詳見 PR comment 的實測輸出）\n```\n\n## 活 server 端到端實測（已驗）\n推 CoT `ICS-E2E-DB-7777` → subscribe 收到 → 濾掉 `t-x-takp-v` → parse → 真 `ingest_cot_event` 落 DB：\n`✓ uid=ICS-E2E-DB-7777 type=a-f-G-U-C source=tak callsign=E2E-DB lat=25.033 version_clock=1`\n\n## Out of scope / known limitations\n- **lifespan wiring（main.py 啟動背景 task）→ P2-03**：本 PR 提供 `subscribe()` 函式 + 端到端驗證，但「app 啟動時把它跑成背景 task」屬 P2-03（wire endpoint + app 整合），不在 #106 檔案產權內。故 production CoT 真正流入待 P2-03。\n- v1 protobuf：保留（pytak 支援），本 PR 走 v0 XML（實測預設可用）。\n- 前端廣播半邊：`ingest_cot_event` 內建（#105 已測），本 PR 不重複。\n\n## Notes for reviewer\n- TLS fail-closed 是 security-review 的核心修正：無 cafile 預設 **raise**，不靜默 MITM-able。\n- `_consume_cot` 對 ingest 例外的 `except Exception` 刻意不攔 `CancelledError`（BaseException），保 shutdown 可中斷。\n",
+    "closedAt": "2026-06-05T08:16:36Z",
+    "comments": [
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "### Verification evidence（CA 自動執行）\n```\n$ python -m pytest -p no:warnings -q   # 全套\n....                                                                     [100%]\n\n$ python -m pytest tests/unit/test_tak_subscribe.py -p no:warnings -q\n..........                                                               [100%]\n\n$ ruff check（tak_service + test）\nAll checks passed!\n\n$ doc_sync_check\n/Library/Frameworks/Python.framework/Versions/3.13/Resources/Python.app/Contents/MacOS/Python: can't open file '/Users/3qq/Desktop/ICS_Command/.claude/worktrees/infallible-black-8add08/command-dashboard/scripts/doc_sync_check.py': [Errno 2] No such file or directory\n```\n\n**活 server 端到端閉環**（推 CoT → subscribe → 真 ingest 落 cop_entities DB）：\n`✓ uid=ICS-E2E-DB-7777 type=a-f-G-U-C source=tak callsign=E2E-DB lat=25.033 version_clock=1`\n\n**review 修正**：/code-review 2（ingest 例外不斷流、退避只在收資料後重置）；/security-review 1（TLS fail-closed）。\n",
+        "createdAt": "2026-06-05T08:16:33Z",
+        "id": "IC_kwDOSnBjpc8AAAABE_EMPg",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/109#issuecomment-4629531710"
+      }
+    ],
+    "createdAt": "2026-06-05T08:15:39Z",
+    "headRefName": "feat/issue-106-p2-02-wave2-subscribe",
+    "labels": [],
+    "mergedAt": "2026-06-05T08:16:36Z",
+    "number": 109,
+    "state": "MERGED",
+    "title": "feat(tak): P2-02 Wave 2 — tak_service.subscribe() :8089 CoT 訂閱（pytak mTLS）",
+    "updatedAt": "2026-06-05T08:16:36Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/109"
   }
 ]

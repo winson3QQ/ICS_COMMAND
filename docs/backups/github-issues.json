@@ -1387,7 +1387,7 @@
       "name": ""
     },
     "body": "## 來源 / 定位\nROADMAP **P2-02** 的 **Wave 2**（傳輸層）。Wave 0+1（解析 `parse_cot_xml`）已 merged（PR #103 `d5deaad`，#102）。Wave 2 當時卡「沒有活的 TAK server」，**現已被 #101 解鎖**（TAK `:8089` CoT streaming 實機驗證可用）。\n\n## 管線位置\n```\nsubscribe(:8089)     parse_cot_xml()     ingest_cot_event()\n[本 issue]       →   [已在 main ✅]   →  [#105 定義，本 issue 只呼叫]\n連 :8089 收 raw      raw → CoTEventIn     normalize + persist + broadcast\n```\n\n## Scope\n- `tak_service.py` 補 `subscribe()`：以 **`pytak[with-takproto]`** client + **mTLS** 連 TAK `:8089`。\n  - :8089 = TAK Protocol（v0 XML / v1 protobuf 協商），由 pytak 處理；產出交給 `parse_cot_xml`（XML 路徑）→ `CoTEventIn`。\n  - 每筆 → 呼叫 **`cop_service.ingest_cot_event(event)`**（#105 定義的接縫）。\n  - 連線生命週期：背景 task（FastAPI lifespan 或獨立 worker）、斷線重連、graceful shutdown。\n- 憑證：step-ca 簽 client 憑證 + truststore（admin/client enroll SOP 見 memory `p2-tak-deploy-issue101.md`；TAK 信任 step-ca root，已備 `truststore-root.jks`）。\n- `requirements.txt` 加 `pytak[with-takproto]`（Wave 0+1 註解已預告）。\n\n## ⚠️ 協調契約（依 #105，凍結）\n- **檔案產權**：本 issue **只動** `tak_service.py` + `requirements.txt` + 自己的 test。**不准碰** `cop_service.py`（normalize / ingest 是 #105 的）。\n- **接縫**：`subscribe` **只呼叫** `ingest_cot_event(event)`，**不定義**它。\n- **排序**：#105（ingest 接縫）先 merge；本 issue 開 PR 前 rebase main，呼叫已在 main 的 `ingest_cot_event`。若想先動工，可暫對 `ingest_cot_event` 的凍結簽名寫整合點，rebase 時對齊。\n\n## 供應鏈（CLAUDE.md 紅線）\n- **`pytak` lock 前必驗維護者非中國**（snstac / Greg Albrecht，Apache-2.0；`takproto` 同源）。逐一驗來源後才 pin 版本。\n\n## 測試（DoD）\n- 單元：mock pytak transport 餵 raw CoT → 斷言 `parse_cot_xml` + `ingest_cot_event` 被正確呼叫、斷線重連邏輯。\n- **整合（現在可做真的，dev env TAK 活著）**：連本機 `:8089` 推一筆 CoT → 5 秒內進 `cop_entities` + 前端收到廣播（= P2 DoD 頭條的上半）。\n- 全綠 + `doc_sync_check` exit 0 + `/security-review`（新外部依賴 pytak）。\n\n## 不在本 issue\n- normalize / ingest 接縫（#105）、`routers/tak.py` REST 路徑（P2-03）、2525 視覺（P2-05）、track 時間軸（P2-06）、federation（P2-07）。\n\n相關：#105（接縫契約）、#102/#103（Wave 0+1）、#101（:8089 解鎖）、#98（reality check）。",
-    "closedAt": null,
+    "closedAt": "2026-06-05T08:16:37Z",
     "comments": [
       {
         "author": {
@@ -1408,9 +1408,9 @@
     "labels": [],
     "milestone": null,
     "number": 106,
-    "state": "OPEN",
+    "state": "CLOSED",
     "title": "P2-02 Wave 2: tak_service.subscribe() — :8089 CoT 串流訂閱（pytak + mTLS）",
-    "updatedAt": "2026-06-05T06:49:05Z",
+    "updatedAt": "2026-06-05T08:16:37Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/106"
   },
   {
