@@ -128,8 +128,10 @@ def check_roadmap_code_refs():
             future_files = {
                 "ingress.py",  # P1-02
                 "tak_service.py",  # P2-02
-                "chat_service.py",  # P2-09
-                "datasync_service.py",  # P2-12
+                "chat_service.py",  # P2-07
+                "geometry_service.py",  # P2-08
+                "tak_rest_client.py",  # P2-11
+                "datasync_service.py",  # P2-14
                 "waveink_service.py",  # P3-03
             }
             if full.name in future_files:
