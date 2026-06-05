@@ -1994,5 +1994,26 @@
     "title": "feat(tak): P2-02 Wave 0+1 — CoT XXE-safe 解析（partial，不完成 P2-02）",
     "updatedAt": "2026-06-05T04:52:19Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/103"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "## 來源\nissue #101 根因#2。接續根因#1（RSA，已 merged `14b5373`）。\n\n## 根因（log 實證）\n讀 `takserver-messaging.log`（messaging 才是 Ignite **server** node）現形：\n```\nERROR IgniteServiceProcessor - Failed to initialize service: distributed-federation-manager\njava.lang.IllegalStateException: SSLContext is not initialized\n  Caused by: java.io.FileNotFoundException: certs/files/fed-truststore.jks\n```\n`CoreConfig <federation-server>` 引用 `fed-truststore.jks`，但 `issue-tak-certs.sh` 從未產此檔。即使 federation 未開，messaging 仍**無條件部署** `distributed-federation-manager` Ignite service → `SSLConfig` 載檔失敗 → service 部署失敗 → **messaging（Ignite server node）整個掛 → config/api client 全 `IgniteClientDisconnectedException`** → api 卡 federation bean → :8443 不綁。api 的 disconnect 是**症狀不是根因**（同根因#1 red herring 模式）。\n\n## 修正\n- `pki/issue-tak-certs.sh`：新增 section 4 產 `fed-truststore.jks`（內容 = step-ca root，對齊官方 `makeCert.sh` 語意）。\n- `README.md`：根因#2 標已修 + 驗證指引。\n\n## §8 驗證（實機 boot，M1/16GB Docker 10GB，VERIFY-PASS）\n- messaging / api Microservice **Started**（修前 `Application run failed`）\n- 容器內 `0.0.0.0:8443 LISTEN`、host 映射 OK、Tomcat `started on ports 8443`\n- mutual-TLS + admin RBAC：`curl --cert <admin-chain> https://localhost:8443/Marti/api/version` → **200** `5.7-RELEASE-43-HEAD`；`/Marti/api/clientEndPoints` → **200**\n- web 管理 GUI（TAK Server Metrics Dashboard）可登入，Server Up Time 穩定不再掉\n\ncloses #101",
+    "closedAt": "2026-06-05T06:12:54Z",
+    "comments": [],
+    "createdAt": "2026-06-05T06:12:28Z",
+    "headRefName": "claude/epic-hopper-9db6a3",
+    "labels": [],
+    "mergedAt": "2026-06-05T06:12:54Z",
+    "number": 104,
+    "state": "MERGED",
+    "title": "fix(deploy): TAK web tier 根因#2 — 補產 fed-truststore.jks（#101）",
+    "updatedAt": "2026-06-05T06:12:54Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/104"
   }
 ]
