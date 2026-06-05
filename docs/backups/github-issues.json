@@ -1277,15 +1277,15 @@
       "name": ""
     },
     "body": "ROADMAP **P2-01**。產出 `deploy/tak-server/` 部署 artifacts + cert 設定 SOP。\n\n## Grounding（已盤 tak.gov release，2026-06-04）\n- 版本 **TAK Server 5.7.0**（`takserver-docker-5.7-RELEASE-43.zip`，MD5 `7efb0743…` 已驗）。\n- 官方 Docker 包**只含 2 個 Dockerfile**（`docker/Dockerfile.takserver` = `eclipse-temurin:17-jammy`；`docker/Dockerfile.takserver-db` = `postgres:15.1` + postgis），**無 compose / .env** → 本 task 補。\n- Dockerfile **無 `COPY tak/`** → `tak/` payload 由 **volume mount → `/opt/tak`**，`configureInDocker.sh` 在容器內 init。\n- base image 皆 **multi-arch（含 arm64）** → M1 Mac 原生 build、無 qemu。\n- 包內含 **CoT XSD**（`CoT_link.xsd`/`CoT_shape.xsd`/`CoreConfig.xsd`）→ P2-02/04 解析的官方 schema 參考（順手歸檔到 docs）。\n\n## Deliverable（`deploy/tak-server/`）\n1. `docker-compose.yml` — takserver + takserver-db 兩 service，build 自包內 Dockerfile，bind-mount `tak/`→`/opt/tak`，Postgres volume，ports（8089 SSL streaming / 8443 web UI / 8446 cert-enroll / 9000 federation）\n2. `.env` 模板 — 版本 / 密碼 / cert CN / port\n3. `certs/` **step-ca cert SOP** — 內網 step-ca 簽 TAK server cert + 匯入 Java keystore（PKCS12/JKS），取代官方自簽；federation peer cert 預留；**90 天效期 patch**（reality check #98 drift 2）\n4. `README.md` — 取得（tak.gov + MD5 驗）/ M1·x86·Pi 三路 / Docker Desktop 記憶體 8–10GB / build·up / 首次 admin cert enroll\n5. 環境需求修正：ROADMAP 寫 4GB → **官方 8GB min**\n\n## Out of scope\n- ❌ Federation Hub（P2-07）、commercial plugin（只用 core CoT + federation）\n- ❌ 實機 boot 驗證延後（需 tak.gov release 在手 + 目標機；本 task 先交 artifacts）\n- ❌ Pi 原生 `.deb` 路線只寫進 README，不在本 task 實裝\n\n## 供應鏈\nTAK Server Apache-2.0（tak.gov 官方，非中國）；base image eclipse-temurin（Adoptium）/ postgres 官方，皆非中國。zip 不入版控（569MB + EULA 物）。\n\n相關：ROADMAP Phase 2 P2-01、reality check #98、cert SOP 接 step-ca（deploy/step-ca/）。",
-    "closedAt": null,
+    "closedAt": "2026-06-05T03:50:37Z",
     "comments": [],
     "createdAt": "2026-06-04T08:20:23Z",
     "labels": [],
     "milestone": null,
     "number": 99,
-    "state": "OPEN",
+    "state": "CLOSED",
     "title": "P2-01：部署官方 TAK Server（deploy/tak-server/：Docker compose + step-ca cert SOP）",
-    "updatedAt": "2026-06-04T08:20:23Z",
+    "updatedAt": "2026-06-05T03:50:37Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/99"
   },
   {

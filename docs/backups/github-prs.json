@@ -1932,7 +1932,7 @@
     },
     "baseRefName": "main",
     "body": "## ROADMAP item\n- Closes #99（P2-01：部署官方 TAK Server）\n\n## What changed\n官方 TAK Server 5.7 Docker 包不含 `docker-compose.yml`/`.env`，本 PR 補上 `deploy/tak-server/`：compose（takserver + tak-database）、`.env.example`、**step-ca cert SOP 腳本**（`pki/issue-tak-certs.sh`，取代官方自簽）、README。設計全 grounded 自包內實際腳本（`configureInDocker.sh`/`CoreConfig.example.xml`/`setenv.sh`）。\n\n## DoD checklist\n- [x] Artifacts added（compose/.env/cert SOP/README/.gitignore）\n- [x] compose YAML 語法 ✓、`bash -n` ✓、`doc_sync_check` exit 0\n- [x] **cert SOP 實跑驗證**（無 Docker，見下方 §8 Step A 證據）\n- [ ] 實機 boot（`docker compose up`）— 需 release 在手 + 目標機（§8 Step B–D，交付時驗）\n- [ ] ROADMAP P1... 對應 → merge 時補 P2-01 tick\n\n## §8 Human Verification Script\n\n```bash\n# ── A. cert SOP（無 Docker；本 PR 已實跑通過，證據見下）──────────────\ncd deploy/tak-server && cp .env.example .env       # 設 TAK_HOSTNAME / TAK_KEYSTORE_PASS\n../step-ca/start-ca.sh &                            # 啟動內網 CA\npki/issue-tak-certs.sh                              # step-ca 簽 → JKS\nkeytool -list -v -keystore release/tak/certs/files/takserver.jks -storepass atakatak | grep -E \"憑證鏈長度|DNSName\"\n# 預期：PrivateKeyEntry、憑證鏈長度 3、DNSName 含 tak.ics.local/localhost/takserver\n\n# ── B. compose 語法（需 Docker）──────────────────────────────────────\ndocker compose config >/dev/null && echo \"compose OK\"\n\n# ── C. 取得 + 部署（需 tak.gov release + Docker + 8GB）────────────────\n# 依 README：抓 takserver-docker-5.7-RELEASE-43.zip → 驗 MD5 → 解壓 release/ →\n# cp CoreConfig.example.xml CoreConfig.xml → docker compose up -d --build\ndocker compose ps                                  # tak-database healthy、takserver up\n\n# ── D. CoT streaming + web UI（需 Docker boot 起來後）─────────────────\nnc -zv localhost 8089                               # CoT TLS streaming（ICS_Command tak_service 接點）\ncurl -sk https://localhost:8443/ -o /dev/null -w \"web %{http_code}\\n\"\n```\n\n**§8 Step A 已實跑證據**（本機 step-ca + keytool）：\n- `takserver.jks`：`PrivateKeyEntry` alias `takserver`，**憑證鏈長度 3**（`CN=tak.ics.local` → `ICS_DMAS Dev CA Intermediate` → `Root`），SAN = `tak.ics.local`/`localhost`/`takserver`\n- `truststore-root.jks`：含 `step-ca-root` trustedCertEntry\n\n## Out of scope / known limitations\n- 實機 boot 驗證延後（需 tak.gov release + Docker + 8GB；本機無 Docker）\n- Federation Hub / federation（P2-07）、commercial plugin（只用 core CoT）\n- Pi 原生 `.deb` 路線僅 README 指路，未實裝\n- **憑證效期**：step-ca 預設 24h，TAK 長跑前須 patch `ca.json` 至 90 天（腳本結尾警告，reality check #98 drift 2）\n- ROADMAP 環境需求 4GB → 官方實為 **8GB min**（README 已更正）\n\n## Notes for reviewer\n- 重點看 `pki/issue-tak-certs.sh`（PEM→PKCS12→JKS 轉換 + truststore）與 compose 的 `tak-database` hostname / volume mount / port 對應是否與 `CoreConfig.example.xml` 一致。\n- release zip 不入版控（`.gitignore` 擋 `release/` + EULA）。\n- 相關：reality check #98、cert SOP 接 `deploy/step-ca/`。",
-    "closedAt": null,
+    "closedAt": "2026-06-05T03:50:36Z",
     "comments": [
       {
         "author": {
@@ -1952,11 +1952,11 @@
     "createdAt": "2026-06-04T08:36:25Z",
     "headRefName": "feat/issue-99-p2-01-tak-deploy",
     "labels": [],
-    "mergedAt": null,
+    "mergedAt": "2026-06-05T03:50:35Z",
     "number": 100,
-    "state": "OPEN",
+    "state": "MERGED",
     "title": "feat(deploy): P2-01 TAK Server deploy artifacts + step-ca cert SOP",
-    "updatedAt": "2026-06-05T03:44:45Z",
+    "updatedAt": "2026-06-05T03:50:36Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/100"
   }
 ]
