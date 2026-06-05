@@ -40,10 +40,19 @@ set -a; . "$ENV_FILE"; set +a
 
 echo "▸ 簽 TAK Server 憑證：CN=$TAK_HOSTNAME（經 step-ca）"
 
-# ── 1. 用 step-ca 簽 server 憑證（含 SAN：hostname + localhost + 容器名 takserver）──
-"$STEP_CA_DIR/issue-cert.sh" "$TAK_HOSTNAME" localhost takserver 127.0.0.1
-CERT_PEM="$STEP_CA_DIR/certs/$TAK_HOSTNAME/cert.pem"
-KEY_PEM="$STEP_CA_DIR/certs/$TAK_HOSTNAME/key.pem"
+# ── 1. 用 step-ca 簽 server 憑證（RSA！含 SAN：hostname + localhost + 容器名 takserver）──
+# ★ 必須 RSA：TAK api 的 jwkSource bean 用 server cert 的 key 建 JWT 簽章源，寫死轉型 RSAPublicKey。
+#   若給 EC 憑證（step-ca 預設 ECDSA P-256）→ ClassCastException → api context 死 → 8443 不綁（#101）。
+#   故此處直呼 step ca certificate 帶 --kty RSA（不走 issue-cert.sh 的 EC 預設）。
+OUT_CERT_DIR="$STEP_CA_DIR/certs/$TAK_HOSTNAME"
+mkdir -p "$OUT_CERT_DIR"
+CERT_PEM="$OUT_CERT_DIR/cert.pem"
+KEY_PEM="$OUT_CERT_DIR/key.pem"
+step ca certificate "$TAK_HOSTNAME" "$CERT_PEM" "$KEY_PEM" \
+  --provisioner="admin@ics.local" --password-file="$HOME/.step/secrets/password" \
+  --kty RSA --size 2048 \
+  --san "$TAK_HOSTNAME" --san localhost --san takserver --san 127.0.0.1 --force
+chmod 600 "$KEY_PEM"; chmod 644 "$CERT_PEM"
 [[ -f "$CERT_PEM" && -f "$KEY_PEM" ]] || { echo "✗ step-ca 未產出憑證" >&2; exit 1; }
 
 # ── 2. PEM → PKCS12 → JKS（takserver.jks）──────────────────────────────────

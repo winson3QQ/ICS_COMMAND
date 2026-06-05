@@ -94,9 +94,9 @@ nc -zv localhost 8089 2>&1            # 期望 succeeded
 
 ## 已知問題（dogfood 2026-06-05，M1/16GB Docker 10GB 實測）
 
-實機 boot 已跑通 **DB tier**（initdb + SchemaManager + `cot`/`martiuser` 建好、healthy）與 **CoT streaming `:8089`**；Ignite 叢集一度 `state=ACTIVE`。**但 web/API tier（`:8443`）尚未穩定**：
+實機 boot 已跑通 **DB tier**（initdb + SchemaManager + `cot`/`martiuser` healthy）與 **CoT streaming `:8089`**；Ignite 叢集可達 `state=ACTIVE`。**web/API tier（`:8443`）：根因 #1 已修、根因 #2 待解**（詳 [#101](https://github.com/winson3QQ/ICS_COMMAND/issues/101)）：
 
-- **現象**：`api` JVM 起來、連上 DB（Hikari pool）、跑一下即退出 → `:8443` 容器內外皆未綁；無乾淨 logged 例外。
-- **可能因（未定論）**：① 單容器 5-JVM 同起的脆弱性（首啟 `TAKIgniteConfig.xml` race，已用「先 cp 範本」緩解，叢集能組但 api 仍不留存）；② `.env` 的 `API_MAX_HEAP` 壓太低（dev 省記憶體設 1GB，TAK api 為大型 Spring app，可能不足）。
-- **待辦（追蹤於 follow-up issue）**：(a) 對照社群 TAK docker（Cloud-RF / atakhq）的 JVM 啟動順序（config 先、生成 TAKIgniteConfig 後再起其餘）；(b) API_MAX_HEAP 調 2-4GB 重試；(c) 乾淨 `down -v` + 刪 TAKIgniteConfig.xml 重來，確認非 raced 殘留。
-- **不卡 P2-02**：整合走 `:8089`（已通），web UI 是人類 admin 介面，非 ICS_Command 整合路徑。
+- ✅ **根因 #1（已修）：server 憑證必須 RSA**。TAK api 的 `jwkSource` bean 用 server cert 的 key 建 JWT 簽章源，**寫死 RSAPublicKey**；step-ca 預設 ECDSA → `ClassCastException` → api 死。`pki/issue-tak-certs.sh` 已改 `--kty RSA --size 2048`。**只看 `/opt/tak/logs/takserver-api.log`（api 專屬），別看合併的 takserver.log。**
+- ❌ **根因 #2（待解）：Ignite client 斷線**。RSA 修好後 api 前進到 `distributedFederationHttpConnectorManager` bean，因 `IgniteClientDisconnectedException` 失敗。**可重現、非資源（1.9G/9.7G）、非 timeout（預設 600s）**。研判為單容器 5-JVM 同時啟動的 Ignite 叢集脆弱性。
+- **待辦（#101）**：staggered JVM 啟動（config 先穩→再起其餘）／對照社群 docker 拓樸／確認 config(Ignite server) 穩定性。
+- **不卡 P2-02**：整合走 `:8089`（已通），web UI 是人類 admin 介面，非整合路徑。
