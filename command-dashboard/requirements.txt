@@ -4,3 +4,6 @@ python-multipart==0.0.26
 structlog>=24.1.0
 # Backup DR Drill (#41) — Fernet AES-128-CBC for encrypted backups (E-4 唯一允許新 dep)
 cryptography>=43.0.0
+# P2-02 (#102) — CoT XML XXE-safe 解析。維護者 Christian Heimes（CPython core），PSF/MIT，非中國。
+# 純 Python、無 C extension、無傳遞相依。Wave 2 訂閱層另加 pytak[with-takproto]。
+defusedxml==0.7.1

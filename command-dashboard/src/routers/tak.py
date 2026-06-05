@@ -1,32 +1,20 @@
 """
-tak.py — TAK（Team Awareness Kit）整合 stub（Wave 7）
+tak.py — TAK（Team Awareness Kit）整合 stub
 
-協議：CoT（Cursor on Target）XML，對齊 MIL-STD-2525
-欄位：type, uid, time, stale, lat, lon, hae, ce, le
+協議：CoT（Cursor on Target），對齊 MIL-STD-2525
+欄位：見 `schemas/tak.py` 的 CoTEventIn（忠實對齊 CoT 2.0 規格）
 
-C0：stub，正確定義 schema，Wave 7 接 CoT 解析 + COP 正規化。
+C0：endpoint 仍是 stub。CoT 解析 = P2-02（`services/tak_service.py`）、
+endpoint 升級為真 = P2-03、COP 正規化 = P2-04。
+CoTEventIn schema 於 P2-02（#102）由本檔 inline 移至 `schemas/tak.py` 並補齊
+start/how/version 等 CoT 必填欄位。
 """
 
-
 from fastapi import APIRouter
-from pydantic import BaseModel
+
+from schemas.tak import CoTEventIn
 
 router = APIRouter(prefix="/api/tak", tags=["TAK"])
-
-
-class CoTEventIn(BaseModel):
-    """CoT（Cursor on Target）事件，真實 CoT 欄位，非自創格式"""
-    type:  str           # MIL-STD-2525 代碼（e.g. a-f-G-U-C）
-    uid:   str           # 全域唯一識別碼
-    time:  str           # ISO 8601 UTC
-    stale: str           # 過期時間 ISO 8601 UTC
-    lat:   float         # 緯度（WGS-84）
-    lon:   float         # 經度（WGS-84）
-    hae:   float = 0.0   # Height Above Ellipsoid（公尺）
-    ce:    float = 9999  # Circular Error（公尺）
-    le:    float = 9999  # Linear Error（公尺）
-    callsign: str | None = None
-    remarks:  str | None = None
 
 
 @router.post("/events")
@@ -34,9 +22,9 @@ def receive_cot_event(body: CoTEventIn):
     """接收 CoT 事件（Wave 7 接 COP 正規化層）"""
     # C0 stub：驗證格式正確，回傳 ack
     return {
-        "ok":      True,
-        "uid":     body.uid,
-        "status":  "stub_received",
+        "ok": True,
+        "uid": body.uid,
+        "status": "stub_received",
         "message": "TAK 整合 Wave 7 啟用，目前僅驗證格式",
     }
 
@@ -45,7 +33,7 @@ def receive_cot_event(body: CoTEventIn):
 def tak_status():
     return {
         "enabled": False,
-        "phase":   "Wave 7 stub",
+        "phase": "Wave 7 stub",
         "protocol": "CoT XML (Cursor on Target)",
         "standard": "MIL-STD-2525",
     }

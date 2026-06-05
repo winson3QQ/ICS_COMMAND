@@ -1,0 +1,12 @@
+<?xml version="1.0"?>
+<!DOCTYPE event [
+  <!ENTITY lol "lol">
+  <!ENTITY lol1 "&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;">
+  <!ENTITY lol2 "&lol1;&lol1;&lol1;&lol1;&lol1;&lol1;&lol1;&lol1;&lol1;&lol1;">
+  <!ENTITY lol3 "&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;">
+  <!ENTITY lol4 "&lol3;&lol3;&lol3;&lol3;&lol3;&lol3;&lol3;&lol3;&lol3;&lol3;">
+]>
+<event version="2.0" uid="BOMB-1" type="a-f-G" time="2026-06-05T04:00:00Z" start="2026-06-05T04:00:00Z" stale="2026-06-05T04:10:00Z" how="m-g">
+  <point lat="24.1" lon="120.6"/>
+  <detail><remarks>&lol4;</remarks></detail>
+</event>
