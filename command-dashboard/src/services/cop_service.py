@@ -11,7 +11,6 @@ cop_service.py — COP（Common Operational Picture）正規化層 v1（P1-03）
 """
 
 from repositories.snapshot_repo import get_latest_snapshot
-
 from schemas.cop import CoPEntity
 from schemas.manual import ManualRecordIn
 
@@ -23,10 +22,7 @@ def get_cop_summary(exercise_id: int | None = None) -> dict:
     與 cop_entities (per-record geographic entity) 是不同層級，並存無衝突。
     """
     units = ["medical", "shelter", "forward", "security"]
-    return {
-        unit: get_latest_snapshot(unit, exercise_id)
-        for unit in units
-    }
+    return {unit: get_latest_snapshot(unit, exercise_id) for unit in units}
 
 
 # ── normalize_* 入口（v1 stub，實作分別於 P2-04 / P3-05 / 後續 PR） ─────────
@@ -35,9 +31,9 @@ def get_cop_summary(exercise_id: int | None = None) -> dict:
 def normalize_cot(cot_event) -> CoPEntity:
     """TAK CoT XML → CoPEntity。實作於 P2-04（ROADMAP 行 245）。
 
-    輸入：routers/tak.py 的 CoTEventIn 或解析後 dataclass。
+    輸入：schemas/tak.py 的 CoTEventIn（P2-02 tak_service.parse_cot_xml 產出）。
     輸出：cop_entities row 一筆，type 取自 CoT type（MIL-STD-2525 grammar），
-          source='tak'，attributes 收 CoT detail extensions。
+          source='tak'，attributes 收 CoT detail extensions（CoTEventIn.detail）。
     """
     raise NotImplementedError("P2-04 implementation")
 

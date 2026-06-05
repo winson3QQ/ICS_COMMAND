@@ -1,0 +1,4 @@
+<?xml version="1.0"?>
+<event version="2.0" uid="HAZ-001" type="b-d" time="2026-06-05T04:00:00Z" start="2026-06-05T04:00:00Z" stale="2026-06-05T04:10:00Z" how="h-e">
+  <point lat="24.15" lon="120.65"/>
+</event>

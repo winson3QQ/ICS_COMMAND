@@ -1,0 +1,8 @@
+<?xml version="1.0"?>
+<!DOCTYPE event [
+  <!ENTITY xxe SYSTEM "file:///etc/passwd">
+]>
+<event version="2.0" uid="XXE-1" type="a-f-G" time="2026-06-05T04:00:00Z" start="2026-06-05T04:00:00Z" stale="2026-06-05T04:10:00Z" how="m-g">
+  <point lat="24.1" lon="120.6"/>
+  <detail><remarks>&xxe;</remarks></detail>
+</event>
