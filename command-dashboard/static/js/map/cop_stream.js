@@ -325,6 +325,15 @@ export function createCopStream(deps) {
     return out;
   }
 
+  /** 依 source 取 entity（P2-05：TAK 單位無 attributes.kind，改用 source 過濾）。 */
+  function getEntitiesBySource(source) {
+    const out = [];
+    for (const { entity } of _byUid.values()) {
+      if (entity.source === source) out.push(entity);
+    }
+    return out;
+  }
+
   /** 取單顆 entity（編輯器讀 version_clock / click 回查用）。 */
   function getEntity(uid) {
     const rec = _byUid.get(uid);
@@ -365,6 +374,7 @@ export function createCopStream(deps) {
     deleteEntity,
     onChange,
     getEntitiesByKind,
+    getEntitiesBySource,
     getEntity,
     dragLocal,
     // 測試 hook

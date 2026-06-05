@@ -365,6 +365,34 @@ export function bakeSvgIcon(map, id, svgStr, opts = {}) {
 }
 
 /**
+ * MIL-STD-2525 frame bake（P2-05/#110）— milsymbol SIDC → 全彩 RGBA icon → addImage。
+ * id = 'mil-' + sidc。milsymbol SVG 已含 affiliation 框色（friend 青框矩形 / hostile
+ * 紅菱 / neutral 綠方 / unknown 黃四葉）→ 走 bakeSvgIcon（**非 SDF**，色彩語意由 SIDC
+ * 內建，不用 icon-color tint）。window.ms 未載 → resolve(false)（caller fallback）。
+ *
+ * @param {maplibregl.Map} map
+ * @param {string} sidc - 2525C SIDC（mil_symbol.cotToSidc 產出）
+ * @param {object} opts - { symbolSize:30（milsymbol 邏輯尺寸）, size:48（bake canvas px）}
+ * @returns {Promise<boolean>} true=新 bake 完成
+ */
+export function bakeMilSymbol(map, sidc, opts = {}) {
+  if (!map || !sidc) return Promise.resolve(false);
+  const ms = typeof window !== 'undefined' ? window.ms : null;
+  if (!ms || !ms.Symbol) return Promise.resolve(false);
+  const id = 'mil-' + sidc;
+  if (map.hasImage?.(id)) return Promise.resolve(false);
+  let svg;
+  try {
+    const sym = new ms.Symbol(sidc, { size: opts.symbolSize ?? 30 });
+    if (!sym.isValid(false)) return Promise.resolve(false);
+    svg = sym.asSVG();
+  } catch {
+    return Promise.resolve(false);
+  }
+  return bakeSvgIcon(map, id, svg, { size: opts.size ?? 48 });
+}
+
+/**
  * 把 zone-shaped object（cop_entities 或 map_config.maps.outdoor.zones）
  * 轉成「節點圖示」用 GeoJSON Point Feature。
  *

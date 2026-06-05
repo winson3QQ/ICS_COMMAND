@@ -626,6 +626,9 @@ function _loadClassicScript(src) {
   // MapLibre + pmtiles（地圖核心，P1-10b 起）
   await _loadClassicScript('/static/lib/maplibre-gl.js').catch(() => null);
   await _loadClassicScript('/static/lib/pmtiles.js').catch(() => null);
+  // milsymbol（P2-05 MIL-STD-2525 符號渲染，UMD window.ms）。失敗不阻擋地圖；
+  // TAK 單位 fallback 既有渲染（render path 內 guard window.ms）。
+  await _loadClassicScript('/static/lib/milsymbol.js').catch(() => null);
   await _waitForGlobal('maplibregl').catch(() => null);
 
   // 1. 版號
