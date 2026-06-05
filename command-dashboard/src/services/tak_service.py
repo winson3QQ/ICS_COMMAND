@@ -260,10 +260,15 @@ async def _consume_cot(raw: bytes, ingest) -> object | None:
     if event.type.startswith(_TAKCONTROL_TYPE_PREFIX):
         log.debug("tak.control_event_skipped", type=event.type, uid=event.uid)
         return None
-    result = ingest(event)
-    if inspect.isawaitable(result):
-        result = await result
-    return result
+    try:
+        result = ingest(event)
+        if inspect.isawaitable(result):
+            result = await result
+        return result
+    except Exception as exc:  # noqa: BLE001 — 單筆 ingest 失敗只記 log，不中斷整條串流
+        # （CancelledError 是 BaseException，不被這裡攔，shutdown 仍能中斷）
+        log.warning("tak.ingest_failed", uid=event.uid, error=str(exc))
+        return None
 
 
 def _build_receiver_class(pytak):
@@ -280,6 +285,7 @@ def _build_receiver_class(pytak):
             super().__init__(queue, config, reader)
             self._ingest = ingest
             self._stop_event = stop_event
+            self.handled_count = 0  # 本次連線收到的 frame 數（subscribe 用來判連線健康）
 
         async def handle_data(self, data: bytes) -> None:  # 滿足 abstractmethod
             await _consume_cot(data, self._ingest)
@@ -289,8 +295,9 @@ def _build_receiver_class(pytak):
 
             while not (self._stop_event and self._stop_event.is_set()):
                 data = await self.readcot()
-                if data is None:  # EOF / 斷線 → 交回 subscribe 重連
+                if not data:  # None（IncompleteReadError）或空 → EOF/斷線，交回 subscribe 重連
                     return
+                self.handled_count += 1
                 await self.handle_data(data)
                 await asyncio.sleep(0)  # 讓出 event loop
 
@@ -308,6 +315,12 @@ async def subscribe(
     """長駐背景 task：mTLS 連 TAK :8089 訂閱 CoT 串流，逐筆 → ingest_cot_event。
 
     斷線指數退避重連，直到 `stop_event` 被設（graceful shutdown）。
+
+    關閉語意：
+    - `stop_event.set()` 是**軟停**：停止重連，且 receiver 在「兩次 readcot 之間」會察覺並結束；
+      但若正卡在 `readcot()`（等資料），要等下一筆/EOF 才返回。
+    - 要**立即停**（如 FastAPI lifespan shutdown），請 `task.cancel()`：CancelledError 會
+      中斷 await，並被原樣往上拋（不被內部吞）。
 
     Args:
         config:   `build_subscribe_config(...)` 的產物（pytak SectionProxy）。
@@ -336,7 +349,6 @@ async def subscribe(
             continue
 
         log.info("tak.connected", cot_url=config.get("COT_URL"))
-        backoff = backoff_initial
         receiver = Receiver(asyncio.Queue(), config, reader, ingest=ingest, stop_event=stop_event)
         try:
             await receiver.run()
@@ -347,12 +359,16 @@ async def subscribe(
         finally:
             if writer is not None:
                 try:
-                    writer.close()
+                    writer.close()  # asyncio：關 writer 即拆共用 transport（reader 一併結束）
                 except Exception:  # noqa: BLE001
                     pass
 
         if stop_event and stop_event.is_set():
             break
+        # 只在「這次連線真的收到過資料」才重置退避 —— 否則 flapping server（接受 TLS 後
+        # 立即 EOF、零資料）會被當健康，每次都重置成 backoff_initial 快速重連刷 log。
+        if receiver.handled_count:
+            backoff = backoff_initial
         log.info("tak.disconnected_reconnecting", retry_in=backoff)
         await asyncio.sleep(backoff)
         backoff = min(backoff * 2, backoff_max)

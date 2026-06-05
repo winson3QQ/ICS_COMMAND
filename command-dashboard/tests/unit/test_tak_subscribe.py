@@ -140,6 +140,44 @@ def test_subscribe_ingests_entities_filters_control_and_stops(monkeypatch):
     assert writer.closed  # 斷線後 writer 被關
 
 
+def test_subscribe_ingest_error_does_not_break_stream(monkeypatch):
+    # 單筆 ingest 炸掉（如 transient DB error）不該斷整條串流：後續事件照常處理
+    frames = [_VALID, _VALID]
+    writer = _FakeWriter()
+
+    async def fake_pf(config):
+        return _FakeReader(frames), writer
+
+    monkeypatch.setattr("pytak.protocol_factory", fake_pf)
+
+    attempts = []
+
+    def flaky_ingest(event):
+        attempts.append(event)
+        if len(attempts) == 1:
+            raise RuntimeError("transient DB error")  # 第一筆炸
+
+    async def run():
+        stop = asyncio.Event()
+        cfg = build_subscribe_config(cot_url="tls://h:8089", client_cert="/c", client_key="/k")
+        task = asyncio.create_task(
+            tak_service.subscribe(cfg, ingest=flaky_ingest, stop_event=stop, backoff_initial=0.01, backoff_max=0.01)
+        )
+        await asyncio.sleep(0.15)
+        stop.set()
+        await asyncio.sleep(0.05)
+        if not task.done():
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+
+    asyncio.run(run())
+    # 兩筆都被嘗試 ingest（第一筆 raise 被攔，串流沒斷，第二筆照常）
+    assert len(attempts) == 2
+
+
 def test_subscribe_reconnects_on_connect_failure_then_stops(monkeypatch):
     attempts = {"n": 0}
 
