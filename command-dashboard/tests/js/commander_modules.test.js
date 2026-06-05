@@ -225,12 +225,29 @@ describe('C1-F commander modules', () => {
     // P1-10d 視覺：事件 ◆ diamond（NAPSG hazard）+ severity NAPSG 色 token + critical 脈動。
     const mapSrc = file('static/js/map.js');
     expect(file('static/css/ds-tokens.css')).toMatch(/--severity-critical:\s*#FF181E/i);  // NAPSG Red token
-    expect(mapSrc).toMatch(/critical: '#FF181E'/);            // _SEV_COLORS 採 NAPSG 色
+    // #110/§8：_SEV_COLORS 由寫死 hex 改讀 ds-tokens（cssVar 橋接，fallback=同值 NAPSG 色）
+    expect(mapSrc).toMatch(/critical: cssVar\('--severity-critical', '#FF181E'\)/);
     expect(mapSrc).toMatch(/id: 'zones-event'/);             // 事件 diamond 層
     expect(mapSrc).toMatch(/'icon-image': 'zone-diamond'/);
     expect(mapSrc).toMatch(/id: 'zones-crit-pulse'/);        // critical 脈動層
     expect(mapSrc).toMatch(/bakeDiamondSdf\(map, 'zone-diamond'\)/);
     expect(file('static/js/map/entity_layer.js')).toMatch(/export function bakeDiamondSdf/);
+  });
+
+  test('p2_05b_type_palette_uses_design_tokens', async () => {
+    // #110/§8：POLY/ROUTE/INFRA/NODE 色由遊離 hex 收斂到 ds-tokens 調色盤（cssVar 橋接）。
+    const mapSrc = file('static/js/map.js');
+    // cssVar 橋接存在（getComputedStyle 讀 CSS token，fallback 兜底）
+    expect(mapSrc).toMatch(/function cssVar\(name, fallback\)/);
+    expect(mapSrc).toMatch(/getComputedStyle/);
+    // 遊離 hex 不再出現在 type-palette 定義（已映射到標準 token）
+    for (const adhoc of ['#e05555', '#c0392b', '#ff7f50', '#56d364', '#f0883e']) {
+      expect(mapSrc).not.toContain(adhoc);
+    }
+    // 色表改讀 token
+    expect(mapSrc).toMatch(/control:\s*\{ label: '管制區', color: cssVar\('--red'/);
+    expect(mapSrc).toMatch(/fire:\s*\{ label: '消防站', color: cssVar\('--orange'/);
+    expect(mapSrc).toMatch(/primary:\s*\{ label: '主要疏散路線', color: cssVar\('--green'/);
   });
 
   test('napsg_glyph_foreground_select_and_vendor', async () => {

@@ -249,7 +249,32 @@ function _bakeZoneIcons(map) {
 
 const _NAPSG_GROUP_ABBR = { security: '安', rescue: '救', medical: '醫', care: '護', infra: '設', ops: '行' };
 const _NODE_ABBR = { shelter: '收', medical: '醫', forward: '前', security: '安', command: '指' };
-const _NODE_COLORS = { shelter: '#f0883e', medical: '#e05555', forward: '#58a6ff', security: '#e3b341', command: '#8b949e' };
+
+// ── 顏色 token 橋接（POLICY hex doctrine：JS 不散寫遊離 hex，統一對齊 ds-tokens.css 調色盤）──
+// MapLibre paint 是 WebGL/canvas，不吃 CSS var() → 載入時用 getComputedStyle 解析成具體 hex。
+// fallback = 該 token 的標準值，供無 DOM（vitest）/ CSS 未載時兜底，與 token 同值故零分歧。
+// 快取：palette token（--red/--green/--accent/--severity-*/--mil-*）為 theme-invariant
+// （POLICY：affiliation/severity 色日夜恆定，#95），故首解即可快取。
+const _cssVarCache = {};
+function cssVar(name, fallback) {
+  if (name in _cssVarCache) return _cssVarCache[name];
+  let v = fallback;
+  if (typeof window !== 'undefined' && window.document?.documentElement) {
+    const got = window.getComputedStyle(window.document.documentElement).getPropertyValue(name).trim();
+    if (got) v = got;
+  }
+  _cssVarCache[name] = v;
+  return v;
+}
+
+// 節點色 → 標準調色盤（#110/§8 對齊：shelter/medical 由遊離 hex 收斂到 --orange/--red）。
+const _NODE_COLORS = {
+  shelter: cssVar('--orange', '#d29922'),
+  medical: cssVar('--red', '#f85149'),
+  forward: cssVar('--accent', '#58a6ff'),
+  security: cssVar('--yellow', '#e3b341'),
+  command: cssVar('--text-secondary', '#8b949e'),
+};
 // P1-16 視覺收尾：on-demand 節點（kind='zone'）的白色象形 icon（疊在彩色圓上）。
 // shelter＝屋頂（沿用 facilities_layer.js 的「避難收容處所」屋頂 path，與公共設施層一致）；
 // medical＝白十字（疊紅圓上＝紅十字醫療標誌）。command/forward/security 不入此表，維持 abbr（指/前/安）。
@@ -258,32 +283,37 @@ const ZONE_ICON_SVG = {
   shelter: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="#fff" d="M12 4 4 11h2v9h5v-5h2v5h5v-9h2z"/></svg>',
   medical: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="#fff" d="M10 4h4v6h6v4h-6v6h-4v-6H4v-4h6z"/></svg>',
 };
-// P1-10d：severity 色採 NAPSG Incident Symbology 標準 hex（對齊 ds-tokens --severity-*）。
-// JS 端 canvas/MapLibre paint 需字面值，無法直接 var()，故與 ds-tokens 同步維護（見
-// docs/design/event-symbology-mapping.md）。critical Red / warning Orange / info Blue。
-const _SEV_COLORS = { critical: '#FF181E', warning: '#FF8918', info: '#237ACF' };
-const _RAG_COLORS = { ok: '#3fb950', warn: '#e3b341', crit: '#f85149' };
+// P1-10d：severity 色 = NAPSG Incident Symbology 標準（critical Red / warning Orange / info Blue）。
+// 讀 ds-tokens --severity-*（值即 NAPSG hex，零視覺變化）。見 docs/design/event-symbology-mapping.md。
+const _SEV_COLORS = {
+  critical: cssVar('--severity-critical', '#FF181E'),
+  warning: cssVar('--severity-warning', '#FF8918'),
+  info: cssVar('--severity-info', '#237ACF'),
+};
+const _RAG_COLORS = { ok: cssVar('--green', '#3fb950'), warn: cssVar('--yellow', '#e3b341'), crit: cssVar('--red', '#f85149') };
 
+// 線/面/設施色 → 標準調色盤（#110/§8：遊離 hex control/danger/hospital/emergency→--red、
+// primary/assembly→--green、fire/shelter-node→--orange、ops/police→--accent、utility→--text-secondary）。
 const POLY_TYPES = {
-  control:    { label: '管制區', color: '#e05555', dash: true },
-  evacuation: { label: '疏散範圍', color: '#e3b341', dash: true },
-  assembly:   { label: '集結點', color: '#3fb950', dash: false },
-  danger:     { label: '危險區域', color: '#c0392b', dash: false },
-  ops:        { label: '作業區', color: '#58a6ff', dash: false },
+  control:    { label: '管制區', color: cssVar('--red', '#f85149'), dash: true },
+  evacuation: { label: '疏散範圍', color: cssVar('--yellow', '#e3b341'), dash: true },
+  assembly:   { label: '集結點', color: cssVar('--green', '#3fb950'), dash: false },
+  danger:     { label: '危險區域', color: cssVar('--red', '#f85149'), dash: false },
+  ops:        { label: '作業區', color: cssVar('--accent', '#58a6ff'), dash: false },
 };
 
 const INFRA_TYPES = {
-  hospital: { label: '醫院', color: '#e05555', abbr: 'H' },
-  shelter:  { label: '收容所', color: '#e3b341', abbr: 'S' },
-  police:   { label: '警察局', color: '#58a6ff', abbr: 'P' },
-  fire:     { label: '消防站', color: '#ff7f50', abbr: 'F' },
-  utility:  { label: '公用設施', color: '#8b949e', abbr: 'U' },
+  hospital: { label: '醫院', color: cssVar('--red', '#f85149'), abbr: 'H' },
+  shelter:  { label: '收容所', color: cssVar('--yellow', '#e3b341'), abbr: 'S' },
+  police:   { label: '警察局', color: cssVar('--accent', '#58a6ff'), abbr: 'P' },
+  fire:     { label: '消防站', color: cssVar('--orange', '#d29922'), abbr: 'F' },
+  utility:  { label: '公用設施', color: cssVar('--text-secondary', '#8b949e'), abbr: 'U' },
 };
 
 const ROUTE_TYPES = {
-  primary:   { label: '主要疏散路線', color: '#56d364', dash: false },
-  secondary: { label: '次要路線', color: '#e3b341', dash: true },
-  emergency: { label: '緊急通道', color: '#e05555', dash: false },
+  primary:   { label: '主要疏散路線', color: cssVar('--green', '#3fb950'), dash: false },
+  secondary: { label: '次要路線', color: cssVar('--yellow', '#e3b341'), dash: true },
+  emergency: { label: '緊急通道', color: cssVar('--red', '#f85149'), dash: false },
 };
 
 // issue #29 PR-G1a cutover：route / polygon 寫進 cop_entities 時帶的 CoT 相容 type
