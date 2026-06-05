@@ -19,6 +19,8 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+import structlog
+
 # defusedxml：對外部 XML 的唯一允許解析路徑（forbid_dtd 連 DTD 都拒，斷 billion-laughs 根）
 from defusedxml.ElementTree import fromstring as _safe_fromstring
 
@@ -173,3 +175,186 @@ def parse_cot_xml(raw: str | bytes) -> CoTEventIn:
         raise
     except Exception as exc:  # pydantic ValidationError 等 → 收斂
         raise CoTParseError(f"CoT event 欄位驗證失敗：{exc}") from exc
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# Wave 2（#106）：TAK :8089 mTLS CoT 串流訂閱
+#
+# 設計（依 #106 契約 + 活 server 實測 intel，見 #106 comment）：
+# - 用 pytak[with-takproto] 當傳輸層：protocol_factory 建 mTLS 連線、RXWorker.readcot
+#   以 readuntil(b"</event>") 處理 TCP 分幀、use_protobuf 自動 v0/v1（CLAUDE.md「先找先例」）。
+# - **只呼叫** `cop_service.ingest_cot_event(event)`（#105 擁有），本檔不定義、不碰 cop_service.py。
+# - client cert 須送**完整鏈**（leaf+intermediate）；TAK truststore 只有 root，缺鏈 → peer not verified。
+# - `t-x-takp-v`（TakControl 協商）是傳輸層產物，**在此濾掉**不丟 ingest（非真實 entity）。
+# - 斷線指數退避重連；單筆解析失敗只記 log 不中斷串流。
+# pytak / asyncio 走 **lazy import**：讓 parse_cot_xml（Wave 1 純函式）路徑零 pytak 依賴。
+# ════════════════════════════════════════════════════════════════════════════
+
+log = structlog.get_logger()
+
+# TakControl 協定協商事件型別前綴（t-x-takp-v…）— 傳輸層控制訊息，非 COP entity
+_TAKCONTROL_TYPE_PREFIX = "t-x-takp"
+
+
+def build_subscribe_config(
+    *,
+    cot_url: str,
+    client_cert: str,
+    client_key: str,
+    cafile: str | None = None,
+    check_hostname: bool = False,
+):
+    """組 pytak 連線設定（回 ConfigParser SectionProxy，相容 pytak 的 .get/.getboolean）。
+
+    Args:
+        cot_url:     `tls://<host>:8089`（TAK CoT streaming）。
+        client_cert: client 憑證 PEM，**須含完整鏈（leaf + intermediate）**。
+        client_key:  client 私鑰 PEM。
+        cafile:      驗 server 憑證的 CA（step-ca root）。None → 不驗 server（僅 PoC/dev）。
+        check_hostname: 是否驗 server SAN（dev 預設 False，因 SAN=tak.ics.local 非 IP）。
+    """
+    from configparser import ConfigParser
+
+    cp = ConfigParser()
+    section = {
+        "COT_URL": cot_url,
+        "PYTAK_TLS_CLIENT_CERT": client_cert,
+        "PYTAK_TLS_CLIENT_KEY": client_key,
+        # v0 CoT XML（活 server 實測預設可用；不強制 protobuf，v1 是選配升級）
+        "TAK_PROTO": "0",
+    }
+    if cafile:
+        section["PYTAK_TLS_CLIENT_CAFILE"] = cafile
+    else:
+        section["PYTAK_TLS_DONT_VERIFY"] = "1"
+    if not check_hostname:
+        section["PYTAK_TLS_DONT_CHECK_HOSTNAME"] = "1"
+    cp["tak_subscribe"] = section
+    return cp["tak_subscribe"]
+
+
+def _resolve_ingest():
+    """延遲取得 `cop_service.ingest_cot_event`（#105 擁有；契約：本檔只呼叫不定義）。
+
+    lazy import：避免 import 期硬綁 #105 尚未 merge 的符號（rebase 後即指向 main 的實作）。
+    """
+    from services.cop_service import ingest_cot_event
+
+    return ingest_cot_event
+
+
+async def _consume_cot(raw: bytes, ingest) -> object | None:
+    """處理單筆 raw CoT bytes：parse → 濾 TakControl → ingest。
+
+    - 解析失敗：只記 log、回 None，**不 raise**（單筆壞不該斷整條串流）。
+    - `t-x-takp-v` 等控制事件：跳過，不進 ingest。
+    - 其餘：呼叫 ingest（同步或 async 皆可），回傳其結果。
+    """
+    import inspect
+
+    try:
+        event = parse_cot_xml(raw)
+    except CoTParseError as exc:
+        log.warning("tak.cot_parse_failed", error=str(exc))
+        return None
+    if event.type.startswith(_TAKCONTROL_TYPE_PREFIX):
+        log.debug("tak.control_event_skipped", type=event.type, uid=event.uid)
+        return None
+    result = ingest(event)
+    if inspect.isawaitable(result):
+        result = await result
+    return result
+
+
+def _build_receiver_class(pytak):
+    """工廠：在 lazy 拿到 pytak 後定義 RXWorker 子類（子類化需 def-time 有基底）。"""
+
+    class _CoTReceiver(pytak.RXWorker):
+        """pytak RXWorker 子類：每筆 readcot() → _consume_cot → ingest。
+
+        覆寫 run()：readcot() 回 None（EOF/斷線）即 return，交回 subscribe() 重連
+        （基底 run() 會空轉，不利重連）。
+        """
+
+        def __init__(self, queue, config, reader, *, ingest, stop_event=None):
+            super().__init__(queue, config, reader)
+            self._ingest = ingest
+            self._stop_event = stop_event
+
+        async def handle_data(self, data: bytes) -> None:  # 滿足 abstractmethod
+            await _consume_cot(data, self._ingest)
+
+        async def run(self, _=-1) -> None:
+            import asyncio
+
+            while not (self._stop_event and self._stop_event.is_set()):
+                data = await self.readcot()
+                if data is None:  # EOF / 斷線 → 交回 subscribe 重連
+                    return
+                await self.handle_data(data)
+                await asyncio.sleep(0)  # 讓出 event loop
+
+    return _CoTReceiver
+
+
+async def subscribe(
+    config,
+    *,
+    ingest=None,
+    stop_event=None,
+    backoff_initial: float = 1.0,
+    backoff_max: float = 30.0,
+) -> None:
+    """長駐背景 task：mTLS 連 TAK :8089 訂閱 CoT 串流，逐筆 → ingest_cot_event。
+
+    斷線指數退避重連，直到 `stop_event` 被設（graceful shutdown）。
+
+    Args:
+        config:   `build_subscribe_config(...)` 的產物（pytak SectionProxy）。
+        ingest:   消費函式，預設延遲解析 `cop_service.ingest_cot_event`（測試可注入 mock）。
+        stop_event: `asyncio.Event`，set 後停止重連並結束。
+        backoff_initial / backoff_max: 重連退避秒數下/上限。
+    """
+    import asyncio
+
+    import pytak  # lazy：parser 路徑不載 pytak（避免 aiohttp warning + 無謂依賴）
+
+    ingest = ingest or _resolve_ingest()
+    Receiver = _build_receiver_class(pytak)
+    backoff = backoff_initial
+
+    while not (stop_event and stop_event.is_set()):
+        writer = None
+        try:
+            reader, writer = await pytak.protocol_factory(config)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001 — 連線各種失敗統一退避重試
+            log.warning("tak.connect_failed", error=str(exc), retry_in=backoff)
+            await asyncio.sleep(backoff)
+            backoff = min(backoff * 2, backoff_max)
+            continue
+
+        log.info("tak.connected", cot_url=config.get("COT_URL"))
+        backoff = backoff_initial
+        receiver = Receiver(asyncio.Queue(), config, reader, ingest=ingest, stop_event=stop_event)
+        try:
+            await receiver.run()
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001 — 串流中斷統一進重連
+            log.warning("tak.stream_error", error=str(exc))
+        finally:
+            if writer is not None:
+                try:
+                    writer.close()
+                except Exception:  # noqa: BLE001
+                    pass
+
+        if stop_event and stop_event.is_set():
+            break
+        log.info("tak.disconnected_reconnecting", retry_in=backoff)
+        await asyncio.sleep(backoff)
+        backoff = min(backoff * 2, backoff_max)
+
+    log.info("tak.subscribe_stopped")
