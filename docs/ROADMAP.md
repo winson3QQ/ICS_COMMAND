@@ -349,7 +349,11 @@ Phase 1 內部建議順序：P1-10 全部完成 → P1-12a → **P1-12b+14 合�
 | P2-06 | 時間軸支援：CoT `stale` 處理 + COP 快照寫入 `snapshot_repo`（Wave 6 時間軸回放預埋） |
 | P2-07 | Federation 設定：與外部 TAK 節點交換 CoT（可選；先單機 PoC）。<br>**「接別人的 TAK」兩條路（架構備忘，2026-06-05）**：① **直接訂閱對方 :8089** —— P2-02/03 的 `subscribe()` 已參數化（任一 `TAK_COT_URL`），技術可行，但要對方**用他的 CA 簽 client cert 給你 / 把你的 CA 加進他 truststore**（mTLS 互信），且你需他的 server CA 放 `TAK_CAFILE`；**現一次一台**（單一 COT_URL，多源訂閱未做）。② **Federation（本項，server↔server）** —— 你的 TAK server 與對方 federate（:9000/:8444），CoT 在兩台 server 間交換，ICS 仍只訂閱**自己**的 server 卻看到對方 entity；信任在 server 層談一次、ICS 端零改動，為多組織互通的正解。**衍生 backlog**：tak_service 多源訂閱（接多台外部 :8089）若有需求再評估，否則優先走 federation。 |
 | P2-08 | 測試：CoT parse unit + TAK Server ↔ command-dashboard integration（mock TAK 推播）+ security（CoT injection / XML XXE 防護） |
-| P2-09 | 規格書補 TAK 整合章節 |
+| P2-09 | **GeoChat 誤路由修正**（reality check 2026-06-05 發現的 bug）：CoT type `b-t-f`（GeoChat）目前被 `ingest_cot_event` 當成普通 CoPEntity 存進 DB——發話者位置跳出一個地圖點、右側欄出現假事件，**行為錯誤非功能缺失**。修法三層：(1) `tak_service._consume_cot` 加 type prefix 過濾（`b-t-f` 走聊天路徑，不進 `ingest_cot_event`）；(2) 新 `services/chat_service.py` + `chats` 表（sender_uid / callsign / message / group / lat / lon / time / exercise_id）；(3) 前端 commander_dashboard 加「無線電通聯」面板（顯示對話紀錄，可點發話者位置跳地圖）。測試：`b-t-f` 不得進 `cop_entities`（負向）；chat_service 存取正確；RBAC 對齊既有 exercise scoping |
+| P2-10 | **CoT `<shape>` 幾何萃取**（:8089 路徑的線/面）：ATAK 部分戰術標記在 CoT `<detail>` 內嵌 `<shape>` 元素（polygon / polyline），目前 `_extract_detail` 把整包 detail 結構化成 dict，幾何資料被埋在 `attributes` 裡、地圖只渲染 `<point>` 單點。修法：(1) `tak_service._extract_detail` 辨識 `<shape>` child，萃取 geometry（WKT 或 GeoJSON coordinates）回傳；(2) `CoTEventIn` 加選填 `geometry` 欄位；(3) `normalize_cot` 依 geometry 類型映射到既有 `kind='route'`（polyline）或 `kind='polygon'`（polygon）cop_entity，沿用 P1-15 即時管線。**不涵蓋 DataSync 路徑**（見 P2-12） |
+| P2-11 | **9-line MEDEVAC incident card**：CoT type `b-a-o-tbl-medevac`（及變體）目前流入通用 CoPEntity，9-line 結構欄位（pickup zone / frequency / number casualties / special equipment…）埋在 `attributes` JSON blob，前端無對應 UI。修法：(1) `normalize_cot` 加 type 分支，偵測 MEDEVAC CoT → 萃取 9-line 欄位進 `attributes` 結構化子物件；(2) 前端 cop_stream / entity popup 對 `type` 前綴 `b-a-o-tbl` 渲染專屬 incident card（9-line 欄位格式化顯示、severity 自動設 critical）；(3) 對齊 P3-06 WaveInk MEDEVAC 9-line 落地設計（同一 card schema，來源不同） |
+| P2-12 | **DataSync client（ATAK Mission / Route package / 照片）**：ATAK 在 app 畫的 Mission 路線、上傳的照片/檔案走 TAK Server DataSync HTTP API（:8443，非 CoT streaming :8089），與現有管線**完全獨立**。前置：TAK Server :8443 已通（P2-01），DataSync API 為 Apache 2.0 core Marti，非商業 plugin。工作：(1) 評估 DataSync API endpoints（`/Marti/api/missions/`、`/Marti/api/sync/`）與認證模型；(2) 新 `services/datasync_service.py`（poll 或 webhook）；(3) Mission geometry → cop_entity route/polygon；(4) 照片/檔案：決定「reference-only URI」或「本機快取」邊界（參照 P3 WaveInk audio 的 `audio_ref` opaque URI 原則）。**高複雜度，建議 P2-08 ~ P2-11 完成後再動工；動工前先對 DataSync API 做 reality check（API 文件 + 活 server 抓包）** |
+| P2-13 | 規格書補 TAK 整合章節（原 P2-09，P2-09 ~ P2-12 完成後補） |
 
 ### Definition of Done
 
@@ -357,6 +361,9 @@ Phase 1 內部建議順序：P1-10 全部完成 → P1-12a → **P1-12b+14 合�
 - [ ] CoT `stale` 過期自動從 COP 移除
 - [ ] XXE 防護測試通過（`defusedxml` 或等效）
 - [ ] Federation 雙向流測試（兩台 TAK Server 互推）
+- [ ] GeoChat（`b-t-f`）不進 `cop_entities`，進獨立 `chats` 表並顯示於通聯面板
+- [ ] CoT `<shape>` 幾何正確渲染為 route / polygon（非單點）
+- [ ] MEDEVAC 9-line CoT → incident card 正確顯示 9 個欄位
 - [ ] **Tag**：`command-v2.3.0`（TAK 整合 MINOR；原規劃 1.1.0，rebase 至 2.x）
 
 ### Compliance touchpoints
