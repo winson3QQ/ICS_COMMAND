@@ -105,7 +105,12 @@ def normalize_cot(cot_event: CoTEventIn) -> CoPEntity:
 
 def _is_newer(entity: CoPEntity, existing: dict) -> bool:
     """incoming event 是否比 DB 現值新。time 皆 ISO 8601 UTC 同格式（parse 層已正規化）
-    → 字串比較即正確。防 out-of-order / 重送的 CoT 把位置倒退回舊值。"""
+    → 字串比較即正確。防 out-of-order / 重送的 CoT 把位置倒退回舊值。
+
+    限制（code-review #108）：parse_cot_xml 的 _normalize_iso8601 把時間 floor 到**秒精度**，
+    故同一秒內的多筆 CoT（快速移動單位 ATAK 可能 >1Hz）會被視為「非更新」而丟棄，
+    顯示位置最多落後 ~1s。COP 顯示尺度可接受；若 P2-06 時間軸要求 sub-second 保真，
+    需在上游（tak_service parse 層，非本檔產權）保留毫秒精度再放寬此比較。"""
     prev = existing.get("time")
     if not prev:
         return True
@@ -146,6 +151,8 @@ async def ingest_cot_event(event: CoTEventIn) -> dict | None:
             # 並發：別人在 get 與 insert 之間插了同 uid → 轉 update 路徑
             existing = cop_entity_repo.get_cop_entity(entity.uid)
             if existing is None:
+                # 非 uid race（如 CHECK 違規）→ 不吞，往上拋
+                log.warning("[tak] ingest insert 失敗且 uid 仍不存在（非並發）：%s", entity.uid)
                 raise
         else:
             await _broadcast_cop("create", created)
@@ -169,10 +176,13 @@ async def ingest_cot_event(event: CoTEventIn) -> dict | None:
         except sqlite3.IntegrityError:
             existing = cop_entity_repo.get_cop_entity(entity.uid)
             if existing is None:
+                log.warning("[tak] ingest notfound 重插落空（entity 同時被刪又無法插）：%s", entity.uid)
                 return None
             continue
         await _broadcast_cop("create", created)
         return created
+    # CAS 重試耗盡：高並發同 uid 下確認較新的事件被丟（data loss），留痕供查（code-review #108）
+    log.warning("[tak] ingest CAS 重試 %d 次耗盡，丟棄較新事件：%s", _CAS_MAX_RETRY, entity.uid)
     return None
 
 
