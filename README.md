@@ -29,6 +29,7 @@ git config core.hooksPath .githooks   # 啟用 memory sync hook（一次性）
 #    → admin + 該 PIN 登入 → 改 PIN。完成後「節點/格線」會自動從 seed 出現。
 ```
 
+> 🔁 **新 `git worktree` 自動補底圖**：`.githooks/post-checkout` 在新 worktree 缺底圖時自動跑 `scripts/ensure_basemap.sh`，**優先重用本機其他 worktree / 主 repo 的副本**（`provision --from`，免重下載 247MB）；本機完全無副本才需手動 `scripts/provision_basemap.sh`。需先 `git config core.hooksPath .githooks`（見〈Memory 同步〉）。
 > ⚠️ 底圖 / DB 是 gitignored；**別把 live SQLite（`command-dashboard/data/ics.db`）丟 OneDrive/iCloud 同步**（WAL 會壞）。DB 路徑可用 `ICS_DB_PATH` env 固定在 repo 外（見 `.claude/launch.json`）。
 > 底圖**發佈/整備/多機同步 SOP**（`publish_basemap` / `provision_basemap` / preflight）見 [`command-dashboard/docs/design/POLICY.md`](command-dashboard/docs/design/POLICY.md) §底圖資料來源與 build recipe。
 
