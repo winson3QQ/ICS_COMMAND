@@ -42,6 +42,20 @@ def test_billion_laughs_entity_expansion_blocked():
         parse_cot_xml(_load("billion_laughs.xml"))
 
 
+def test_oversize_xml_rejected_before_parse():
+    # well-formed 但巨型 XML（defusedxml 不擋 size）→ 大小上限先擋，防記憶體 DoS
+    from services.tak_service import _MAX_COT_BYTES
+
+    filler = "<x/>" * (_MAX_COT_BYTES // 4 + 10)  # 撐過上限
+    payload = (
+        '<event version="2.0" uid="BIG-1" type="a-f-G" time="2026-06-05T04:00:00Z" '
+        'start="2026-06-05T04:00:00Z" stale="2026-06-05T04:10:00Z" how="m-g">'
+        f'<point lat="24.1" lon="120.6"/><detail>{filler}</detail></event>'
+    )
+    with pytest.raises(CoTParseError, match="大小上限"):
+        parse_cot_xml(payload)
+
+
 def test_inline_doctype_rejected():
     # 任何 DOCTYPE/DTD 一律拒（CoT 串流不該帶 DTD）
     payload = (

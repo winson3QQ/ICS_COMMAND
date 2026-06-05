@@ -24,9 +24,13 @@ from defusedxml.ElementTree import fromstring as _safe_fromstring
 
 from schemas.tak import CoTEventIn
 
+# 單筆 CoT event 大小上限（防 well-formed 巨型 XML 的記憶體 DoS — defusedxml 只擋
+# DTD/entity，不管整體 size/節點數）。TAK CoT event 典型 <2KB；256KB 已極寬鬆。
+_MAX_COT_BYTES = 256 * 1024
+
 
 class CoTParseError(ValueError):
-    """CoT XML 解析失敗（格式錯 / 缺必填 / 不可信內容被擋）。"""
+    """CoT XML 解析失敗（格式錯 / 缺必填 / 過大 / 不可信內容被擋）。"""
 
 
 def _localname(tag: str) -> str:
@@ -70,15 +74,12 @@ def _extract_detail(detail_el) -> tuple[str | None, str | None, dict]:
     if detail_el is None:
         return callsign, remarks, detail_dict
 
-    # callsign：任一後代帶 callsign 屬性（contact 最常見）
-    for node in detail_el.iter():
-        cs = node.get("callsign")
-        if cs:
-            callsign = cs
-            break
-
+    # callsign / remarks 都只看 <detail> 的**直接子元素**（CoT 慣例 <contact>/<remarks>
+    # 為 detail 直屬）。不用 .iter() 掃全後代 — 否則會誤撈巢狀擴充元素裡的 callsign 屬性。
     for child in list(detail_el):
         tag = _localname(child.tag)
+        if callsign is None and child.get("callsign"):
+            callsign = child.get("callsign")
         if tag == "remarks" and child.text and child.text.strip():
             remarks = child.text.strip()
         entry = dict(child.attrib)
@@ -116,13 +117,17 @@ def parse_cot_xml(raw: str | bytes) -> CoTEventIn:
     Raises:
         CoTParseError: XML 格式錯 / root 非 event / 缺 point / 缺必填 / 不可信內容被 defusedxml 擋。
     """
-    if isinstance(raw, bytes):
+    if isinstance(raw, bytes | bytearray):
+        if len(raw) > _MAX_COT_BYTES:
+            raise CoTParseError(f"CoT XML 超過大小上限（{len(raw)} > {_MAX_COT_BYTES} bytes）")
         try:
             raw = raw.decode("utf-8")
         except UnicodeDecodeError as exc:
             raise CoTParseError("CoT XML 非 UTF-8") from exc
     if not raw or not raw.strip():
         raise CoTParseError("CoT XML 為空")
+    if len(raw) > _MAX_COT_BYTES:
+        raise CoTParseError(f"CoT XML 超過大小上限（{len(raw)} > {_MAX_COT_BYTES} chars）")
 
     # defusedxml：DTD/外部實體/實體展開全擋。EntitiesForbidden / DTDForbidden 會 raise。
     try:

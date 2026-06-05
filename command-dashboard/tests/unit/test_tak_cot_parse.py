@@ -76,6 +76,21 @@ def test_bytes_input_accepted():
     assert e.uid == "HAZ-001"
 
 
+def test_callsign_only_from_direct_child_not_nested():
+    # callsign 只認 <detail> 直接子元素，不撈巢狀擴充元素裡的 callsign 屬性
+    xml = (
+        '<event version="2.0" uid="N-1" type="a-f-G" time="2026-06-05T04:00:00Z" '
+        'start="2026-06-05T04:00:00Z" stale="2026-06-05T04:10:00Z" how="m-g">'
+        '<point lat="24.1" lon="120.6"/>'
+        "<detail>"
+        '<wrapper><contact callsign="NESTED-WRONG"/></wrapper>'
+        '<contact callsign="TOP-RIGHT"/>'
+        "</detail></event>"
+    )
+    e = parse_cot_xml(xml)
+    assert e.callsign == "TOP-RIGHT"
+
+
 @pytest.mark.parametrize("name", ["missing_how.xml", "missing_point.xml", "bad_coords.xml", "not_event.xml"])
 def test_invalid_inputs_raise(name):
     with pytest.raises(CoTParseError):
