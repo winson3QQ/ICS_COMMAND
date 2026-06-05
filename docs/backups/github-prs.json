@@ -2111,16 +2111,16 @@
     },
     "baseRefName": "main",
     "body": "## 定位\nROADMAP **P2-05** 子塊 **(b)**（§8 線/面 + 設施色走 design token）。P2-05 拆三：(a) MGRS 多 zone(#56)、**(b) hex→token（本 PR）**、(c) milsymbol 2525 核心。\n\n## 變更\n- 新增 **`cssVar(name, fallback)` 橋接**（`getComputedStyle` 讀 ds-tokens，fallback 兜底無 DOM/未載 CSS）—— codebase 首個 CSS-token→MapLibre 單一來源機制。\n- 6 個 type-palette 色表（`_NODE_COLORS`/`_SEV_COLORS`/`_RAG_COLORS`/`POLY_TYPES`/`INFRA_TYPES`/`ROUTE_TYPES`）改讀標準 token。\n- **遊離 hex 收斂到標準調色盤**（決策：對齊 §8 標準盤，非保色）：\n  - `#e05555`/`#c0392b`（control/danger/hospital/medical/emergency）→ `--red`\n  - `#56d364`（primary route）→ `--green`；`#ff7f50`/`#f0883e`（fire/shelter-node）→ `--orange`\n  - ops/police/forward→`--accent`；utility/command→`--text-secondary`\n  - severity/RAG exact-match：僅來源改 token，**零視覺變化**\n\n## §8 驗證\n```\nnpx vitest run        → 224 passed（含新增 p2_05b 守門：無遊離 hex 殘留）\nnpx eslint            → clean\ndoc_sync_check.py     → exit 0\n```\n**實機視覺驗收 PASS**：登入畫 zone/route + 設施/節點，色相一致對齊標準盤（control/danger/hospital 統一 #f85149、primary route #3fb950、fire #d29922）。\n\n## 視覺差異（意圖內）\ncontrol/danger/hospital/medical 紅微調（#e05555/#c0392b→#f85149）、primary route 綠（#56d364→#3fb950）、fire/shelter 橘（#ff7f50/#f0883e→#d29922）。色相不變、僅對齊標準盤。\n\n## 範圍\nPart of #110（不 close）。(a) MGRS #56 / (c) milsymbol 2525 另出 PR。版號：使用者可感 UI 微調 → 建議 `cmd-v1.0.0`→`v1.0.1`（待 P2-05 收尾或本 PR 進版時打）。",
-    "closedAt": null,
+    "closedAt": "2026-06-05T09:49:26Z",
     "comments": [],
     "createdAt": "2026-06-05T09:09:45Z",
     "headRefName": "feat/issue-110-symbol-tokens",
     "labels": [],
-    "mergedAt": null,
+    "mergedAt": "2026-06-05T09:49:26Z",
     "number": 111,
-    "state": "OPEN",
+    "state": "MERGED",
     "title": "refactor(map): P2-05(b) type-palette hex → ds-tokens 調色盤對齊（#110）",
-    "updatedAt": "2026-06-05T09:09:45Z",
+    "updatedAt": "2026-06-05T09:49:26Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/111"
   },
   {
@@ -2158,5 +2158,47 @@
     "title": "feat(tak): P2-03 — CoT ingestion wire 進 app（lifespan + REST + client cert）[等 P2-05 再 merge]",
     "updatedAt": "2026-06-05T09:37:07Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/112"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "## 定位\nROADMAP **P2-05** 子塊 **(a)**（MGRS grid）+ **closes #56**。**Stacked on #111（(b) token）** —— base 設 `feat/issue-110-symbol-tokens`，diff 只含 coord_tools；(b) merge 後改 base 為 main（或順序 merge）。\n\n## 問題（#56）\n低 zoom / 跨 UTM zone 時 MGRS 格線消失。`redraw` 整畫面用單一中心 zone 投影，離中央經線越遠越失真 → 點變非有限被丟。\n\n## 變更（`coord_tools.js`）\n1. **多 zone 細格**：逐 UTM zone 投影並 clip 到各自 6° 經度帶（`_emitZoneLines`）；單 zone 視野退化為原行為。\n2. **低 zoom GZD 帶**（< `GZD_ZOOM`=6）：6° 經 zone 界 + 8° 緯帶界 + designator（`51R`）。`computeGzdFeatures`/`utmZoneFromLng`/`latBandFromLat` 純函式可測。\n3. **GZD 密度補強**：視野不過寬時疊加多 zone 100km 細格（secondary），消除中間 zoom 稀疏「像斷線」、與 zoom≥6 平滑銜接；真世界尺度只留 GZD 帶（防橫線爆量）。\n4. **座標精度**（follow-up）：格距 1-2-5 半階階梯 + `mgrsGridLabel` `round→ceil` → 中間 zoom 落更細格（zoom14 1km→500m）、標籤多一位（`45`→`455`）少內插；secondary tier 取能整除 primary 的相鄰細階（/2 或 /5）保 nesting。\n\n## §8 驗證\n```\nnpx vitest run   → 237 passed（多 zone / GZD / 密度補強 / 半階精度 / secondary nesting 不變式）\nnpx eslint       → clean\n```\n**實機視覺驗收 PASS**：低 zoom GZD `48R-53R` 跨多 zone 顯示、跨 zone 不消失、戰術 zoom 500m 3 位標籤（截圖留證於對話）。\n\n## 已知保留（依使用者「先這樣」）\nzone 邊界本質性 jog（相鄰 UTM zone 格網不對齊，ATAK/WinTAK 同）為正確 MGRS 行為，未強接。\n\ncloses #56；Part of #110。",
+    "closedAt": "2026-06-05T09:50:05Z",
+    "comments": [],
+    "createdAt": "2026-06-05T09:47:38Z",
+    "headRefName": "feat/issue-56-mgrs-multizone",
+    "labels": [],
+    "mergedAt": "2026-06-05T09:50:05Z",
+    "number": 113,
+    "state": "MERGED",
+    "title": "feat(map): P2-05(a) MGRS 多 zone + GZD 帶 + 1-2-5 精度（#56）",
+    "updatedAt": "2026-06-05T09:50:05Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/113"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "## What changed\n新 `git worktree` 的底圖（gitignored、per-machine deploy artifact）一律缺，地圖空白。各 worktree/主 repo 底圖**完全相同**，重下載 247MB 純浪費。本 PR 讓新 worktree **自動重用本機現成副本**。\n\n- **`scripts/ensure_basemap.sh`**（新）：底圖缺/舊 → 掃本機所有 worktree + 主 repo 找 SHA 符的副本 → `provision_basemap.sh --from`（秒級、免網）；本機完全無副本才警告（`--allow-download` 才連網下載）。\n- **`.githooks/post-checkout`**（append，不動既有 memory-sync）：新 worktree 缺底圖檔時自動跑 ensure。cheap gate：只在「檔不存在」時動作（不每次切 branch 都 hash 247MB），best-effort 不擋 checkout。\n- **`README.md`** §換機器：記入 auto-provision 機制。\n\n## DoD checklist\n- [x] `ensure_basemap.sh` happy path（就緒 → exit 0）+ reuse path（移開 → 從主 repo `--from` 補回，SHA 符 + preflight 過）**實測過**\n- [x] git mode `100755`（可執行）\n- [x] `doc_sync_check` exit 0\n\n## §8 Human Verification Script\n```bash\n# 已就緒 → 無聲 exit 0\n./scripts/ensure_basemap.sh; echo \"exit=$?\"\n\n# reuse 驗證（移開後從本機副本補回）\nmv command-dashboard/static/tiles/taiwan.pmtiles{,.bak}\n./scripts/ensure_basemap.sh                       # 應印「用本機副本補」\nbash scripts/preflight_basemap.sh                 # 應 ✓ SHA 符\nrm -f command-dashboard/static/tiles/taiwan.pmtiles.bak\n```\n\n## Known limitation\n`git worktree add` 的端到端觸發**需 merge 進 main 後生效**：`core.hooksPath` 指向**主 repo** 的 `.githooks`，且新 worktree 從 `main` 拉 `scripts/ensure_basemap.sh` —— 兩者都要在 main 才齊。元件層（ensure 兩條路）已全驗，hook wiring 是 trivial 的「缺檔→呼叫 ensure」。\n\n## Out of scope\n- stale（manifest 升版而檔還在舊版）不由此 hook 處理 → 沿用 `start_mac.sh` preflight 警告 + 手動 `provision`（本 PR 的 cheap gate 只認「檔不存在」）。\n",
+    "closedAt": null,
+    "comments": [],
+    "createdAt": "2026-06-05T09:49:25Z",
+    "headRefName": "chore/basemap-ensure-worktree",
+    "labels": [],
+    "mergedAt": null,
+    "number": 114,
+    "state": "OPEN",
+    "title": "chore(basemap): 新 worktree 自動補底圖（post-checkout hook + ensure_basemap）",
+    "updatedAt": "2026-06-05T09:49:25Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/114"
   }
 ]
