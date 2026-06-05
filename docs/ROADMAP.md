@@ -346,82 +346,115 @@ Phase 1 內部建議順序：P1-10 全部完成 → P1-12a → **P1-12b+14 合�
 | ✅ P2-03 | `routers/tak.py`：從 stub 升級為真實 endpoint（接 TAK Server federation push + REST 查詢）；schema 已存在於 Stage 1 帶過來的 stub。**[完成 — [#112](https://github.com/winson3QQ/ICS_COMMAND/pull/112) `01ab9b6`（issue #107）]**：main.py lifespan 依 `TAK_ENABLED` 啟動 `subscribe()` 背景 task（啟動失敗永不擋 app 開機）+ `core/config.py` TAK_* env + `routers/tak.py` async ingest endpoint（RBAC/CAS/skip）+ `issue-tak-certs.sh` Section 5 離線簽 fullchain client cert。11 測試、/code-review 1 修正、/security-review 0 finding。**活 app 端到端 + 視覺驗收 PASS**：起 app(TAK_ENABLED) → 推 4 種 affiliation CoT 到新竹 → P2-05 milsymbol 渲染成 2525 符號（友軍藍矩形/敵軍紅菱/中立綠方/不明黃四葉）即時上圖。<br>**＋ P2-02 W2(#106) 移交的 production 整合 follow-up**（subscribe() 已實作+活 server 端到端實測過，但「在 app 真正跑起來」屬本項）：① **lifespan wiring** — main.py FastAPI lifespan 把 `tak_service.subscribe()` launch 成背景 task（startup）+ shutdown cancel；沒這步 CoT 不會在 production 流入。② **client cert 正式簽發** — 擴充 `deploy/tak-server/pki/issue-tak-certs.sh` 出 COP subscriber 的 **fullchain** client cert（leaf+intermediate；現只簽 server/truststore/fed-truststore）。③ **config plumbing** — `core/config.py` 加 env-driven `cot_url` + cert 路徑餵 `build_subscribe_config`。憑證區分見 memory `p2-tak-deploy-issue101`（:8089 streaming 只需 fullchain CA-trusted cert，**不需** UserManager enroll；enroll 是 :8443 web UI 才要）。 |
 | ✅ P2-04 | `cop_service.normalize_cot(event)` — CoT → COP entity 映射（type / uid / time / stale / lat / lon → COP `entity` + `track`）。**[完成 — [#108](https://github.com/winson3QQ/ICS_COMMAND/pull/108) `28490cf`（issue #105）]**：`normalize_cot(CoTEventIn)->CoPEntity`（純函式，欄位直通 + source='tak' + detail→attributes + track 安全取值）+ **`ingest_cot_event` 共用接縫**（normalize→upsert version_clock CAS→cop_hub 廣播；out-of-order/重送守門；create 綁 active 場）由 P2-02 W2(#106)/P2-03(#107) 共同呼叫。13 新測試 + code/security review 過（0 HIGH）。track 逐格時間軸寫入留 P2-06。 |
 | ✅ P2-05 | 前端 `static/js/map.js` 加 MIL-STD-2525 符號渲染（用 [milsymbol](https://github.com/spatialillusions/milsymbol) JS lib，MIT，非中國維護）。**MGRS grid 一併於本項實作**（zoom-adaptive 密度、淡灰底 + 強調 100km / 10km 分層、label 避讓）——P1-10 已預埋 MapLibre Symbol Layer 接點。**affiliation-aware 渲染模型**（敵我=2525 框 / 類型=NAPSG 象形 / severity=halo；情境表 A–E 由 cot_type 前綴分流；建立流程 type-first）依 [`classification-crosswalk.md`](../command-dashboard/docs/design/classification-crosswalk.md) §6。**＋ route/polygon（線/面）符號對齊 MIL-STD-2525 Tactical Graphics（control measures：route≈axis-of-advance、polygon≈area-control）+ 走 design token**——現況為 app 自訂寫死 hex（`POLY_TYPES`/`ROUTE_TYPES`），非標準、違 POLICY hex doctrine，正規化留本項，見 [`classification-crosswalk.md`](../command-dashboard/docs/design/classification-crosswalk.md) §8 <br>**[進度 2026-06-05]**：拆三子塊 — ✅ (b) hex→token 調色盤對齊（[#111](https://github.com/winson3QQ/ICS_COMMAND/pull/111) `16fb5b2`）、✅ (a) MGRS 多 zone+GZD+1-2-5 精度（[#113](https://github.com/winson3QQ/ICS_COMMAND/pull/113) `ad14bd3`，closes #56）；✅ (c) milsymbol 2525 affiliation 框（[#115](https://github.com/winson3QQ/ICS_COMMAND/pull/115) `07d59e7`，closes #110）。**P2-05 完成**；`cmd-v1.0.1`。框內 function 細分（兵種圖）/ TAK 單位全鏈視覺（配 P2-03）為後續。 |
-| P2-06 | **時間軸支援**：CoT `stale` 過期自動從 COP 移除 + 快照寫入（Wave 6 時間軸回放預埋）。**⚠ drift 釐清（#98）**：`snapshot_repo` 是 unit-KPI 聚合非 per-entity COP 時間軸，回放路徑（`cop_entity_tracks` 現有表或新快照表）動工前須確認 |
-| P2-07 | **GeoChat 誤路由修正**（reality check 2026-06-05 bug）：CoT type `b-t-f`（GeoChat）目前被 `ingest_cot_event` 當成普通 CoPEntity 存進 `cop_entities`——發話者位置跳出地圖點、右側欄出現假事件，**行為錯誤**。修法：(1) `tak_service._consume_cot` 加 type prefix 路由（`b-t-f` 走聊天路徑，不進 `ingest_cot_event`）；(2) 新 `services/chat_service.py` + `chats` 表（`sender_uid` / `callsign` / `message` / `group` / `lat` / `lon` / `time` / `exercise_id`，對齊 ICS-214 Unit Log 通聯記錄）；(3) 前端加「通聯記錄」面板（UI 落點待 layout 設計決策，見整合缺口 #5）。測試：`b-t-f` 不得進 `cop_entities`（負向）；GeoChat message XSS 負向測試（`<script>` / HTML 特殊字元不得原樣輸出）；exercise scoping 對齊。**安全**：後端 `html.escape()` 處理 `message` 欄位；前端顯示走 `textContent`（**禁用 `innerHTML`**），防 XSS（ASVS V5 / OWASP A03）|
-| P2-08 | **CoT `<shape>` 幾何萃取**（:8089 路徑線/面）：ATAK 戰術標記部分在 CoT `<detail>` 嵌 `<shape>` 元素（polygon / polyline），目前 `_extract_detail` 把 detail 結構化成 dict，幾何埋在 `attributes` 被忽略、地圖只渲染 `<point>` 單點。修法：(1) 抽 `services/geometry_service.py`（CoT `<shape>` 解析 + DataSync GeoJSON 解析**統一入口**，避免 P2-14 重工）；(2) `CoTEventIn` 加選填 `geometry` 欄位；(3) `normalize_cot` 依幾何類型映射到 `kind='route'`（polyline）或 `kind='polygon'`（polygon），沿用 P1-15 即時管線 |
-| P2-09 | **9-line MEDEVAC incident card**：CoT type `b-a-o-tbl-medevac`（及變體）目前流入通用 CoPEntity，9-line 結構欄位（pickup zone / frequency / number casualties / special equipment…）埋在 `attributes` JSON blob，前端無對應 UI。修法：(1) `normalize_cot` 加 type 分支偵測 MEDEVAC → 萃取 9-line 欄位進 `attributes` 結構化子物件；(2) 前端 entity popup 對 `type` 前綴 `b-a-o-tbl` 渲染專屬 incident card（severity 自動設 critical）；(3) 設計對齊 P3-06 WaveInk MEDEVAC 9-line（同一 card schema，來源不同）|
-| P2-10 | **TAK 上行整合測試（E2E uplink milestone）**：使用真實 ATAK/iTAK 客戶端推 CoT 到 TAK Server（:8089），驗 ICS Command dashboard 地圖即時更新（< 5 秒）。涵蓋：CoT parse unit tests、XXE 防護驗測（`defusedxml` forbid_dtd/entities/external）、GeoChat 路由負向測試（不進 `cop_entities`）、shape 幾何渲染（route/polygon）、MEDEVAC card 顯示。含 mock TAK 推播 integration test。**＋ CoT 內容層驗證**（XXE 之外）：座標合法性（`-90 ≤ lat ≤ 90`、`-180 ≤ lon ≤ 180`，越界拒絕）；callsign 長度上限 + 字元白名單（防 XSS injection vector）；CoT type prefix 白名單（unknown prefix 不進 `cop_entities`）——任何 ATAK 裝置連上同一 TAK Server 即可推 CoT，**內容層驗證是 ICS Command 最後一道防線**。**P2-07/08/09 完成後執行** |
-| P2-11 | **OAuth2 M2M 認證 + `services/tak_rest_client.py` Marti REST 抽象層**：TAK Server Marti REST API（`:8443`）M2M 認證標準為 **OAuth2 client credentials flow**（`POST /oauth/token → JWT Bearer`），**非** UserManager enrolled cert（enrolled cert 是人類 web UI 認證流程，非 M2M）。**架構決策（2026-06-05）**：step-ca 簽的 cop-subscriber cert 只適用 :8089 streaming mTLS；REST API 走 OAuth2。工作：(1) OAuth2 client credentials 取 JWT + refresh；(2) 新 `services/tak_rest_client.py`（auth + retry + rate-limit + poll scheduler 抽象，**P2-12/13/14/16/18 全依賴此層**）；(3) `deploy/tak-server/pki/issue-tak-certs.sh` 補 OAuth2 client user 建立 SOP。**JWT 儲存策略**：`access_token` **記憶體限定**（process 重啟重取，不寫檔案）；`refresh_token` 若需持久化須對齊 P1-12a HKDF child key 加密，**禁止裸存於 `.env` / 明文檔案**（新 secret 洩漏破口）。**此為 P2-12 ~ P2-18 所有 REST 功能的前置** |
-| P2-12 | **TAK 在線人員面板**（Marti REST `/Marti/api/clientEndPoints` + `/contacts/all`）：TAK Server 記錄哪些 ATAK/iTAK 裝置當前在線（callsign / UID / IP / last-seen）。工作：(1) `services/tak_rest_client.py` poll（週期 30s，依賴 P2-11）；(2) 在線狀態透過 `cop_hub` 廣播（`exercise_id=None`，**bypass `resolve_scope()`**——在線狀態是基礎設施即時資料，非演習資料）；(3) 前端新增人員在線面板（UI 落點見整合缺口 #5）。**RBAC**：在線人員查詢 = `READ_ROLES`（observer 以上可見）；`cop_hub` None 廣播**不得洩漏 exercise-scoped 業務 COP 資料**（presence 廣播只帶 callsign/UID/online-status，不帶 cop_entity 業務欄位）。**⚠ 整合缺口 #4/5/6：`resolve_scope()` bypass 設計 + UI layout 方案 + cop_hub None 廣播前端守門，動工前確認** |
-| P2-13 | **Mission API 下行指令 + COP 指令圖層**（Marti REST `/Marti/api/missions/`）：將 ICS 指揮部下達的路線/目標/任務透過 Mission API **推送到現場 ATAK 裝置**——**不用** pytak TXWorker（TXWorker 廣播全群組無 group scope + 無持久化；Mission API = group-scoped + 持久儲存，為下行指令正解）。工作：(1) `services/tak_rest_client.py` Mission CRUD（依賴 P2-11）；(2) 前端「下達指令」UI（選 cop_entity → 指定 group → 推 Mission）；(3) **CoPEntity schema 擴張**（**需 DB migration，⚠ 整合缺口 #1/#2**）：`source` enum 加 `"command"`（P1-03 凍結，P2-13 解凍） + `planned: bool`（`False`=實際位置，`True`=指令計劃位置）；(4) 前端 MIL-STD-2525 空心框（`planned=True`）vs 實心框（`planned=False`）視覺區分（P2-05 SDF 基礎）。**RBAC**：Mission 推送嚴格限 `COMMAND_ROLES`（operator/observer 即使知道 API 路徑也 403）。**Audit**：每次 Mission push 強制寫 `MISSION_PUSH_TAK operator={uid} group={name} cop_entity_id={id} mission_id={id}`（P1-14 #93 audit 管線）——下行指令是指揮行為，**必須留痕，不得 best-effort**。**E2E bidirectional 里程碑：P2-10 + P2-13 完成後，真實 ATAK ↔ ICS Dashboard 雙向驗證可執行** |
-| P2-14 | **DataSync client**（ATAK Mission / Route package / 照片，Marti REST `/Marti/api/missions/` + `/sync/`）：ATAK app 畫的 Mission 路線、上傳照片走 TAK Server DataSync HTTP API（`:8443`，非 CoT streaming :8089），與現有 streaming 管線**完全獨立**。工作：(1) `services/tak_rest_client.py` poll（依賴 P2-11）；(2) Mission geometry 透過 `services/geometry_service.py`（P2-08 共用）轉 cop_entity route/polygon；(3) 照片/檔案：reference-only URI（只存 `str`；**ICS Command 永不 follow 此 URI**——不發任何 HTTP request to that URI，防 SSRF；**紅線：DataSync URI 不得進任何 `requests.get()` / `httpx.get()` 呼叫**）；(4) 新 `services/datasync_service.py`。**P2-11 完成後動工；動工前先對 DataSync API 做 reality check（API 文件 + 活 server 抓包）** |
-| P2-15 | **Federation 設定**：與外部 TAK 節點 server-to-server 交換 CoT（`:9000`/`:8444`）。**Federation 優先於多源 :8089 訂閱**：server↔server federation 在 server 層談信任一次，ICS 端零改動，為多組織互通正解；多源 :8089 訂閱（多台外部 TAK server）若需求出現再評估。含 `fed-truststore.jks` 管理 + step-ca peer cert profile（`#98 drift 2` 已修，見 P2-01 #101）。先單機 PoC → 跨機關部署（Wave 6+）|
-| P2-16 | **影像串流整合**（Marti REST `/Marti/api/video/`）：TAK Server 聚合現場 RTSP/RTMP 串流資訊。工作：(1) `services/tak_rest_client.py` poll（依賴 P2-11）；(2) 前端影像清單面板 + 點開外部 RTSP player（**ICS Command 不 proxy 影像串流**，只呈現 URI reference，對齊多媒體原體邊界原則）。可選 / 低優先，視現場 RTSP 基礎設施需求決定是否做 |
-| P2-17 | **規格書補 TAK 整合章節**（P2-07 ~ P2-16 完成後補）：含 OAuth2 M2M flow 設定 SOP、Mission API downlink 操作流程、planned/actual 視覺規格、`services/geometry_service.py` 設計說明（原 P2-13）|
-| P2-18 | **EXCHECK 任務查核整合**（Marti REST `/Marti/api/excheck/`）：TAK Server EXCHECK 追蹤現場人員任務完成狀態，對應 ICS-204 任務指派追蹤。工作：(1) `services/tak_rest_client.py` poll（依賴 P2-11）；(2) 任務狀態顯示於前端（cop_entity popup checklist / ICS-204 自動標記 completed）；(3) EXCHECK 任務與現有 events 表 task 欄位對映設計。**高價值 / 充分利用 TAK 介面；視 P2-13 downlink 完成度決定優先順序** |
+| **——— 【地基層 Foundation】 純後端，自動化測試驗收，無 UI ———** | — |
+| P2-06a | **CoT 軌跡寫入接線**（`insert_cop_track` 零 caller bug 修復）：`cop_entity_repo.insert_cop_track()` 定義存在但整個 codebase 零 caller → `cop_entity_tracks` 表一直是空的。修法：`ingest_cot_event` 每次 upsert 後同步寫一筆軌跡點。抽樣策略：per-entity 最短間隔 5s（ATAK 最短 2s push，不節流則爆量）；帶 active `exercise_id`（無演習 = NULL）。清理：exercise 刪除 cascade；archive 保留。**P2-20 AAR 回放的唯一資料基礎，不做則 AAR 無資料可播** |
+| P2-06b | **軌跡查詢 API**：`GET /api/exercises/{id}/tracks?uid=&from=&to=` → 回傳該演習所有 entity 位置時間序列（`{uid, t, lat, lon, hae}`，按 t 升序，分頁）。**RBAC**：`COMMAND_ROLES`（軌跡含人員位置 PII，非 READ_ROLES 可見）。P2-20 回放前端的資料來源 |
+| P2-07 | **GeoChat 誤路由修正—後端**（reality check 2026-06-05 bug）：CoT type `b-t-f` 存進 `cop_entities`，行為錯誤。修法（純後端）：(1) `tak_service._consume_cot` type prefix 路由（`b-t-f` 不進 `ingest_cot_event`）；(2) 新 `services/chat_service.py` + `chats` 表（`sender_uid` / `callsign` / `message` / `group` / `lat` / `lon` / `time` / `exercise_id`，對齊 ICS-214 Unit Log）；(3) 後端 `html.escape()` 處理 `message`（XSS 防線在後端）。測試：`b-t-f` 不得進 `cop_entities`（負向）；XSS 負向（`<script>` 不得原樣輸出）；exercise scoping 對齊。**通聯記錄面板 UI → P2-12 統一落地** |
+| P2-08 | **CoT `<shape>` 幾何萃取 + `services/geometry_service.py`**（純後端）：ATAK `<shape>` 幾何埋在 `attributes` 被忽略，地圖只渲染 `<point>` 單點。修法：(1) 抽 `services/geometry_service.py`（CoT `<shape>` + DataSync GeoJSON 統一解析入口，P2-14 共用，避免重工）；(2) `CoTEventIn` 加選填 `geometry` 欄位；(3) `normalize_cot` 依幾何類型映射到 `kind='route'`（polyline）/ `kind='polygon'`（polygon），沿用 P1-15 管線 |
+| P2-09 | **MEDEVAC 9-line 正規化—後端**（純後端）：CoT type `b-a-o-tbl-medevac` 9-line 欄位（pickup zone / frequency / casualties / equipment…）埋在 `attributes` blob。修法：`normalize_cot` 加 type 分支 → 萃取 9-line 進 `attributes` 結構化子物件；`severity` 自動設 critical。測試：欄位完整萃取；schema 對齊 P3-06 WaveInk MEDEVAC（同一 card schema，不同來源）。**MEDEVAC incident card UI → P2-12 統一落地** |
+| P2-11 | **OAuth2 M2M 認證 + `services/tak_rest_client.py` Marti REST 抽象層**（純後端）：Marti REST API（`:8443`）M2M 走 **OAuth2 client credentials**（`POST /oauth/token → JWT Bearer`），**非** enrolled cert。工作：(1) JWT 取得 + refresh；(2) 新 `services/tak_rest_client.py`（auth + retry + rate-limit + poll scheduler，**P2-12/13/14/16/18/19 全依賴此層**）；(3) `issue-tak-certs.sh` 補 OAuth2 client user SOP。**JWT 儲存**：`access_token` **記憶體限定**（重啟重取）；`refresh_token` 若需持久化對齊 P1-12a HKDF，**禁裸存 `.env`**。**此為 P2-12 ~ P2-19 所有 REST 功能前置** |
+| P2-11b | **CoPEntity schema v2 migration（一次完成，避免多次 migration）**：統一處理後續多個 item 的 schema 需求：(1) `source` enum 加 `"command"`（P1-03 解凍）；(2) `planned: bool = False`（空心/實心 MIL-STD-2525 框，P2-13 用）；(3) `simulated: bool = False`（合成注入實體標記，`how="h-g-i-g-o"` CoT 時設 True，P2-19 用）。一次 migration 覆蓋三個場景，**不分開做避免 schema 版本反覆 bump**。P1-03 contract tests 作回歸守門。**P2-13 與 P2-19 共同前置** |
+| **——— 【核心雙向層 Core TAK Bidirectional】 有 UI，需 Human Verification ———** | — |
+| P2-10 | **地基層驗收 + E2E 上行測試**：地基層（P2-06a～P2-11b）完成後的整合驗收里程碑。涵蓋：(1) 真實 ATAK/iTAK 推 CoT → 地圖 < 5s 更新（**human verify**）；(2) shape 幾何渲染（route/polygon **human verify**）；(3) mock TAK integration tests；(4) CoT 內容層驗證（座標越界拒絕、callsign 字元白名單、type prefix 白名單——任何 ATAK 裝置可推 CoT，**此為最後一道防線**）；(5) XXE 防護驗測（`defusedxml`）；(6) GeoChat 路由負向（不進 `cop_entities`）。**全通後才進 P2-12/P2-13** |
+| P2-12 | **新 UI 面板統一落地（Human Verification 里程碑）**：P2-07/09 後端已備，本項統一設計所有新 panel——**一次 layout 設計決策（整合缺口 #5）** 涵蓋以下三面板，統一 human verify：(1) **TAK 在線人員面板**（`tak_rest_client` poll clientEndPoints/contacts，30s）；(2) **通聯記錄面板**（`chats` 表，前端 `textContent` 禁 `innerHTML`，可點位置跳地圖）；(3) **MEDEVAC incident card**（P2-09 後端，9-line 格式化，severity=critical pulse）。**RBAC**：以上三面板均 `READ_ROLES`。**cop_hub None 廣播不洩漏業務 COP 欄位**（presence 廣播只帶 callsign/UID/online-status）。整合缺口 #4/6 確認（resolve_scope bypass + cop_stream.js null 廣播守門）|
+| P2-13 | **Mission API 下行指令 + COP 指令圖層（Human Verification 里程碑）**：(1) `tak_rest_client.py` Mission CRUD（依賴 P2-11）；(2) 前端「下達指令」UI（選 entity → 指定 group → 推 Mission；**COMMAND_ROLES 限定按鈕**）；(3) MIL-STD-2525 空心框（`planned=True`）vs 實心框（`planned=False`）地圖視覺（P2-11b schema 基礎）。**RBAC**：COMMAND_ROLES 嚴格限（403 負向測試必通）。**Audit**：每次 push 強制寫 `MISSION_PUSH_TAK operator={uid} group={name} cop_entity_id={id} mission_id={id}`（指揮行為，**不得 best-effort**）。**E2E bidirectional 里程碑**：P2-10 + P2-13 → 真實 ATAK ↔ ICS Dashboard 雙向驗證 |
+| **——— 【TTX 演習驗證層 Exercise Validation】 先於實戰 ———** | — |
+| P2-19 | **情境注入 + O/C 控制台**（新 `services/scenario_service.py`）：讓 O/C（Observer/Controller）向學員 ATAK 注入合成情境 + 向 Dashboard 注入事件/任務。三組件：(A) **ATAK 側注入**：`tak_rest_client.py` 推合成 CoT（`how="h-g-i-g-o"` → `simulated=True`，P2-11b）到 TAK Server，學員 ATAK 地圖出現合成位置/威脅；(B) **腳本執行器**：JSON 腳本（`[{t_offset, action, params}]`）→ background task 按時觸發；`action` 嚴格白名單（`inject_cot` / `inject_event` / `inject_mission`），Pydantic strict 驗證，**禁任何動態執行路徑**；(C) **O/C 控制頁** `/admin/exercise-control`（獨立頁面，與學員 dashboard 分離，sysadmin role-gate）+ `scenario_designer.html` → API 接線（export JSON → `POST /api/exercises/{id}/scenario/upload`）。**安全**：注入 API sysadmin-only（commander/operator 403）；per-exercise mutex（`scenario_running` 欄位，並發第二個 run → 409）；合成實體地圖顯示虛線框 + `[SIM]` callsign 前綴（學員看得出是情境道具）；archive 時 `simulated=True` 實體整批清除（防污染下一場或實戰）|
+| P2-20 | **AAR 回放（Wave 6 前移）**：(A) **後端統一時間軸 API**：`GET /api/exercises/{id}/timeline` → 按 t 排序的合併陣列（`{type, t, actor, payload}` from cop_entity_tracks + events + chats + missions audit）；(B) **前端 AAR 頁面** `/aar/{exercise_id}`（獨立頁面，非 ops dashboard toggle；layout：地圖 60% + 通聯/事件面板 40% + 底部時間軸 slider）；**Step mode（優先）**：逐事件跳進（桌面推演首選）；**Play mode（後）**：1x/2x/4x 連續播；地圖顯示各 entity 選定時間點位置 + **軌跡尾跡**（過去 N 分鐘路徑線）；**Touch-friendly**（iPad 觸控，點擊目標 ≥ 44px，時間軸可 swipe）。**安全**：`COMMAND_ROLES` + `resolve_scope()` 跨演習存取守門；軌跡 PII retention policy（90 天 TTL 或 exercise 刪除 cascade，`docs/compliance/threat_model.md` 文件化，P2-17）；AAR 匯出（若做）= COMMAND_ROLES + `AAR_EXPORT` audit log |
+| P2-21 | **演習指標 + 課程標記**：(1) 回放時可 bookmark → 帶時間戳的 AAR entry（`created_at=T+N`，連結回放時間點）；(2) 演習統計面板（**COMMAND_ROLES 限定，不暴露為 public API**）：MEDEVAC 請求 → 確認反應時間、Mission 下達 → EXCHECK 完成率、GeoChat 通聯量 by 組；(3) 演習報告（COMMAND_ROLES + `AAR_EXPORT` audit log）|
+| P2-22 | **TTX Gateway（實戰延伸層解鎖條件）**：**P2-14 ~ P2-18 被此 gate 保護**，TTX 通過後才解鎖。完成標準：≥ 2 次完整演習流程（建立 → 腳本注入 → 學員應變 → 指揮回應 → 歸檔 → AAR）；每次 AAR ≥ 5 條課程標記；`cop_entity_tracks` 完整無缺失；`simulated` 實體無污染到下一場（驗清除機制）；無系統崩潰。**ZELLO**：語音通聯暫走 ZELLO（不整合），頻道分配記錄在 exercise SOP 文件；P3 WaveInk 上線後取代 |
+| **——— 【實戰延伸層 Real Ops Extensions】 TTX Gateway 完成後解鎖 ———** | — |
+| P2-14 | **DataSync client**（ATAK Mission / Route / 照片，Marti REST `/missions/` + `/sync/`）：工作：(1) `tak_rest_client.py` poll（依賴 P2-11）；(2) geometry 透過 `services/geometry_service.py`（P2-08 共用）轉 cop_entity；(3) 照片：reference-only URI（**永不 follow**——防 SSRF，OWASP A10；`datasync_service` 不得有任何 `requests.get(uri)` 呼叫）；(4) 新 `services/datasync_service.py`。**動工前 DataSync API reality check** |
+| P2-15 | **Federation 設定**：server-to-server 交換 CoT（`:9000`/`:8444`）。含 `fed-truststore.jks` + step-ca peer cert profile。**Security**：peer cert 加入須 sysadmin 審批 + audit log；`fed-truststore.jks` 變更納入 change management。先單機 PoC → 跨機關（Wave 7+）|
+| P2-16 | **影像串流整合**（Marti REST `/video/`）：URI reference only，**ICS Command 不 proxy 串流**。可選 / 低優先 |
+| P2-17 | **規格書補 TAK 整合章節**（P2-07 ~ P2-21 完成後補）：含 OAuth2 SOP、Mission downlink 流程、planned/actual 視覺、TTX 運作 SOP（ZELLO 頻道分配、ATAK 學員設定）、track PII retention policy、TAK 信任邊界（補入 `docs/compliance/threat_model.md`）|
+| P2-18 | **EXCHECK 任務查核整合**（Marti REST `/excheck/`）：ICS-204 任務指派追蹤。依賴 P2-11；視 P2-13 downlink 完成度決定優先順序 |
 
 ### TAK 介面整合缺口與架構決策（2026-06-05）
 
-以下缺口在 P2-12/P2-13 動工前需設計決策，否則實作會衝突既有系統。
+以下缺口在對應項目動工前需設計決策。
 
 | # | 缺口 | 現況 | 影響 | 決策方向 |
 |---|---|---|---|---|
-| 1 | **CoPEntity `source` enum 凍結** | `schemas/cop.py:21`：`Literal["manual","pi-node","tak","waveink"]`（P1-03 凍結）；加 `"command"` 需 schema migration | P2-13 下行指令 | P2-13 動工前解凍 + DB migration 計劃；P1-03 contract tests 作回歸守門 |
-| 2 | **CoPEntity 缺 `planned` 欄位** | 無 planned/actual 區分；MIL-STD-2525 空心/實心框需此欄位 | P2-13 指令圖層視覺 | P2-13 schema migration 同步加 `planned: bool = False` + SDF icon 路徑（P2-05 基礎） |
-| 3 | **GeoChat taxonomy 衝突** | `events` 表有 `event_type_id FK → event_types`（NAPSG taxonomy）；GeoChat 通聯記錄不符 NAPSG taxonomy | P2-07 GeoChat 落地 | **架構決策（2026-06-05）：獨立 `chats` 表**（ICS-214 通聯語意與 NAPSG 事件不同，不強併）；P2-07 動工前最終確認 |
-| 4 | **TAK 在線狀態須 bypass exercise scoping** | `exercise_service.resolve_scope()` 套到 cop_entities；TAK presence 是基礎設施即時狀態，不屬特定演習，須 bypass | P2-12 人員面板 | `cop_hub.broadcast(exercise_id=None)`；前端不套 exercise filter；呼叫點確認 |
-| 5 | **前端 UI 落點無既成 panel** | P1-11 已移除 left sidebar；Zone B 純地圖、Zone C footer；無現成 panel 給人員清單 / 通聯記錄 / MEDEVAC cards | P2-07 / P2-09 / P2-12 前端 | P2-07 動工前確定 layout 方案（footer 展開區 / header 下拉 / 右側抽屜），避免各項各自貼 UI 造成不一致 |
-| 6 | **cop_hub `exercise_id=None` 廣播前端守門** | `realtime_hub.py` `broadcast(exercise_id=None)` 已支援；需確認前端 `cop_stream.js` 不誤丟棄 `exercise_id=null` 的廣播 | P2-12 | 確認 `cop_stream.js` filter 邏輯不丟棄 null exercise_id 廣播 |
-| 7 | **CoT 裝置准入是隱性信任假設** | ICS Command 信任 TAK Server 轉發的所有 CoT；哪些 ATAK 裝置被允許連上是 TAK Server cert enrollment 管理員的責任，非 ICS 責任 | 全部 CoT 流入 | `docs/compliance/threat_model.md` 文件化信任邊界（P2-17）；P2-10 CoT 內容層驗證作最後一道防線 |
-| 8 | **Federation peer authorization governance** | `fed-truststore.jks` 技術上控制哪些外部 TAK server 可 federate，但「誰批准加 peer cert」沒有定義的 governance 流程 | P2-15 Federation | P2-15 DoD 補：peer cert 加入須 sysadmin 審批 + audit log；`fed-truststore.jks` 變更納入 change management |
+| 1 | **CoPEntity `source` enum 凍結** | `schemas/cop.py:21`：`Literal["manual","pi-node","tak","waveink"]`（P1-03 凍結）；加 `"command"` 需 migration | P2-11b | P2-11b 統一解凍 + DB migration；P1-03 contract tests 作守門 |
+| 2 | **CoPEntity 缺 `planned` / `simulated` 欄位** | 無 planned/actual 區分；無合成標記欄位 | P2-11b | P2-11b 統一加（`planned: bool = False` + `simulated: bool = False`）|
+| 3 | **GeoChat taxonomy 衝突** | `events` 表 FK → event_types（NAPSG）；GeoChat 通聯不符 NAPSG | P2-07 | **決策：獨立 `chats` 表**（ICS-214 通聯語意不同 NAPSG 事件）|
+| 4 | **TAK 在線狀態須 bypass exercise scoping** | `resolve_scope()` 套 cop_entities；presence 是基礎設施狀態 | P2-12 | `cop_hub.broadcast(exercise_id=None)`；前端不套 exercise filter |
+| 5 | **前端 UI 落點無既成 panel** | P1-11 已移除 left sidebar；無現成 panel 位置 | P2-12 | **P2-12 統一一次 layout 設計決策**，三面板同批落地 |
+| 6 | **cop_hub None 廣播前端守門** | `cop_stream.js` 是否誤丟 `exercise_id=null` 廣播未確認 | P2-12 | 確認 `cop_stream.js` filter 邏輯 |
+| 7 | **CoT 裝置准入隱性信任假設** | ICS 信任 TAK Server 所有 CoT；裝置准入是 TAK 管理員責任 | 全部 CoT 流入 | `docs/compliance/threat_model.md` 文件化（P2-17）；P2-10 內容層驗證作最後一道防線 |
+| 8 | **Federation peer authorization governance** | `fed-truststore.jks` 無正式審批流程 | P2-15 | sysadmin 審批 + audit log；納入 change management |
+| 9 | **CoPEntity 缺 `simulated` 欄位** | 合成注入實體（`how="h-g-i-g-o"`）無標記，archive 後無法辨識清除 | P2-19 | **P2-11b 統一補**（與 `planned` 同批）|
+| 10 | **O/C 控制頁落點** | 無 sysadmin 專屬頁面；放主 dashboard 學員可能看到 | P2-19 | 獨立頁面 `/admin/exercise-control`（sysadmin role-gate）|
+| 11 | **scenario_designer.html 脫離 API** | 52KB 靜態工具，無任何 API 連接 | P2-19 | 補 export → JSON → `POST /api/exercises/{id}/scenario/upload` 接線 |
+| 12 | **AAR 頁面 layout 未定** | 無現成頁面；嵌主 dashboard 與即時 ops 模式衝突 | P2-20 | 獨立頁面 `/aar/{exercise_id}` |
+| 13 | **軌跡 PII retention policy 未定義** | `cop_entity_tracks` 累積 = 人員移動時間序列（高度敏感）；無清除 SOP | P2-06a/P2-20 | 90 天 TTL 或 exercise 刪除 cascade；文件化於 threat_model.md（P2-17）|
+| 14 | **Scenario runner 並發控制** | 無 per-exercise mutex；兩腳本同時跑 → 學員地圖混亂 | P2-19 | `exercises.scenario_running` 欄位；第二個 run 請求 409 |
 
 #### 確認架構決策（後續 PR 的 SoT）
 
-1. **認證**：Marti REST API（`:8443`）走 **OAuth2 client credentials**（JWT Bearer），**不走** UserManager enrolled cert（enrolled cert 是人類 web UI 流程，非 M2M）。cop-subscriber cert 僅用於 :8089 streaming mTLS。
-2. **下行指令**：走 **Mission API**（group-scoped + 持久），**不走** pytak TXWorker（TXWorker CoT push 廣播全群組無 group scope，不適合指令下達）。
-3. **GeoChat 落地**：進獨立 `chats` 表（ICS-214 通聯記錄語意），**不進** `cop_entities`，**不進** NAPSG `events` 表。
-4. **幾何解析共用**：`services/geometry_service.py` 統一解析 CoT `<shape>` 與 DataSync GeoJSON，**P2-08 建、P2-14 共用**，避免重工。
-5. **多媒體原體邊界**：照片/影像串流只保留 URI reference，ICS Command **不 proxy 原體**（對齊 P3-03 WaveInk `audio_ref` 原則）。
-6. **DataSync URI 不 follow**：`services/datasync_service.py` 儲存的 DataSync 檔案 URI 為純 string，ICS Command **永不 HTTP fetch 該 URI**（防 SSRF，OWASP A10）。
+1. **認證**：Marti REST API（`:8443`）走 **OAuth2 client credentials**（JWT Bearer），**不走** enrolled cert。cop-subscriber cert 僅用於 :8089 streaming mTLS。
+2. **下行指令**：走 **Mission API**（group-scoped + 持久），**不走** pytak TXWorker（無 group scope）。
+3. **GeoChat 落地**：進獨立 `chats` 表（ICS-214 通聯語意），**不進** `cop_entities`，**不進** NAPSG `events` 表。
+4. **幾何解析共用**：`services/geometry_service.py` 統一解析 CoT `<shape>` 與 DataSync GeoJSON，P2-08 建、P2-14 共用。
+5. **多媒體原體邊界**：照片/串流只保留 URI reference，ICS Command **不 proxy 原體**。
+6. **DataSync URI 不 follow**：`datasync_service` URI 為純 string，**永不 HTTP fetch**（防 SSRF，OWASP A10）。
+7. **合成實體清除**：演習 archive 時所有 `simulated=True` 的 cop_entities 整批清除，**不污染下一場或實戰模式**。
 
 ### Definition of Done
 
-- [ ] ATAK / iTAK 客戶端推 CoT 事件，5 秒內顯示在 commander_dashboard 地圖（P2-10 E2E uplink）
-- [ ] CoT `stale` 過期自動從 COP 移除（P2-06）
-- [ ] GeoChat（`b-t-f`）**不進** `cop_entities`（負向測試），進 `chats` 表並顯示於通聯面板（P2-07）
-- [ ] CoT `<shape>` 幾何正確渲染為 route / polygon（非單點）（P2-08）
-- [ ] MEDEVAC 9-line CoT → incident card 正確顯示 9 個欄位，severity=critical（P2-09）
-- [ ] XXE 防護測試通過（`defusedxml` forbid_dtd/entities/external）（P2-10）
-- [ ] CoT 內容層驗證：座標越界拒絕、callsign 字元白名單、CoT type prefix 白名單（P2-10）
-- [ ] OAuth2 M2M flow 測試（`/oauth/token` JWT 取得 + Bearer 認證 `:8443`）（P2-11）
-- [ ] JWT `access_token` 記憶體限定，不寫 `.env` / 明文檔案（P2-11）
-- [ ] TAK 在線人員顯示於面板，不受 exercise scoping 過濾（P2-12）
-- [ ] GeoChat message XSS 防護：後端 `html.escape()` + 前端 `textContent`（`innerHTML` 負向測試 green）（P2-07）
-- [ ] Mission API 下行指令推送到 ATAK 裝置，dashboard 顯示指令計劃圖層（`planned=True` 空心框）（P2-13）
-- [ ] Mission push RBAC：COMMAND_ROLES 以外 403 負向測試（P2-13）
-- [ ] Mission push audit log `MISSION_PUSH_TAK` 存在 audit 表（P2-13）
-- [ ] CoPEntity `source="command"` + `planned: bool` schema migration 完成，現有資料不破壞（P2-13）
-- [ ] DataSync Mission geometry 正確進 cop_entities route/polygon（P2-14）
-- [ ] DataSync URI follow 負向測試：`datasync_service` 不發任何 HTTP request to DataSync URI（P2-14）
-- [ ] Federation 雙向流測試（兩台 TAK Server 互推）（P2-15）
+**地基層**
+- [ ] `cop_entity_tracks` 每次 CoT upsert 後有寫入（含 exercise_id），5s min-interval 抽樣（P2-06a）
+- [ ] `GET /api/exercises/{id}/tracks` 回傳完整時間序列，COMMAND_ROLES 限定（P2-06b）
+- [ ] GeoChat（`b-t-f`）**不進** `cop_entities`（負向），進 `chats` 表；XSS 負向（P2-07）
+- [ ] CoT `<shape>` 幾何萃取正確，`geometry_service.py` 單元測試通過（P2-08）
+- [ ] MEDEVAC 9-line 欄位完整萃取，schema 對齊 P3-06（P2-09）
+- [ ] OAuth2 `/oauth/token` JWT 取得 + Bearer 認證 `:8443`（P2-11）
+- [ ] JWT `access_token` 記憶體限定，不寫 `.env` / 明文（P2-11）
+- [ ] CoPEntity schema v2 migration 完成（`source="command"` + `planned` + `simulated`），現有資料不破壞（P2-11b）
+
+**核心雙向層（Human Verification 必通）**
+- [ ] 真實 ATAK 推 CoT → 地圖 < 5s 更新（**human verify**）（P2-10）
+- [ ] CoT 內容層驗證：座標越界拒絕、callsign 白名單、type prefix 白名單（P2-10）
+- [ ] XXE 防護（`defusedxml` forbid_dtd/entities/external）（P2-10）
+- [ ] 三個 UI 面板 human verify：在線人員 + 通聯記錄（`textContent`）+ MEDEVAC card（P2-12）
+- [ ] Mission downlink：ATAK 收到指令，`planned=True` 空心框顯示（**human verify**）（P2-13）
+- [ ] Mission push RBAC：COMMAND_ROLES 以外 403 負向；audit log `MISSION_PUSH_TAK` 存在（P2-13）
+- [ ] **E2E bidirectional**：真實 ATAK app ↔ ICS Dashboard 雙向全鏈驗證（P2-10 + P2-13）
+
+**TTX 演習驗證層**
+- [ ] 情境腳本執行：上傳 → background 按 t_offset 觸發；action 白名單拒絕非法 action（P2-19）
+- [ ] 注入 API sysadmin-only，403 負向；runner 並發 409（P2-19）
+- [ ] 合成實體：`simulated=True`，虛線框 + `[SIM]` prefix，archive 清除（**human verify**）（P2-19）
+- [ ] AAR timeline API 回傳 tracks + events + chats + missions 合併時間軸（P2-20）
+- [ ] AAR Step mode：逐事件跳進，地圖顯示對應位置 + 軌跡尾跡（**human verify**）（P2-20）
+- [ ] AAR Touch-friendly：iPad 可操作時間軸（P2-20）
+- [ ] TTX Gateway：≥ 2 次完整演習，simulated 無污染，track 無缺失（P2-22）
+
+**實戰延伸層**
+- [ ] DataSync URI follow 負向：`datasync_service` 不發任何 HTTP request to DataSync URI（P2-14）
+- [ ] DataSync Mission geometry 進 cop_entities route/polygon（P2-14）
+- [ ] Federation 雙向流測試（P2-15）
 - [ ] EXCHECK 任務狀態顯示於 dashboard（P2-18）
-- [ ] **E2E bidirectional milestone**（P2-10 + P2-13 完成後）：真實 ATAK app → TAK Server → ICS Dashboard → Mission API → ATAK app 全鏈驗證
-- [ ] **Tag**：`command-v2.3.0`（TAK 整合 MINOR；原規劃 1.1.0，rebase 至 2.x）
+- [ ] **Tag**：`command-v2.3.0`（TAK 整合 MINOR；rebase 至 2.x）
 
 ### Compliance touchpoints
 
 - **NIST SP 800-53 SC-8 / SC-13**：TAK Server TLS 8089/8443 強制
-- **NIST SP 800-53 IA-9**（服務識別與認證）：OAuth2 client credentials M2M flow（P2-11）
-- **NIST AC-3**（存取控制）：TAK presence bypass exercise scope（P2-12，基礎設施狀態非演習資料）
-- **ASVS V13 (API) + V5 (Validation)**：CoT XML 解析 XXE 防護；Marti REST API OAuth2 認證
-- **OWASP API2（Broken Authentication）**：OAuth2 not enrolled cert；JWT expiry + refresh；JWT 記憶體限定（P2-11）
-- **OWASP A03（Injection / XSS）**：GeoChat message 後端 `html.escape()` + 前端 `textContent`（P2-07）；CoT callsign / type 字元白名單（P2-10）
-- **OWASP A10（SSRF）**：DataSync URI 永不 follow，只存 string（P2-14）；影像串流 URI reference only（P2-16）
-- **ASVS V7（Error Handling / Logging）**：Mission 下行指令 audit log（`MISSION_PUSH_TAK`），指揮行為必須留痕（P2-13）
-- **MIL-STD-2525C**：符號渲染對齊；planned（空心）/ actual（實心）框視覺區分（P2-13）
-- **ICS-214 Unit Log**：GeoChat → `chats` 表（通聯記錄）；MEDEVAC 9-line incident card（P2-07/P2-09）
-- **ICS-204 Task Assignment**：EXCHECK 任務查核對應（P2-18）
-- **TAK 信任邊界假設**：ICS Command 信任 TAK Server 轉發的所有 CoT；裝置准入控制責任在 TAK Server 管理員（cert enrollment）；於 `docs/compliance/threat_model.md` 文件化此邊界（P2-17）
+- **NIST SP 800-53 IA-9**（服務識別與認證）：OAuth2 client credentials M2M（P2-11）
+- **NIST AC-3**（存取控制）：TAK presence bypass exercise scope（P2-12）；軌跡 COMMAND_ROLES 限定（P2-06b/P2-20）
+- **NIST AU-2 / AU-12**（Audit Events / Audit Record Generation）：Mission push audit log（P2-13）；AAR export audit log（P2-21）；scenario inject audit（P2-19）
+- **ASVS V13 (API) + V5 (Validation)**：CoT XML XXE 防護；OAuth2 認證；CoT 內容層白名單（P2-10）
+- **OWASP API2（Broken Authentication）**：OAuth2 not enrolled cert；JWT 記憶體限定（P2-11）
+- **OWASP A03（Injection / XSS）**：GeoChat `html.escape()` + `textContent`（P2-07）；CoT callsign / type 白名單（P2-10）；scenario 腳本 action 白名單 + Pydantic strict（P2-19）
+- **OWASP A04（Insecure Design）**：O/C 注入 API sysadmin-only gate（P2-19）；scenario runner mutex（P2-19）
+- **OWASP A10（SSRF）**：DataSync URI 永不 follow（P2-14）；影像串流 URI reference only（P2-16）
+- **ASVS V7（Error Handling / Logging）**：Mission push 必須留痕（P2-13）；AAR export audit（P2-21）
+- **MIL-STD-2525C**：planned（空心）/ actual（實心）/ simulated（虛線框）符號視覺區分（P2-11b/P2-13/P2-19）
+- **ICS-214 Unit Log**：GeoChat → `chats` 表；MEDEVAC 9-line incident card（P2-07/09）
+- **ICS-204 Task Assignment**：EXCHECK 任務查核（P2-18）
+- **PII / 台灣個資法**：`cop_entity_tracks` 人員移動軌跡資料 retention policy（90 天 TTL）；`docs/compliance/threat_model.md` 文件化（P2-17）
+- **TAK 信任邊界假設**：裝置准入責任在 TAK 管理員；threat_model.md 文件化（P2-17）
 
 ### 風險與決策點
 
@@ -429,13 +462,17 @@ Phase 1 內部建議順序：P1-10 全部完成 → P1-12a → **P1-12b+14 合�
 |---|---|
 | 官方 TAK Server Java 資源需求高（RAM ≥ 8GB），Pi 500 邊緣 | P2 部署目標暫定 x86 mini-PC（N100 class），Pi 500 留作 client / 備援 |
 | Federation cert 與內網 step-ca 整合 | 沿用 ICS_DMAS C1-B 既有 step-ca 內網 PKI；fed-truststore.jks 管理 SOP 已在 P2-01 #101 |
-| License：TAK Server 雖 Apache 2.0，部分 plugin / DataSync 模組仍是 commercial | P2 只用 core CoT + Marti REST（Apache 2.0 core）+ federation，不依賴 commercial plugin |
-| OAuth2 client credentials 在 TAK Server 5.7 的實際設定文件稀少 | P2-11 動工前做 reality check（tak.gov 文件 + :8443 API spec）；失敗 fallback 為 enrolled cert |
-| CoPEntity schema migration（加 `source="command"` + `planned`）可能破壞 P1-03 凍結契約 | P2-13 動工前設計 migration script；P1-03 contract tests 作為回歸守門 |
-| 前端 UI 落點無既成 panel（P1-11 已拆 left sidebar）| P2-07 前確定 layout 方案，避免各項各自貼 UI 造成不一致 |
-| JWT refresh token 若裸存明文檔案，成為新 secret 洩漏點 | access_token 記憶體限定；refresh_token 若需持久化對齊 P1-12a HKDF 加密（P2-11）|
-| CoT 資料完整性：任何 ATAK 裝置連上 TAK Server 即可推入 COP | CoT 內容層三道驗證（座標 / callsign 白名單 / type 白名單，P2-10）；裝置准入靠 TAK Server cert enrollment（信任邊界文件化，P2-17）|
-| Federation governance：加 peer cert 無正式審批流程，可能誤信任外部組織 | P2-15 DoD 補 sysadmin 審批 + audit log；`fed-truststore.jks` 變更納入 change management |
+| License：TAK Server 部分 plugin / DataSync 模組是 commercial | P2 只用 core CoT + Marti REST（Apache 2.0 core）+ federation，不依賴 commercial plugin |
+| OAuth2 client credentials 在 TAK Server 5.7 設定文件稀少 | P2-11 動工前做 reality check（tak.gov 文件 + :8443 API spec）；失敗 fallback 為 enrolled cert |
+| CoPEntity schema v2 migration 可能破壞 P1-03 凍結契約 | P2-11b 統一一次完成（不分批）；P1-03 contract tests 作為回歸守門 |
+| 前端 UI 落點無既成 panel（P1-11 已拆 left sidebar）| **P2-12 統一一次 layout 設計決策**，三面板同批落地，避免各項各自貼 UI |
+| JWT refresh token 若裸存明文，成為新 secret 洩漏點 | access_token 記憶體限定；refresh_token 若持久化對齊 P1-12a HKDF（P2-11）|
+| CoT 資料完整性：任何 ATAK 裝置可推入 COP | 內容層三道驗證（座標 / callsign / type 白名單，P2-10）；裝置准入靠 TAK cert enrollment |
+| Federation governance：加 peer cert 無正式審批流程 | sysadmin 審批 + audit log；fed-truststore.jks 變更納入 change management（P2-15）|
+| 情境腳本 server-side 執行：惡意 payload 若沒擋住 | action 白名單 + Pydantic strict；**禁任何動態執行路徑**（P2-19）|
+| 合成實體污染實戰模式：archive 後 simulated 實體殘留 | `simulated=True` flag + archive 整批清除 + TTX Gateway 驗證（P2-19/P2-22）|
+| 軌跡 PII：cop_entity_tracks 累積長期人員位置 | 90 天 TTL + COMMAND_ROLES 限存取 + retention policy 文件化（P2-06a/P2-20）|
+| AAR 暴露歷史指揮決策：可能成為 OPSEC 洩漏點 | COMMAND_ROLES 限定 + resolve_scope 跨演習守門 + 匯出 audit log（P2-20）|
 
 ---
 

@@ -131,6 +131,7 @@ def check_roadmap_code_refs():
                 "chat_service.py",  # P2-07
                 "geometry_service.py",  # P2-08
                 "tak_rest_client.py",  # P2-11
+                "scenario_service.py",  # P2-19
                 "datasync_service.py",  # P2-14
                 "waveink_service.py",  # P3-03
             }
