@@ -673,11 +673,22 @@ def _m015_cop_entities_squad_cols(conn: sqlite3.Connection) -> None:
     從 CoT `<__group name=.. role=..>` 與 `<status battery=..>` 提取的一等欄位
     （對齊 callsign/remarks 先例，非 attributes JSON 鍵）。team_color 加 index 供
     P2-06d GROUP BY 聚合。三欄 nullable：非 TAK / 無 group 的 entity = NULL，語意正確。
+
+    backfill（review #126-3）：既有 TAK entity（migration 前已 ingest）的 attributes JSON
+    已含 __group/status，從中一次性回填，免等下次 update。title 標準化 SQL 難做 → 存 ATAK
+    原始色名（通常已標準）；若大小寫不一，下次帶 __group 的 update 會覆寫成正規化值。
     """
     _add_column_if_missing(conn, "cop_entities", "team_color", "TEXT")
     _add_column_if_missing(conn, "cop_entities", "role", "TEXT")
     _add_column_if_missing(conn, "cop_entities", "battery", "INTEGER")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_cop_entities_team_color ON cop_entities(team_color)")
+    conn.execute("""
+        UPDATE cop_entities
+        SET team_color = json_extract(attributes, '$."__group".name'),
+            role        = json_extract(attributes, '$."__group".role'),
+            battery     = json_extract(attributes, '$."status".battery')
+        WHERE source = 'tak' AND team_color IS NULL AND json_valid(attributes)
+    """)
 
 
 def _m015_cop_entities_squad_cols_down(conn: sqlite3.Connection) -> None:

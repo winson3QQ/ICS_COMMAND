@@ -145,6 +145,13 @@ def test_battery_garbage_or_out_of_range_yields_none():
     assert normalize_cot(_event(detail={"status": {"battery": "??"}})).battery is None
     assert normalize_cot(_event(detail={"status": {"battery": "150"}})).battery is None  # 越界
     assert normalize_cot(_event(detail={"status": {"battery": ""}})).battery is None
+    assert normalize_cot(_event(detail={"status": {"battery": "inf"}})).battery is None  # OverflowError 攔（#126-1）
+
+
+def test_squad_list_takes_first_dict():
+    """同 tag 多筆（_extract_detail 收成 list）→ 取首個 dict，非靜默全丟（#126-4）。"""
+    ent = normalize_cot(_event(detail={"__group": [{"name": "Cyan", "role": "Lead"}, {"name": "Red"}]}))
+    assert (ent.team_color, ent.role) == ("Cyan", "Lead")
 
 
 def test_real_fixture_squad_extracted():

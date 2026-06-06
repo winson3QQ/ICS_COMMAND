@@ -132,3 +132,33 @@ def test_squad_battery_refreshed_on_update(captured_broadcasts):
     _ingest(_event(time="2026-06-05T04:00:00Z", detail={"status": {"battery": "78"}}))
     row = _ingest(_event(time="2026-06-05T04:01:00Z", detail={"status": {"battery": "50"}}))
     assert row["battery"] == 50  # update 刷新，非保留舊值 78
+
+
+def test_squad_coalesce_none_does_not_overwrite(captured_broadcasts):
+    """無 <__group>/<status> 的較新位置幀不把已存 team_color/role/battery 打成 NULL
+    （coalesce，#126-2）—— 否則 P2-06d GROUP BY 會在空窗期少算該 entity。"""
+    _ingest(_event(time="2026-06-05T04:00:00Z",
+                   detail={"__group": {"name": "Cyan", "role": "Lead"}, "status": {"battery": "78"}}))
+    row = _ingest(_event(time="2026-06-05T04:01:00Z"))  # 無 detail → squad 全 None
+    assert row["team_color"] == "Cyan"  # 保留，非倒退成 NULL
+    assert row["role"] == "Lead"
+    assert row["battery"] == 78  # 保留最後已知電量
+
+
+def test_m015_backfill_from_attributes():
+    """既有 TAK entity 從 attributes JSON 回填 squad 欄位（#126-3 migration backfill）。"""
+    import json as _json
+
+    from core.database import _m015_cop_entities_squad_cols, get_conn
+
+    with get_conn() as conn:
+        conn.execute(
+            "INSERT INTO cop_entities (uid,type,time,start,stale,how,lat,lon,source,attributes) "
+            "VALUES ('BACKFILL-1','a-f-G','t','t','t','m-g',24.0,120.0,'tak',?)",
+            (_json.dumps({"__group": {"name": "Teal", "role": "Medic"}, "status": {"battery": "63"}}),),
+        )
+        _m015_cop_entities_squad_cols(conn)  # idempotent：column 已存，重跑只 backfill
+        row = conn.execute(
+            "SELECT team_color, role, battery FROM cop_entities WHERE uid='BACKFILL-1'"
+        ).fetchone()
+    assert (row["team_color"], row["role"], row["battery"]) == ("Teal", "Medic", 63)
