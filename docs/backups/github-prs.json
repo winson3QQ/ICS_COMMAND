@@ -2156,7 +2156,7 @@
     "number": 112,
     "state": "MERGED",
     "title": "feat(tak): P2-03 — CoT ingestion wire 進 app（lifespan + REST + client cert）[等 P2-05 再 merge]",
-    "updatedAt": "2026-06-05T10:51:57Z",
+    "updatedAt": "2026-06-05T11:00:33Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/112"
   },
   {
@@ -2189,16 +2189,16 @@
     },
     "baseRefName": "main",
     "body": "## What changed\n新 `git worktree` 的底圖（gitignored、per-machine deploy artifact）一律缺，地圖空白。各 worktree/主 repo 底圖**完全相同**，重下載 247MB 純浪費。本 PR 讓新 worktree **自動重用本機現成副本**。\n\n- **`scripts/ensure_basemap.sh`**（新）：底圖缺/舊 → 掃本機所有 worktree + 主 repo 找 SHA 符的副本 → `provision_basemap.sh --from`（秒級、免網）；本機完全無副本才警告（`--allow-download` 才連網下載）。\n- **`.githooks/post-checkout`**（append，不動既有 memory-sync）：新 worktree 缺底圖檔時自動跑 ensure。cheap gate：只在「檔不存在」時動作（不每次切 branch 都 hash 247MB），best-effort 不擋 checkout。\n- **`README.md`** §換機器：記入 auto-provision 機制。\n\n## DoD checklist\n- [x] `ensure_basemap.sh` happy path（就緒 → exit 0）+ reuse path（移開 → 從主 repo `--from` 補回，SHA 符 + preflight 過）**實測過**\n- [x] git mode `100755`（可執行）\n- [x] `doc_sync_check` exit 0\n\n## §8 Human Verification Script\n```bash\n# 已就緒 → 無聲 exit 0\n./scripts/ensure_basemap.sh; echo \"exit=$?\"\n\n# reuse 驗證（移開後從本機副本補回）\nmv command-dashboard/static/tiles/taiwan.pmtiles{,.bak}\n./scripts/ensure_basemap.sh                       # 應印「用本機副本補」\nbash scripts/preflight_basemap.sh                 # 應 ✓ SHA 符\nrm -f command-dashboard/static/tiles/taiwan.pmtiles.bak\n```\n\n## Known limitation\n`git worktree add` 的端到端觸發**需 merge 進 main 後生效**：`core.hooksPath` 指向**主 repo** 的 `.githooks`，且新 worktree 從 `main` 拉 `scripts/ensure_basemap.sh` —— 兩者都要在 main 才齊。元件層（ensure 兩條路）已全驗，hook wiring 是 trivial 的「缺檔→呼叫 ensure」。\n\n## Out of scope\n- stale（manifest 升版而檔還在舊版）不由此 hook 處理 → 沿用 `start_mac.sh` preflight 警告 + 手動 `provision`（本 PR 的 cheap gate 只認「檔不存在」）。\n",
-    "closedAt": null,
+    "closedAt": "2026-06-05T10:56:45Z",
     "comments": [],
     "createdAt": "2026-06-05T09:49:25Z",
     "headRefName": "chore/basemap-ensure-worktree",
     "labels": [],
-    "mergedAt": null,
+    "mergedAt": "2026-06-05T10:56:45Z",
     "number": 114,
-    "state": "OPEN",
+    "state": "MERGED",
     "title": "chore(basemap): 新 worktree 自動補底圖（post-checkout hook + ensure_basemap）",
-    "updatedAt": "2026-06-05T09:49:25Z",
+    "updatedAt": "2026-06-05T11:00:32Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/114"
   },
   {
@@ -2221,5 +2221,89 @@
     "title": "feat(map): P2-05(c) milsymbol MIL-STD-2525 符號渲染（closes #110）",
     "updatedAt": "2026-06-05T10:44:11Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/115"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "## Summary\n\n本 PR 完整重構 ROADMAP Phase 2，從「CoT 上行 + 2525 渲染」擴展為 **TAK 雙向介面 + TTX 演習驗證框架**。\n\n### 四層開發順序（本次重整核心）\n\n```\n地基層（Foundation）  →  核心雙向層  →  TTX 演習驗證層  →  實戰延伸層\n  純後端，自動測試         有 UI，Human Verify    TTX 先於實戰      TTX Gateway 後解鎖\n```\n\n### Layer 1 — 地基層（無 UI，自動測試驗收）\n\n| Item | 內容 |\n|---|---|\n| P2-06a | `insert_cop_track` 零 caller bug 修正 |\n| P2-06b | `GET /api/exercises/{id}/tracks` API |\n| P2-07 | GeoChat backend 修正（`chat_service.py` + html.escape XSS 防護）— UI → P2-12 |\n| P2-08 | CoT `<shape>` 幾何萃取 + `geometry_service.py` |\n| P2-09 | MEDEVAC normalization backend — UI → P2-12 |\n| P2-11 | OAuth2 M2M + `tak_rest_client.py`（JWT memory-only，非 localStorage）|\n| P2-11b | CoPEntity schema v2（source/planned/simulated 合一 migration）|\n\n### Layer 2 — 核心雙向層（有 UI，需 Human Verification）\n\n| Item | 內容 |\n|---|---|\n| P2-10 | 地基層整合測試 milestone + E2E uplink 驗證 |\n| P2-12 | 所有新 UI 面板一批次（presence + GeoChat + MEDEVAC）+ 單一版面決策 |\n| P2-13 | Mission API 下行指令 + 指令圖層 UI（COMMAND_ROLES RBAC + 稽核日誌）|\n\n### Layer 3 — TTX 演習驗證層（先於實戰）\n\n| Item | 內容 |\n|---|---|\n| P2-19 | 情境注入 + O/C 面板（`scenario_service.py`，sysadmin-only，per-exercise mutex）|\n| P2-20 | AAR 回放（Wave 6 前移；tracks + events + chats + missions 統一時間軸）|\n| P2-21 | 演習指標 + 教訓標記 |\n| P2-22 | TTX Gateway（≥2 次完整演習後解鎖 Layer 4）|\n\n### Layer 4 — 實戰延伸層（TTX Gateway 完成後解鎖）\n\nP2-14 DataSync、P2-15 Federation、P2-16 Video、P2-17 規格書（含 TTX SOP + threat model）、P2-18 EXCHECK\n\n---\n\n### 新增安全考量\n\n- **GeoChat XSS**：`html.escape` + `textContent`（P2-07）\n- **JWT 儲存**：memory-only，禁 localStorage（P2-11）\n- **CoT content validation**：uid/type/lat/lon whitelist（P2-10）\n- **SSRF 防護**：DataSync URI 不 follow redirect（P2-14）\n- **RBAC**：Mission push 需 COMMAND_ROLES（P2-13）\n- **Mission 稽核日誌**：who+when+what（P2-13）\n- **Trust model 文件**：enrolled cert vs OAuth2 選型（P2-17）\n- **模擬實體清除**：archive 時移除 simulated=True entities（P2-19/P2-22）\n\n### 整合缺口（擴充至 14 項）\n\n原 #1-8 保留，新增 #9-14（TTX 專項）：\n- #9 CoPEntity 缺 `simulated` 欄位 → P2-11b\n- #10 O/C 控制頁面落點 → /admin/exercise-control\n- #11 scenario_designer.html 未接 API\n- #12 AAR 頁面版面 → 獨立 /aar/{exercise_id}\n- #13 Track PII 保留政策未定義 → 90 天 TTL\n- #14 情境注入 concurrency → per-exercise mutex\n\n### 架構決策（擴充至 7 條）\n\n新增 #7：演習封存時清除 simulated=True entities（防模擬資料污染實戰 COP）\n\n### doc_sync_check.py\n\n`future_files` 補 `scenario_service.py`（P2-19），防 CI 誤報\n\n---\n\n## 背景\n\nP2-01~P2-05 已完成（TAK Server 部署 + CoT 上行 + normalize + milsymbol 2525）。本次規劃 P2 剩餘路徑，核心原則：**地基先於 UI，TTX 先於實戰，Human Verification 作為 UI 層的必要條件**。\n\nhttps://claude.ai/code/session_016T8YwFXZLpaZrswnNb51W9",
+    "closedAt": "2026-06-05T15:40:46Z",
+    "comments": [],
+    "createdAt": "2026-06-05T13:29:56Z",
+    "headRefName": "claude/roadmap-review-PD0YO",
+    "labels": [],
+    "mergedAt": "2026-06-05T15:40:46Z",
+    "number": 116,
+    "state": "MERGED",
+    "title": "docs(roadmap): 重整 P2 四層架構（地基/UI/TTX/實戰）+ 安全考量 + TTX 情境注入",
+    "updatedAt": "2026-06-05T15:40:46Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/116"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "## 摘要\n\n以紅軍視角全系統審查後，將**發現的事實 + 歸屬**寫進 ROADMAP 作為提醒（**僅文件，未動程式碼**，待排程修補）。\n\n## 內容\n\n新增〈紅隊審查發現待辦（2026-06-05）〉區塊 + Wave 7+ inline 提醒：\n\n- **範圍鐵則（決定分級）**：`server/` Node relay 在 ICS_COMMAND **未部署**（無 systemd unit／無 `package.json`／CI/deploy 未引用／只認 PWA 單元）→ 先前疑似 CRITICAL 的 RT-C1/H2/L3 為**休眠**，在 ICS_DMAS 才現役。\n- **現役待辦**（command-dashboard 已部署）：\n  - `RT-H1` `GET /api/snapshots/{node_type}` 孤兒豁免、匿名可讀資源快照\n  - `RT-L4` `audit_log` `?limit` 無服務端上限\n  - `RT-M1` 直連 :8000 可偽造 `X-Forwarded-For` 繞限速\n  - `RT-M3` `input_safety` 未擋 `\"`/`'`（縱深不足，非破口）\n  - 每項附 `file:line` 證據 + **具體動工觸發 + 怎麼動**\n- **代號 legend**：`RT` = Red Team；`H/M/L` = 原始嚴重度；接軌 ROADMAP 狀態 marker（pending／⏳／✅）+ issue/branch 工作流（`fix/issue-NN-rt-x#-*`）。\n- **三陷阱（補完又產生別的）**：regex 擴張誤殺引號／IP 收緊 /32 誤踢／別夾帶進 feature PR。\n\n## 區分\n\n每項已標 **事實 / 推論**，後續 session 可直接接手不必重查。本 PR 不含任何 code/behaviour 變更，無需 CI 測試補齊。\n\nhttps://claude.ai/code/session_015XbsdFh6HKBTmVfoLQwhm1\n\n---\n_Generated by [Claude Code](https://claude.ai/code/session_015XbsdFh6HKBTmVfoLQwhm1)_",
+    "closedAt": "2026-06-05T23:22:00Z",
+    "comments": [],
+    "createdAt": "2026-06-05T23:21:51Z",
+    "headRefName": "claude/red-team-vulnerability-review-IL2o5",
+    "labels": [],
+    "mergedAt": "2026-06-05T23:22:00Z",
+    "number": 117,
+    "state": "MERGED",
+    "title": "docs(roadmap): 紅隊審查發現待辦（RT-H1~M4）+ 範圍校正",
+    "updatedAt": "2026-06-05T23:22:00Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/117"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "## Summary\n\n- **TAK 介面安全小節（6 項，TAK_ENABLED=false 休眠，啟用前必查）**：\n  - TAK-A：`POST /api/tak/events` 缺機器間認證（REST federation push 無法呼叫，啟用前架構決策必解）\n  - TAK-B：`cop_entities.uid` 無命名空間隔離，TAK CoT 可覆蓋 ICS 本地 entity\n  - TAK-C：`opex` 欄位被忽略，演習 / 實戰資料混池\n  - TAK-D：`visible_to` 預設 `[\"all\"]`，TAK entity 對全員可見\n  - TAK-E：串流訂閱無流量管制，高頻多 uid 壓 DB\n  - TAK-F：醫療 CoT `<detail>` PII 明文存入 `cop_entities`\n- **使用者操作安全小節（5 項，合法操作者誤操作風險）**：\n  - OP-1：`suspend-all` 可自鎖 sysadmin（需 DB 直操解救）\n  - OP-2：`reset-db` / `reset-exercise` 後端無確認欄位\n  - OP-3：session 超時無 banner 預警，靜默 401 造成資料遺失誤解\n  - OP-4：`restore-cmd` 無「需先停服務」警示\n  - OP-5：`ensure_default_admin(\"1234\")` 舊函式未刪，預設 PIN 無強制換流程\n- **TAK 介面整合缺口表補缺口 #15**（REST ingest M2M auth 三選一決策）\n\n## 性質\n\n僅記錄事實 + 歸屬，**未動任何程式碼**。所有項目標記 pending，依各自「動工時機」欄排程。\n\n## Test plan\n\n- [ ] 閱讀 ROADMAP 新增兩小節，確認代號 / 觸發條件 / 怎麼動的描述清楚無歧義\n- [ ] 確認 TAK-A 已於缺口表 #15 互相引用\n- [ ] 確認三陷阱小節完整保留（無誤刪）\n\nhttps://claude.ai/code/session_015XbsdFh6HKBTmVfoLQwhm1\n\n---\n_Generated by [Claude Code](https://claude.ai/code/session_015XbsdFh6HKBTmVfoLQwhm1)_",
+    "closedAt": "2026-06-05T23:57:43Z",
+    "comments": [],
+    "createdAt": "2026-06-05T23:45:08Z",
+    "headRefName": "claude/red-team-vulnerability-review-IL2o5",
+    "labels": [],
+    "mergedAt": "2026-06-05T23:57:43Z",
+    "number": 118,
+    "state": "MERGED",
+    "title": "docs(roadmap): 紅隊審查延伸 — TAK 介面安全（TAK-A~F）+ 使用者操作安全（OP-1~5）",
+    "updatedAt": "2026-06-05T23:57:43Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/118"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "## Summary\n\n- **P2-06c**：`normalize_cot()` 補讀 CoT `<__group>/<status>` 元素 → `team_color`、`role`、`battery` 進 `cop_entities.attributes`，作為所有小隊視覺化模組的欄位基礎\n- **P2-06d**：新增 `GET /api/cop/squads` 後端聚合端點（按 `team_color` 分組，回傳 total/online/avg_battery/centroid）；三個消費方：右側欄 TAK Presence 彙總列、`dashboard_service.build_dashboard()` 整合 `tak_squads`（修補 dashboard 對 TAK 盲視缺口）、未來 zone-c 摘要列\n- **Foundation Layer DoD** 補 3 條對應驗收條件\n\n## Test plan\n\n- [ ] ROADMAP doc-sync check 通過（無新增路徑引用，僅 scope table 增 item）\n- [ ] P2-06c/d 實作時依 DoD 條件逐一驗收\n\nhttps://claude.ai/code/session_016T8YwFXZLpaZrswnNb51W9\n\n---\n_Generated by [Claude Code](https://claude.ai/code/session_016T8YwFXZLpaZrswnNb51W9)_",
+    "closedAt": null,
+    "comments": [],
+    "createdAt": "2026-06-06T00:28:04Z",
+    "headRefName": "claude/roadmap-review-PD0YO",
+    "labels": [],
+    "mergedAt": null,
+    "number": 119,
+    "state": "OPEN",
+    "title": "docs(roadmap): 新增 P2-06c/d — CoT 小隊欄位解析 + 小隊聚合 API",
+    "updatedAt": "2026-06-06T00:28:04Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/119"
   }
 ]
