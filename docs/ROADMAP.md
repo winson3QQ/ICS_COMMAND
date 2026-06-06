@@ -99,6 +99,8 @@
 | **——— 【地基層 Foundation】 純後端，自動化測試驗收，無 UI ———** | — |
 | P2-06a | **CoT 軌跡寫入接線**（`insert_cop_track` 零 caller bug 修復）：`cop_entity_repo.insert_cop_track()` 定義存在但整個 codebase 零 caller → `cop_entity_tracks` 表一直是空的。修法：`ingest_cot_event` 每次 upsert 後同步寫一筆軌跡點。抽樣策略：per-entity 最短間隔 5s（ATAK 最短 2s push，不節流則爆量）；帶 active `exercise_id`（無演習 = NULL）。清理：exercise 刪除 cascade；archive 保留。**P2-20 AAR 回放的唯一資料基礎，不做則 AAR 無資料可播** |
 | P2-06b | **軌跡查詢 API**：`GET /api/exercises/{id}/tracks?uid=&from=&to=` → 回傳該演習所有 entity 位置時間序列（`{uid, t, lat, lon, hae}`，按 t 升序，分頁）。**RBAC**：`COMMAND_ROLES`（軌跡含人員位置 PII，非 READ_ROLES 可見）。P2-20 回放前端的資料來源 |
+| P2-06c | **CoT `<__group>` / `<status>` 欄位解析**（前端模組化基礎）：`normalize_cot()` 現只萃取 callsign / lat / lon / track，**未讀** `<detail><__group name="Red" role="Team Lead"/>` 與 `<detail><status battery="72"/>`。補齊後 `cop_entities.attributes` 增：`team_color`（Red/Green/Blue/Cyan/Yellow/Magenta/White）、`role`（Team Lead/Team Member/Medic/RTO…）、`battery`（0-100）。**前端模組前提**：小隊側欄分組、小隊 Convex Hull 疊圖、指揮摘要 TAK 一行摘要均依賴 `team_color`；個人 popup battery alert 依賴 `battery`。與 P2-06a 同批或緊接其後 |
+| P2-06d | **小隊聚合 API** `GET /api/cop/squads?exercise_id=`（前端多模組共用後端）：後端按 `team_color` 分組聚合，回傳 `[{team_color, total, online, offline, avg_battery, centroid_lat, centroid_lon}]`。**三個消費方**：(1) 右側欄 TAK Presence 彙總列（「Red 3/4 ● avg 72%」——輕客戶端 iPad/Pi 不做前端聚合）；(2) `dashboard_service.build_dashboard()` 整合 `tak_squads` 欄位（修補缺口：指揮摘要對 TAK 場上態勢不再盲視）；(3) 未來 zone-c TAK 一行摘要。**設計重點**：online/offline 以 `stale_at` 判定；centroid 後端計算；同一端點服務 live（active exercise_id）與 AAR（歷史 id）。**RBAC**：`READ_ROLES`（態勢摘要非 PII，非軌跡）。**依賴**：P2-06c（`team_color` 欄位） |
 | P2-07 | **GeoChat 誤路由修正—後端**（reality check 2026-06-05 bug）：CoT type `b-t-f` 存進 `cop_entities`，行為錯誤。修法（純後端）：(1) `tak_service._consume_cot` type prefix 路由（`b-t-f` 不進 `ingest_cot_event`）；(2) 新 `services/chat_service.py` + `chats` 表（`sender_uid` / `callsign` / `message` / `group` / `lat` / `lon` / `time` / `exercise_id`，對齊 ICS-214 Unit Log）；(3) 後端 `html.escape()` 處理 `message`（XSS 防線在後端）。測試：`b-t-f` 不得進 `cop_entities`（負向）；XSS 負向（`<script>` 不得原樣輸出）；exercise scoping 對齊。**通聯記錄面板 UI → P2-12 統一落地** |
 | P2-08 | **CoT `<shape>` 幾何萃取 + `services/geometry_service.py`**（純後端）：ATAK `<shape>` 幾何埋在 `attributes` 被忽略，地圖只渲染 `<point>` 單點。修法：(1) 抽 `services/geometry_service.py`（CoT `<shape>` + DataSync GeoJSON 統一解析入口，P2-14 共用，避免重工）；(2) `CoTEventIn` 加選填 `geometry` 欄位；(3) `normalize_cot` 依幾何類型映射到 `kind='route'`（polyline）/ `kind='polygon'`（polygon），沿用 P1-15 管線 |
 | P2-09 | **MEDEVAC 9-line 正規化—後端**（純後端）：CoT type `b-a-o-tbl-medevac` 9-line 欄位（pickup zone / frequency / casualties / equipment…）埋在 `attributes` blob。修法：`normalize_cot` 加 type 分支 → 萃取 9-line 進 `attributes` 結構化子物件；`severity` 自動設 critical。測試：欄位完整萃取；schema 對齊 P3-06 WaveInk MEDEVAC（同一 card schema，不同來源）。**MEDEVAC incident card UI → P2-12 統一落地** |
@@ -157,6 +159,9 @@
 **地基層**
 - [ ] `cop_entity_tracks` 每次 CoT upsert 後有寫入（含 exercise_id），5s min-interval 抽樣（P2-06a）
 - [ ] `GET /api/exercises/{id}/tracks` 回傳完整時間序列，COMMAND_ROLES 限定（P2-06b）
+- [ ] `cop_entities.attributes` 含 `team_color` / `role` / `battery`，來源 CoT `<__group>` / `<status>`（P2-06c）
+- [ ] `GET /api/cop/squads` 回傳 per team_color 聚合（total/online/avg_battery/centroid），READ_ROLES 限定（P2-06d）
+- [ ] `dashboard_service.build_dashboard()` 回傳包含 `tak_squads` 欄位（P2-06d 整合，dashboard 對 TAK 不盲視）
 - [ ] GeoChat（`b-t-f`）**不進** `cop_entities`（負向），進 `chats` 表；XSS 負向（P2-07）
 - [ ] CoT `<shape>` 幾何萃取正確，`geometry_service.py` 單元測試通過（P2-08）
 - [ ] MEDEVAC 9-line 欄位完整萃取，schema 對齊 P3-06（P2-09）
