@@ -124,6 +124,17 @@ class TestCoPEntitySchema:
         e = CoPEntity(**_valid_entity_payload(attributes={"contact": {"callsign": "ALPHA-1"}, "color": "#ff0000"}))
         assert e.attributes["contact"]["callsign"] == "ALPHA-1"
 
+    def test_planned_simulated_default_false(self):
+        """P2-11b（#140）：planned/simulated 預設 False（既有/一般 entity = 實際、非合成）。"""
+        e = CoPEntity(**_valid_entity_payload())
+        assert e.planned is False
+        assert e.simulated is False
+
+    def test_planned_simulated_accept_bool(self):
+        e = CoPEntity(**_valid_entity_payload(planned=True, simulated=True))
+        assert e.planned is True
+        assert e.simulated is True
+
 
 class TestCoPEntityTrackSchema:
     def test_minimal_valid(self):
@@ -199,6 +210,30 @@ class TestMigration013Landed:
                 "lat, lon, source, severity) VALUES "
                 "('x','a-f-G-U-C','t','t','t','h-e',25.0,121.0,'tak','fatal')"
             )
+
+
+class TestMigration017PlannedSimulated:
+    """P2-11b（#140）：cop_entities 加 planned/simulated（ADD COLUMN，bool↔INTEGER 0/1）。"""
+
+    def test_columns_exist(self, tmp_db):
+        with get_conn() as c:
+            cols = {r[1] for r in c.execute("PRAGMA table_info(cop_entities)")}
+        assert "planned" in cols
+        assert "simulated" in cols
+
+    def test_default_false_in_db(self, tmp_db):
+        """不傳 → DB DEFAULT 0 → get 回 bool False（既有 entity 語意：實際/非合成）。"""
+        insert_cop_entity(CoPEntity(**_valid_entity_payload(uid="ps-default")))
+        got = get_cop_entity("ps-default")
+        assert got["planned"] is False
+        assert got["simulated"] is False
+
+    def test_roundtrip_bool_not_int(self, tmp_db):
+        """insert bool True → DB INTEGER 1 → get 回 **bool** True（非 int 1）。"""
+        insert_cop_entity(CoPEntity(**_valid_entity_payload(uid="ps-true", planned=True, simulated=True)))
+        got = get_cop_entity("ps-true")
+        assert got["planned"] is True
+        assert got["simulated"] is True
 
 
 # ── 3. Repository CRUD 來回一致 ──────────────────────────────────────────────

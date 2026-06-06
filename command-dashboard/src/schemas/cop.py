@@ -100,6 +100,13 @@ class CoPEntity(BaseModel):
     role:       str | None = None
     battery:    int | None = Field(default=None, ge=0, le=100)
 
+    # ── 指令 / 合成標記（P2-11b，#140）─────────────────────────────────────
+    # planned：MIL-STD-2525 空心框（計畫中）vs 實心框（實際），P2-13 下行指令用
+    # simulated：O/C 合成注入實體（how="h-g-i-g-o" CoT），P2-19 用；archive 時整批清除
+    # （DB 存 INTEGER 0/1，_row_to_entity_dict 轉回 bool）
+    planned:   bool = False
+    simulated: bool = False
+
     # ── escape hatch ─────────────────────────────────────────────────────
     attributes: dict = Field(default_factory=dict)
 
