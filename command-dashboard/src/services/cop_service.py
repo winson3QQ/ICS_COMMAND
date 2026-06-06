@@ -53,20 +53,60 @@ _TAK_UPDATE_FIELDS = (
     "type", "time", "start", "stale", "how", "version",
     "lat", "lon", "hae", "ce", "le",
     "heading_deg", "speed_mps", "access", "callsign", "remarks", "attributes",
+    "team_color", "role", "battery",  # P2-06c：小隊欄位隨 update 刷新（battery 會變）
 )  # fmt: skip
 _CAS_MAX_RETRY = 3
 
 
-def _opt_bounded_float(value, lo: float, hi: float) -> float | None:
-    """CoT track 的 course/speed 字串 → float，超界或非數 → None（防 sensor garbage
-    讓整筆 ingest 炸掉；對齊 CoPEntity 的 heading[0,360] / speed[0,1000] 約束）。"""
+def _opt_bounded(value, lo, hi, *, to_int: bool = False):
+    """CoT 數值字串 → float（to_int=True → int），超界 / 非數 / inf → None（防 sensor
+    garbage 讓整筆 ingest 炸掉）。int(float('inf')) 的 OverflowError 一併攔（review #126-1）。"""
     if value is None or value == "":
         return None
     try:
         f = float(value)
-    except (TypeError, ValueError):
+        n = int(f) if to_int else f
+    except (TypeError, ValueError, OverflowError):
         return None
-    return f if lo <= f <= hi else None
+    return n if lo <= n <= hi else None
+
+
+def _opt_bounded_float(value, lo: float, hi: float) -> float | None:
+    """course/speed 字串 → float（heading[0,360] / speed[0,1000] 約束）。"""
+    return _opt_bounded(value, lo, hi)
+
+
+def _opt_bounded_int(value, lo: int, hi: int) -> int | None:
+    """battery 等字串 → int（容 '78' 與 '78.0'）。"""
+    return _opt_bounded(value, lo, hi, to_int=True)
+
+
+def _dict_child(detail: dict, key: str) -> dict:
+    """detail 的 child 取 dict。同 tag 多筆時 _extract_detail 收成 list → 取首個 dict
+    （非靜默全丟，review #126-4）；非 dict/list → {}。track/__group/status 共用。"""
+    v = detail.get(key)
+    if isinstance(v, list):
+        v = next((x for x in v if isinstance(x, dict)), None)
+    return v if isinstance(v, dict) else {}
+
+
+def _extract_squad(detail: dict) -> tuple[str | None, str | None, int | None]:
+    """從 CoT detail 的 <__group>/<status> 提取小隊欄位（P2-06c，#126）。
+
+    team_color ← <__group name>（strip + title 標準化大小寫，保留多字色名如 'Dark Blue'，
+    **不強限 enum** 以免丟 Orange/Teal 等真實 ATAK 色，供 P2-06d GROUP BY 一致；非標準格式如
+    'darkBlue' 經 title 會成 'Darkblue'，但 ATAK 標準色為空格分隔故不觸發）；
+    role ← <__group role>（原樣 strip）；battery ← <status battery>（→int 0-100，越界/非數 None）。
+    資料源 attributes 巢狀（_extract_detail 已收）；原 __group/status 仍保留在 attributes（CoT 忠實）。
+    """
+    group = _dict_child(detail, "__group")
+    status = _dict_child(detail, "status")
+    name = group.get("name")
+    team_color = name.strip().title() if isinstance(name, str) and name.strip() else None
+    role_val = group.get("role")
+    role = role_val.strip() if isinstance(role_val, str) and role_val.strip() else None
+    battery = _opt_bounded_int(status.get("battery"), 0, 100)
+    return team_color, role, battery
 
 
 def normalize_cot(cot_event: CoTEventIn) -> CoPEntity:
@@ -78,8 +118,8 @@ def normalize_cot(cot_event: CoTEventIn) -> CoPEntity:
     heading/speed 取自 detail 的 <track course=.. speed=..>（若有）。
     """
     detail = dict(cot_event.detail or {})
-    track = detail.get("track")
-    track = track if isinstance(track, dict) else {}
+    track = _dict_child(detail, "track")
+    team_color, role, battery = _extract_squad(detail)
     return CoPEntity(
         uid=cot_event.uid,
         type=cot_event.type,
@@ -101,6 +141,9 @@ def normalize_cot(cot_event: CoTEventIn) -> CoPEntity:
         callsign=cot_event.callsign,
         remarks=cot_event.remarks,
         severity="info",
+        team_color=team_color,
+        role=role,
+        battery=battery,
         attributes=detail,
     )
 
@@ -218,6 +261,12 @@ async def ingest_cot_event(event: CoTEventIn) -> dict | None:
 
     # 既有 uid → 順序守門 + version_clock CAS update（並發落敗則用新版重試）
     patch = {f: getattr(entity, f) for f in _TAK_UPDATE_FIELDS}
+    # P2-06c（review #126-2）：小隊欄位間歇出現（ATAK 非每幀帶 <__group>/<status>）。
+    # None 不覆寫已存值（coalesce），否則無 group 的位置幀會把 team_color 打成 NULL，
+    # 破壞 P2-06d GROUP BY；保留語意 = 最後已知隊伍歸屬 / 電量。
+    for _f in ("team_color", "role", "battery"):
+        if patch.get(_f) is None:
+            patch.pop(_f, None)
     for _ in range(_CAS_MAX_RETRY):
         if not _is_newer(entity, existing):
             return None  # 落後 / 重送 → 丟棄，不倒退位置、不無謂 bump version

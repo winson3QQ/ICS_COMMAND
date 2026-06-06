@@ -114,3 +114,47 @@ def test_pipeline_from_fixture_valid_minimal():
     assert ent.type == "b-d"
     assert ent.source == "tak"
     assert (ent.lat, ent.lon) == (24.15, 120.65)
+
+
+# ── P2-06c（#126）：小隊欄位提取 team_color / role / battery ──────────────────
+
+
+def test_squad_fields_extracted():
+    ent = normalize_cot(_event(detail={
+        "__group": {"name": "Cyan", "role": "Team Member"},
+        "status": {"battery": "78"},
+    }))
+    assert ent.team_color == "Cyan"
+    assert ent.role == "Team Member"
+    assert ent.battery == 78
+    assert ent.attributes["__group"]["name"] == "Cyan"  # 原始巢狀仍保留（CoT 忠實）
+
+
+def test_squad_missing_yields_none():
+    ent = normalize_cot(_event())  # 無 detail
+    assert (ent.team_color, ent.role, ent.battery) == (None, None, None)
+
+
+def test_team_color_normalized_preserves_multiword():
+    assert normalize_cot(_event(detail={"__group": {"name": "cyan"}})).team_color == "Cyan"
+    # 多字色名用 title 保留（非 capitalize 會變 'Dark blue'）
+    assert normalize_cot(_event(detail={"__group": {"name": "dark blue"}})).team_color == "Dark Blue"
+
+
+def test_battery_garbage_or_out_of_range_yields_none():
+    assert normalize_cot(_event(detail={"status": {"battery": "??"}})).battery is None
+    assert normalize_cot(_event(detail={"status": {"battery": "150"}})).battery is None  # 越界
+    assert normalize_cot(_event(detail={"status": {"battery": ""}})).battery is None
+    assert normalize_cot(_event(detail={"status": {"battery": "inf"}})).battery is None  # OverflowError 攔（#126-1）
+
+
+def test_squad_list_takes_first_dict():
+    """同 tag 多筆（_extract_detail 收成 list）→ 取首個 dict，非靜默全丟（#126-4）。"""
+    ent = normalize_cot(_event(detail={"__group": [{"name": "Cyan", "role": "Lead"}, {"name": "Red"}]}))
+    assert (ent.team_color, ent.role) == ("Cyan", "Lead")
+
+
+def test_real_fixture_squad_extracted():
+    event = parse_cot_xml((FIXTURES / "valid_friendly.xml").read_text(encoding="utf-8"))
+    ent = normalize_cot(event)
+    assert (ent.team_color, ent.role, ent.battery) == ("Cyan", "Team Member", 78)

@@ -94,6 +94,12 @@ class CoPEntity(BaseModel):
     remarks:  str | None = None
     severity: CoPSeverity = "info"
 
+    # ── 小隊欄位（P2-06c，CoT <__group>/<status> 提取，對齊 callsign/remarks 先例）──
+    # team_color 保留 ATAK 原始色名（標準化大小寫，不強限 enum，免丟 Orange/Teal）；P2-06d GROUP BY 用
+    team_color: str | None = None
+    role:       str | None = None
+    battery:    int | None = Field(default=None, ge=0, le=100)
+
     # ── escape hatch ─────────────────────────────────────────────────────
     attributes: dict = Field(default_factory=dict)
 
