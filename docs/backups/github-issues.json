@@ -1547,5 +1547,25 @@
     "title": "P2-06c: CoT 小隊欄位提取 — team_color/role/battery 成 CoPEntity 一等欄位（設計 A）",
     "updatedAt": "2026-06-06T03:59:27Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/126"
+  },
+  {
+    "assignees": [],
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "body": "## 設計摘要\n\n新 endpoint `GET /api/cop/squads?exercise_id=` 按 `team_color` 分組聚合 COP entity，回 `[{team_color, total, online, offline, avg_battery, centroid_lat, centroid_lon}]`，team_color 升序。\n\n- `team_color IS NULL` 保留為「未分隊」組（不過濾），key 為 null。\n- 聚合放 repo `cop_entity_repo.aggregate_squads()`，單句 SQL GROUP BY team_color：\n  - total=COUNT(*)、online=SUM(CASE WHEN stale > now THEN 1 ELSE 0 END)、offline=total-online\n  - avg_battery=AVG(battery)、centroid_lat=AVG(lat)、centroid_lon=AVG(lon)\n  - centroid 為簡單算術平均（小範圍演習場足夠）\n- exercise_id 三態（NULL_SCOPE / int / None），對齊 list_cop_entities。\n- router 走 resolve_scope（安全紅線，不直接信 query param）。\n- RBAC 自動 READ_ROLES（GET 預設分支）。\n- `dashboard_service.build_dashboard()` 回傳加 `tak_squads` 欄位。\n\n## DoD\n- repo 單元測試（分組 / online-offline 邊界 / centroid / avg_battery / 未分隊 NULL 組）\n- api 測試（observer READ_ROLES 可讀 / 跨場 isolation / live vs AAR 歷史場）\n- pyflakes / doc_sync_check 通過",
+    "closedAt": null,
+    "comments": [],
+    "createdAt": "2026-06-06T04:29:16Z",
+    "labels": [],
+    "milestone": null,
+    "number": 128,
+    "state": "OPEN",
+    "title": "P2-06d: 小隊聚合 API GET /api/cop/squads（按 team_color 聚合）",
+    "updatedAt": "2026-06-06T04:29:16Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/128"
   }
 ]
