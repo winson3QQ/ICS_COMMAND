@@ -53,14 +53,14 @@
 | 戰術底圖 doctrine in POLICY.md | P1-10c | 拒絕「加 sat 預設」反 doctrine 要求 | 沒 SoT 可引用 |
 | CSP `wasm-unsafe-eval` enforce | P1-10h | 任何 wasm 工具（含 milsymbol wasm fallback）已備 | P2 補 CSP |
 
-**P1-10 DoD**：
-- [ ] Lighthouse Performance score ≥ 80（Pi 500 上）
-- [ ] 1000 個 entity 同時渲染 FPS ≥ 30
-- [ ] 主題切換無 FOUC（flash of unstyled content）
-- [ ] CSP test green，無 `unsafe-inline` 例外
-- [ ] PMTiles 離線（網路全斷）下地圖完整可用
-- [ ] **戰術底圖 doctrine 寫入 `docs/design/POLICY.md`**：底圖必須 desaturated；唯一 saturated 色 = MIL-STD-2525 affiliation + severity token
-- [ ] mini-taiwan 7 條反例 — 6 條避雷 checklist 全套用、2 條視覺反例（hover state、symbol-sort-key）已修正
+**P1-10 DoD**（2026-06-06 reality check 補勾）：
+- [ ] ⚠️ Lighthouse Performance score ≥ 80（Pi 500 上）— **standing residual**：無 Pi 500 實機，未驗（本機 FPS 達標，但 Lighthouse 分數待 Pi 實測）
+- [x] 1000 個 entity 同時渲染 FPS ≥ 30 — P1-10b step 14 真實 Chrome 實測 60 FPS（avg 60.1 / median 59.9 / p95 59.9）
+- [x] 主題切換無 FOUC — 使用者親驗通過（2026-06-06）；實作為 atomic swap（`maplibre_core.js` setBasemapTheme remove+add 同步無 await、MapLibre RAF 模型單幀生效）+ `fe84e6e` 主題切換 race 修正
+- [x] CSP test green，無 `unsafe-inline` 例外 — P1-10h（`CSP_MODE` 預設 enforce + `test_csp_report.py`）
+- [x] PMTiles 離線（網路全斷）下地圖完整可用 — P1-10c（`pmtiles://` protocol + `EMPTY_DARK_STYLE` fallback）
+- [x] **戰術底圖 doctrine 寫入 `docs/design/POLICY.md`**：底圖必須 desaturated；唯一 saturated 色 = MIL-STD-2525 affiliation + severity token — P1-10c
+- [x] mini-taiwan 7 條反例 — 6 架構點 code 確認（EntityLayer / SDF baking / 4-layer state / text-halo / symbol-sort-key / LOD）+ 2 視覺反例（hover state、symbol-sort-key）全套用
 
 **明確排除（移到 P2）**：
 - **MGRS grid** — 軍規 grid 屬 TAK / MIL-STD-2525 同一生態，自然該與 CoT 符號渲染一批做

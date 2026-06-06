@@ -259,6 +259,20 @@ def list_cop_tracks(uid: str, since: str | None = None, limit: int = 1000) -> li
         return [row_to_dict(r) for r in rows]
 
 
+def get_last_track_time(uid: str) -> str | None:
+    """該 uid 最新一筆軌跡的 t（ISO 8601）；無軌跡回 None。
+
+    供 P2-06a 的 per-uid 5s min-interval 抽樣節流用。走 idx_cop_tracks_uid_t(uid, t)
+    → ORDER BY t DESC LIMIT 1 為 index 掃描，不撈全序列。
+    """
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT t FROM cop_entity_tracks WHERE uid = ? ORDER BY t DESC LIMIT 1",
+            (uid,),
+        ).fetchone()
+        return row_to_dict(row)["t"] if row else None
+
+
 # ── cop_entity_links ─────────────────────────────────────────────────────────
 
 

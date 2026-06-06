@@ -18,10 +18,11 @@ P2-04（#105）新增：
 
 import logging
 import sqlite3
+from datetime import datetime
 
 from repositories import cop_entity_repo
 from repositories.snapshot_repo import get_latest_snapshot
-from schemas.cop import CoPEntity
+from schemas.cop import CoPEntity, CoPEntityTrack
 from schemas.manual import ManualRecordIn
 from schemas.tak import CoTEventIn
 from services.exercise_service import current_exercise_id
@@ -131,6 +132,54 @@ async def _broadcast_cop(op: str, entity: dict) -> None:
     )
 
 
+# ── P2-06a：CoT 軌跡寫入（cop_entity_tracks，issue #120）────────────────────────
+# 每次位置持久化（create/update）後寫一筆軌跡點，為 P2-20 AAR 逐格回放鋪資料。
+# exercise 歸屬**不在本表存**（決策 B）：track 透過 uid 綁 cop_entities，查詢時
+# JOIN 取 exercise_id（SoT 單一，不反正規化）；exercise 刪除靠 uid ON DELETE CASCADE。
+_MIN_TRACK_INTERVAL_S = 5.0  # per-uid 最短抽樣間隔（ATAK 可 >0.5Hz，不節流則爆量）
+
+
+def _within_min_interval(last_t: str, new_t: str) -> bool:
+    """new_t 距 last_t 是否 < 5s（抽樣基準 = CoT event time，非 wall-clock；
+    回放要的是事件時間軸）。parse 失敗 → False（不擋，寧可多寫一筆也不漏軌跡）。"""
+    try:
+        dt_last = datetime.fromisoformat(last_t.replace("Z", "+00:00"))
+        dt_new = datetime.fromisoformat(new_t.replace("Z", "+00:00"))
+    except (ValueError, AttributeError):
+        return False
+    return (dt_new - dt_last).total_seconds() < _MIN_TRACK_INTERVAL_S
+
+
+def _record_track(entity: dict) -> None:
+    """位置持久化後寫一筆軌跡點。**best-effort**：任何失敗只 log.warning，
+    絕不讓軌跡寫入擋住 ingest / 即時廣播（對齊 _broadcast_cop 容錯風格）。
+
+    抽樣：查該 uid 上一筆軌跡時間，距今 < 5s 跳過。新 entity（create）/ 重插
+    （reinsert，舊軌跡已隨 entity cascade 刪）皆無前一筆 → 第一筆必寫。
+    """
+    try:
+        uid = entity.get("uid")
+        t = entity.get("time")
+        if not uid or not t:
+            return
+        last = cop_entity_repo.get_last_track_time(uid)
+        if last is not None and _within_min_interval(last, t):
+            return
+        cop_entity_repo.insert_cop_track(
+            CoPEntityTrack(
+                uid=uid,
+                t=t,
+                lat=entity["lat"],
+                lon=entity["lon"],
+                hae=entity.get("hae") or 0.0,
+                heading_deg=entity.get("heading_deg"),
+                speed_mps=entity.get("speed_mps"),
+            )
+        )
+    except Exception as e:  # noqa: BLE001 — best-effort，吞所有例外只留痕
+        log.warning("[tak] 軌跡寫入失敗（不擋同步）uid=%s：%s", entity.get("uid"), e)
+
+
 async def ingest_cot_event(event: CoTEventIn) -> dict | None:
     """CoT 進 COP 的**共用消費者（接縫）**：normalize → upsert(CAS) → 廣播。
 
@@ -156,6 +205,7 @@ async def ingest_cot_event(event: CoTEventIn) -> dict | None:
                 raise
         else:
             await _broadcast_cop("create", created)
+            _record_track(created)
             return created
 
     # 既有 uid → 順序守門 + version_clock CAS update（並發落敗則用新版重試）
@@ -166,6 +216,7 @@ async def ingest_cot_event(event: CoTEventIn) -> dict | None:
         res = cop_entity_repo.update_cop_entity_cas(entity.uid, existing["version_clock"], patch, actor="tak")
         if res["status"] == "ok":
             await _broadcast_cop("update", res["entity"])
+            _record_track(res["entity"])
             return res["entity"]
         if res["status"] == "conflict":
             existing = res["entity"]  # 別人剛改過 → 用新版本重試（順序守門會再判一次）
@@ -180,6 +231,7 @@ async def ingest_cot_event(event: CoTEventIn) -> dict | None:
                 return None
             continue
         await _broadcast_cop("create", created)
+        _record_track(created)
         return created
     # CAS 重試耗盡：高並發同 uid 下確認較新的事件被丟（data loss），留痕供查（code-review #108）
     log.warning("[tak] ingest CAS 重試 %d 次耗盡，丟棄較新事件：%s", _CAS_MAX_RETRY, entity.uid)
