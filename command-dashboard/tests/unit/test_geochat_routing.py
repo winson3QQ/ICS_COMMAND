@@ -124,3 +124,11 @@ def test_non_btf_still_in_cop_entities():
     assert out is not None
     assert _cop_count("UNIT-1") == 1
     assert _chats() == []                 # 一般 entity 不進 chats
+
+
+# ── 7. review #131：缺 chatroom 時 group=None（不把 groupOwner 布林旗標當群組名）──
+
+
+def test_group_none_when_no_chatroom():
+    _ingest(_event(remarks="x", detail={"__chat": {"groupOwner": "false", "senderCallsign": "B"}}))
+    assert _chats()[0]["group"] is None   # 非 "false"

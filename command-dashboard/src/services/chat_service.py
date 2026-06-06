@@ -28,7 +28,7 @@ def ingest_chat(event: CoTEventIn) -> dict:
         sender_uid=event.uid,
         callsign=event.callsign or chat.get("senderCallsign"),
         message=html.escape(event.remarks or ""),  # XSS 後端防線
-        group=chat.get("chatroom") or chat.get("groupOwner"),
+        group=chat.get("chatroom"),  # 只取聊天室名；groupOwner 是布林旗標（"false"/"true"）非群組名（review #131）
         lat=event.lat,
         lon=event.lon,
         time=event.time,
