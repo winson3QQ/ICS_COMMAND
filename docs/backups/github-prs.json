@@ -2488,5 +2488,26 @@
     "title": "P2-09 MEDEVAC 9-line 後端正規化 — severity=critical + attributes.medevac（設計 B）",
     "updatedAt": "2026-06-06T09:18:09Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/137"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "## 摘要\nTAK Server :8443 Marti REST 共用 client（指揮部「主動查」vs :8089 被動收）。**規格更正**：ROADMAP 原寫 OAuth2，reality check 證實官方 TAK Server 5.7（tak.gov）Marti 走 **client cert（mTLS）**（OAuth2 是 OpenTAKServer 才有）→ 複用 P2-03 既有 cert，砍掉 JWT/OAuth2。**P2-12~P2-19 共用此層。**\n\n## 內容\n- `build_marti_ssl_context`：cert mTLS + fail-closed（無 CA 不裸奔，對齊 `build_subscribe_config`）\n- `TakRestClient`：`get_json`（rate-limit + 指數退避重試 + 4xx 不重試 + 204 空 body）+ `poll`（stop_event 軟停 + best-effort）+ `asyncio.Lock` 並發保護\n- `build_tak_rest_client` factory（ssl 注入 → 純邏輯可 mock）\n- config：`TAK_MARTI_URL` + `MIN_INTERVAL_S` + `MAX_RETRIES`（複用 cert）\n- HTTP client = aiohttp（pytak 已帶，非中國）\n\n## Review\n- `/code-review`：修 204 空 body、並發鎖、退避 helper+cap+耗盡前不白等、poll `inspect.isawaitable`\n- `/security-review`：**0 finding**；+ 主動 hardening `_join_url`（path 一律相對，絕對 URL 不覆寫 host → 杜絕未來 SSRF footgun）\n\n## 測試\n15（ssl 安全分支/真 cert/retry/4xx/5xx/204/rate-limit/並發鎖/poll/SSRF join）；全 unit + pyflakes + doc_sync 綠。\n\n## 待真機（P2-10/P2-12）\nMarti `clientEndPoints` 端點格式 + :8443 cert 是否需綁 user/role。\n\nCloses #138\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+    "closedAt": "2026-06-06T11:16:59Z",
+    "comments": [],
+    "createdAt": "2026-06-06T11:16:48Z",
+    "headRefName": "feat/issue-138-p2-11-tak-rest-client",
+    "labels": [],
+    "mergedAt": "2026-06-06T11:16:59Z",
+    "number": 139,
+    "state": "MERGED",
+    "title": "P2-11 TAK Marti REST 抽象層 tak_rest_client.py（規格更正：cert 非 OAuth2）",
+    "updatedAt": "2026-06-06T11:17:03Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/139"
   }
 ]
