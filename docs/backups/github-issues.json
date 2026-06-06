@@ -1537,15 +1537,15 @@
       "name": ""
     },
     "body": "## 背景（reality check 2026-06-06）\n- CoT `<__group name=\"Cyan\" role=\"Team Member\"/>` + `<status battery=\"78\"/>` 的資料**已在** `attributes`（`_extract_detail` 通用收 + `normalize_cot` 整包），非「未解析」。\n- 本項實為**結構化提取為一等欄位**，對齊既有 `callsign`/`remarks` 先例（schemas/cop.py:92-94，schema 欄位 + DB column）。\n\n## 設計 A（reality check 拍板，取代 ROADMAP 原述 B）\nteam_color/role/battery 走 **CoPEntity 欄位 + DB column**（非 attributes 鍵）：\n- 對齊 callsign/remarks 先例\n- P2-06d `GROUP BY team_color` 走 column + index（B 的 json_extract 無 index 較慢）\n\n## 範圍\n1. **schema**：`CoPEntity` 加 `team_color: str|None` / `role: str|None` / `battery: int|None`（0-100 驗證），擺 callsign/remarks 區塊。\n2. **DB migration**：`cop_entities` 加 3 column + `idx_cop_entities_team_color`（P2-06d 用）。\n3. **normalize_cot**：從 `attributes[\"__group\"][\"name\"]`→team_color（標準化大小寫，**不強限 enum** 以免丟 Orange/Teal 等真實 ATAK 色）、`[\"role\"]`→role、`attributes[\"status\"][\"battery\"]`→battery（→int，0-100 防 garbage）。原 `__group`/`status` 仍保留在 attributes（CoT 忠實）。\n4. **`_TAK_UPDATE_FIELDS`**：加 team_color/role/battery（battery 隨位置更新刷新）。\n\n## DoD\n- [ ] CoT `<__group>`/`<status>` → `cop_entities.team_color`/`role`/`battery`（用 valid_friendly.xml fixture 驗）\n- [ ] 缺 `__group`/`status` → 三欄 None（不炸）\n- [ ] battery 非數/越界 → None（防 sensor garbage）\n- [ ] team_color 保留 ATAK 原始色名（不被 7 色 enum 截斷）\n- [ ] update 路徑刷新 battery（_TAK_UPDATE_FIELDS）\n- [ ] pytest 全綠 + ROADMAP P2-06c 描述 B→A 修正\n\n依賴：P2-06a/b（已 ✅）。解鎖：P2-06d 小隊聚合。",
-    "closedAt": null,
+    "closedAt": "2026-06-06T03:59:27Z",
     "comments": [],
     "createdAt": "2026-06-06T03:37:33Z",
     "labels": [],
     "milestone": null,
     "number": 126,
-    "state": "OPEN",
+    "state": "CLOSED",
     "title": "P2-06c: CoT 小隊欄位提取 — team_color/role/battery 成 CoPEntity 一等欄位（設計 A）",
-    "updatedAt": "2026-06-06T03:37:33Z",
+    "updatedAt": "2026-06-06T03:59:27Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/126"
   }
 ]

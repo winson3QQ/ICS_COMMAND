@@ -2383,5 +2383,26 @@
     "title": "P2-06b: 軌跡查詢 API + P2-06a NULL gating（非演習非實戰不記錄）",
     "updatedAt": "2026-06-06T02:59:11Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/124"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "## 範圍（issue #126）\nreality check 釐清：CoT `<__group>`/`<status>` 資料**已在** `attributes`（`_extract_detail` 通用收 + `normalize_cot` 整包），本項為**提取成一等欄位**（對齊既有 `callsign`/`remarks` 先例）。\n\n## 設計 A（取代 PR #119 原述 attributes 鍵 B）\nteam_color/role/battery 走 **CoPEntity 欄位 + DB column**：\n- 對齊 callsign/remarks 提取先例\n- P2-06d `GROUP BY team_color` 走 column + `idx_cop_entities_team_color`（B 的 `json_extract` 無 index）\n\n## 改動\n- **`database.py`**：migration `_m015` — `cop_entities` 加 `team_color`/`role`/`battery` column + team_color index\n- **`schemas/cop.py`**：CoPEntity 加 3 欄（battery 0-100 驗證）\n- **`cop_service.py`**：`_extract_squad`（`__group.name`→team_color `title()` 標準化、**不強限 enum** 免丟 Orange/Teal 等 ATAK 真實色；`status.battery`→int 0-100 防 garbage）+ normalize_cot 接線 + `_TAK_UPDATE_FIELDS` 納入（battery 隨 update 刷新）\n- 原 `__group`/`status` 仍保留 `attributes`（CoT 忠實）\n\n## §8 Verification\n```\ncd command-dashboard\npython -m pytest tests/unit/test_cop_normalize.py tests/unit/test_cop_ingest.py \\\n  tests/unit/test_cop_schema_v1.py tests/unit/test_cop_track_wiring.py \\\n  tests/integration/test_tak_events.py tests/api/test_tracks_query.py \\\n  tests/api/test_exercise_scoping.py -p no:warnings -q\npython -m pyflakes src/services/cop_service.py src/schemas/cop.py src/core/database.py\n```\n**結果：全綠（normalize 提取/標準化/garbage/真 fixture valid_friendly.xml→Cyan/Team Member/78 + ingest update 刷新 + schema/migration 回歸）；pyflakes exit 0；doc-sync passed。**\n\n## DoD（#126）\n- [x] CoT `<__group>`/`<status>` → `cop_entities.team_color`/`role`/`battery`（真 fixture 驗）\n- [x] 缺 `__group`/`status` → 三欄 None\n- [x] battery 非數/越界 → None\n- [x] team_color 保留 ATAK 原始色名（title 標準化，不被 enum 截斷）\n- [x] update 路徑刷新 battery\n- [x] pytest 全綠 + ROADMAP B→A 修正\n\nCloses #126",
+    "closedAt": "2026-06-06T03:59:26Z",
+    "comments": [],
+    "createdAt": "2026-06-06T03:46:50Z",
+    "headRefName": "feat/issue-126-p2-06c-squad-fields",
+    "labels": [],
+    "mergedAt": "2026-06-06T03:59:26Z",
+    "number": 127,
+    "state": "MERGED",
+    "title": "P2-06c: CoT 小隊欄位提取 — team_color/role/battery 成 CoPEntity 一等欄位（設計 A）",
+    "updatedAt": "2026-06-06T03:59:29Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/127"
   }
 ]
