@@ -2456,16 +2456,16 @@
     },
     "baseRefName": "main",
     "body": "## Bug（reality check）\nCoT `<shape>` 幾何**進不了 attributes** —— `_extract_detail` 只收 detail 直接子元素一層、不遞迴，shape 巢狀 vertices / 多筆 `<link>` 全失（解析層 data loss）。地圖只渲染 `<point>` 單點。\n\n## 修法\n- 新 `services/geometry_service.py`（純函式，P2-14 DataSync 共用）：`extract_geometry` 自己 re-parse CoT `<shape>`/`<link>` element → GeoJSON（**不污染 `_extract_detail`**）；`geojson_to_vertices` 轉前端 `[[lat,lng]]`；`centroid` 算幾何中心。\n- `CoTEventIn` 加 `geometry` 欄位；`parse_cot_xml` 填。\n- `normalize_cot` 加 shape 分支：`geometry.type` → `attributes.kind`（route=LineString / polygon=Polygon）+ `vertices`（**沿用 P1-16 格式，零前端改動**）+ lat/lon 重算 centroid。\n- **circle/ellipse 先不支援**（前端無管線）→ None + log warning（已知限制）。\n\n## §8 Verification\n```\ncd command-dashboard\npython -m pytest tests/unit/test_geometry_service.py tests/unit/test_cop_normalize.py \\\n  tests/unit/test_cop_ingest.py tests/unit/test_cop_schema_v1.py tests/unit/test_tak_cot_parse.py \\\n  tests/integration/test_tak_events.py tests/unit/test_geochat_routing.py -p no:warnings -q\npython -m pyflakes src/services/geometry_service.py src/services/cop_service.py src/services/tak_service.py src/schemas/tak.py\n```\n**結果：全綠（polyline→route / polygon / link route / circle→None / vertices / centroid / normalize 整合 + 真 fixture）；pyflakes exit 0；doc-sync passed。**\n\n## DoD（#132）\n- [x] shape polyline → kind='route' + vertices；polygon → kind='polygon'\n- [x] geometry_service re-parse 巢狀 vertices + 多筆 link（不漏）\n- [x] CoTEventIn.geometry 填 GeoJSON\n- [x] circle/ellipse → None（已知限制 + warning）\n- [x] 前端零改動（沿用 attributes.vertices）\n- [x] pytest 全綠\n\n純後端。P2-14 DataSync 共用 geometry_service。Closes #132",
-    "closedAt": null,
+    "closedAt": "2026-06-06T06:23:54Z",
     "comments": [],
     "createdAt": "2026-06-06T06:08:25Z",
     "headRefName": "feat/issue-132-p2-08-shape-geometry",
     "labels": [],
-    "mergedAt": null,
+    "mergedAt": "2026-06-06T06:23:54Z",
     "number": 133,
-    "state": "OPEN",
+    "state": "MERGED",
     "title": "P2-08: CoT <shape> 幾何萃取 + geometry_service（純後端）",
-    "updatedAt": "2026-06-06T06:08:25Z",
+    "updatedAt": "2026-06-06T06:23:57Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/133"
   }
 ]

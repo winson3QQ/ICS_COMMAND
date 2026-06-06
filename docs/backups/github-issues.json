@@ -1597,15 +1597,15 @@
       "name": ""
     },
     "body": "## 背景（reality check 2026-06-06）\nCoT `<shape>` 幾何（polyline/polygon/route link）目前**進不了 attributes** —— `_extract_detail` 只收 `<detail>` 直接子元素一層、不遞迴，shape 的巢狀 vertices / 多筆 `<link>` 全失（解析層 data loss，非「被忽略」）。地圖只渲染 `<point>` 單點。\n\n## 設計（定案）\n- 新 `services/geometry_service.py`（純函式，P2-14 DataSync 共用入口）：`extract_geometry(detail_el)` 自己 re-parse raw CoT element（**不污染 `_extract_detail`**）→ GeoJSON（LineString/Polygon）；內部 `geojson_to_vertices` 轉前端格式。\n- `CoTEventIn` 加 `geometry: dict | None`（GeoJSON）；`parse_cot_xml` 呼叫 geometry_service 填。\n- `normalize_cot` 加 shape 分支：`geometry.type` → `attributes.kind`（'route'=LineString / 'polygon'=Polygon）+ `attributes.vertices`（`[[lat,lng],...]`，**沿用 P1-16 既有格式，零前端改動**）+ 後端重算 centroid/midpoint 覆蓋 lat/lon。\n- **circle/ellipse 先不支援**（前端無管線）→ 回 None + log warning，列已知限制。\n\n## DoD\n- [ ] CoT shape polyline → `attributes.kind='route'` + vertices；polygon → `kind='polygon'`\n- [ ] geometry_service re-parse 巢狀 vertices + 多筆 link（不漏）\n- [ ] `CoTEventIn.geometry` 填 GeoJSON\n- [ ] circle/ellipse → None（已知限制，記 warning）\n- [ ] 前端零改動（沿用 `attributes.vertices`）\n- [ ] pytest 全綠（shape fixture polyline/polygon + geometry_service 單元測試）\n\n純後端。P2-14 DataSync 共用 geometry_service。",
-    "closedAt": null,
+    "closedAt": "2026-06-06T06:23:55Z",
     "comments": [],
     "createdAt": "2026-06-06T06:02:29Z",
     "labels": [],
     "milestone": null,
     "number": 132,
-    "state": "OPEN",
+    "state": "CLOSED",
     "title": "P2-08: CoT <shape> 幾何萃取 + services/geometry_service.py（純後端）",
-    "updatedAt": "2026-06-06T06:02:29Z",
+    "updatedAt": "2026-06-06T06:23:55Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/132"
   },
   {
