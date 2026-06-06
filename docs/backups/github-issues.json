@@ -1694,5 +1694,25 @@
     "title": "P2-11 TAK Marti REST 抽象層 tak_rest_client.py（規格更正：cert 非 OAuth2）",
     "updatedAt": "2026-06-06T11:17:00Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/138"
+  },
+  {
+    "assignees": [],
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "body": "## 範圍調整（reality check 發現 FK cascade 坑）\n\nROADMAP P2-11b 原列三變更一次 migration：(1) source enum 加 `\"command\"`、(2) `planned`、(3) `simulated`。reality check 發現 **source 變更撞 SQLite 結構性坑**：\n\n- `source` 有 `CHECK(source IN (...4 值))`，SQLite **不能 ALTER CHECK** → 加 `'command'` 必須整表 rebuild\n- cop_entities 被 `cop_entity_tracks`/`cop_entity_links` 以 `ON DELETE CASCADE` reference\n- `get_conn` 設 `PRAGMA foreign_keys=ON` + migration 跑在 init_db 大 transaction 內\n- **`DROP TABLE` parent（foreign_keys=ON）→ 隱式 `DELETE FROM` → 觸發 child CASCADE → tracks/links 全刪**\n- 標準解 `PRAGMA foreign_keys=OFF` **在 transaction 內無效**（SQLite 限制）\n\n→ **決策：分階段（B）**。本 issue 只做 **planned/simulated（純 `ADD COLUMN`，零風險）**；source `'command'` 拆出延到 P2-13 動工前單獨謹慎 rebuild（source `'command'` 消費方就是 P2-13 command 下行，現在無 code 需要，延後零損失，不把零風險 ADD 卷進高風險 rebuild）。\n\n## 本 issue 範圍（planned/simulated）\n- schema `cop.py`：`CoPEntity` 加 `planned: bool = False`（空心/實心 2525 框，P2-13）+ `simulated: bool = False`（合成注入標記，P2-19）\n- `_m017` migration：`ADD COLUMN planned/simulated INTEGER NOT NULL DEFAULT 0`（`_add_column_if_missing`，對齊 _m014/_m015 先例）\n- `_row_to_entity_dict`：int 0/1 → bool 轉換（SQLite 無 bool type）\n- insert 自動含（`model_dump()` 動態欄位）；TAK update 不碰（非 TAK 欄位）\n\n## 測試\n- schema：planned/simulated default False + bool 型別\n- `_m017` DB 欄位存在 + DEFAULT 0\n- repo roundtrip：insert True → get 回 bool True；P1-03 contract 回歸不破\n\n## v1 相容\nADD COLUMN 是 [cop.py:12-13](command-dashboard/src/schemas/cop.py) 定義的「v1 內擴充」（非 rename/drop → 非 v2）；P1-03 contract tests 守門。\n\n## 後續\nsource `'command'` rebuild → 另開 follow-up（P2-13 前置，含 legacy_alter_table SOP）。",
+    "closedAt": null,
+    "comments": [],
+    "createdAt": "2026-06-06T11:44:05Z",
+    "labels": [],
+    "milestone": null,
+    "number": 140,
+    "state": "OPEN",
+    "title": "P2-11b（部分）CoPEntity 加 planned/simulated 欄位（source command 延 P2-13）",
+    "updatedAt": "2026-06-06T11:44:05Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/140"
   }
 ]
