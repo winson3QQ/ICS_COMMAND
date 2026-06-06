@@ -1674,5 +1674,25 @@
     "title": "TAK ingest path 無 server-side XSS escape（P2-12 panel 連動 hardening）",
     "updatedAt": "2026-06-06T09:13:33Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/136"
+  },
+  {
+    "assignees": [],
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "body": "## ⚠️ 規格更正：認證走 client cert，不是 OAuth2\n\nROADMAP P2-11 原寫「Marti REST :8443 走 **OAuth2 client credentials**（JWT Bearer），非 enrolled cert」。reality check 證實**此前提錯誤**：\n\n- 部署是**官方 TAK Server 5.7-RELEASE-43**（tak.gov，`deploy/tak-server/README.md` 第一行 + `docker-compose.yml` image `ics-takserver:5.7`），**非** OpenTAKServer\n- 官方 TAK Server Marti API :8443 = **client cert（mTLS）**：① 官方文件（Marti :8443 驗 client certificate）② pytak `MartiTXWorker`/`MartiRXWorker` 走 cert ③ 本 repo `issue-tak-certs.sh` 全 step-ca cert、零 OAuth2\n- OAuth2 只在 **OpenTAKServer（第三方 fork）** 才有\n\n→ **改正為 client cert**，複用 P2-03 既有 `TAK_CLIENT_CERT/KEY/CAFILE`，**砍掉** JWT 取得/refresh + OAuth2 client user SOP。\n\n## 設計（純後端抽象層，P2-12~P2-19 依賴）\n新 `services/tak_rest_client.py`：\n- `ssl.SSLContext`：`load_cert_chain`（client cert+key）+ cafile 驗 server；沿用 config，`allow_insecure_tls` 對齊既有 `build_subscribe_config` 語意\n- aiohttp `ClientSession`（cert connector；aiohttp 已隨 pytak `with_takproto` 裝，非中國）\n- `get_json(path, params)`：rate-limit gate（最短間隔）+ retry（指數退避）+ GET + JSON parse + 非 2xx 處理\n- poll scheduler：定時 poll path → callback，`stop_event` 終止（沿用 `tak_service.subscribe` 的 stop_event 模式）\n- HTTP 執行層可注入 → mock 測試免真 server\n\nconfig：新增 `TAK_MARTI_URL`（`https://<host>:8443`），複用 cert。砍掉 OAuth2/JWT 全部。\n\n## 測試（無真 server，mock）\n- ssl context 建構（cert / cafile / insecure 三分支）\n- retry 指數退避（注入 fail→success / 全 fail）\n- rate-limit 最短間隔\n- poll scheduler（stop_event 終止、callback 收到資料）\n- get_json parse + 非 2xx\n\n## 待真機（P2-10 / P2-12）\n- Marti `clientEndPoints` 確切端點 path + JSON 格式（官方 redoc 未公開內文）\n- :8443 Marti M2M 的 client cert 是否需綁 TAK user/role（vs :8089 純 CA-trusted fullchain）\n\n**不在本 item**：具體 Marti 端點消費（clientEndPoints poll → 在線人員面板）= P2-12。",
+    "closedAt": null,
+    "comments": [],
+    "createdAt": "2026-06-06T10:47:31Z",
+    "labels": [],
+    "milestone": null,
+    "number": 138,
+    "state": "OPEN",
+    "title": "P2-11 TAK Marti REST 抽象層 tak_rest_client.py（規格更正：cert 非 OAuth2）",
+    "updatedAt": "2026-06-06T10:47:31Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/138"
   }
 ]
