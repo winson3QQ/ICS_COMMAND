@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!-- P2-09 MEDEVAC 9-line fixture（#135）。
+     <_medevac_> 屬性名/大小寫依 FreeTAKServer CoT domain 文件（Title/Priority/Security 大寫，
+     freq/urgent/routine/casevac 小寫）。type 字串與完整屬性語意待真機 ATAK CASEVAC 抓包終驗。 -->
+<event version="2.0"
+       uid="MED.ANDROID-359975090666199.CASEVAC"
+       type="b-a-o-tbl-medevac"
+       time="2026-06-05T04:10:00.000Z"
+       start="2026-06-05T04:10:00.000Z"
+       stale="2026-06-05T04:40:00.000Z"
+       how="h-e">
+  <point lat="24.142" lon="120.681" hae="30.0" ce="9.0" le="9.0"/>
+  <detail>
+    <contact callsign="DUSTOFF-REQ"/>
+    <_medevac_ Title="集結點北側觸雷"
+               freq="38.90"
+               urgent="2"
+               Priority="1"
+               routine="0"
+               casevac="false"
+               Security="N"
+               hlz_marking="Smoke - Green"
+               equipment_none="true"
+               terrain_none="true"
+               zone_prot_selection="0"
+               medline_remarks="2 lower-limb amputations"/>
+    <remarks>請求後送</remarks>
+  </detail>
+</event>

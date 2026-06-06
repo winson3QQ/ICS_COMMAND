@@ -158,3 +158,66 @@ def test_real_fixture_squad_extracted():
     event = parse_cot_xml((FIXTURES / "valid_friendly.xml").read_text(encoding="utf-8"))
     ent = normalize_cot(event)
     assert (ent.team_color, ent.role, ent.battery) == ("Cyan", "Team Member", 78)
+
+
+# ── P2-09（#135）：MEDEVAC 9-line 正規化 + severity=critical ────────────────────
+
+
+def test_medevac_extracted_and_severity_critical():
+    """<_medevac_> 屬性（混大小寫）→ attributes["medevac"] 乾淨摘要 + severity critical。"""
+    ent = normalize_cot(_event(type="b-a-o-tbl-medevac", detail={
+        "_medevac_": {"Title": "觸雷", "freq": "38.90", "urgent": "2", "Priority": "1",
+                      "routine": "0", "casevac": "false", "Security": "N",
+                      "hlz_marking": "Smoke - Green"},
+    }))
+    mv = ent.attributes["medevac"]
+    assert mv["title"] == "觸雷"
+    assert mv["freq"] == "38.90"
+    assert mv["precedence"] == {"urgent": 2, "priority": 1, "routine": 0}  # by precedence 傷亡數→int
+    assert mv["casevac"] is False
+    assert mv["security"] == "N"  # 大寫 Security 也取到（case-insensitive）
+    assert mv["marking"] == "Smoke - Green"
+    assert ent.severity == "critical"
+
+
+def test_medevac_casevac_bool_variants():
+    """casevac → bool；缺欄位 → None（未知，非 False）。"""
+    assert normalize_cot(_event(detail={"_medevac_": {"casevac": "true"}})).attributes["medevac"]["casevac"] is True
+    assert normalize_cot(_event(detail={"_medevac_": {"casevac": "false"}})).attributes["medevac"]["casevac"] is False
+    assert normalize_cot(_event(detail={"_medevac_": {"freq": "30"}})).attributes["medevac"]["casevac"] is None
+
+
+def test_non_medevac_severity_info():
+    """無 <_medevac_> → severity 維持 info，attributes 無 medevac 鍵（不誤升 critical）。"""
+    ent = normalize_cot(_event())
+    assert ent.severity == "info"
+    assert "medevac" not in ent.attributes
+
+
+def test_medevac_raw_preserved():
+    """原始 _medevac_ 屬性完整保留在 attributes（CoT 忠實，真機屬性名小差時不漏資料）。"""
+    ent = normalize_cot(_event(detail={"_medevac_": {"Title": "X", "urgent": "1", "foo_unknown": "bar"}}))
+    assert ent.attributes["_medevac_"]["Title"] == "X"
+    assert ent.attributes["_medevac_"]["foo_unknown"] == "bar"  # 未知屬性也留著
+
+
+def test_medevac_garbage_precedence_yields_none():
+    """precedence 非數 / 空 / 越界（>9999）→ None（防 garbage，不炸 ingest）。"""
+    mv = normalize_cot(_event(detail={
+        "_medevac_": {"urgent": "??", "priority": "", "routine": "99999"},
+    })).attributes["medevac"]
+    assert mv["precedence"] == {"urgent": None, "priority": None, "routine": None}
+
+
+def test_real_fixture_medevac_extracted():
+    event = parse_cot_xml((FIXTURES / "medevac_9line.xml").read_text(encoding="utf-8"))
+    ent = normalize_cot(event)
+    assert ent.severity == "critical"
+    mv = ent.attributes["medevac"]
+    assert mv["title"] == "集結點北側觸雷"
+    assert mv["freq"] == "38.90"
+    assert mv["precedence"] == {"urgent": 2, "priority": 1, "routine": 0}
+    assert mv["casevac"] is False
+    assert mv["marking"] == "Smoke - Green"
+    # 原始 _medevac_ 仍保留（含未提取進摘要的 medline_remarks）
+    assert ent.attributes["_medevac_"]["medline_remarks"] == "2 lower-limb amputations"

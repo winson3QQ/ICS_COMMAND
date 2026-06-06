@@ -162,3 +162,22 @@ def test_m015_backfill_from_attributes():
             "SELECT team_color, role, battery FROM cop_entities WHERE uid='BACKFILL-1'"
         ).fetchone()
     assert (row["team_color"], row["role"], row["battery"]) == ("Teal", "Medic", 63)
+
+
+# ── P2-09（review #135-3）：severity 單調升級（只升不降）──────────────────────
+
+
+def test_severity_escalates_to_critical_on_medevac_update(captured_broadcasts):
+    """同 uid 先普通幀(info)、後送 MEDEVAC 幀 → severity 單調升 critical（漏升=地圖不醒目）。"""
+    created = _ingest(_event(time="2026-06-05T04:00:00Z"))  # 普通 create
+    assert created["severity"] == "info"
+    row = _ingest(_event(time="2026-06-05T04:01:00Z", detail={"_medevac_": {"urgent": "1"}}))
+    assert row["severity"] == "critical"  # update 路徑升上去
+
+
+def test_severity_not_downgraded_by_normal_frame(captured_broadcasts):
+    """MEDEVAC(critical) 後普通位置幀**不**打回 info（只升不降）。"""
+    created = _ingest(_event(time="2026-06-05T04:00:00Z", detail={"_medevac_": {"urgent": "1"}}))
+    assert created["severity"] == "critical"
+    row = _ingest(_event(time="2026-06-05T04:01:00Z"))  # 無 _medevac_ 的普通位置幀
+    assert row["severity"] == "critical"  # 保留，非倒退成 info
