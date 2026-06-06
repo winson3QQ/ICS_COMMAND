@@ -108,6 +108,16 @@ TAK_CAFILE: str | None = os.getenv("TAK_CAFILE") or None  # 驗 server 憑證的
 # 顯式允許「無 cafile → 完全不驗 server」（僅 dev/PoC，有 MITM 風險，build_subscribe_config 會 warn）
 TAK_ALLOW_INSECURE_TLS: bool = os.getenv("TAK_ALLOW_INSECURE_TLS", "false").lower() == "true"
 
+# ── TAK Marti REST API（P2-11 / #138）──────────────────────────────────────
+# 指揮部「主動查」TAK Server :8443 Marti REST（vs :8089 被動收串流）。M2M 認證 =
+# **client cert（mTLS）**，**複用上方 TAK_CLIENT_CERT/KEY/CAFILE**（與 :8089 同一套 step-ca）。
+# 規格更正：官方 TAK Server 5.7 Marti 走 cert 非 OAuth2（見 memory tak-server-marti-cert-not-oauth）。
+# 空 → REST 功能停用（P2-12+ 消費方各自判斷）。
+TAK_MARTI_URL: str = os.getenv("TAK_MARTI_URL", "")  # https://<host>:8443
+# 單一 client 自保 rate-limit（兩次請求最短間隔，秒）+ 暫時性錯誤重試上限
+TAK_MARTI_MIN_INTERVAL_S: float = float(os.getenv("TAK_MARTI_MIN_INTERVAL_S", "1.0"))
+TAK_MARTI_MAX_RETRIES: int = int(os.getenv("TAK_MARTI_MAX_RETRIES", "3"))
+
 # ── COP 軌跡抽樣（P2-06a / #120）──────────────────────────────────────────────
 # cop_entity_tracks per-uid 最短寫入間隔（秒）。ATAK 可 >0.5Hz，不節流則每筆位置更新
 # 都落一筆軌跡 → 表爆量。抽樣基準 = CoT event time（非 wall-clock）。不同演習場景
