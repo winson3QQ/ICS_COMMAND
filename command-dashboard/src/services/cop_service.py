@@ -26,6 +26,7 @@ from repositories.snapshot_repo import get_latest_snapshot
 from schemas.cop import CoPEntity, CoPEntityTrack
 from schemas.manual import ManualRecordIn
 from schemas.tak import CoTEventIn
+from services import chat_service
 from services.exercise_service import current_exercise_id
 from services.realtime_hub import cop_hub
 
@@ -240,6 +241,11 @@ async def ingest_cot_event(event: CoTEventIn) -> dict | None:
     回傳：持久化後的 cop_entities DB row（create 或 update）。
           out-of-order / 重送（非更新）/ CAS 重試耗盡 → None。
     """
+    # P2-07（#129）：GeoChat（type b-t-f）分流到 chats 表，不進 cop_entities（作戰圖主表）。
+    # 放共用接縫 → :8089 串流（_consume_cot）與 REST push（routers/tak.py）兩條路徑都擋。
+    if event.type.startswith("b-t-f"):
+        chat_service.ingest_chat(event)
+        return None
     entity = normalize_cot(event)
     existing = cop_entity_repo.get_cop_entity(entity.uid)
 

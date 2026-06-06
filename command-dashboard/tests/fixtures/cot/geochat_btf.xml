@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<event version="2.0"
+       uid="GeoChat.ANDROID-359975090666199.All Chat Rooms.abc123"
+       type="b-t-f"
+       time="2026-06-05T03:50:12.345Z"
+       start="2026-06-05T03:50:12.345Z"
+       stale="2026-06-05T03:55:12.345Z"
+       how="h-g-i-g-o">
+  <point lat="24.137" lon="120.687" hae="32.5" ce="9.0" le="9.0"/>
+  <detail>
+    <__chat parent="RootContactGroup" groupOwner="false" chatroom="All Chat Rooms"
+            id="abc123" senderCallsign="ALPHA-1"/>
+    <remarks source="BAO.F.ATAK.ANDROID-x" time="2026-06-05T03:50:12.345Z">敵情回報 &lt;script&gt;alert(1)&lt;/script&gt;</remarks>
+  </detail>
+</event>

@@ -699,6 +699,34 @@ def _m015_cop_entities_squad_cols_down(conn: sqlite3.Connection) -> None:
             conn.execute(f"ALTER TABLE cop_entities DROP COLUMN {col}")  # nosec B608
 
 
+def _m016_chats_table(conn: sqlite3.Connection) -> None:
+    """P2-07（#129）：GeoChat（CoT b-t-f）通聯記錄表，對齊 ICS-214 Unit Log。
+
+    b-t-f 不進 cop_entities（作戰圖主表），由 cop_service.ingest_cot_event 分流至此。
+    message 寫入前已由 chat_service `html.escape`（XSS 後端防線）。exercise_id 綁 active 場。
+    """
+    conn.execute('''
+        CREATE TABLE IF NOT EXISTS chats (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            sender_uid   TEXT NOT NULL,
+            callsign     TEXT,
+            message      TEXT NOT NULL DEFAULT '',
+            "group"      TEXT,
+            lat          REAL,
+            lon          REAL,
+            time         TEXT,
+            exercise_id  INTEGER REFERENCES exercises(id),
+            received_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
+        )
+    ''')
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_chats_exercise ON chats(exercise_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_chats_time ON chats(time)")
+
+
+def _m016_chats_table_down(conn: sqlite3.Connection) -> None:
+    conn.execute("DROP TABLE IF EXISTS chats")
+
+
 _MIGRATIONS: list[tuple[int, str, object]] = [
     (1, "events_columns", _m001_events_columns),
     (2, "decisions_columns", _m002_decisions_columns),
@@ -715,6 +743,7 @@ _MIGRATIONS: list[tuple[int, str, object]] = [
     (13, "cop_v1_schema", _m013_cop_v1_schema),
     (14, "cop_entities_audit_cols", _m014_cop_entities_audit_cols),
     (15, "cop_entities_squad_cols", _m015_cop_entities_squad_cols),
+    (16, "chats_table", _m016_chats_table),
 ]
 
 
