@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<event version="2.0"
+       uid="ROUTE-ANDROID-1"
+       type="b-m-r"
+       time="2026-06-05T03:50:12.345Z"
+       start="2026-06-05T03:50:12.345Z"
+       stale="2026-06-05T03:55:12.345Z"
+       how="h-e">
+  <point lat="24.10" lon="120.60" hae="0" ce="9.0" le="9.0"/>
+  <detail>
+    <contact callsign="AXIS-1"/>
+    <shape>
+      <polyline closed="false">
+        <vertex point="24.10,120.60"/>
+        <vertex point="24.20,120.70"/>
+        <vertex point="24.30,120.80"/>
+      </polyline>
+    </shape>
+  </detail>
+</event>

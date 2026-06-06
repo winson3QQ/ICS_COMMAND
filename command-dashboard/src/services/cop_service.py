@@ -26,7 +26,7 @@ from repositories.snapshot_repo import get_latest_snapshot
 from schemas.cop import CoPEntity, CoPEntityTrack
 from schemas.manual import ManualRecordIn
 from schemas.tak import CoTEventIn
-from services import chat_service
+from services import chat_service, geometry_service
 from services.exercise_service import current_exercise_id
 from services.realtime_hub import cop_hub
 
@@ -121,6 +121,15 @@ def normalize_cot(cot_event: CoTEventIn) -> CoPEntity:
     detail = dict(cot_event.detail or {})
     track = _dict_child(detail, "track")
     team_color, role, battery = _extract_squad(detail)
+    # P2-08：CoT <shape>/<link> 幾何 → attributes.kind（route/polygon）+ vertices；lat/lon 重算 centroid
+    lat, lon = cot_event.lat, cot_event.lon
+    if cot_event.geometry:
+        verts = geometry_service.geojson_to_vertices(cot_event.geometry)
+        if verts:
+            detail["kind"] = "polygon" if cot_event.geometry.get("type") == "Polygon" else "route"
+            detail["vertices"] = verts
+            if c := geometry_service.centroid(verts):
+                lat, lon = c
     return CoPEntity(
         uid=cot_event.uid,
         type=cot_event.type,
@@ -129,8 +138,8 @@ def normalize_cot(cot_event: CoTEventIn) -> CoPEntity:
         stale=cot_event.stale,
         how=cot_event.how,
         version=cot_event.version,
-        lat=cot_event.lat,
-        lon=cot_event.lon,
+        lat=lat,
+        lon=lon,
         hae=cot_event.hae,
         ce=cot_event.ce,
         le=cot_event.le,
