@@ -727,6 +727,30 @@ def _m016_chats_table_down(conn: sqlite3.Connection) -> None:
     conn.execute("DROP TABLE IF EXISTS chats")
 
 
+def _m017_cop_entities_planned_simulated(conn: sqlite3.Connection) -> None:
+    """P2-11b（#140）：cop_entities 加 planned / simulated 旗標。
+
+    - planned：MIL-STD-2525 空心框（計畫中）vs 實心框（實際）—— P2-13 下行指令用。
+    - simulated：O/C 合成注入實體（`how="h-g-i-g-o"` CoT）—— P2-19 用，archive 時整批清除。
+
+    兩欄 INTEGER 0/1（SQLite 無 bool type）NOT NULL DEFAULT 0：既有 entity 自動 = 0
+    （實際 / 非合成），語意正確，不需 backfill。repo `_row_to_entity_dict` 轉回 bool。
+
+    註：ROADMAP P2-11b 原列的 source enum 加 `'command'` 因 SQLite **CHECK 不可 ALTER**
+    + table rebuild 撞 **FK cascade**（DROP parent 觸發 tracks/links `ON DELETE CASCADE`、
+    `foreign_keys=OFF` 在 transaction 內無效）拆出，延 P2-13 動工前單獨謹慎 rebuild（#140 決策）。
+    """
+    _add_column_if_missing(conn, "cop_entities", "planned", "INTEGER NOT NULL DEFAULT 0")
+    _add_column_if_missing(conn, "cop_entities", "simulated", "INTEGER NOT NULL DEFAULT 0")
+
+
+def _m017_cop_entities_planned_simulated_down(conn: sqlite3.Connection) -> None:
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(cop_entities)")}
+    for col in ("simulated", "planned"):
+        if col in cols:
+            conn.execute(f"ALTER TABLE cop_entities DROP COLUMN {col}")  # nosec B608
+
+
 _MIGRATIONS: list[tuple[int, str, object]] = [
     (1, "events_columns", _m001_events_columns),
     (2, "decisions_columns", _m002_decisions_columns),
@@ -744,6 +768,7 @@ _MIGRATIONS: list[tuple[int, str, object]] = [
     (14, "cop_entities_audit_cols", _m014_cop_entities_audit_cols),
     (15, "cop_entities_squad_cols", _m015_cop_entities_squad_cols),
     (16, "chats_table", _m016_chats_table),
+    (17, "cop_entities_planned_simulated", _m017_cop_entities_planned_simulated),
 ]
 
 

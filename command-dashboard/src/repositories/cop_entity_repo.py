@@ -457,4 +457,8 @@ def _row_to_entity_dict(row) -> dict:
                 exc_info=e,
             )
             d["attributes"] = {}
+    # P2-11b（#140）：SQLite 無 bool type，planned/simulated 存 INTEGER 0/1 → 轉回 bool
+    for _flag in ("planned", "simulated"):
+        if d.get(_flag) is not None:
+            d[_flag] = bool(d[_flag])
     return d

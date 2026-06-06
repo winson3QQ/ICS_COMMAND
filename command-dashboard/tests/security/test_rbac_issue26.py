@@ -13,15 +13,11 @@ from auth.role_enum import (
 )
 from core.database import (
     _MIGRATIONS,
-    _m010_role_detail_down,
+    _m010_role_detail_down,  # _m010 命名特例，個別驗（其餘 _m011+ 動態 getattr）
     _m011_audit_correlation_id,
     _m011_audit_correlation_id_down,
     _m012_audit_hash_prev,
     _m012_audit_hash_prev_down,
-    _m013_cop_v1_schema,
-    _m013_cop_v1_schema_down,
-    _m014_cop_entities_audit_cols,
-    _m014_cop_entities_audit_cols_down,
 )
 from repositories.account_repo import create_account
 
@@ -61,18 +57,28 @@ def _set_session(token: str, **values: str) -> None:
         conn.commit()
 
 
-def test_migrations_reach_m014_and_down_helpers_exist(client):
-    # bump 13 → 14 (issue #29 PR-A: cop_entities updated_by/updated_at — per-entity CAS audit)
-    assert _MIGRATIONS[-1][0] == 14
+def test_migrations_chain_complete_and_down_helpers_exist():
+    """migration 鏈完整 + reversibility 守門。
+
+    **動態驗證**（取代原 hardcode `_MIGRATIONS[-1][0] == 14`——該 assert 在 _m015+ 加入後
+    即過時、成為「每加一個 migration 就撞一次」的脆弱點）：
+      - 版本連續 1..N 無缺口
+      - 每個 up 是 callable
+      - _m010 起（issue #29 確立 down helper 慣例）每個 migration 有對應 `<up名>_down`
+    未來加 migration 自動涵蓋，不需再改本測試。
+    """
+    import core.database as _db
+
+    versions = [v for v, _, _ in _MIGRATIONS]
+    assert versions == list(range(1, len(_MIGRATIONS) + 1)), f"migration 版本不連續：{versions}"
+    # _m010 命名特例（up=_m010_role_detail_backfill / down=_m010_role_detail_down，不符
+    # <up名>_down 慣例）→ 個別驗；_m011 起命名規則一致 → 動態驗。
     assert callable(_m010_role_detail_down)
-    assert callable(_m011_audit_correlation_id)
-    assert callable(_m011_audit_correlation_id_down)
-    assert callable(_m012_audit_hash_prev)
-    assert callable(_m012_audit_hash_prev_down)
-    assert callable(_m013_cop_v1_schema)
-    assert callable(_m013_cop_v1_schema_down)
-    assert callable(_m014_cop_entities_audit_cols)
-    assert callable(_m014_cop_entities_audit_cols_down)
+    for version, name, up_fn in _MIGRATIONS:
+        assert callable(up_fn), f"migration {version}（{name}）up 非 callable"
+        if version >= 11:  # _m011 起命名規則一致（<up名>_down）
+            down = getattr(_db, up_fn.__name__ + "_down", None)
+            assert callable(down), f"migration {version}（{name}）缺 {up_fn.__name__}_down"
 
 
 def test_m011_correlation_id_up_is_idempotent_and_down_removes_column(tmp_path):
