@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<event version="2.0"
+       uid="POLY-ANDROID-1"
+       type="u-d-f"
+       time="2026-06-05T03:50:12.345Z"
+       start="2026-06-05T03:50:12.345Z"
+       stale="2026-06-05T03:55:12.345Z"
+       how="h-e">
+  <point lat="24.15" lon="120.65" hae="0" ce="9.0" le="9.0"/>
+  <detail>
+    <contact callsign="AREA-A"/>
+    <shape>
+      <polyline closed="true">
+        <vertex point="24.10,120.60"/>
+        <vertex point="24.20,120.60"/>
+        <vertex point="24.20,120.70"/>
+        <vertex point="24.10,120.70"/>
+      </polyline>
+    </shape>
+  </detail>
+</event>

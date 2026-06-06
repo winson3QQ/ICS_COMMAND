@@ -52,3 +52,4 @@ class CoTEventIn(BaseModel):
     callsign: str | None = None
     remarks: str | None = None
     detail: dict = Field(default_factory=dict)  # 結構化 detail children（P2-04 → attributes）
+    geometry: dict | None = None  # CoT <shape>/<link> → GeoJSON（P2-08，geometry_service 填）

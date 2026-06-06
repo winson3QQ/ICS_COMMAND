@@ -26,7 +26,7 @@ from repositories.snapshot_repo import get_latest_snapshot
 from schemas.cop import CoPEntity, CoPEntityTrack
 from schemas.manual import ManualRecordIn
 from schemas.tak import CoTEventIn
-from services import chat_service
+from services import chat_service, geometry_service
 from services.exercise_service import current_exercise_id
 from services.realtime_hub import cop_hub
 
@@ -121,6 +121,14 @@ def normalize_cot(cot_event: CoTEventIn) -> CoPEntity:
     detail = dict(cot_event.detail or {})
     track = _dict_child(detail, "track")
     team_color, role, battery = _extract_squad(detail)
+    # P2-08：CoT <shape>/<link> 幾何 → attributes.kind（route/polygon）+ vertices。
+    # lat/lon **沿用 CoT <point>**（ATAK 給的錨點，忠實對位；不重算 centroid，避免與 ATAK 端
+    # 顯示位置不一致 + 避免未驗證 centroid 覆寫已驗證 point — review #132）。
+    if cot_event.geometry:
+        verts = geometry_service.geojson_to_vertices(cot_event.geometry)
+        if verts:
+            detail["kind"] = "polygon" if cot_event.geometry.get("type") == "Polygon" else "route"
+            detail["vertices"] = verts
     return CoPEntity(
         uid=cot_event.uid,
         type=cot_event.type,

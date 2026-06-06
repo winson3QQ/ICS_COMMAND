@@ -25,6 +25,7 @@ import structlog
 from defusedxml.ElementTree import fromstring as _safe_fromstring
 
 from schemas.tak import CoTEventIn
+from services import geometry_service
 
 # 單筆 CoT event 大小上限（防 well-formed 巨型 XML 的記憶體 DoS — defusedxml 只擋
 # DTD/entity，不管整體 size/節點數）。TAK CoT event 典型 <2KB；256KB 已極寬鬆。
@@ -148,6 +149,7 @@ def parse_cot_xml(raw: str | bytes) -> CoTEventIn:
     detail_el = next((c for c in root if _localname(c.tag) == "detail"), None)
 
     callsign, remarks, detail_dict = _extract_detail(detail_el)
+    geometry = geometry_service.extract_geometry(detail_el)  # P2-08：<shape>/<link> → GeoJSON
 
     a = root.attrib
     try:
@@ -170,6 +172,7 @@ def parse_cot_xml(raw: str | bytes) -> CoTEventIn:
             callsign=callsign,
             remarks=remarks,
             detail=detail_dict,
+            geometry=geometry,
         )
     except CoTParseError:
         raise
