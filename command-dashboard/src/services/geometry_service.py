@@ -15,7 +15,8 @@ log = logging.getLogger(__name__)
 
 
 def _localname(tag: str) -> str:
-    """去 XML namespace 前綴。"""
+    """去 XML namespace 前綴。與 tak_service._localname 同（刻意各持一份：geometry_service 被
+    tak_service import，反向複用會循環；3 行小函式重複成本低於抽共用 module，review #132）。"""
     return tag.rsplit("}", 1)[-1] if "}" in tag else tag
 
 
@@ -54,7 +55,8 @@ def _from_shape(shape_el) -> dict | None:
             ]
             if len(coords) < 2:
                 return None
-            if c.get("closed", "").lower() == "true":
+            if c.get("closed", "").lower() == "true" and len(coords) >= 3:
+                # Polygon 需 ≥3 相異頂點（review #132：2 點 closed 是退化/自交環 → 退 LineString）
                 ring = coords + ([coords[0]] if coords[0] != coords[-1] else [])
                 return {"type": "Polygon", "coordinates": [ring]}
             return {"type": "LineString", "coordinates": coords}
@@ -85,28 +87,32 @@ def extract_geometry(detail_el) -> dict | None:
     return None
 
 
+def _valid_lonlat(c) -> tuple[float, float] | None:
+    """GeoJSON coord [lon, lat, ...] → (lon, lat) float；非 list / arity<2 / 非數值 /
+    超出 [-180,180]×[-90,90] → None（防不可信 REST geometry 的 garbage，review #132）。"""
+    if not isinstance(c, list | tuple) or len(c) < 2:
+        return None
+    try:
+        lon, lat = float(c[0]), float(c[1])
+    except (TypeError, ValueError):
+        return None
+    return (lon, lat) if -180.0 <= lon <= 180.0 and -90.0 <= lat <= 90.0 else None
+
+
 def geojson_to_vertices(geom: dict | None) -> list[list[float]]:
-    """GeoJSON Geometry → 前端 vertices `[[lat,lng],...]`（沿用 P1-16 格式）。
-    Polygon 取 outer ring 並去掉閉合重複末點（前端 vertices 不重複首尾）。"""
+    """GeoJSON Geometry → 前端 vertices `[[lat,lng],...]`（沿用 P1-16 格式）。Polygon 取
+    outer ring 去閉合末點。**防禦不可信 coordinates**（REST geometry 為任意 dict）：非法 /
+    超界座標跳過（與 _latlon 回 None 風格一致），避免 garbage 讓 ingest 5xx（review #132）。"""
     if not geom:
         return []
     t = geom.get("type")
+    raw = geom.get("coordinates")
     if t == "LineString":
-        coords = geom.get("coordinates", [])
+        coords = raw if isinstance(raw, list) else []
     elif t == "Polygon":
-        rings = geom.get("coordinates") or [[]]
-        coords = rings[0]
+        coords = raw[0] if isinstance(raw, list) and raw and isinstance(raw[0], list) else []
         if len(coords) >= 2 and coords[0] == coords[-1]:
             coords = coords[:-1]
     else:
         return []
-    return [[lat, lon] for lon, lat in coords]  # GeoJSON lon-lat → 前端 lat-lng
-
-
-def centroid(vertices: list[list[float]]) -> tuple[float, float] | None:
-    """vertices `[[lat,lng],...]` → 算術平均 centroid (lat, lon)。
-    簡單平均（小範圍演習場足夠；跨換日線/極區失真，本專案場景可接受）。"""
-    if not vertices:
-        return None
-    n = len(vertices)
-    return sum(v[0] for v in vertices) / n, sum(v[1] for v in vertices) / n
+    return [[v[1], v[0]] for c in coords if (v := _valid_lonlat(c))]  # lon-lat → lat-lng，garbage 跳過

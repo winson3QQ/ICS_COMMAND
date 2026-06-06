@@ -121,15 +121,14 @@ def normalize_cot(cot_event: CoTEventIn) -> CoPEntity:
     detail = dict(cot_event.detail or {})
     track = _dict_child(detail, "track")
     team_color, role, battery = _extract_squad(detail)
-    # P2-08：CoT <shape>/<link> 幾何 → attributes.kind（route/polygon）+ vertices；lat/lon 重算 centroid
-    lat, lon = cot_event.lat, cot_event.lon
+    # P2-08：CoT <shape>/<link> 幾何 → attributes.kind（route/polygon）+ vertices。
+    # lat/lon **沿用 CoT <point>**（ATAK 給的錨點，忠實對位；不重算 centroid，避免與 ATAK 端
+    # 顯示位置不一致 + 避免未驗證 centroid 覆寫已驗證 point — review #132）。
     if cot_event.geometry:
         verts = geometry_service.geojson_to_vertices(cot_event.geometry)
         if verts:
             detail["kind"] = "polygon" if cot_event.geometry.get("type") == "Polygon" else "route"
             detail["vertices"] = verts
-            if c := geometry_service.centroid(verts):
-                lat, lon = c
     return CoPEntity(
         uid=cot_event.uid,
         type=cot_event.type,
@@ -138,8 +137,8 @@ def normalize_cot(cot_event: CoTEventIn) -> CoPEntity:
         stale=cot_event.stale,
         how=cot_event.how,
         version=cot_event.version,
-        lat=lat,
-        lon=lon,
+        lat=cot_event.lat,
+        lon=cot_event.lon,
         hae=cot_event.hae,
         ce=cot_event.ce,
         le=cot_event.le,

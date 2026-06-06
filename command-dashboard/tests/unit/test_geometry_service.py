@@ -87,22 +87,53 @@ def test_polygon_to_vertices_drops_closing():
     assert v == [[24.1, 120.6], [24.1, 120.7], [24.2, 120.7]]   # 去閉合末點
 
 
-def test_centroid():
-    assert geometry_service.centroid([[0.0, 0.0], [2.0, 4.0]]) == (1.0, 2.0)
-    assert geometry_service.centroid([]) is None
+def test_garbage_coordinates_skipped():
+    """不可信 REST geometry 的非法/超界座標跳過（不 raise，避免 ingest 5xx，review #132）。
+    注意 GeoJSON 3D [lon,lat,alt] 合法（取前兩個）。"""
+    # 非數值 / 超界 / arity<2 / 非 list → 全跳過
+    assert geometry_service.geojson_to_vertices(
+        {"type": "LineString", "coordinates": [["a", "b"], [999, 999], [5], "notlist"]}
+    ) == []
+    # 3D [lon,lat,alt] 合法保留，garbage 去
+    assert geometry_service.geojson_to_vertices(
+        {"type": "LineString", "coordinates": [[120.6, 24.1, 100], [999, 999], [120.7, 24.2]]}
+    ) == [[24.1, 120.6], [24.2, 120.7]]
+
+
+def test_polygon_degenerate_falls_back_linestring():
+    """2 頂點 closed 是退化環 → 退 LineString（review #132）。"""
+    el = _detail('<detail><shape><polyline closed="true">'
+                 '<vertex point="24.1,120.6"/><vertex point="24.2,120.7"/></polyline></shape></detail>')
+    assert geometry_service.extract_geometry(el)["type"] == "LineString"
+
+
+def test_shape_priority_over_link():
+    """shape 與 link 並存 → shape 優先（鎖優先序，review #132）。"""
+    el = _detail('<detail>'
+                 '<shape><polyline closed="false"><vertex point="1,1"/><vertex point="2,2"/></polyline></shape>'
+                 '<link point="9,9"/><link point="8,8"/></detail>')
+    assert geometry_service.extract_geometry(el)["coordinates"] == [[1.0, 1.0], [2.0, 2.0]]
+
+
+def test_vertex_lat_lon_attributes():
+    """vertex 用 lat/lon 屬性（非 point=）也能解（_latlon fallback）。"""
+    el = _detail('<detail><shape><polyline closed="false">'
+                 '<vertex lat="24.1" lon="120.6"/><vertex lat="24.2" lon="120.7"/></polyline></shape></detail>')
+    assert geometry_service.extract_geometry(el) == {
+        "type": "LineString", "coordinates": [[120.6, 24.1], [120.7, 24.2]],
+    }
 
 
 # ── normalize_cot 整合 ───────────────────────────────────────────────────────
 
 
-def test_normalize_polyline_sets_route_kind_and_centroid():
+def test_normalize_polyline_sets_route_kind_keeps_point():
     event = parse_cot_xml((FIXTURES / "shape_polyline.xml").read_text(encoding="utf-8"))
     assert event.geometry["type"] == "LineString"
     ent = normalize_cot(event)
     assert ent.attributes["kind"] == "route"
     assert ent.attributes["vertices"] == [[24.10, 120.60], [24.20, 120.70], [24.30, 120.80]]
-    assert ent.lat == pytest.approx(24.20)   # centroid，非原 point 24.10
-    assert ent.lon == pytest.approx(120.70)
+    assert (ent.lat, ent.lon) == (24.10, 120.60)   # 沿用 CoT <point>，非 centroid（review #132）
 
 
 def test_normalize_polygon_sets_polygon_kind():
