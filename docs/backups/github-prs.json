@@ -2509,5 +2509,26 @@
     "title": "P2-11 TAK Marti REST 抽象層 tak_rest_client.py（規格更正：cert 非 OAuth2）",
     "updatedAt": "2026-06-06T11:17:03Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/139"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "## 摘要\nP2-11b CoPEntity schema 擴充。**範圍調整（B 方案）**:原列三變更,reality check 發現 source enum 加 `'command'` 撞 SQLite 結構性坑（CHECK 不可 ALTER → table rebuild → DROP parent 觸發 tracks/links FK CASCADE 刪光、foreign_keys=OFF 在 transaction 內無效）→ source 'command' 拆出延 P2-13（[#141](https://github.com/winson3QQ/ICS_COMMAND/issues/141)）,本 PR 只做零風險的 planned/simulated。\n\n## 內容\n**feat（`0578a57`）**:\n- schema `CoPEntity` 加 `planned`/`simulated`（bool, default False）\n- `_m017` ADD COLUMN（INTEGER 0/1,SQLite 無 bool）+ down\n- `_row_to_entity_dict` int→bool 轉換;insert 自動含（model_dump）;TAK update 不碰\n\n**test（`a695862`）**——跑完整 suite（非僅 tests/unit）才暴露的 pre-existing 測試債:\n1. conftest 補 patch `routers.dashboard.DB_PATH`（health 讀 import 快照,tmp_db 漏第三個綁定 → unit→integration 同跑時 health schema_version 失準）\n2. `test_rbac_issue26` migration chain 測試動態化（取代過時 hardcode `==14`,改驗版本連續 + 動態 down helper）\n\n## Review\n- `/code-review`:0 correctness;altitude DB_PATH import 快照 → [#142](https://github.com/winson3QQ/ICS_COMMAND/issues/142)\n- `/security-review`:0 finding;planned/simulated 不可被 untrusted CoT 偽造的 wiring 守則 → 記 [#141](https://github.com/winson3QQ/ICS_COMMAND/issues/141)\n\n## 測試\nschema default/bool + _m017 DB 欄位 + bool roundtrip + migration chain;**完整 suite 全綠**（unit+integration+api+security,非僅 unit）。\n\nCloses #140\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+    "closedAt": "2026-06-06T15:02:45Z",
+    "comments": [],
+    "createdAt": "2026-06-06T15:02:33Z",
+    "headRefName": "feat/issue-140-p2-11b-planned-simulated",
+    "labels": [],
+    "mergedAt": "2026-06-06T15:02:45Z",
+    "number": 143,
+    "state": "MERGED",
+    "title": "P2-11b CoPEntity 加 planned/simulated 欄位（source command 延 P2-13）+ 修兩個測試債",
+    "updatedAt": "2026-06-06T15:02:49Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/143"
   }
 ]
