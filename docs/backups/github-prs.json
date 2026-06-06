@@ -2467,5 +2467,26 @@
     "title": "P2-08: CoT <shape> 幾何萃取 + geometry_service（純後端）",
     "updatedAt": "2026-06-06T06:23:57Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/133"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "## 摘要\nMEDEVAC `<_medevac_>` 9-line → `attributes[\"medevac\"]` 結構化摘要 + `severity=critical`。**設計 B（進 attributes，不開新表）**,覆蓋 TAK-F 紅隊的 `medical_records` 分流建議 —— 9-line 是聚合後送態勢（傷亡數 by precedence/位置/通訊），非個別病患 PII,符合單一 COP 架構紅線。\n\n## 內容\n- `_extract_medevac`:從已在 attributes 的 `detail[\"_medevac_\"]` 萃取核心摘要（precedence→int、casevac→bool、case-insensitive),原始 `_medevac_` 完整保留（CoT 忠實）\n- `normalize_cot` 偵測 `<_medevac_>` → `severity=critical`\n- severity **單調升級**(ingest update path 只升不降,review #135-3)\n\n## Review\n- `/code-review`:cleanup（precedence comprehension + `_opt_str` 提層）+ #135-3 severity 升級缺口已修\n- `/security-review`:**0 finding**;pre-existing TAK ingest XSS escape gap → follow-up #136（P2-12 連動）\n\n## 測試\nnormalize 7 新 + ingest 2 新（severity 升級/不降）+ 全 unit（含 pytak subscribe）全綠;pyflakes 綠。\n\n## 待驗證（已記 issue）\n真機 ATAK CASEVAC type 字串 + 完整屬性語意待 P2-12 human verification 終驗（#135）。\n\nCloses #135\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+    "closedAt": "2026-06-06T09:18:05Z",
+    "comments": [],
+    "createdAt": "2026-06-06T09:17:52Z",
+    "headRefName": "feat/issue-135-p2-09-medevac-9line",
+    "labels": [],
+    "mergedAt": "2026-06-06T09:18:05Z",
+    "number": 137,
+    "state": "MERGED",
+    "title": "P2-09 MEDEVAC 9-line 後端正規化 — severity=critical + attributes.medevac（設計 B）",
+    "updatedAt": "2026-06-06T09:18:09Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/137"
   }
 ]
