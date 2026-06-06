@@ -1734,5 +1734,25 @@
     "title": "TAK source 'command' enum + cop_entities table rebuild（P2-13 前置）",
     "updatedAt": "2026-06-06T15:00:48Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/141"
+  },
+  {
+    "assignees": [],
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "body": "## 背景（P2-11b #140 /code-review altitude 發現）\n\n`routers/dashboard.py:11-12` 與 `routers/backups.py:31` 都 `from core.config import DB_PATH` —— **import 快照**:模組綁定 import 當下的 DB_PATH 值,之後讀模組級綁定而非當前 `core.config.DB_PATH`。\n\n**production 非 latent bug**（`core.config.DB_PATH` 只在 import 時從 env 設一次,production 無 runtime mutate 路徑）。但造成**測試白盒耦合**:\n- health endpoint([dashboard.py:70](command-dashboard/src/routers/dashboard.py)) 讀模組級 DB_PATH\n- conftest `tmp_db` patch `core.config`/`core.database` 的 DB_PATH,**漏 dashboard 模組綁定** → 已在 P2-11b 用 conftest 補 monkeypatch `routers.dashboard.DB_PATH` 暫解（但這是測試遷就 production 設計的氣味）\n- `backups.py` 同模式更糟:`DB_PATH_PATH = Path(DB_PATH)` + `BACKUP_DIR` 都 import 時 freeze,test_backups 被迫 monkeypatch 兩個 module 變數\n\n## 建議（二選一,不要只修一半留兩種心智模型）\n**A. 都改動態讀**:\n- dashboard `health()` 改 `import core.config` + `Path(core.config.DB_PATH)`（~2 行）→ 可刪 conftest 的 monkeypatch 補丁 + test_health line 124 的 monkeypatch target 改 core.config\n- backups.py 同樣動態化（成本高,~10 處 `DB_PATH_PATH`/`BACKUP_DIR` 引用,需改函式/property）\n\n**B. 維持 import freeze,但顯性化 contract**:在 `core/config.py` 或 CONTRIBUTING 明文「routers import 時 freeze DB_PATH 是 intentional,測試須 monkeypatch module-level binding」,並讓兩個 router 註解一致指向此決策。\n\n傾向 A（解耦 + 淨減碼）但 backups 成本需評估;動工前 reality check 兩 router 的 DB_PATH 引用面。\n\n## 來源\nP2-11b（#140）`/code-review` altitude finding #1/#2。",
+    "closedAt": null,
+    "comments": [],
+    "createdAt": "2026-06-06T15:01:10Z",
+    "labels": [],
+    "milestone": null,
+    "number": 142,
+    "state": "OPEN",
+    "title": "DB_PATH import 快照：health/backups 改動態讀 core.config.DB_PATH",
+    "updatedAt": "2026-06-06T15:01:10Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/142"
   }
 ]
