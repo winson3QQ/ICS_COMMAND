@@ -7,6 +7,7 @@ import json
 
 import calc_engine
 from repositories import (
+    cop_entity_repo,
     decision_repo,
     event_repo,
     pi_batch_repo,
@@ -183,4 +184,7 @@ def build_dashboard(exercise_id: int | None = None) -> dict:
         "shelter_history": sh_hist,
         "medical_history": med_hist,
         "pi_nodes": pi_node_repo.list_pi_nodes(),
+        # P2-06d（#128）：TAK 小隊聚合，讓 dashboard 對 TAK 不盲視。傳入既有 exercise_id
+        # 參數——可能是 NULL_SCOPE sentinel（無 active 場），aggregate_squads 吃三態。
+        "tak_squads": cop_entity_repo.aggregate_squads(exercise_id=exercise_id),
     }
