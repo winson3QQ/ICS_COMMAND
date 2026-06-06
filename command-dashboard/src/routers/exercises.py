@@ -4,11 +4,12 @@ exercises.py — 演練場次管理（C0 新增）
 """
 
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 
 from auth.service import validate_session
-from repositories._helpers import audit
+from repositories._helpers import audit, iso_utc
 from repositories.aar_repo import create_aar_entry, get_aar_entries
+from repositories.cop_entity_repo import list_tracks_by_exercise
 from repositories.exercise_repo import delete_exercise, update_exercise_status
 from schemas.exercise import AAREntryIn, ExerciseCreateIn, ExerciseStatusIn
 from services.exercise_service import archive, create, get, list_all, set_active
@@ -102,3 +103,32 @@ def add_aar(exercise_id: int, body: AAREntryIn, request: Request):
 @router.get("/{exercise_id}/aar")
 def get_aar(exercise_id: int):
     return get_aar_entries(exercise_id)
+
+
+# ── 軌跡查詢（P2-06b / issue #123）─────────────────────────────────────────────
+
+@router.get("/{exercise_id}/tracks")
+def get_tracks(
+    exercise_id: int,
+    uid: str | None = None,
+    from_: str | None = Query(None, alias="from"),
+    to: str | None = None,
+    limit: int = 1000,
+    offset: int = 0,
+):
+    """某場（演習 ttx / 實戰 real）所有 entity 的軌跡時間序列（P2-20 AAR 回放資料源）。
+
+    RBAC：COMMAND_ROLES（中央 gate `/api/exercises/*` 非 DELETE；軌跡含人員位置 PII）。
+    回 [{uid, t, lat, lon, hae, heading_deg, speed_mps}]，t 升序，分頁。
+    from/to 接 ISO 8601（任意格式 → iso_utc 正規化為 Z，與 t 同格式才能正確比較）。
+    """
+    if not get(exercise_id):
+        raise HTTPException(404, "演練不存在")
+    return list_tracks_by_exercise(
+        exercise_id,
+        uid=uid,
+        since=iso_utc(from_),
+        until=iso_utc(to),
+        limit=min(max(limit, 1), 5000),  # 服務端上限（防一次撈爆，對齊 RT-L4 教訓）
+        offset=max(offset, 0),
+    )
