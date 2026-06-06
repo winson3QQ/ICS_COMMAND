@@ -187,6 +187,21 @@ def get_entity(uid: str, request: Request, response: Response):
     return ent
 
 
+@router.get("/squads")
+def list_squads(request: Request, exercise_id: int | None = None):
+    """按 team_color 聚合該場 COP entity → 小隊態勢（total/online/offline/avg_battery/centroid）。
+
+    P2-06d（issue #128）。RBAC：走 allowed_roles_for GET 預設分支 → READ_ROLES（observer 可讀）。
+    P1-14：exercise_id 由 resolve_scope 守門（不直接信 query param；歷史場限 COMMAND_ROLES）。
+    team_color IS NULL 的 entity 聚成「未分隊」組（team_color=null，排列首）。
+    """
+    return {
+        "squads": cop_entity_repo.aggregate_squads(
+            exercise_id=resolve_scope(request.state.session, exercise_id),
+        )
+    }
+
+
 # ── create ─────────────────────────────────────────────────────────────────
 
 

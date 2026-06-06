@@ -97,6 +97,68 @@ def list_cop_entities(
         return [_row_to_entity_dict(r) for r in rows]
 
 
+def aggregate_squads(exercise_id=None) -> list[dict]:
+    """按 team_color 分組聚合 COP entity，供小隊態勢面板 / dashboard 用（P2-06d，issue #128）。
+
+    單句 SQL GROUP BY team_color 一次算齊每組：
+      - total        = COUNT(*)
+      - online       = SUM(CASE WHEN stale > now THEN 1 ELSE 0 END)（live 數）
+      - offline      = total - online
+      - avg_battery  = AVG(battery)（NULL battery 不計入平均；全組無 battery → None）
+      - centroid_lat = AVG(lat)
+      - centroid_lon = AVG(lon)
+
+    centroid 為**簡單算術平均**（非球面加權質心）。小範圍演習場（同一城市/區域）足夠；
+    跨換日線（±180° 經度）或極區會失真，本系統場域不涉及故不處理。
+
+    **team_color IS NULL 保留為「未分隊」組**（不過濾掉），該組 dict 的 team_color 為 None。
+    結果按 team_color 升序（SQLite NULL 排在最前，故未分隊組在列首）。
+
+    exercise_id 三態（見 _helpers.NULL_SCOPE，對齊 list_cop_entities）——
+      int → exact / NULL_SCOPE → IS NULL（實戰池）/ None → 不過濾（內部 caller）。
+    注意：online 同時受 stale filter 影響，但 total 不過濾 stale（含已過期 entity），
+    讓 offline 能反映「該隊有幾顆但失聯」——與 list_cop_entities 預設只回 live 的語意不同，
+    此處刻意保留全量以呈現完整隊況。
+    """
+    clauses, params = [], []
+    if exercise_id is NULL_SCOPE:
+        clauses.append("exercise_id IS NULL")
+    elif exercise_id is not None:
+        clauses.append("exercise_id = ?")
+        params.append(exercise_id)
+    sql = [
+        "SELECT team_color,",
+        "       COUNT(*) AS total,",
+        "       SUM(CASE WHEN stale > strftime('%Y-%m-%dT%H:%M:%SZ','now') THEN 1 ELSE 0 END) AS online,",
+        "       AVG(battery) AS avg_battery,",
+        "       AVG(lat) AS centroid_lat,",
+        "       AVG(lon) AS centroid_lon",
+        "FROM cop_entities",
+    ]
+    if clauses:
+        sql.append("WHERE " + " AND ".join(clauses))
+    sql.append("GROUP BY team_color ORDER BY team_color ASC")
+    with get_conn() as conn:
+        rows = conn.execute(" ".join(sql), params).fetchall()
+    result = []
+    for r in rows:
+        d = row_to_dict(r)
+        total = d["total"]
+        online = d["online"] or 0  # SUM 在空組理論上不會出現（GROUP 至少一 row），保底
+        result.append(
+            {
+                "team_color": d["team_color"],
+                "total": total,
+                "online": online,
+                "offline": total - online,
+                "avg_battery": d["avg_battery"],  # SQLite AVG 全 NULL → None
+                "centroid_lat": d["centroid_lat"],
+                "centroid_lon": d["centroid_lon"],
+            }
+        )
+    return result
+
+
 def mark_stale(uid: str, stale_at: str) -> bool:
     """強制把 entity 標為已過期（TTX 用：cop_entity_remove inject）。
 
