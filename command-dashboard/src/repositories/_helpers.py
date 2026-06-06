@@ -45,6 +45,19 @@ def iso_utc(s: str | None) -> str | None:
     return s + "Z"
 
 
+def iso_to_dt(iso: str) -> datetime:
+    """ISO 8601 字串 → aware UTC datetime。
+
+    naive（無時區）一律視為 UTC（補 tzinfo），確保跨來源時間能安全相減比較——
+    XML parse 路徑已正規化為 `...Z`（aware），但 REST push（`POST /api/tak/events`）
+    的 time 未正規化（`schemas/tak.py` 只 min_length=1），可能是 naive 或帶 offset。
+    統一補 UTC 後 aware−aware 相減，不會觸發 aware−naive 的 TypeError。
+    格式非法 → raise ValueError（caller 決定容錯）。
+    """
+    dt = datetime.fromisoformat(iso.replace("Z", "+00:00"))
+    return dt if dt.tzinfo else dt.replace(tzinfo=UTC)
+
+
 def add_minutes(iso_str: str, minutes: int) -> str:
     dt = datetime.fromisoformat(iso_str.replace("Z", "+00:00"))
     return (dt + timedelta(minutes=minutes)).strftime("%Y-%m-%dT%H:%M:%SZ")

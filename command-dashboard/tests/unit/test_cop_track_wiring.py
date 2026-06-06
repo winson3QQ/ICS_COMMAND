@@ -156,3 +156,29 @@ def test_exercise_attribution_via_join():
         ).fetchall()
     assert len(joined) == 1
     assert joined[0]["exercise_id"] == ex["id"]
+
+
+# ── 8. review #1：REST push 未正規化 time（naive）與 aware 軌跡混用不得漏寫 ──────
+
+
+def test_mixed_tz_naive_time_does_not_drop_track():
+    """:8089 路徑寫 aware（...Z）軌跡，REST push（POST /api/tak/events）的 time 未
+    正規化、可能是 naive。混用時 _within_min_interval 不得因 aware−naive 相減的
+    TypeError 被吞而靜默漏寫（修前：相減在 try 外 + except 漏 TypeError → 漏一筆）。"""
+    _ingest(_event(time="2026-06-05T04:00:00Z"))   # aware 第一筆
+    _ingest(_event(time="2026-06-05T04:00:06"))    # naive（無 Z），+6s ≥ 間隔 → 應寫
+    tracks = cop_entity_repo.list_cop_tracks("TRK-1")
+    assert len(tracks) == 2  # 混格式仍正確寫入第二筆，未因 TypeError 漏寫
+    assert tracks[1]["t"] == "2026-06-05T04:00:06"
+
+
+# ── 9. review #7：抽樣間隔可由 config 覆寫 ────────────────────────────────────
+
+
+def test_interval_configurable(monkeypatch):
+    """TRACK_MIN_INTERVAL_S 可覆寫（免改 code 重部署）。調到 10s 後，+6s 應被抽掉。"""
+    monkeypatch.setattr(cop_service, "TRACK_MIN_INTERVAL_S", 10.0)
+    _ingest(_event(time="2026-06-05T04:00:00Z"))
+    _ingest(_event(time="2026-06-05T04:00:06Z"))   # +6s < 10s（覆寫後）→ 跳過
+    tracks = cop_entity_repo.list_cop_tracks("TRK-1")
+    assert len(tracks) == 1

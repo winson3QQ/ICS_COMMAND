@@ -18,9 +18,10 @@ P2-04（#105）新增：
 
 import logging
 import sqlite3
-from datetime import datetime
 
+from core.config import TRACK_MIN_INTERVAL_S
 from repositories import cop_entity_repo
+from repositories._helpers import iso_to_dt
 from repositories.snapshot_repo import get_latest_snapshot
 from schemas.cop import CoPEntity, CoPEntityTrack
 from schemas.manual import ManualRecordIn
@@ -136,18 +137,18 @@ async def _broadcast_cop(op: str, entity: dict) -> None:
 # 每次位置持久化（create/update）後寫一筆軌跡點，為 P2-20 AAR 逐格回放鋪資料。
 # exercise 歸屬**不在本表存**（決策 B）：track 透過 uid 綁 cop_entities，查詢時
 # JOIN 取 exercise_id（SoT 單一，不反正規化）；exercise 刪除靠 uid ON DELETE CASCADE。
-_MIN_TRACK_INTERVAL_S = 5.0  # per-uid 最短抽樣間隔（ATAK 可 >0.5Hz，不節流則爆量）
+# 抽樣間隔由 config.TRACK_MIN_INTERVAL_S 覆寫（預設 5s）。
 
 
 def _within_min_interval(last_t: str, new_t: str) -> bool:
-    """new_t 距 last_t 是否 < 5s（抽樣基準 = CoT event time，非 wall-clock；
-    回放要的是事件時間軸）。parse 失敗 → False（不擋，寧可多寫一筆也不漏軌跡）。"""
+    """new_t 距 last_t 是否 < TRACK_MIN_INTERVAL_S（抽樣基準 = CoT event time，非
+    wall-clock；回放要的是事件時間軸）。iso_to_dt 統一補 UTC，故跨來源混格式
+    （REST push 未正規化 / XML 已正規化）也能安全相減，不因 aware−naive 觸發
+    TypeError；parse 或相減失敗 → False（不擋，寧可多寫一筆也不漏軌跡）。"""
     try:
-        dt_last = datetime.fromisoformat(last_t.replace("Z", "+00:00"))
-        dt_new = datetime.fromisoformat(new_t.replace("Z", "+00:00"))
-    except (ValueError, AttributeError):
+        return (iso_to_dt(new_t) - iso_to_dt(last_t)).total_seconds() < TRACK_MIN_INTERVAL_S
+    except (ValueError, AttributeError, TypeError):
         return False
-    return (dt_new - dt_last).total_seconds() < _MIN_TRACK_INTERVAL_S
 
 
 def _record_track(entity: dict) -> None:
