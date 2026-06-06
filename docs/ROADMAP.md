@@ -104,7 +104,7 @@
 | ✅ P2-07 | **GeoChat 誤路由修正—後端**（reality check 2026-06-05 bug）：CoT type `b-t-f` 存進 `cop_entities`，行為錯誤。修法（純後端）：(1) `tak_service._consume_cot` type prefix 路由（`b-t-f` 不進 `ingest_cot_event`）；(2) 新 `services/chat_service.py` + `chats` 表（`sender_uid` / `callsign` / `message` / `group` / `lat` / `lon` / `time` / `exercise_id`，對齊 ICS-214 Unit Log）；(3) 後端 `html.escape()` 處理 `message`（XSS 防線在後端）。測試：`b-t-f` 不得進 `cop_entities`（負向）；XSS 負向（`<script>` 不得原樣輸出）；exercise scoping 對齊。**通聯記錄面板 UI → P2-12 統一落地**。<br>**[完成 — [#131](https://github.com/winson3QQ/ICS_COMMAND/pull/131)（issue #129）]**：**分流點實放 `ingest_cot_event` 共用接縫**（取代上文「`_consume_cot`」—— reality check 發現 REST push 路徑也漏，共用接縫一處擋 :8089 串流 + REST push 兩條）：`type.startswith("b-t-f")` → `chat_service.ingest_chat` + return。新 `chat_service`/`chat_repo`/`schemas/chat` + `chats` 表（`_m016`）；message 存前 `html.escape`（XSS 後端防線）；exercise_id 綁 active 場；只交付後端。測試 7（不進 cop_entities / 進 chats / escaped / scoping / 真 fixture / 非 b-t-f 不誤擋 / group 不取 groupOwner）；`/code-review`（修 group 誤取 groupOwner 布林旗標）+ `/security-review`（0）。並行於 P2-06d |
 | ✅ P2-08 | **CoT `<shape>` 幾何萃取 + `services/geometry_service.py`**（純後端）：ATAK `<shape>` 幾何埋在 `attributes` 被忽略，地圖只渲染 `<point>` 單點。修法：(1) 抽 `services/geometry_service.py`（CoT `<shape>` + DataSync GeoJSON 統一解析入口，P2-14 共用，避免重工）；(2) `CoTEventIn` 加選填 `geometry` 欄位；(3) `normalize_cot` 依幾何類型映射到 `kind='route'`（polyline）/ `kind='polygon'`（polygon），沿用 P1-15 管線。<br>**[完成 — [#133](https://github.com/winson3QQ/ICS_COMMAND/pull/133)（issue #132）]**：新 `geometry_service`（re-parse CoT `<shape>`/`<link>` → GeoJSON，**不污染 `_extract_detail`** 既有一層提取；`geojson_to_vertices` 轉前端格式；P2-14 DataSync 共用入口）+ `CoTEventIn.geometry` + `normalize_cot` shape 分支（kind=route/polygon + vertices，**沿用 P1-16 格式零前端改動**；lat/lon **沿用 CoT `<point>`** 忠實對位）。**circle/ellipse 先不支援** → follow-up [#134](https://github.com/winson3QQ/ICS_COMMAND/issues/134)。`/code-review`+`/security-review`：修 garbage geometry→REST 5xx（`geojson_to_vertices` 防禦不可信座標）+ 移除 centroid 覆寫（對位失準）+ Polygon ≥3 頂點；XXE 已防、無新注入面。測試 17 全綠 |
 | ✅ P2-09 | **MEDEVAC 9-line 正規化—後端**（純後端）：CoT MEDEVAC 9-line 欄位（pickup / frequency / casualties…）埋在 `attributes` blob。修法：`normalize_cot` 偵測 → 萃取 9-line 進 `attributes` 結構化子物件；`severity` 設 critical。<br>**[完成 — [#137](https://github.com/winson3QQ/ICS_COMMAND/pull/137)（issue #135），設計 B]**：reality check 校正——9-line 其實**已在 attributes**（`_extract_detail` 通用收 `<_medevac_>` 屬性，同 `__group` 模式，非規格所述「埋在 blob 待解析」），本項實為**提取結構化摘要 + 設 severity**，對齊 P2-06c/P2-08 先例。**設計 B（進 attributes，不開新表）覆蓋 ROADMAP 內 TAK-F 紅隊 `medical_records` 分流建議**：9-line 是聚合後送態勢（傷亡數 by precedence / pickup 位置 / 通訊），**非個別病患 PII**（無姓名病史）→ 進 attributes 隨 COP 廣播、指揮部透明可見，符合單一 COP 不開新表紅線。`_extract_medevac`（precedence→int、casevac→bool、case-insensitive，原始 `_medevac_` 完整保留）+ `<_medevac_>` 偵測設 critical + **severity 單調升級**（ingest update 只升不降）。測試 normalize 7 + ingest 2；`/code-review`（cleanup + #135-3 severity 升級缺口修）+ `/security-review`（0 finding；pre-existing TAK ingest XSS gap → #136）。<br>**待驗證**：真機 ATAK CASEVAC type 字串 + `<_medevac_>` 屬性語意（precedence 數量 vs 布林）→ fixture 依 FreeTAKServer CoT domain 文件建構，待 P2-12 human verify 終驗（#135）。**MEDEVAC incident card UI → P2-12 統一落地** |
-| P2-11 | **OAuth2 M2M 認證 + `services/tak_rest_client.py` Marti REST 抽象層**（純後端）：Marti REST API（`:8443`）M2M 走 **OAuth2 client credentials**（`POST /oauth/token → JWT Bearer`），**非** enrolled cert。工作：(1) JWT 取得 + refresh；(2) 新 `services/tak_rest_client.py`（auth + retry + rate-limit + poll scheduler，**P2-12/13/14/16/18/19 全依賴此層**）；(3) `issue-tak-certs.sh` 補 OAuth2 client user SOP。**JWT 儲存**：`access_token` **記憶體限定**（重啟重取）；`refresh_token` 若需持久化對齊 P1-12a HKDF，**禁裸存 `.env`**。**此為 P2-12 ~ P2-19 所有 REST 功能前置** |
+| ✅ P2-11 | **TAK Marti REST 抽象層 `services/tak_rest_client.py`**（純後端，**P2-12~P2-19 共用前置**）：指揮部「主動查」TAK Server :8443 Marti REST（vs :8089 被動收串流）。<br>**[完成 — [#139](https://github.com/winson3QQ/ICS_COMMAND/pull/139)（issue #138），⚠️ 規格更正：cert 非 OAuth2]**：原規格述「OAuth2 client credentials（JWT Bearer），非 enrolled cert」**前提錯誤** —— reality check 證實部署是官方 TAK Server 5.7-RELEASE-43（tak.gov），Marti :8443 走 **client cert（mTLS）**；OAuth2 是 OpenTAKServer（第三方）才有（SoT：`deploy/tak-server/README.md` + `issue-tak-certs.sh` 全 step-ca cert；見 memory `tak-server-marti-cert-not-oauth`）。改正：**複用 P2-03 既有 `TAK_CLIENT_CERT/KEY/CAFILE`**，砍掉 JWT 取得/refresh + OAuth2 SOP。交付 `build_marti_ssl_context`（fail-closed，無 CA 不裸奔）+ `TakRestClient`（`get_json`：rate-limit + 指數退避（cap 30s）+ 4xx 不重試 + 204 空 body；`poll` scheduler stop_event 軟停 + best-effort；`asyncio.Lock` 並發保護）+ `build_tak_rest_client` factory；config `TAK_MARTI_URL`；HTTP=aiohttp（pytak 已帶，非中國）。測試 15；`/code-review`（204/並發鎖/退避 cap/isawaitable）+ `/security-review`（0 finding，+ `_join_url` 杜絕 SSRF host override）。<br>**待真機（P2-10/P2-12）**：Marti `clientEndPoints` 端點格式 + :8443 cert 是否需綁 TAK user/role |
 | P2-11b | **CoPEntity schema v2 migration（一次完成，避免多次 migration）**：統一處理後續多個 item 的 schema 需求：(1) `source` enum 加 `"command"`（P1-03 解凍）；(2) `planned: bool = False`（空心/實心 MIL-STD-2525 框，P2-13 用）；(3) `simulated: bool = False`（合成注入實體標記，`how="h-g-i-g-o"` CoT 時設 True，P2-19 用）。一次 migration 覆蓋三個場景，**不分開做避免 schema 版本反覆 bump**。P1-03 contract tests 作回歸守門。**P2-13 與 P2-19 共同前置** |
 | **——— 【核心雙向層 Core TAK Bidirectional】 有 UI，需 Human Verification ———** | — |
 | P2-10 | **地基層驗收 + E2E 上行測試**：地基層（P2-06a～P2-11b）完成後的整合驗收里程碑。涵蓋：(1) 真實 ATAK/iTAK 推 CoT → 地圖 < 5s 更新（**human verify**）；(2) shape 幾何渲染（route/polygon **human verify**）；(3) mock TAK integration tests；(4) CoT 內容層驗證（座標越界拒絕、callsign 字元白名單、type prefix 白名單——任何 ATAK 裝置可推 CoT，**此為最後一道防線**）；(5) XXE 防護驗測（`defusedxml`）；(6) GeoChat 路由負向（不進 `cop_entities`）。**全通後才進 P2-12/P2-13** |
@@ -119,7 +119,7 @@
 | P2-14 | **DataSync client**（ATAK Mission / Route / 照片，Marti REST `/missions/` + `/sync/`）：工作：(1) `tak_rest_client.py` poll（依賴 P2-11）；(2) geometry 透過 `services/geometry_service.py`（P2-08 共用）轉 cop_entity；(3) 照片：reference-only URI（**永不 follow**——防 SSRF，OWASP A10；`datasync_service` 不得有任何 `requests.get(uri)` 呼叫）；(4) 新 `services/datasync_service.py`。**動工前 DataSync API reality check** |
 | P2-15 | **Federation 設定**：server-to-server 交換 CoT（`:9000`/`:8444`）。含 `fed-truststore.jks` + step-ca peer cert profile。**Security**：peer cert 加入須 sysadmin 審批 + audit log；`fed-truststore.jks` 變更納入 change management。先單機 PoC → 跨機關（Wave 7+）|
 | P2-16 | **影像串流整合**（Marti REST `/video/`）：URI reference only，**ICS Command 不 proxy 串流**。可選 / 低優先 |
-| P2-17 | **規格書補 TAK 整合章節**（P2-07 ~ P2-21 完成後補）：含 OAuth2 SOP、Mission downlink 流程、planned/actual 視覺、TTX 運作 SOP（ZELLO 頻道分配、ATAK 學員設定）、track PII retention policy、TAK 信任邊界（補入 `docs/compliance/threat_model.md`）|
+| P2-17 | **規格書補 TAK 整合章節**（P2-07 ~ P2-21 完成後補）：含 Marti REST cert 認證 SOP（非 OAuth2，#138 更正）、Mission downlink 流程、planned/actual 視覺、TTX 運作 SOP（ZELLO 頻道分配、ATAK 學員設定）、track PII retention policy、TAK 信任邊界（補入 `docs/compliance/threat_model.md`）|
 | P2-18 | **EXCHECK 任務查核整合**（Marti REST `/excheck/`）：ICS-204 任務指派追蹤。依賴 P2-11；視 P2-13 downlink 完成度決定優先順序 |
 
 ### TAK 介面整合缺口與架構決策（2026-06-05）
@@ -146,7 +146,7 @@
 
 #### 確認架構決策（後續 PR 的 SoT）
 
-1. **認證**：Marti REST API（`:8443`）走 **OAuth2 client credentials**（JWT Bearer），**不走** enrolled cert。cop-subscriber cert 僅用於 :8089 streaming mTLS。
+1. **認證**：Marti REST API（`:8443`）走 **client cert（mTLS）**，複用 :8089 同一套 step-ca cert（`TAK_CLIENT_CERT/KEY/CAFILE`）。**[P2-11 #138 規格更正]** 原述「OAuth2 client credentials」為錯誤前提 —— 官方 TAK Server 5.7 Marti 走 cert，OAuth2 是 OpenTAKServer 才有（見 memory `tak-server-marti-cert-not-oauth`）。
 2. **下行指令**：走 **Mission API**（group-scoped + 持久），**不走** pytak TXWorker（無 group scope）。
 3. **GeoChat 落地**：進獨立 `chats` 表（ICS-214 通聯語意），**不進** `cop_entities`，**不進** NAPSG `events` 表。
 4. **幾何解析共用**：`services/geometry_service.py` 統一解析 CoT `<shape>` 與 DataSync GeoJSON，P2-08 建、P2-14 共用。
@@ -165,8 +165,8 @@
 - [x] GeoChat（`b-t-f`）**不進** `cop_entities`（負向），進 `chats` 表；XSS 負向（P2-07）
 - [x] CoT `<shape>` 幾何萃取正確，`geometry_service.py` 單元測試通過（P2-08）
 - [x] MEDEVAC 9-line 欄位完整萃取（→ `attributes["medevac"]` 摘要 + severity critical，設計 B 進 attributes 不開新表），schema 對齊 P3-06（P2-09）
-- [ ] OAuth2 `/oauth/token` JWT 取得 + Bearer 認證 `:8443`（P2-11）
-- [ ] JWT `access_token` 記憶體限定，不寫 `.env` / 明文（P2-11）
+- [x] Marti REST `:8443` 走 **client cert（mTLS）** 複用 :8089 cert（**規格更正：非 OAuth2**，#138）；`build_marti_ssl_context` fail-closed 無 CA 不裸奔（P2-11）
+- [x] `TakRestClient`：rate-limit + 指數退避重試（cap）+ poll scheduler + 並發鎖；`_join_url` 杜絕 SSRF host override（P2-11）
 - [ ] CoPEntity schema v2 migration 完成（`source="command"` + `planned` + `simulated`），現有資料不破壞（P2-11b）
 
 **核心雙向層（Human Verification 必通）**
@@ -197,11 +197,11 @@
 ### Compliance touchpoints
 
 - **NIST SP 800-53 SC-8 / SC-13**：TAK Server TLS 8089/8443 強制
-- **NIST SP 800-53 IA-9**（服務識別與認證）：OAuth2 client credentials M2M（P2-11）
+- **NIST SP 800-53 IA-9**（服務識別與認證）：Marti REST M2M 走 **client cert（mTLS）**（P2-11；規格更正非 OAuth2）
 - **NIST AC-3**（存取控制）：TAK presence bypass exercise scope（P2-12）；軌跡 COMMAND_ROLES 限定（P2-06b/P2-20）
 - **NIST AU-2 / AU-12**（Audit Events / Audit Record Generation）：Mission push audit log（P2-13）；AAR export audit log（P2-21）；scenario inject audit（P2-19）
-- **ASVS V13 (API) + V5 (Validation)**：CoT XML XXE 防護；OAuth2 認證；CoT 內容層白名單（P2-10）
-- **OWASP API2（Broken Authentication）**：OAuth2 not enrolled cert；JWT 記憶體限定（P2-11）
+- **ASVS V13 (API) + V5 (Validation)**：CoT XML XXE 防護；Marti REST mTLS cert 認證；CoT 內容層白名單（P2-10）
+- **OWASP API2（Broken Authentication）**：Marti REST 走 client cert（mTLS）；無 CA 不裸奔 fail-closed（P2-11；規格更正非 OAuth2）
 - **OWASP A03（Injection / XSS）**：GeoChat `html.escape()` + `textContent`（P2-07）；CoT callsign / type 白名單（P2-10）；scenario 腳本 action 白名單 + Pydantic strict（P2-19）
 - **OWASP A04（Insecure Design）**：O/C 注入 API sysadmin-only gate（P2-19）；scenario runner mutex（P2-19）
 - **OWASP A10（SSRF）**：DataSync URI 永不 follow（P2-14）；影像串流 URI reference only（P2-16）
@@ -219,10 +219,10 @@
 | 官方 TAK Server Java 資源需求高（RAM ≥ 8GB），Pi 500 邊緣 | P2 部署目標暫定 x86 mini-PC（N100 class），Pi 500 留作 client / 備援 |
 | Federation cert 與內網 step-ca 整合 | 沿用 ICS_DMAS C1-B 既有 step-ca 內網 PKI；fed-truststore.jks 管理 SOP 已在 P2-01 #101 |
 | License：TAK Server 部分 plugin / DataSync 模組是 commercial | P2 只用 core CoT + Marti REST（Apache 2.0 core）+ federation，不依賴 commercial plugin |
-| OAuth2 client credentials 在 TAK Server 5.7 設定文件稀少 | P2-11 動工前做 reality check（tak.gov 文件 + :8443 API spec）；失敗 fallback 為 enrolled cert |
+| ~~OAuth2 client credentials 在 TAK Server 5.7 設定文件稀少~~ **[P2-11 #138 已解]** | reality check 證實官方 TAK Server 5.7 Marti 走 **client cert（mTLS）非 OAuth2**（OAuth2 是 OpenTAKServer）→ 已改用 cert（複用 P2-03 step-ca），risk 消解 |
 | CoPEntity schema v2 migration 可能破壞 P1-03 凍結契約 | P2-11b 統一一次完成（不分批）；P1-03 contract tests 作為回歸守門 |
 | 前端 UI 落點無既成 panel（P1-11 已拆 left sidebar）| **P2-12 統一一次 layout 設計決策**，三面板同批落地，避免各項各自貼 UI |
-| JWT refresh token 若裸存明文，成為新 secret 洩漏點 | access_token 記憶體限定；refresh_token 若持久化對齊 P1-12a HKDF（P2-11）|
+| ~~JWT refresh token 若裸存明文，成為新 secret 洩漏點~~ **[P2-11 #138 不適用]** | P2-11 改走 client cert（mTLS）非 OAuth2 → 無 JWT / refresh token，此 secret 洩漏點不存在 |
 | CoT 資料完整性：任何 ATAK 裝置可推入 COP | 內容層三道驗證（座標 / callsign / type 白名單，P2-10）；裝置准入靠 TAK cert enrollment |
 | Federation governance：加 peer cert 無正式審批流程 | sysadmin 審批 + audit log；fed-truststore.jks 變更納入 change management（P2-15）|
 | 情境腳本 server-side 執行：惡意 payload 若沒擋住 | action 白名單 + Pydantic strict；**禁任何動態執行路徑**（P2-19）|
