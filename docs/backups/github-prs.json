@@ -2347,5 +2347,26 @@
     "title": "fix(cop): P2-06a review follow-up — 時間 TypeError + iso_to_dt 共用 + 間隔 configurable",
     "updatedAt": "2026-06-06T02:13:46Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/122"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "## 範圍（issue #123）\n\n### P2-06b 軌跡查詢 API\n- **repo** `list_tracks_by_exercise(exercise_id, uid?, since?, until?, limit, offset)` — 設計 B `JOIN cop_entities`（tracks 不存 exercise_id，靠 uid JOIN 取場歸屬）。\n- **router** `GET /api/exercises/{id}/tracks?uid=&from=&to=&limit=&offset=` — 回**全欄位** `{uid,t,lat,lon,hae,heading_deg,speed_mps}`（Q1 確認），t 升序，分頁；`from/to` 經 `iso_utc` 正規化（與 t 同格式才能字串比較）；limit 服務端上限 5000（對齊 RT-L4）。\n- **RBAC 零額外工**：自動繼承中央 gate（`role_enum.py:118` `/api/exercises/*` 非 DELETE → COMMAND_ROLES）。軌跡含人員位置 PII，COMMAND_ROLES 正確。\n\n### P2-06a NULL gating（reality check 釐清資料模型）\n盤 code 發現 `exercises.type ∈ {'ttx'(演習), 'real'(實戰)}`，**兩者都有 int id、都能 active**。`exercise_id=NULL` = **無任何 active 場 = 非演習也非實戰**（code 多處誤稱「實戰池」）。\n- `_record_track` 在 `exercise_id=NULL` 時**不寫軌跡**（無複盤對象）；entity 照常 upsert（即時 COP 不變）。\n- 正名多處「實戰池」→「無場次 / NULL 池」。\n\n涵蓋演習(ttx)+實戰(real)；NULL 不寫也不查。\n\n## §8 Verification\n```\ncd command-dashboard\npython -m pytest tests/unit/test_cop_track_wiring.py tests/api/test_tracks_query.py \\\n  tests/unit/test_cop_ingest.py tests/api/test_exercise_scoping.py \\\n  tests/api/test_audit_active_exercise.py tests/integration/test_tak_events.py -p no:warnings -q\npython -m pyflakes src/services/cop_service.py src/repositories/cop_entity_repo.py src/routers/exercises.py\n```\n**結果：P2-06b 22 + 回歸 75 passed；pyflakes exit 0；doc-sync passed。**\n\n## DoD（#123）\n- [x] NULL（非演習非實戰）不寫 track；有 active 場（ttx/real）照寫\n- [x] `GET /api/exercises/{id}/tracks` 回該場軌跡，t 升序\n- [x] uid / from / to 過濾；limit/offset 分頁\n- [x] 涵蓋 ttx + real\n- [x] RBAC：operator/observer → 403；exercise 不存在 → 404\n- [x] pytest 全綠\n\nCloses #123 · Refs #120",
+    "closedAt": null,
+    "comments": [],
+    "createdAt": "2026-06-06T02:41:52Z",
+    "headRefName": "feat/issue-123-p2-06b-tracks-query",
+    "labels": [],
+    "mergedAt": null,
+    "number": 124,
+    "state": "OPEN",
+    "title": "P2-06b: 軌跡查詢 API + P2-06a NULL gating（非演習非實戰不記錄）",
+    "updatedAt": "2026-06-06T02:41:52Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/124"
   }
 ]

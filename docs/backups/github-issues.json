@@ -1507,5 +1507,25 @@
     "title": "P2-06b: 軌跡查詢 API + P2-06a NULL 軌跡 gating（非演習非實戰不記錄）",
     "updatedAt": "2026-06-06T02:29:40Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/123"
+  },
+  {
+    "assignees": [],
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "body": "## 問題（P2-06b #123 code-review 衍生）\n`GET /api/exercises/{id}/tracks`（設計 B）用 `e.exercise_id` JOIN 取軌跡的場歸屬。但 entity 的 `exercise_id` 在 create 時綁定後**不變**（`cop_service._TAK_UPDATE_FIELDS` 刻意排除 exercise_id，P1-15「位置更新不改場歸屬」doctrine）。\n\n## 後果\n同一 uid 的 entity 跨多場時軌跡歸錯場：\n- uid X 在場 A active 期間 create（`entity.exercise_id=A`）\n- A archive（entity 保留、不刪）→ B activate\n- X 繼續回報 → **update 路徑**（`entity.exercise_id` 仍 A）→ 每筆軌跡寫入時 entity 仍歸 A\n- `GET /exercises/{B}/tracks` 看不到 X 在 B 期間的軌跡；`GET /exercises/{A}/tracks` 反而混入 B 期間的點\n\nATAK 裝置 uid 常跨場持續存在 → 實務會踩到。\n\n## 觸發條件\n只在「兩場之間不清 entity（走 archive 保留）+ 同 uid 持續回報」時發生。若場結束走 reset/delete（級聯刪 entity），下場 reinsert 會重綁當前 active（`normalize_cot`），不受影響。\n\n## 修法方向（需設計討論，三選一）\n1. update 路徑偵測 active 場變更 → 重綁 exercise_id（**違反 P1-15 原意**，需評估副作用）\n2. 軌跡寫入時記錄「當下 active exercise_id」到 track（回到設計 A：track 自帶 exercise_id），查詢改用 `track.exercise_id` 而非 JOIN entity —— **等於推翻 P2-06b 設計 B**\n3. 演習 activate 時強制先清/歸檔上一場 entity（流程約束）\n\n建議排程時連同 P2-20 AAR 回放需求一起評估。\n\n## 來源\nP2-06b（#123）`/code-review` high-effort 發現；當時刻意不在 P2-06b 硬修（牽動 P1-15 doctrine）。",
+    "closedAt": null,
+    "comments": [],
+    "createdAt": "2026-06-06T02:56:00Z",
+    "labels": [],
+    "milestone": null,
+    "number": 125,
+    "state": "OPEN",
+    "title": "P2-06b 衍生：跨場軌跡 misattribution（同 uid entity 跨演習軌跡歸錯場）",
+    "updatedAt": "2026-06-06T02:56:00Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/125"
   }
 ]
