@@ -1557,15 +1557,15 @@
       "name": ""
     },
     "body": "## 設計摘要\n\n新 endpoint `GET /api/cop/squads?exercise_id=` 按 `team_color` 分組聚合 COP entity，回 `[{team_color, total, online, offline, avg_battery, centroid_lat, centroid_lon}]`，team_color 升序。\n\n- `team_color IS NULL` 保留為「未分隊」組（不過濾），key 為 null。\n- 聚合放 repo `cop_entity_repo.aggregate_squads()`，單句 SQL GROUP BY team_color：\n  - total=COUNT(*)、online=SUM(CASE WHEN stale > now THEN 1 ELSE 0 END)、offline=total-online\n  - avg_battery=AVG(battery)、centroid_lat=AVG(lat)、centroid_lon=AVG(lon)\n  - centroid 為簡單算術平均（小範圍演習場足夠）\n- exercise_id 三態（NULL_SCOPE / int / None），對齊 list_cop_entities。\n- router 走 resolve_scope（安全紅線，不直接信 query param）。\n- RBAC 自動 READ_ROLES（GET 預設分支）。\n- `dashboard_service.build_dashboard()` 回傳加 `tak_squads` 欄位。\n\n## DoD\n- repo 單元測試（分組 / online-offline 邊界 / centroid / avg_battery / 未分隊 NULL 組）\n- api 測試（observer READ_ROLES 可讀 / 跨場 isolation / live vs AAR 歷史場）\n- pyflakes / doc_sync_check 通過",
-    "closedAt": null,
+    "closedAt": "2026-06-06T05:25:36Z",
     "comments": [],
     "createdAt": "2026-06-06T04:29:16Z",
     "labels": [],
     "milestone": null,
     "number": 128,
-    "state": "OPEN",
+    "state": "CLOSED",
     "title": "P2-06d: 小隊聚合 API GET /api/cop/squads（按 team_color 聚合）",
-    "updatedAt": "2026-06-06T04:29:16Z",
+    "updatedAt": "2026-06-06T05:25:36Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/128"
   },
   {
@@ -1577,15 +1577,15 @@
       "name": ""
     },
     "body": "## 背景 bug（reality check 確認）\nCoT type `b-t-f`（GeoChat 聊天訊息）目前會誤進 `cop_entities`（作戰圖主表）——\n`_consume_cot` 只擋 `t-x-takp`、`ingest_cot_event`/`normalize_cot` 無 type 過濾、cop_entities.type 無 CHECK。\n且**兩條 ingest 路徑都漏**：:8089 串流（`_consume_cot`）+ REST push（`POST /api/tak/events`）。\n\n## 設計（定案）\n- **分流點放 `ingest_cot_event` 共用接縫**（一處擋兩路徑）：`event.type.startswith(\"b-t-f\")` → 委派 `chat_service.ingest_chat`，return（不進 cop_entities）。不動 `_consume_cot`。\n- **存前 `html.escape()`**（XSS 後端防線）。\n- **只做「存」**：chats 表 + ingest 分流。讀 API + 通聯面板留 P2-12。\n- chats 表（對齊 ICS-214）：sender_uid/callsign/message(escaped)/group/lat/lon/time/exercise_id/received_at。\n- exercise_id 綁 `current_exercise_id()`（active→int / 無→NULL，與 normalize_cot 一致）。\n- message 取 `event.remarks`（parse 層已抽）；group 取 `attributes[\"__chat\"]`。\n\n## DoD\n- [ ] b-t-f **不進** cop_entities（負向）\n- [ ] b-t-f **進** chats 表\n- [ ] XSS：chats.message 為 escaped（`&lt;script&gt;`）\n- [ ] exercise scoping 對齊\n- [ ] pytest 全綠\n\n純後端,無 UI（驗證查 DB）。並行於 P2-06d（檔案零交集）。",
-    "closedAt": null,
+    "closedAt": "2026-06-06T05:25:39Z",
     "comments": [],
     "createdAt": "2026-06-06T04:30:30Z",
     "labels": [],
     "milestone": null,
     "number": 129,
-    "state": "OPEN",
+    "state": "CLOSED",
     "title": "P2-07: GeoChat 誤路由修正 — b-t-f 分流到 chats 表（純後端）",
-    "updatedAt": "2026-06-06T04:30:30Z",
+    "updatedAt": "2026-06-06T05:25:39Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/129"
   }
 ]

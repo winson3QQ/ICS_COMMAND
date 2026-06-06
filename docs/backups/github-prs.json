@@ -2404,5 +2404,47 @@
     "title": "P2-06c: CoT 小隊欄位提取 — team_color/role/battery 成 CoPEntity 一等欄位（設計 A）",
     "updatedAt": "2026-06-06T03:59:29Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/127"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "## 摘要\n\n實作 ROADMAP P2-06d：小隊聚合 API。按 `team_color` 分組聚合 COP entity，供小隊態勢面板 + dashboard 使用，讓指揮部對 TAK 小隊狀態不盲視。\n\n## 改動\n\n- **`cop_entity_repo.aggregate_squads(exercise_id)`**：單句 SQL `GROUP BY team_color`，一次算齊 `total / online / offline / avg_battery / centroid_lat / centroid_lon`。\n  - `team_color IS NULL` 保留為「未分隊」組（不過濾，key=null，SQLite 升序排首）。\n  - centroid 為簡單算術平均（小範圍演習場足夠；docstring 註明跨換日線失真邊界）。\n  - `exercise_id` 三態（int / `NULL_SCOPE` / None）對齊 `list_cop_entities`。\n  - `total` 含 stale entity（讓 `offline` 反映「該隊有幾顆但失聯」）。\n  - `avg_battery` 走 SQLite `AVG`：NULL battery 不計入，全組無 battery → None。\n- **router `GET /api/cop/squads`**：走 `resolve_scope` 守門（安全紅線，不直接信 query param；歷史場限 COMMAND_ROLES）。RBAC 落 `allowed_roles_for` GET 預設分支 → READ_ROLES（observer 可讀），不需改 `role_enum`。\n- **`dashboard_service.build_dashboard()`** 回傳加 `tak_squads` 欄位（傳入既有 exercise_id，可能是 NULL_SCOPE sentinel，`aggregate_squads` 吃三態）。\n\n## 測試\n\n- unit（11）：分組升序 / online-offline 邊界 / 全 offline / centroid 算術平均 / avg_battery 跳 NULL / 全 NULL→None / 未分隊 NULL 組 / exercise_id 三態 / 空 DB\n- api（5）：observer READ_ROLES 可讀 / 未分隊 NULL 組 / 跨場 isolation / commander 看歷史封存場 / observer override 被 resolve_scope 擋回 active\n\n全綠（含回歸 `test_tracks_query.py` + dashboard 相關測試）；pyflakes exit 0；doc_sync_check 通過。\n\n## DoD\n\n- [x] 程式碼實作\n- [x] 測試補齊（unit + api，含 RBAC / 跨場 isolation / 歷史場）\n- [ ] ROADMAP tick（主 session 統一補）\n- [ ] Merge + 關 issue\n\nCloses #128\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+    "closedAt": "2026-06-06T05:25:35Z",
+    "comments": [],
+    "createdAt": "2026-06-06T04:33:16Z",
+    "headRefName": "feat/issue-128-p2-06d-squads",
+    "labels": [],
+    "mergedAt": "2026-06-06T05:25:35Z",
+    "number": 130,
+    "state": "MERGED",
+    "title": "P2-06d: 小隊聚合 API GET /api/cop/squads（按 team_color）",
+    "updatedAt": "2026-06-06T05:25:35Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/130"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "## Bug（reality check 確認）\nCoT type `b-t-f`（GeoChat）誤進 `cop_entities`（作戰圖主表），且**兩條 ingest 路徑都漏**（:8089 串流 + REST push）。\n\n## 修法（設計定案）\n- **分流點放 `ingest_cot_event` 共用接縫**：`type.startswith(\"b-t-f\")` → `chat_service.ingest_chat` + return（一處擋兩路徑）。不動 `_consume_cot`。\n- 新 `chat_service` / `chat_repo` / `schemas/chat` + `chats` 表（`_m016`，對齊 ICS-214）。\n- **message 存前 `html.escape`**（XSS 後端防線）。\n- exercise_id 綁 `current_exercise_id()`。\n- **只做存**，讀 API + 通聯面板 UI 留 P2-12（純後端，驗證查 DB）。\n\n## §8 Verification\n```\ncd command-dashboard\npython -m pytest tests/unit/test_geochat_routing.py tests/unit/test_cop_ingest.py \\\n  tests/unit/test_cop_normalize.py tests/unit/test_cop_schema_v1.py \\\n  tests/integration/test_tak_events.py tests/api/test_exercise_scoping.py -p no:warnings -q\npython -m pyflakes src/services/cop_service.py src/services/chat_service.py \\\n  src/repositories/chat_repo.py src/schemas/chat.py src/core/database.py\n```\n**結果：全綠（b-t-f 不進 cop_entities 負向 / 進 chats / message escaped / scoping / 真 fixture 全鏈 / 非 b-t-f 不誤擋）；pyflakes exit 0；doc-sync passed。**\n\n## DoD（#129）\n- [x] b-t-f **不進** cop_entities（負向）\n- [x] b-t-f **進** chats 表\n- [x] XSS：chats.message escaped（`&lt;script&gt;`）\n- [x] exercise scoping\n- [x] pytest 全綠\n\n並行於 P2-06d（[#130](https://github.com/winson3QQ/ICS_COMMAND/pull/130),檔案零交集）。Closes #129",
+    "closedAt": "2026-06-06T05:25:38Z",
+    "comments": [],
+    "createdAt": "2026-06-06T04:36:42Z",
+    "headRefName": "feat/issue-129-p2-07-geochat",
+    "labels": [],
+    "mergedAt": "2026-06-06T05:25:38Z",
+    "number": 131,
+    "state": "MERGED",
+    "title": "P2-07: GeoChat 誤路由修正 — b-t-f 分流到 chats 表（純後端）",
+    "updatedAt": "2026-06-06T05:25:40Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/131"
   }
 ]
