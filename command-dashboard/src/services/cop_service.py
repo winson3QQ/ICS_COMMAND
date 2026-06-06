@@ -48,7 +48,8 @@ def get_cop_summary(exercise_id: int | None = None) -> dict:
 # CoT 後續推送（同 uid）會更新的欄位。**刻意排除**：
 # - uid / source / exercise_id：身分與場次歸屬，更新位置時不得改（exercise_id 在 create 綁定）
 # - version_clock / updated_* / received_at：DB 管理（update_cop_entity_cas 受保護欄位）
-# - severity：CoT 無此概念，create 設 info，不在位置更新時覆蓋（保留未來 P2-05 enrich 空間）
+# - severity：由 normalize_cot 在 create 時決定（MEDEVAC=critical，其餘 info，P2-09），
+#   位置更新不覆蓋（否則後續無 <_medevac_> 的位置幀會把 MEDEVAC critical 打回 info）
 # - visible_to / origin_node_id：授權與 federation metadata，位置更新不動
 _TAK_UPDATE_FIELDS = (
     "type", "time", "start", "stale", "how", "version",
@@ -110,6 +111,52 @@ def _extract_squad(detail: dict) -> tuple[str | None, str | None, int | None]:
     return team_color, role, battery
 
 
+def _to_opt_bool(value) -> bool | None:
+    """CoT 布林字串 → bool；None/空 → None（語意「未知」，非 False）。"""
+    if value is None or value == "":
+        return None
+    return str(value).strip().lower() in ("true", "1", "yes")
+
+
+def _opt_str(d: dict, key: str) -> str | None:
+    """dict[key] 取字串 strip，非字串/純空白 → None（對齊 _dict_child 的 (dict, key) 形狀）。"""
+    v = d.get(key)
+    return v.strip() if isinstance(v, str) and v.strip() else None
+
+
+def _extract_medevac(detail: dict) -> dict | None:
+    """從 CoT <_medevac_> element 萃取 9-line 後送請求摘要（P2-09，#135）。
+
+    ATAK CASEVAC plugin 把 9-line 各欄位放在 <_medevac_> element 的「屬性」，
+    _extract_detail 已通用收成 detail["_medevac_"]（同 __group 模式）。本函式把原始
+    字串屬性正規化成乾淨型別（precedence 傷亡數→int、casevac→bool）成穩定摘要，
+    消費方（前端後送面板 / P3-06 WaveInk 同 card schema）免挖原始字串 + 統一型別。
+    原始 _medevac_ 仍完整保留在 attributes（CoT 忠實；真機屬性名小差時不漏資料）。
+
+    9-line 是聚合後送態勢（傷亡數 by precedence / pickup 位置 / 通訊頻率），非個別
+    病患 PII（無姓名病史）→ 進 attributes 隨 COP 廣播，指揮部透明可見（#135 取捨：
+    覆蓋 TAK-F 紅隊的 medical_records 分流建議，採單一 COP 不開新表）。
+
+    無 <_medevac_> → None（非 MEDEVAC 事件，severity 不升 critical）。
+    ATAK 屬性大小寫不一（Title/Priority/Security 大寫，freq/urgent/routine 小寫）
+    → 全轉小寫鍵取值。
+    """
+    mv = _dict_child(detail, "_medevac_")
+    if not mv:
+        return None
+    low = {k.lower(): v for k, v in mv.items() if isinstance(k, str)}
+    return {
+        "title": _opt_str(low, "title"),  # 後送請求標題 / 識別
+        "freq": _opt_str(low, "freq"),  # Line 2：後送通訊頻率
+        "precedence": {  # Line 3：傷亡數 by 後送優先級（→int，0-9999 防 garbage）
+            k: _opt_bounded_int(low.get(k), 0, 9999) for k in ("urgent", "priority", "routine")
+        },
+        "casevac": _to_opt_bool(low.get("casevac")),  # CASEVAC（非醫療專機）vs MEDEVAC
+        "security": _opt_str(low, "security"),  # Line 6：pickup 點安全狀況
+        "marking": _opt_str(low, "hlz_marking"),  # Line 7：HLZ 標記方式
+    }
+
+
 def normalize_cot(cot_event: CoTEventIn) -> CoPEntity:
     """TAK CoT event → CoPEntity（純函式，無副作用）。
 
@@ -121,6 +168,11 @@ def normalize_cot(cot_event: CoTEventIn) -> CoPEntity:
     detail = dict(cot_event.detail or {})
     track = _dict_child(detail, "track")
     team_color, role, battery = _extract_squad(detail)
+    # P2-09：MEDEVAC <_medevac_> 9-line → attributes["medevac"] 結構化摘要（型別轉乾淨）；
+    # 原始 _medevac_ 仍在 detail（CoT 忠實）。severity 升 critical 讓地圖醒目（#135）。
+    medevac = _extract_medevac(detail)
+    if medevac is not None:
+        detail["medevac"] = medevac
     # P2-08：CoT <shape>/<link> 幾何 → attributes.kind（route/polygon）+ vertices。
     # lat/lon **沿用 CoT <point>**（ATAK 給的錨點，忠實對位；不重算 centroid，避免與 ATAK 端
     # 顯示位置不一致 + 避免未驗證 centroid 覆寫已驗證 point — review #132）。
@@ -149,7 +201,9 @@ def normalize_cot(cot_event: CoTEventIn) -> CoPEntity:
         access=cot_event.access,
         callsign=cot_event.callsign,
         remarks=cot_event.remarks,
-        severity="info",
+        # P2-09：MEDEVAC 事件升 critical（地圖醒目 + P2-12 pulse）；其餘維持 info。
+        # severity 不在 _TAK_UPDATE_FIELDS → 後續位置更新不覆寫，critical 維持（#135）。
+        severity="critical" if medevac is not None else "info",
         team_color=team_color,
         role=role,
         battery=battery,
@@ -281,6 +335,11 @@ async def ingest_cot_event(event: CoTEventIn) -> dict | None:
     for _f in ("team_color", "role", "battery"):
         if patch.get(_f) is None:
             patch.pop(_f, None)
+    # P2-09（review #135-3）：severity 不在 _TAK_UPDATE_FIELDS（位置幀不打回 info），但需允許
+    # **單調升級**——同 uid 先普通幀（info）後 MEDEVAC 幀，critical 應升上去（否則漏升=地圖不醒目）。
+    # 只升不降：critical 才寫入 patch；普通幀（info）不寫 → 保留既有值，不把既有 critical 打回。
+    if entity.severity == "critical":
+        patch["severity"] = "critical"
     for _ in range(_CAS_MAX_RETRY):
         if not _is_newer(entity, existing):
             return None  # 落後 / 重送 → 丟棄，不倒退位置、不無謂 bump version
