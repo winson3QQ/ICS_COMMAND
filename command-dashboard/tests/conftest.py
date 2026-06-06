@@ -175,6 +175,13 @@ def client(tmp_db, monkeypatch):
     monkeypatch.setattr("main.ensure_initial_admin_token", lambda *args, **kwargs: _setup_test_admin())
     # 測試環境：Admin PIN 不自動產生（由各測試自行 set_admin_pin）
     monkeypatch.setattr("main.ensure_default_admin_pin", lambda *args, **kwargs: None)
+    # routers.dashboard 在 import 時 `from core.config import DB_PATH`（綁定快照），health
+    # endpoint 讀此模組級 DB_PATH。tmp_db 只 patch core.config / core.database 的 DB_PATH，
+    # **漏了 dashboard 模組綁定值** → health 會讀原始持久 DB（測試隔離破口：unit 測試先跑
+    # 後，integration 的 health schema_version 對不上 max migration）。一併 patch 成測試 DB。
+    import routers.dashboard
+
+    monkeypatch.setattr(routers.dashboard, "DB_PATH", tmp_db)
     from fastapi.testclient import TestClient
 
     from main import app
