@@ -2326,5 +2326,26 @@
     "title": "P2-06a: CoT 軌跡寫入接線 — ingest_cot_event 接 insert_cop_track + 5s 抽樣",
     "updatedAt": "2026-06-06T01:47:59Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/121"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "P2-06a（#121）merge 後的 `/code-review` + `/security-review` 收尾。\n\n## /code-review 發現\n**🔴 1 真 bug（已修）**\n- `_within_min_interval` 的 datetime 相減**在 `try` 區塊外**、`except` 漏接 `TypeError`。REST push（`POST /api/tak/events`）的 time 未正規化（`schemas/tak.py` 只 `min_length=1`），與 :8089 的 aware（`...Z`）軌跡混用時 `aware−naive` 相減拋 `TypeError`，被 `_record_track` 的 best-effort `except` 吞 → **軌跡靜默漏寫**。\n\n**🟡 cleanup（已修）**\n- #4 reuse：`fromisoformat` idiom 第 4 份重複 → 抽 `_helpers.iso_to_dt` 共用。\n- #7 altitude：`_MIN_TRACK_INTERVAL_S` 寫死 → `config.TRACK_MIN_INTERVAL_S`（env 可覆寫）。\n\n## 修法\n- 新增 `_helpers.iso_to_dt(iso)`：normalize 成 aware UTC（naive 補 UTC）→ 跨來源混格式安全相減，根治 #1（TypeError）+ #2（混時區語意），順帶消重複。\n- `_within_min_interval` 改用 `iso_to_dt`、相減納入 `try`、`except` 加 `TypeError`。\n- 抽樣間隔讀 `config.TRACK_MIN_INTERVAL_S`。\n\n## 不改（已評估，附理由）\n- **#3** broad `except`：best-effort 刻意吞、`log.warning` 已留痕（非靜默）；拆掉會讓軌跡錯誤擋住 ingest，違背設計。\n- **#6** 並發非原子：`--workers 1`（P1-15 pin）+ `_record_track` 同步無 `await`，asyncio 單線程下原子執行，不交錯。架構已排除。\n- **#5** 每 ingest 一次 SELECT：process 快取會引入「entity 刪除/reset 後快取失效」耦合，風險>效益；SQLite index 查很快。留 follow-up。\n\n## /security-review\n0 finding（SQL 全參數化、`CoPEntityTrack` re-validate、log 不記位置 PII、FK 完整性 OK）。\n\n## §8 Verification\n```\ncd command-dashboard\npython -m pytest tests/unit/test_cop_track_wiring.py tests/unit/test_cop_ingest.py \\\n  tests/unit/test_cop_normalize.py tests/unit/test_cop_schema_v1.py \\\n  tests/unit/test_tak_cot_parse.py tests/integration/test_tak_events.py -p no:warnings -q\npython -m pyflakes src/services/cop_service.py src/repositories/_helpers.py src/core/config.py\n```\n**結果：80 passed（+2 回歸：混時區不漏寫 / 間隔可覆寫）；pyflakes exit 0；doc-sync passed。**\n\n順帶補 **P2-06a ROADMAP ✅ tick**（#121 merge 時漏勾）。\n\nRefs #120, #121",
+    "closedAt": "2026-06-06T02:13:43Z",
+    "comments": [],
+    "createdAt": "2026-06-06T02:12:22Z",
+    "headRefName": "fix/p2-06a-review-followup",
+    "labels": [],
+    "mergedAt": "2026-06-06T02:13:43Z",
+    "number": 122,
+    "state": "MERGED",
+    "title": "fix(cop): P2-06a review follow-up — 時間 TypeError + iso_to_dt 共用 + 間隔 configurable",
+    "updatedAt": "2026-06-06T02:13:46Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/122"
   }
 ]

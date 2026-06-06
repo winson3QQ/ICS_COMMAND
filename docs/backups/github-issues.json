@@ -1487,5 +1487,25 @@
     "title": "P2-06a: CoT 軌跡寫入接線 — insert_cop_track 零 caller，cop_entity_tracks 恆空",
     "updatedAt": "2026-06-06T01:47:56Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/120"
+  },
+  {
+    "assignees": [],
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "body": "## 背景：資料模型釐清（reality check 2026-06-06）\n`exercises.type ∈ {'ttx'(演習), 'real'(實戰)}`（`database.py:251`），**兩者都是 exercises row、都有 int id、都能 set_active**。`exercise_id=NULL` = 無任何 active 場 = **非演習也非實戰**（不需記錄）。code 多處把 NULL 誤稱「實戰池」，用詞錯（實戰有 id）。\n\n## P2-06a 修正（行為調整 + 正名）\n- `cop_service._record_track` 加 NULL gating：`exercise_id is None` → 不寫 track（非演習非實戰無複盤對象）。entity 照常 upsert（即時 COP 不變）。\n- 正名註解：`cop_service.py:99` 等「實戰池」→「無場次 / NULL 池」。\n- 測試：NULL 狀態不寫 track；有 active（ttx/real）照寫。\n\n## P2-06b 新增（軌跡查詢 API）\n- repo：`list_tracks_by_exercise(exercise_id, uid?, since?, until?, limit, offset)` — 設計 B `JOIN cop_entities`（tracks 不存 exercise_id，靠 uid JOIN 取）。\n- router：`GET /api/exercises/{id}/tracks?uid=&from=&to=&limit=&offset=`（exercises.py），回 `{uid,t,lat,lon,hae,heading_deg,speed_mps}`，按 t 升序，分頁。\n- `from`/`to` 用 `iso_utc` 正規化（ISO 8601 字串比較需同格式）。\n- 涵蓋演習(ttx)+實戰(real)；NULL 不查。\n\n## RBAC\n自動繼承中央 gate（`role_enum.py:118` `/api/exercises/*` 非 DELETE → COMMAND_ROLES）。軌跡含人員位置 PII，COMMAND_ROLES 正確。零額外工。\n\n## DoD\n- [ ] NULL（非演習非實戰）狀態 ingest 不寫 track；有 active 場照寫\n- [ ] `GET /api/exercises/{id}/tracks` 回該場所有 entity 軌跡，t 升序\n- [ ] uid / from / to 過濾正確；分頁（limit/offset）正確\n- [ ] 涵蓋 ttx + real 場\n- [ ] RBAC：非 COMMAND_ROLES → 403（負向）；exercise 不存在 → 404\n- [ ] pytest 全綠\n\nP2-20 AAR 回放前端的資料來源。依賴 P2-06a（#121/#122）。",
+    "closedAt": null,
+    "comments": [],
+    "createdAt": "2026-06-06T02:29:40Z",
+    "labels": [],
+    "milestone": null,
+    "number": 123,
+    "state": "OPEN",
+    "title": "P2-06b: 軌跡查詢 API + P2-06a NULL 軌跡 gating（非演習非實戰不記錄）",
+    "updatedAt": "2026-06-06T02:29:40Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/123"
   }
 ]
