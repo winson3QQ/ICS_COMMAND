@@ -286,7 +286,9 @@ def list_tracks_by_exercise(
     設計 B：tracks 不存 exercise_id，靠 uid JOIN cop_entities 取場歸屬（SoT 單一）。
     回 {uid, t, lat, lon, hae, heading_deg, speed_mps}，按 t 升序，分頁（limit/offset）。
     since/until 為 ISO 8601 UTC Z 字串（caller 應先 iso_utc 正規化，與 t 同格式才能
-    正確字串比較）。走 idx_cop_entities_exercise + idx_cop_tracks_uid_t。
+    正確字串比較）。WHERE 走 idx_cop_entities_exercise（driving）；跨多 uid 的全域
+    ORDER BY t 走不到 idx_cop_tracks_uid_t(uid,t)（uid 在前）→ 為 temp B-tree 排序，
+    故加 t.id 次序保證同秒多筆的分頁穩定（避免 LIMIT/OFFSET 頁邊界漏/重）。
     """
     sql = [
         "SELECT t.uid, t.t, t.lat, t.lon, t.hae, t.heading_deg, t.speed_mps",
@@ -303,7 +305,7 @@ def list_tracks_by_exercise(
     if until is not None:
         sql.append("AND t.t <= ?")
         params.append(until)
-    sql.append("ORDER BY t.t ASC LIMIT ? OFFSET ?")
+    sql.append("ORDER BY t.t ASC, t.id ASC LIMIT ? OFFSET ?")
     params.extend([limit, offset])
     with get_conn() as conn:
         rows = conn.execute(" ".join(sql), params).fetchall()

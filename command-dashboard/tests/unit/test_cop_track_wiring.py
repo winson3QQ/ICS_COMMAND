@@ -254,3 +254,14 @@ def test_list_by_exercise_real_type_queryable(monkeypatch):
     _ingest(_event(uid="R1", time="2026-06-05T04:00:00Z"))
     rows = cop_entity_repo.list_tracks_by_exercise(real["id"])
     assert {r["uid"] for r in rows} == {"R1"}
+
+
+def test_list_by_exercise_pagination_stable_same_t(_active_exercise):
+    """同 t 多筆（不同 uid 同秒）分頁穩定 —— t.id tiebreak 保證頁邊界無漏無重（review #1）。"""
+    for u in ("A", "B", "C"):
+        _ingest(_event(uid=u, time="2026-06-05T04:00:00Z"))
+    eid = _active_exercise["id"]
+    p1 = cop_entity_repo.list_tracks_by_exercise(eid, limit=2, offset=0)
+    p2 = cop_entity_repo.list_tracks_by_exercise(eid, limit=2, offset=2)
+    seen = [r["uid"] for r in p1] + [r["uid"] for r in p2]
+    assert sorted(seen) == ["A", "B", "C"]  # 三筆全到、無漏無重

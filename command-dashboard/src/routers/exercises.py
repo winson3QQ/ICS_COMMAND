@@ -107,6 +107,18 @@ def get_aar(exercise_id: int):
 
 # ── 軌跡查詢（P2-06b / issue #123）─────────────────────────────────────────────
 
+
+def _range_bound(value: str | None, *, end: bool) -> str | None:
+    """from/to 時間界正規化為 ISO 8601 UTC Z（與軌跡 t 同格式才能字串比較）。
+    只給日期（YYYY-MM-DD，無 T）→ 補當天起/訖；否則 'YYYY-MM-DDZ' 的字典序落在
+    'YYYY-MM-DDThh:mm:ssZ' 之外（'Z'>'T'），單日查詢會把當天軌跡全漏掉。"""
+    if not value:
+        return None
+    if "T" not in value and len(value) == 10:
+        value += "T23:59:59" if end else "T00:00:00"
+    return iso_utc(value)
+
+
 @router.get("/{exercise_id}/tracks")
 def get_tracks(
     exercise_id: int,
@@ -120,15 +132,16 @@ def get_tracks(
 
     RBAC：COMMAND_ROLES（中央 gate `/api/exercises/*` 非 DELETE；軌跡含人員位置 PII）。
     回 [{uid, t, lat, lon, hae, heading_deg, speed_mps}]，t 升序，分頁。
-    from/to 接 ISO 8601（任意格式 → iso_utc 正規化為 Z，與 t 同格式才能正確比較）。
+    from/to 接完整 ISO 8601 或純日期（純日期補當天起訖，見 _range_bound）。
     """
     if not get(exercise_id):
         raise HTTPException(404, "演練不存在")
     return list_tracks_by_exercise(
         exercise_id,
         uid=uid,
-        since=iso_utc(from_),
-        until=iso_utc(to),
-        limit=min(max(limit, 1), 5000),  # 服務端上限（防一次撈爆，對齊 RT-L4 教訓）
+        since=_range_bound(from_, end=False),
+        until=_range_bound(to, end=True),
+        # 服務端上限（防單次撈爆）。clamp 散落各 list endpoint（admin/cop 尚未套），統一化留 follow-up
+        limit=min(max(limit, 1), 5000),
         offset=max(offset, 0),
     )

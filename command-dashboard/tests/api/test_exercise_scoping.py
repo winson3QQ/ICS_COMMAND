@@ -10,33 +10,9 @@ api/test_exercise_scoping.py — P1-14 exercise scoping wiring 測試（issue #8
 
 import pytest
 
-from repositories.account_repo import create_account
-
 pytestmark = pytest.mark.api
 
-
-def _login(client, username, pin):
-    r = client.post("/api/auth/login", json={"username": username, "pin": pin})
-    assert r.status_code == 200, r.text
-    return {"X-Session-Token": r.json()["session_id"]}
-
-
-@pytest.fixture
-def operator_auth(client):
-    create_account("op1", "5678", "操作員", "前進組", "operator")
-    return _login(client, "op1", "5678")
-
-
-@pytest.fixture
-def observer_auth(client):
-    create_account("ob1", "5678", "觀察員", "", "observer")
-    return _login(client, "ob1", "5678")
-
-
-@pytest.fixture
-def commander_auth(client):
-    create_account("cmd1", "5678", "指揮官", "", "commander")
-    return _login(client, "cmd1", "5678")
+# operator_auth / observer_auth / commander_auth fixtures 在 tests/api/conftest.py 共用
 
 _EVENT = {
     "reported_by_unit": "shelter",

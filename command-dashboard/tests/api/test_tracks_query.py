@@ -10,33 +10,9 @@ api/test_tracks_query.py — P2-06b 軌跡查詢 endpoint（issue #123）
 
 import pytest
 
-from repositories.account_repo import create_account
-
 pytestmark = pytest.mark.api
 
-
-def _login(client, username, pin):
-    r = client.post("/api/auth/login", json={"username": username, "pin": pin})
-    assert r.status_code == 200, r.text
-    return {"X-Session-Token": r.json()["session_id"]}
-
-
-@pytest.fixture
-def operator_auth(client):
-    create_account("op1", "5678", "操作員", "前進組", "operator")
-    return _login(client, "op1", "5678")
-
-
-@pytest.fixture
-def observer_auth(client):
-    create_account("ob1", "5678", "觀察員", "", "observer")
-    return _login(client, "ob1", "5678")
-
-
-@pytest.fixture
-def commander_auth(client):
-    create_account("cmd1", "5678", "指揮官", "", "commander")
-    return _login(client, "cmd1", "5678")
+# operator_auth / observer_auth / commander_auth fixtures 在 tests/api/conftest.py 共用
 
 
 def _push_cot(client, auth, uid, t, lat=24.1, lon=120.6):
@@ -70,6 +46,15 @@ def test_tracks_uid_filter(client, auth, active_exercise):
     r = client.get(f"/api/exercises/{eid}/tracks?uid=A", headers=auth)
     assert r.status_code == 200
     assert {d["uid"] for d in r.json()} == {"A"}
+
+
+def test_tracks_date_only_filter(client, auth, active_exercise):
+    """純日期 from/to 補當天起訖，不漏當天軌跡（review #2：修前 'YYYY-MM-DDZ' 字串比較漏掉）。"""
+    eid = active_exercise["id"]
+    _push_cot(client, auth, "D1", "2026-06-05T08:00:00Z")
+    r = client.get(f"/api/exercises/{eid}/tracks?from=2026-06-05&to=2026-06-05", headers=auth)
+    assert r.status_code == 200
+    assert len(r.json()) == 1  # 當天軌跡查得到
 
 
 # ── 404 / RBAC（非 COMMAND_ROLES → 403）───────────────────────────────────────
