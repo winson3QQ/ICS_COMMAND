@@ -2305,5 +2305,26 @@
     "title": "docs(roadmap): 新增 P2-06c/d — CoT 小隊欄位解析 + 小隊聚合 API",
     "updatedAt": "2026-06-06T00:28:04Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/119"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "## 摘要\n`insert_cop_track` 原**零 caller**、`cop_entity_tracks` 表恆空。本 PR 在 `ingest_cot_event` 的 create/update/reinsert 三個持久化點接上軌跡寫入 + per-uid 5s min-interval 抽樣。為 P2-20 AAR 回放鋪資料基礎。\n\n## 設計決策 B（issue #120）\n`cop_entity_tracks` **不存 `exercise_id`**：exercise 歸屬 SoT 已在 `cop_entities`，track 透過 uid JOIN 取得（P2-06b 查法）；exercise 刪除靠既有 `uid → cop_entities.uid ON DELETE CASCADE`。零 schema 變更。\n\n## 改動\n- `cop_entity_repo.py`：`get_last_track_time(uid)`（5s 抽樣查詢，走 `idx_cop_tracks_uid_t`）\n- `cop_service.py`：`_within_min_interval` + `_record_track`（best-effort，失敗只 log.warning）+ 三點接線\n- `test_cop_track_wiring.py`：7 測試\n\n## §8 Verification（純後端，自動化測試驗收，無 UI）\n```\ncd command-dashboard\npython -m pytest tests/unit/test_cop_track_wiring.py tests/unit/test_cop_ingest.py \\\n  tests/unit/test_cop_normalize.py tests/unit/test_cop_schema_v1.py \\\n  tests/unit/test_tak_cot_parse.py tests/integration/test_tak_events.py -p no:warnings -q\npython -m pyflakes src/services/cop_service.py src/repositories/cop_entity_repo.py\n```\n**結果：78 passed；pyflakes exit 0。**\n\n## DoD（#120）\n- [x] create/update 後寫 track（uid/t/lat/lon/heading/speed 正確）\n- [x] 同 uid <5s 跳過、≥5s 寫入\n- [x] entity 刪除 → tracks cascade\n- [x] exercise 歸屬由 uid JOIN cop_entities 取得（B）\n- [x] pytest 全綠\n\nCloses #120",
+    "closedAt": "2026-06-06T01:47:55Z",
+    "comments": [],
+    "createdAt": "2026-06-06T01:47:26Z",
+    "headRefName": "feat/issue-120-p2-06a-track-wiring",
+    "labels": [],
+    "mergedAt": "2026-06-06T01:47:55Z",
+    "number": 121,
+    "state": "MERGED",
+    "title": "P2-06a: CoT 軌跡寫入接線 — ingest_cot_event 接 insert_cop_track + 5s 抽樣",
+    "updatedAt": "2026-06-06T01:47:59Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/121"
   }
 ]

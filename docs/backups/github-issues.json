@@ -1477,15 +1477,15 @@
       "name": ""
     },
     "body": "## 事實（2026-06-06 reality check）\n- `cop_entity_repo.insert_cop_track()` 定義存在（`cop_entity_repo.py:234`）但**整個 codebase 零 caller** → `cop_entity_tracks` 表恆空。\n- 表已建（`database.py:607`）+ index `idx_cop_tracks_uid_t`、列 reset 白名單（`admin.py:228`）、repo 有 insert/list；唯獨無寫入路徑。\n- `ingest_cot_event`（`cop_service.py:134`）upsert 後未接 `insert_cop_track`。\n\n## 影響\nP2-20 AAR 回放的唯一資料基礎；不做則 AAR 無軌跡可播。\n\n## 範圍（設計決策 B）\n- `cop_entity_tracks` **不加 exercise_id 欄位**：exercise 歸屬 SoT 已在 `cop_entities`，track 透過 uid 綁定，P2-06b 查詢時 `JOIN cop_entities` 取得（有 index）。cascade 靠現有 `uid → cop_entities.uid ON DELETE CASCADE` 已滿足「exercise 刪除 cascade」需求。\n- P2-06a = 純接線 + 5s 抽樣，零 schema 變更。\n\n## 修法\n1. `ingest_cot_event` create/update/reinsert 持久化成功後寫一筆 track（欄位取自 normalize 出的 entity）。\n2. 5s min-interval 抽樣：repo helper 查該 uid 上一筆 `track.t`，以 CoT event time 比較；create 第一筆必寫，update 距上筆 <5s 跳過。\n3. best-effort：寫 track 失敗只 `log.warning`，不擋即時同步。\n\n## DoD\n- [ ] create/update 後 `cop_entity_tracks` 有 row（正確 uid/t/lat/lon/heading/speed）\n- [ ] 同 uid <5s 第二筆跳過、≥5s 寫入\n- [ ] entity 刪除 → tracks cascade 清除\n- [ ] exercise 歸屬可由 uid JOIN cop_entities 正確取得（B 驗證）\n- [ ] pytest 全綠\n\nROADMAP: P2-06a（`docs/ROADMAP.md`）",
-    "closedAt": null,
+    "closedAt": "2026-06-06T01:47:56Z",
     "comments": [],
     "createdAt": "2026-06-06T01:34:41Z",
     "labels": [],
     "milestone": null,
     "number": 120,
-    "state": "OPEN",
+    "state": "CLOSED",
     "title": "P2-06a: CoT 軌跡寫入接線 — insert_cop_track 零 caller，cop_entity_tracks 恆空",
-    "updatedAt": "2026-06-06T01:34:41Z",
+    "updatedAt": "2026-06-06T01:47:56Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/120"
   }
 ]
