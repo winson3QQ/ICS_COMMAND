@@ -4,11 +4,12 @@ exercises.py — 演練場次管理（C0 新增）
 """
 
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 
 from auth.service import validate_session
-from repositories._helpers import audit
+from repositories._helpers import audit, iso_utc
 from repositories.aar_repo import create_aar_entry, get_aar_entries
+from repositories.cop_entity_repo import list_tracks_by_exercise
 from repositories.exercise_repo import delete_exercise, update_exercise_status
 from schemas.exercise import AAREntryIn, ExerciseCreateIn, ExerciseStatusIn
 from services.exercise_service import archive, create, get, list_all, set_active
@@ -102,3 +103,45 @@ def add_aar(exercise_id: int, body: AAREntryIn, request: Request):
 @router.get("/{exercise_id}/aar")
 def get_aar(exercise_id: int):
     return get_aar_entries(exercise_id)
+
+
+# ── 軌跡查詢（P2-06b / issue #123）─────────────────────────────────────────────
+
+
+def _range_bound(value: str | None, *, end: bool) -> str | None:
+    """from/to 時間界正規化為 ISO 8601 UTC Z（與軌跡 t 同格式才能字串比較）。
+    只給日期（YYYY-MM-DD，無 T）→ 補當天起/訖；否則 'YYYY-MM-DDZ' 的字典序落在
+    'YYYY-MM-DDThh:mm:ssZ' 之外（'Z'>'T'），單日查詢會把當天軌跡全漏掉。"""
+    if not value:
+        return None
+    if "T" not in value and len(value) == 10:
+        value += "T23:59:59" if end else "T00:00:00"
+    return iso_utc(value)
+
+
+@router.get("/{exercise_id}/tracks")
+def get_tracks(
+    exercise_id: int,
+    uid: str | None = None,
+    from_: str | None = Query(None, alias="from"),
+    to: str | None = None,
+    limit: int = 1000,
+    offset: int = 0,
+):
+    """某場（演習 ttx / 實戰 real）所有 entity 的軌跡時間序列（P2-20 AAR 回放資料源）。
+
+    RBAC：COMMAND_ROLES（中央 gate `/api/exercises/*` 非 DELETE；軌跡含人員位置 PII）。
+    回 [{uid, t, lat, lon, hae, heading_deg, speed_mps}]，t 升序，分頁。
+    from/to 接完整 ISO 8601 或純日期（純日期補當天起訖，見 _range_bound）。
+    """
+    if not get(exercise_id):
+        raise HTTPException(404, "演練不存在")
+    return list_tracks_by_exercise(
+        exercise_id,
+        uid=uid,
+        since=_range_bound(from_, end=False),
+        until=_range_bound(to, end=True),
+        # 服務端上限（防單次撈爆）。clamp 散落各 list endpoint（admin/cop 尚未套），統一化留 follow-up
+        limit=min(max(limit, 1), 5000),
+        offset=max(offset, 0),
+    )

@@ -35,6 +35,15 @@ def _silence_broadcast(monkeypatch):
     monkeypatch.setattr(cop_service.cop_hub, "broadcast", _fake)
 
 
+@pytest.fixture(autouse=True)
+def _active_exercise(tmp_db):
+    """軌跡只在有 active 場（演習 ttx / 實戰 real）時寫入（issue #123 NULL gating）。
+    建一個 active ttx 演習供本檔 ingest 綁定；回該場 dict。"""
+    ex = exercise_repo.create_exercise({"name": "P2-06 測試場"})
+    exercise_repo.update_exercise_status(ex["id"], "active", "test")
+    return ex
+
+
 def _event(uid: str = "TRK-1", *, time: str, **overrides) -> CoTEventIn:
     base = {
         "uid": uid,
@@ -137,10 +146,9 @@ def test_entity_hard_delete_cascades_tracks():
 # ── 7. 設計 B：tracks 不存 exercise_id，靠 uid JOIN cop_entities 取得 ──────────
 
 
-def test_exercise_attribution_via_join():
-    ex = exercise_repo.create_exercise({"name": "P2-06a JOIN 驗證"})
-    exercise_repo.update_exercise_status(ex["id"], "active", "test")
-    # active 場存在 → ingest 的 entity 綁該場
+def test_exercise_attribution_via_join(_active_exercise):
+    ex = _active_exercise
+    # active 場（fixture 建）→ ingest 的 entity 綁該場
     row = _ingest(_event(time="2026-06-05T04:00:00Z"))
     assert row["exercise_id"] == ex["id"]
     # B：track 自身無 exercise_id 欄位，但可由 uid JOIN cop_entities 取得（= P2-06b 查法）
@@ -182,3 +190,78 @@ def test_interval_configurable(monkeypatch):
     _ingest(_event(time="2026-06-05T04:00:06Z"))   # +6s < 10s（覆寫後）→ 跳過
     tracks = cop_entity_repo.list_cop_tracks("TRK-1")
     assert len(tracks) == 1
+
+
+# ── 10. issue #123：非演習非實戰（NULL）不寫軌跡，但 entity 照常 upsert ──────────
+
+
+def test_null_scope_writes_no_track(monkeypatch):
+    """無 active 場（current_exercise_id → None）= 非演習也非實戰：entity 照常建立
+    （即時 COP 不受影響），但不記軌跡（issue #123 NULL gating）。"""
+    monkeypatch.setattr(cop_service, "current_exercise_id", lambda: None)
+    row = _ingest(_event(time="2026-06-05T04:00:00Z"))
+    assert row is not None                                 # entity 照常 upsert
+    assert row["exercise_id"] is None                      # 無場次綁定
+    assert cop_entity_repo.list_cop_tracks("TRK-1") == []  # 但不寫軌跡
+
+
+# ── P2-06b：list_tracks_by_exercise 查詢（設計 B JOIN）────────────────────────
+
+
+def test_list_by_exercise_returns_all_entities(_active_exercise):
+    _ingest(_event(uid="A", time="2026-06-05T04:00:00Z"))
+    _ingest(_event(uid="B", time="2026-06-05T04:00:00Z"))
+    rows = cop_entity_repo.list_tracks_by_exercise(_active_exercise["id"])
+    assert {r["uid"] for r in rows} == {"A", "B"}
+    # 全欄位（Q1）
+    assert set(rows[0].keys()) >= {"uid", "t", "lat", "lon", "hae", "heading_deg", "speed_mps"}
+
+
+def test_list_by_exercise_uid_filter(_active_exercise):
+    _ingest(_event(uid="A", time="2026-06-05T04:00:00Z"))
+    _ingest(_event(uid="B", time="2026-06-05T04:00:00Z"))
+    rows = cop_entity_repo.list_tracks_by_exercise(_active_exercise["id"], uid="A")
+    assert {r["uid"] for r in rows} == {"A"}
+
+
+def test_list_by_exercise_time_window(_active_exercise):
+    for sec in ("00", "10", "20"):  # 間隔 10s ≥ 抽樣 → 都寫
+        _ingest(_event(time=f"2026-06-05T04:00:{sec}Z"))
+    rows = cop_entity_repo.list_tracks_by_exercise(
+        _active_exercise["id"], since="2026-06-05T04:00:05Z", until="2026-06-05T04:00:15Z"
+    )
+    assert [r["t"] for r in rows] == ["2026-06-05T04:00:10Z"]
+
+
+def test_list_by_exercise_pagination_ascending(_active_exercise):
+    for sec in ("00", "10", "20"):
+        _ingest(_event(time=f"2026-06-05T04:00:{sec}Z"))
+    page = cop_entity_repo.list_tracks_by_exercise(_active_exercise["id"], limit=2, offset=1)
+    assert [r["t"] for r in page] == ["2026-06-05T04:00:10Z", "2026-06-05T04:00:20Z"]  # 升序 + offset
+
+
+def test_list_by_exercise_isolates_scopes(_active_exercise):
+    other = exercise_repo.create_exercise({"name": "另一場", "type": "real"})
+    _ingest(_event(uid="A", time="2026-06-05T04:00:00Z"))  # 綁 active（_active_exercise）
+    assert cop_entity_repo.list_tracks_by_exercise(other["id"]) == []  # 別場查不到
+    assert {r["uid"] for r in cop_entity_repo.list_tracks_by_exercise(_active_exercise["id"])} == {"A"}
+
+
+def test_list_by_exercise_real_type_queryable(monkeypatch):
+    """實戰（type='real'）場也有 id、也能查（涵蓋 ttx + real）。"""
+    real = exercise_repo.create_exercise({"name": "實戰", "type": "real"})
+    monkeypatch.setattr(cop_service, "current_exercise_id", lambda: real["id"])
+    _ingest(_event(uid="R1", time="2026-06-05T04:00:00Z"))
+    rows = cop_entity_repo.list_tracks_by_exercise(real["id"])
+    assert {r["uid"] for r in rows} == {"R1"}
+
+
+def test_list_by_exercise_pagination_stable_same_t(_active_exercise):
+    """同 t 多筆（不同 uid 同秒）分頁穩定 —— t.id tiebreak 保證頁邊界無漏無重（review #1）。"""
+    for u in ("A", "B", "C"):
+        _ingest(_event(uid=u, time="2026-06-05T04:00:00Z"))
+    eid = _active_exercise["id"]
+    p1 = cop_entity_repo.list_tracks_by_exercise(eid, limit=2, offset=0)
+    p2 = cop_entity_repo.list_tracks_by_exercise(eid, limit=2, offset=2)
+    seen = [r["uid"] for r in p1] + [r["uid"] for r in p2]
+    assert sorted(seen) == ["A", "B", "C"]  # 三筆全到、無漏無重

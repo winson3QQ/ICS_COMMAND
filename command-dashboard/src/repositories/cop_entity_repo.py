@@ -273,6 +273,45 @@ def get_last_track_time(uid: str) -> str | None:
         return row_to_dict(row)["t"] if row else None
 
 
+def list_tracks_by_exercise(
+    exercise_id: int,
+    uid: str | None = None,
+    since: str | None = None,
+    until: str | None = None,
+    limit: int = 1000,
+    offset: int = 0,
+) -> list[dict]:
+    """某場（演習 ttx / 實戰 real）所有 entity 的軌跡時間序列（P2-06b，issue #123）。
+
+    設計 B：tracks 不存 exercise_id，靠 uid JOIN cop_entities 取場歸屬（SoT 單一）。
+    回 {uid, t, lat, lon, hae, heading_deg, speed_mps}，按 t 升序，分頁（limit/offset）。
+    since/until 為 ISO 8601 UTC Z 字串（caller 應先 iso_utc 正規化，與 t 同格式才能
+    正確字串比較）。WHERE 走 idx_cop_entities_exercise（driving）；跨多 uid 的全域
+    ORDER BY t 走不到 idx_cop_tracks_uid_t(uid,t)（uid 在前）→ 為 temp B-tree 排序，
+    故加 t.id 次序保證同秒多筆的分頁穩定（避免 LIMIT/OFFSET 頁邊界漏/重）。
+    """
+    sql = [
+        "SELECT t.uid, t.t, t.lat, t.lon, t.hae, t.heading_deg, t.speed_mps",
+        "FROM cop_entity_tracks t JOIN cop_entities e ON t.uid = e.uid",
+        "WHERE e.exercise_id = ?",
+    ]
+    params: list = [exercise_id]
+    if uid is not None:
+        sql.append("AND t.uid = ?")
+        params.append(uid)
+    if since is not None:
+        sql.append("AND t.t >= ?")
+        params.append(since)
+    if until is not None:
+        sql.append("AND t.t <= ?")
+        params.append(until)
+    sql.append("ORDER BY t.t ASC, t.id ASC LIMIT ? OFFSET ?")
+    params.extend([limit, offset])
+    with get_conn() as conn:
+        rows = conn.execute(" ".join(sql), params).fetchall()
+        return [row_to_dict(r) for r in rows]
+
+
 # ── cop_entity_links ─────────────────────────────────────────────────────────
 
 

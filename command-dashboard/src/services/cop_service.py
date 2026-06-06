@@ -96,7 +96,7 @@ def normalize_cot(cot_event: CoTEventIn) -> CoPEntity:
         heading_deg=_opt_bounded_float(track.get("course"), 0.0, 360.0),
         speed_mps=_opt_bounded_float(track.get("speed"), 0.0, 1000.0),
         source="tak",
-        exercise_id=current_exercise_id(),  # create 時綁當前 active 場（無 → NULL 實戰池）
+        exercise_id=current_exercise_id(),  # 綁當前 active 場（ttx 演習 / real 實戰）；無 active → NULL（非演習非實戰）
         access=cot_event.access,
         callsign=cot_event.callsign,
         remarks=cot_event.remarks,
@@ -155,13 +155,20 @@ def _record_track(entity: dict) -> None:
     """位置持久化後寫一筆軌跡點。**best-effort**：任何失敗只 log.warning，
     絕不讓軌跡寫入擋住 ingest / 即時廣播（對齊 _broadcast_cop 容錯風格）。
 
-    抽樣：查該 uid 上一筆軌跡時間，距今 < 5s 跳過。新 entity（create）/ 重插
+    範圍：只記有 active 場（演習 ttx / 實戰 real）的軌跡；非演習也非實戰
+    （exercise_id=NULL，無 active 場）無複盤對象 → 跳過（issue #123）。
+
+    抽樣：查該 uid 上一筆軌跡時間，距今 < 間隔跳過。新 entity（create）/ 重插
     （reinsert，舊軌跡已隨 entity cascade 刪）皆無前一筆 → 第一筆必寫。
     """
     try:
         uid = entity.get("uid")
         t = entity.get("time")
         if not uid or not t:
+            return
+        # 非演習也非實戰（無 active 場 → exercise_id=NULL）：不記軌跡（issue #123）。
+        # entity 已照常 upsert（即時 COP 不受影響），僅跳過軌跡時間序列寫入。
+        if entity.get("exercise_id") is None:
             return
         last = cop_entity_repo.get_last_track_time(uid)
         if last is not None and _within_min_interval(last, t):
