@@ -1607,5 +1607,25 @@
     "title": "P2-08: CoT <shape> 幾何萃取 + services/geometry_service.py（純後端）",
     "updatedAt": "2026-06-06T06:02:29Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/132"
+  },
+  {
+    "assignees": [],
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "body": "## 背景（P2-08 #132 review 衍生）\nP2-08 落地了 CoT `<shape>` 的 **polyline/polygon**（→ route/polygon），但 **circle/ellipse 暫不支援** —— `geometry_service._from_shape` 對 `<ellipse>`/`<circle>` 回 None + log.warning。\n\n## 問題\noperator 在 ATAK 畫圓形警戒區（爆炸半徑、無人機禁航圈是常見用法）→ CoT 進指揮部後整個 shape 消失，COP 圖上看不到該區，**只有後端 log 一行 warning，前端與 operator 都不會察覺「畫的東西沒過去」**，可能誤判該區未設防。\n\n## 修法方向\n1. **前端圓形管線**：entity_layer / cop adapter 加 circle 渲染（圓心 + 半徑），對齊既有 route/polygon。\n2. **後端**：`geometry_service` 支援 `<shape><ellipse major minor angle/>`（圓心在 `<point>`）→ 新 `kind='circle'` + attributes 存 radius/major/minor/angle。\n3. ATAK ellipse 是橢圓（major/minor 半軸），circle 是特例（major==minor）。\n\n依賴：前端圓形渲染（屬 P1-10 地圖層延伸 / P2-12 範圍評估）。",
+    "closedAt": null,
+    "comments": [],
+    "createdAt": "2026-06-06T06:21:45Z",
+    "labels": [],
+    "milestone": null,
+    "number": 134,
+    "state": "OPEN",
+    "title": "P2-08 follow-up: CoT circle/ellipse 幾何 + 前端圓形管線",
+    "updatedAt": "2026-06-06T06:21:45Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/134"
   }
 ]
