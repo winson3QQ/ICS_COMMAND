@@ -53,6 +53,7 @@ _TAK_UPDATE_FIELDS = (
     "type", "time", "start", "stale", "how", "version",
     "lat", "lon", "hae", "ce", "le",
     "heading_deg", "speed_mps", "access", "callsign", "remarks", "attributes",
+    "team_color", "role", "battery",  # P2-06c：小隊欄位隨 update 刷新（battery 會變）
 )  # fmt: skip
 _CAS_MAX_RETRY = 3
 
@@ -69,6 +70,37 @@ def _opt_bounded_float(value, lo: float, hi: float) -> float | None:
     return f if lo <= f <= hi else None
 
 
+def _opt_bounded_int(value, lo: int, hi: int) -> int | None:
+    """CoT 數值字串 → int，超界或非數 → None（防 sensor garbage）。容 '78' 與 '78.0'。"""
+    if value is None or value == "":
+        return None
+    try:
+        n = int(float(value))
+    except (TypeError, ValueError):
+        return None
+    return n if lo <= n <= hi else None
+
+
+def _extract_squad(detail: dict) -> tuple[str | None, str | None, int | None]:
+    """從 CoT detail 的 <__group>/<status> 提取小隊欄位（P2-06c，#126）。
+
+    team_color ← <__group name>（strip + title 標準化大小寫，保留多字色名如 'Dark Blue'，
+    **不強限 enum** 以免丟 Orange/Teal 等真實 ATAK 色，供 P2-06d GROUP BY 一致）；
+    role ← <__group role>（原樣 strip）；battery ← <status battery>（→int 0-100，越界/非數 None）。
+    資料源 attributes 巢狀（_extract_detail 已收）；原 __group/status 仍保留在 attributes（CoT 忠實）。
+    """
+    group = detail.get("__group")
+    group = group if isinstance(group, dict) else {}
+    status = detail.get("status")
+    status = status if isinstance(status, dict) else {}
+    name = group.get("name")
+    team_color = name.strip().title() if isinstance(name, str) and name.strip() else None
+    role_val = group.get("role")
+    role = role_val.strip() if isinstance(role_val, str) and role_val.strip() else None
+    battery = _opt_bounded_int(status.get("battery"), 0, 100)
+    return team_color, role, battery
+
+
 def normalize_cot(cot_event: CoTEventIn) -> CoPEntity:
     """TAK CoT event → CoPEntity（純函式，無副作用）。
 
@@ -80,6 +112,7 @@ def normalize_cot(cot_event: CoTEventIn) -> CoPEntity:
     detail = dict(cot_event.detail or {})
     track = detail.get("track")
     track = track if isinstance(track, dict) else {}
+    team_color, role, battery = _extract_squad(detail)
     return CoPEntity(
         uid=cot_event.uid,
         type=cot_event.type,
@@ -101,6 +134,9 @@ def normalize_cot(cot_event: CoTEventIn) -> CoPEntity:
         callsign=cot_event.callsign,
         remarks=cot_event.remarks,
         severity="info",
+        team_color=team_color,
+        role=role,
+        battery=battery,
         attributes=detail,
     )
 

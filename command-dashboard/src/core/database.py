@@ -667,6 +667,27 @@ def _m014_cop_entities_audit_cols_down(conn: sqlite3.Connection) -> None:
             conn.execute(f"ALTER TABLE cop_entities DROP COLUMN {col}")  # nosec B608
 
 
+def _m015_cop_entities_squad_cols(conn: sqlite3.Connection) -> None:
+    """P2-06c（#126）：cop_entities 補小隊欄位 team_color / role / battery。
+
+    從 CoT `<__group name=.. role=..>` 與 `<status battery=..>` 提取的一等欄位
+    （對齊 callsign/remarks 先例，非 attributes JSON 鍵）。team_color 加 index 供
+    P2-06d GROUP BY 聚合。三欄 nullable：非 TAK / 無 group 的 entity = NULL，語意正確。
+    """
+    _add_column_if_missing(conn, "cop_entities", "team_color", "TEXT")
+    _add_column_if_missing(conn, "cop_entities", "role", "TEXT")
+    _add_column_if_missing(conn, "cop_entities", "battery", "INTEGER")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_cop_entities_team_color ON cop_entities(team_color)")
+
+
+def _m015_cop_entities_squad_cols_down(conn: sqlite3.Connection) -> None:
+    conn.execute("DROP INDEX IF EXISTS idx_cop_entities_team_color")
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(cop_entities)")}
+    for col in ("battery", "role", "team_color"):
+        if col in cols:
+            conn.execute(f"ALTER TABLE cop_entities DROP COLUMN {col}")  # nosec B608
+
+
 _MIGRATIONS: list[tuple[int, str, object]] = [
     (1, "events_columns", _m001_events_columns),
     (2, "decisions_columns", _m002_decisions_columns),
@@ -682,6 +703,7 @@ _MIGRATIONS: list[tuple[int, str, object]] = [
     (12, "audit_hash_prev", _m012_audit_hash_prev),
     (13, "cop_v1_schema", _m013_cop_v1_schema),
     (14, "cop_entities_audit_cols", _m014_cop_entities_audit_cols),
+    (15, "cop_entities_squad_cols", _m015_cop_entities_squad_cols),
 ]
 
 

@@ -122,3 +122,13 @@ def test_exercise_id_bound_by_server(captured_broadcasts):
     row = _ingest(_event(time="2026-06-05T04:00:00Z"))
     # test DB 無 active exercise → current_exercise_id() = None（實戰/未分場池）
     assert row["exercise_id"] is None
+
+
+# ── P2-06c（#126）：小隊欄位隨 update 刷新 ──────────────────────────────────
+
+
+def test_squad_battery_refreshed_on_update(captured_broadcasts):
+    """battery 在 _TAK_UPDATE_FIELDS → update 路徑刷新（位置更新時電量也更新）。"""
+    _ingest(_event(time="2026-06-05T04:00:00Z", detail={"status": {"battery": "78"}}))
+    row = _ingest(_event(time="2026-06-05T04:01:00Z", detail={"status": {"battery": "50"}}))
+    assert row["battery"] == 50  # update 刷新，非保留舊值 78
