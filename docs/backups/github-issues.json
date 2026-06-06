@@ -1654,5 +1654,25 @@
     "title": "P2-09 MEDEVAC 9-line 正規化（後端）",
     "updatedAt": "2026-06-06T08:35:42Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/135"
+  },
+  {
+    "assignees": [],
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "body": "## 背景（P2-09 #135 security-review pre-existing 發現）\n\n`/security-review` 於 P2-09 MEDEVAC 審查時發現的 **pre-existing**（非 P2-09 新引入）hardening 缺口:\n\nTAK ingest path（`routers/tak.py POST /api/tak/events` + `:8089` 串流 → `cop_service.ingest_cot_event` → `normalize_cot` → `insert_cop_entity`）**全程無 server-side XSS escape**。自 P2-04 起,所有 TAK 來源字串（`callsign` / `remarks` / 每個 `detail` 屬性,含 P2-09 的 `attributes.medevac.*`）都 **raw 存** `cop_entities.attributes`。\n\n對比:\n- operator-facing router 寫入（`routers/cop.py`）有 `validate_no_unsafe_strings`（`core/input_safety.py`）\n- P2-07 `chat_service.html.escape()` 只 escape chat/GeoChat 分支\n- **COP attributes(TAK path)兩者都沒走**\n\n## 現況風險評估\n- **目前無前端 HTML sink**:`attributes.medevac` 尚未被任何 `static/` 前端消費;既有 TAK attributes 走 MapLibre WebGL text layer（`entity_layer.js` 的 `label`/feature props),**非 `innerHTML`** → 目前不可觸發。\n- **風險點 = 未來 P2-12 panel**:P2-12「MEDEVAC incident card」+「通聯記錄面板」會渲染 `medevac.*` / chat。若該 panel 用 `innerHTML` 渲染 raw TAK 字串 → **stored XSS**。\n\n## 建議（與 P2-12 一起做）\n1. 在 `ingest_cot_event`（或 `normalize_cot`）persist 前對 TAK 來源字串落 server-side escape / `validate_no_unsafe_strings`,讓 TAK path 與 operator 寫入有同等防線。\n2. P2-12 panel 強制 `textContent`（ROADMAP P2-12 已列「前端 textContent 禁 innerHTML」）作為第二道防線。\n3. 兩道一起 = defense-in-depth。\n\n## 觸發時機\nP2-12 動工時（panel 渲染 `medevac.*` / chat 之前必須先落地後端 escape）。本 issue 為 P2-12 的 security 前置依賴。\n\n## 來源\nP2-09（#135）`/security-review`,信心 9（pre-existing/consistent）。",
+    "closedAt": null,
+    "comments": [],
+    "createdAt": "2026-06-06T09:13:33Z",
+    "labels": [],
+    "milestone": null,
+    "number": 136,
+    "state": "OPEN",
+    "title": "TAK ingest path 無 server-side XSS escape（P2-12 panel 連動 hardening）",
+    "updatedAt": "2026-06-06T09:13:33Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/136"
   }
 ]
