@@ -94,9 +94,11 @@ class TestOpenEndpointsByDesign:
         assert r.status_code == 401
         assert r.json().get("detail", {}).get("reason") == "no_sig"
 
-    def test_snapshot_get_is_open_by_design(self, client):
+    def test_snapshot_get_requires_auth(self, client):
+        # RT-H1（#153）：GET /api/snapshots/{type} 不再匿名可讀（孤兒豁免已移除）。
+        # 無 session → 401（走預設 READ_ROLES gate）。POST /api/snapshots 的 HMAC 豁免不受影響。
         r = client.get("/api/snapshots/shelter")
-        assert r.status_code == 200
+        assert r.status_code == 401
 
     def test_health_is_open(self, client):
         r = client.get("/api/health")

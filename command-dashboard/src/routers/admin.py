@@ -41,6 +41,7 @@ from schemas.admin import (
     PiNodeCreateIn,
     PinResetIn,
     RoleUpdateIn,
+    SuspendAllIn,
 )
 from services.realtime_hub import cop_hub  # issue #29 PR-G1b：reset 後廣播 resync
 
@@ -272,8 +273,12 @@ async def reset_exercise(request: Request):
 
 
 @router.post("/suspend-all")
-def suspend_all(request: Request):
+def suspend_all(body: SuspendAllIn, request: Request):
     sess = _check_system_admin(request)
+    # OP-1（#153）：不可逆批次停權強制確認字串（後端把關，不依賴前端 dialog 防誤點）。
+    if body.confirm != "SUSPEND_ALL":
+        raise HTTPException(422, 'confirm 必須為 "SUSPEND_ALL"（不可逆批次停權確認）')
+    # suspend_all_accounts 已排除發起者本人（防自鎖，見 account_repo）。
     count = suspend_all_accounts(sess["username"])
     return {"ok": True, "suspended_count": count}
 
@@ -281,6 +286,9 @@ def suspend_all(request: Request):
 @router.get("/audit-log")
 def audit_log(request: Request, limit: int = 100):
     _check_system_admin(request)
+    # RT-L4（#153）：服務端 clamp，呼叫端不得全控 limit。上限 1000 防 ?limit=999999 慢查詢/
+    # 記憶體壓力；下限 0 防負值（SQLite `LIMIT -1` = 無上限，負數會反成「全撈」破口）。
+    limit = max(0, min(limit, 1000))
     return get_audit_log(limit)
 
 
