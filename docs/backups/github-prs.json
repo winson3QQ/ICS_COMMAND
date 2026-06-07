@@ -2530,5 +2530,26 @@
     "title": "P2-11b CoPEntity 加 planned/simulated 欄位（source command 延 P2-13）+ 修兩個測試債",
     "updatedAt": "2026-06-06T15:02:49Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/143"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "## 摘要\nP2-11b 拆出的 source enum 變更:`cop_entities.source` CHECK 加 `'command'`(P1-03 解凍,P2-13 下行指令來源)。SQLite **CHECK 不可 ALTER** → 整表 rebuild。\n\n## rebuild 機制(踩雷後的正解)\n- `legacy_alter_table=ON` **實測無效**(SQLite 3.50 仍改寫 child FK)→ 棄用\n- 正解 `_rebuild_cop_entities`:**foreign_keys=OFF + DROP old + rename new**(避 child FK cascade 刪光 tracks/links);自含 commit/autocommit/BEGIN-COMMIT dance 繞過「PRAGMA foreign_keys 在 transaction 內無效」\n- **動態重建所有原 index**(讀 sqlite_master,含 m015 team_color)\n- `_m018` up/down 共用 `_rebuild`(V2 5 值 / V1 4 值),idempotent\n\n## Review\n- `/code-review` 抓到**真 bug**:\n  - **#1** rebuild 漏重建 `idx_cop_entities_team_color`(原手列 4 index)→ 改動態重建所有原 index(根除未來漏建)\n  - **#4** BEGIN 前出錯時 ROLLBACK 反拋遮蔽原因 → `began` 旗標\n- `/security-review`:**0 finding**(source_csv/col_csv 全 code 常數 + DB 自身 schema,migration startup-only 無外部注入)\n\n## 測試\n5 值 enum + DB CHECK 仍擋 bogus + **rebuild 安全網**(rebuild 前塞 entity+tracks+links → 驗資料完整 + cascade 仍運作)+ index 完整守護 + 常數==Literal 防漂移 + idempotent;**完整 suite 全綠**。\n\nCloses #141\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+    "closedAt": "2026-06-07T01:51:39Z",
+    "comments": [],
+    "createdAt": "2026-06-07T01:51:29Z",
+    "headRefName": "feat/issue-141-source-command-rebuild",
+    "labels": [],
+    "mergedAt": "2026-06-07T01:51:39Z",
+    "number": 144,
+    "state": "MERGED",
+    "title": "#141 cop_entities.source 加 command（table rebuild，P2-11b 補完）",
+    "updatedAt": "2026-06-07T01:51:42Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/144"
   }
 ]

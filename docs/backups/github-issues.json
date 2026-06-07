@@ -1724,15 +1724,15 @@
       "name": ""
     },
     "body": "## 背景（P2-11b #140 拆出）\n\nP2-11b 原列三變更,reality check 發現 source enum 加 `'command'` 撞 SQLite 結構性坑,拆出延此 issue（P2-13 動工前做）。\n\n## 為何需要 table rebuild\n- `cop_entities.source` 有 `CHECK(source IN ('manual','pi-node','tak','waveink'))`,SQLite **不能 ALTER CHECK** → 加 `'command'` 須整表 rebuild\n- cop_entities 被 `cop_entity_tracks`/`cop_entity_links` 以 `ON DELETE CASCADE` reference\n- `get_conn` 設 `PRAGMA foreign_keys=ON` + migration 在 init_db 大 transaction 內\n- **`DROP TABLE` parent（FK on）→ 隱式 `DELETE FROM` → 觸發 child CASCADE → tracks/links 全刪**\n- `PRAGMA foreign_keys=OFF` 在 transaction 內**無效**\n\n## 實作 SOP（rebuild 安全做法）\n用 `PRAGMA legacy_alter_table=ON`（rename 不更新 child FK reference）：\n1. `legacy_alter_table=ON`\n2. CREATE cop_entities_new（**完整 33 欄** = 現有 31 + planned/simulated；source CHECK 含 'command'）\n3. `INSERT INTO cop_entities_new (動態取 old PRAGMA table_info 欄位) SELECT 同欄 FROM cop_entities`（漏欄即報錯,不靜默丟）\n4. `ALTER TABLE cop_entities RENAME TO cop_entities_old`（legacy: child FK 仍指 cop_entities）\n5. `ALTER TABLE cop_entities_new RENAME TO cop_entities`（child FK 對上 new）\n6. `DROP TABLE cop_entities_old`（無 child 指它 → 不 cascade）\n7. 重建 4 indexes（stale/source/type/exercise）\n8. `legacy_alter_table=OFF`\n\n**必須嚴格測試守**:rebuild 前後 tracks/links 筆數/內容完整 + cascade 仍運作 + CHECK 含 command 擋 bogus + 既有 31 欄無遺漏。\n\n## 同時更新\n- schema `CoPSource` Literal 加 `\"command\"`（P1-03 解凍）\n- contract test `test_source_enum_locked_to_4_values` → 5 值\n\n## ⚠️ Security wiring 守則（P2-11b /security-review forward-looking）\nP2-13/P2-19 把 `CoPEntity` 從來源資料 populate 時,**`planned`/`simulated` 不可由 untrusted CoT 供給**（CoPEntity 是 create-path model、兩欄無 auth gating）。`simulated=True` 只能由 O/C sysadmin 注入路徑（P2-19）設定;`planned` 只能由 COMMAND_ROLES 下行指令（P2-13）設定。TAK ingest 路徑須確保兩欄維持 default False（目前 `_TAK_UPDATE_FIELDS` 已排除,normalize_cot 不設）。",
-    "closedAt": null,
+    "closedAt": "2026-06-07T01:51:40Z",
     "comments": [],
     "createdAt": "2026-06-06T15:00:48Z",
     "labels": [],
     "milestone": null,
     "number": 141,
-    "state": "OPEN",
+    "state": "CLOSED",
     "title": "TAK source 'command' enum + cop_entities table rebuild（P2-13 前置）",
-    "updatedAt": "2026-06-06T15:00:48Z",
+    "updatedAt": "2026-06-07T01:51:40Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/141"
   },
   {
