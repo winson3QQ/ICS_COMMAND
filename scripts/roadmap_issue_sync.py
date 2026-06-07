@@ -45,24 +45,52 @@ STATUS_ICON: dict[str, str] = {
 }
 
 
+# 交叉引用 context 詞（#155）：item ID 與這些詞相鄰時是「順帶提及」非本 issue 主體。
+# e.g. 「P1-12 prep」「source command 延 P2-13」—— 該 ID 不應對映成本 issue 的工作項。
+_CROSSREF_AFTER = ("prep", "前置", "前提")  # e.g. 「P1-12 prep」「P2-13 前置」
+_CROSSREF_BEFORE = ("延", "依賴", "解鎖", "取代", "替代")  # e.g. 「延 P2-13」
+
+
+def _is_crossref(text: str, start: int, end: int) -> bool:
+    """text[start:end] 的 item ID 是否為交叉引用（相鄰 context 詞）。"""
+    after = text[end:end + 10].lstrip(" :：,，)")
+    if any(after.startswith(w) for w in _CROSSREF_AFTER):
+        return True
+    before = text[max(0, start - 6):start]
+    return any(w in before for w in _CROSSREF_BEFORE)
+
+
+def _iter_item_rows(text: str):
+    """逐 item yield (item_id, cells, match)：只認**表格列**（`|` 開頭）且 item ID
+    出現在**首格**（其定義列）。跳過散文（reality-check blockquote 等）與其他 cell 的
+    交叉引用同 ID（#155）。每個 item 取第一個符合的列。"""
+    seen: set[str] = set()
+    for line in text.splitlines():
+        if not line.lstrip().startswith("|"):
+            continue
+        cells = line.split("|")
+        if len(cells) < 2:
+            continue
+        m = ITEM_RE.search(cells[1])  # cells[0] 為首 `|` 前空字串；cells[1] = 首格
+        if not m:
+            continue
+        item_id = m.group(1)
+        if item_id in seen:
+            continue
+        seen.add(item_id)
+        yield item_id, cells, m
+
+
 def parse_roadmap_items() -> dict[str, str]:
-    """從 ROADMAP.md 抽 item ID → 標題行（第一句）"""
+    """從 ROADMAP.md 抽 item ID → 標題（其定義表格列的描述格）。"""
     items: dict[str, str] = {}
     if not ROADMAP.exists():
         print(f"⚠  {ROADMAP} 不存在", file=sys.stderr)
         return items
-    text = ROADMAP.read_text(encoding="utf-8")
-    for line in text.splitlines():
-        m = ITEM_RE.search(line)
-        if not m:
-            continue
-        item_id = m.group(1)
-        if item_id in items:
-            continue  # 取第一次出現
-        # 抽該行的「標題」：移除 markdown table pipe 跟前綴
-        title = line.replace("|", "").strip()
-        title = re.sub(r"^\W+", "", title)
-        title = re.sub(r"^P[123]-\d+[a-z]?\s*[—:-]?\s*", "", title)
+    for item_id, cells, _m in _iter_item_rows(ROADMAP.read_text(encoding="utf-8")):
+        # 標題取描述格（首格是 marker+ID，描述在第二格）
+        desc = cells[2].strip() if len(cells) > 2 else ""
+        title = re.sub(r"^\W+", "", desc.replace("**", "")).strip()
         items[item_id] = title[:80] if title else "(no title)"
     return items
 
@@ -95,16 +123,9 @@ def parse_roadmap_status() -> dict[str, str]:
     statuses: dict[str, str] = {}
     if not ROADMAP.exists():
         return statuses
-    text = ROADMAP.read_text(encoding="utf-8")
-    for line in text.splitlines():
-        m = ITEM_RE.search(line)
-        if not m:
-            continue
-        item_id = m.group(1)
-        if item_id in statuses:
-            continue
-        # 看 item ID 出現前的 prefix 有沒有 marker
-        prefix = line[:m.start()]
+    for item_id, cells, m in _iter_item_rows(ROADMAP.read_text(encoding="utf-8")):
+        # marker 只看**首格** item ID 之前的字（不讀散文 / 其他 cell 的交叉引用，#155）
+        prefix = cells[1][:m.start()]
         status = "pending"
         for marker, label in STATUS_MARKERS.items():
             if marker in prefix:
@@ -145,14 +166,15 @@ def print_status_report(roadmap_items: dict[str, str],
             print(f"  {icon} {item_id:<8} {title[:48]:<48} {iss_str}")
         print()
 
-    # Drift detection
+    # Drift detection（#155：只報「真矛盾」）
     drift: list[str] = []
     for item_id in sorted(roadmap_items):
         st = statuses.get(item_id, "pending")
         iss = issue_by_id.get(item_id)
-        if st == "done" and (not iss or iss.get("state") != "CLOSED"):
-            iss_state = iss["state"] if iss else "missing"
-            drift.append(f"  - {item_id}: ROADMAP ✅ 但 issue {iss_state}")
+        # 「done 但無 issue」**不算 drift** —— 多 PR 完成 / 無單一對映 issue 是正常
+        # （per-item 行已顯示 "no issue"）；只有「done 但 issue 仍 OPEN」才是真矛盾。
+        if st == "done" and iss and iss.get("state") != "CLOSED":
+            drift.append(f"  - {item_id}: ROADMAP ✅ 但 issue {iss['state']}（未關閉）")
         elif st != "done" and iss and iss.get("state") == "CLOSED":
             drift.append(f"  - {item_id}: issue CLOSED 但 ROADMAP 未 ✅"
                          f"（PROCESS step 8.5 漏勾）")
@@ -172,12 +194,10 @@ def issue_item_ids(issue: dict) -> list[str]:
     """
     ids: list[str] = []
     seen: set[str] = set()
-    for m in ITEM_RE.finditer(issue.get("title", "")):
-        if m.group(1) not in seen:
-            ids.append(m.group(1))
-            seen.add(m.group(1))
-    for label in issue.get("labels", []):
-        for m in ITEM_RE.finditer(label.get("name", "")):
+    for text in [issue.get("title", "")] + [lbl.get("name", "") for lbl in issue.get("labels", [])]:
+        for m in ITEM_RE.finditer(text):
+            if _is_crossref(text, m.start(), m.end()):
+                continue  # 順帶提及（P1-12 prep / 延 P2-13），非本 issue 主體（#155）
             if m.group(1) not in seen:
                 ids.append(m.group(1))
                 seen.add(m.group(1))
@@ -236,7 +256,7 @@ def main() -> int:
         for item_id, title in missing:
             print(f"  - {item_id}: {title}")
             print(f"    建議：gh issue create --title \"{item_id}: {title[:50]}\" \\")
-            print(f"             --body \"見 docs/ROADMAP.md 該段落\"")
+            print('             --body "見 docs/ROADMAP.md 該段落"')
         print()
 
     if orphan_issues:
