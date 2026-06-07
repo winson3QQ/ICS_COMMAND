@@ -23,6 +23,10 @@
 const WS_SUBPROTOCOL = "ics-cop-v1";
 const RECONNECT_BASE_MS = 1000;
 const RECONNECT_MAX_MS = 30000;
+// 週期對帳間隔（#160/#161 軟 stale）。iTAK 刪除 = 停止重播（無顯式 delete CoT），entity 過
+// CoT stale + backend 移除窗口後從列表消失 → 須週期 resync 才會在前端移除（否則要手動 refresh，
+// 正是 #161 症狀）。同時每輪 emit 一次讓前端依 entity.stale 重算「過 stale → 變灰」（#160）。
+const STALE_REFRESH_MS = 20000;
 
 /**
  * @param {object} deps
@@ -55,6 +59,7 @@ export function createCopStream(deps) {
   let _ws = null;
   let _reconnectAttempt = 0;
   let _reconnectTimer = null;
+  let _refreshTimer = null;
   let _stopped = false;
   // map.js 訂閱的重繪 callback（資料任何變動都觸發；map.js 自行從 getEntitiesByKind 取資料畫）
   let _onChange = null;
@@ -259,6 +264,9 @@ export function createCopStream(deps) {
       _reconnectAttempt = 0;
       // 連上先全量 resync（version_clock merge 冪等，補上斷線期間漏掉的）
       resync();
+      // 啟動週期對帳（#160/#161）。self-rescheduling 迴圈 → _refreshTimer 在 tick 間恆非 null；
+      // 故此 guard 確保重連 onopen 不會疊第二個迴圈（stop() 會清回 null）。
+      if (_refreshTimer == null) _scheduleRefresh();
     };
     ws.onmessage = (ev) => {
       let msg;
@@ -291,11 +299,29 @@ export function createCopStream(deps) {
     }, delay);
   }
 
+  /** 週期對帳迴圈（#160/#161 軟 stale）：resync 移除 backend 已 drop 的過窗口 entity，並
+   *  每輪 emit 讓前端依 entity.stale 重算變灰。self-reschedules 直到 stop()。 */
+  function _scheduleRefresh() {
+    if (_stopped || !setTimeoutFn) return;
+    _refreshTimer = setTimeoutFn(async () => {
+      if (_stopped) return;
+      try {
+        await resync();
+      } catch {
+        /* 對帳失敗：下輪再試（WS 仍會即時補正） */
+      }
+      _emitChange(); // 即使無資料變動也重繪：過 stale 的 entity 需轉灰
+      _scheduleRefresh();
+    }, STALE_REFRESH_MS);
+  }
+
   /** 防護 6：停止（logout / page-hide）—關 WS、停重連、清快取。 */
   function stop() {
     _stopped = true;
     if (_reconnectTimer && clearTimeoutFn) clearTimeoutFn(_reconnectTimer);
     _reconnectTimer = null;
+    if (_refreshTimer && clearTimeoutFn) clearTimeoutFn(_refreshTimer);
+    _refreshTimer = null;
     if (_ws) {
       try {
         _ws.close();

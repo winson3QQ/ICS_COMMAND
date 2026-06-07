@@ -221,3 +221,33 @@ def test_tak_event_updates_own_tak_entity(captured_broadcasts):
     assert row is not None
     assert row["version_clock"] == 2
     assert (row["lat"], row["lon"]) == (25.0, 121.0)
+
+
+# ── TAK soft-stale 移除窗口（#160/#161）：外部來源 grace、manual 即時 ──────────
+
+
+def test_soft_stale_window_external_grace_manual_immediate():
+    """外部來源（tak）過 stale 在窗口內仍顯示（變灰）、過窗口移除；manual 明確刪除即時移除。"""
+    from datetime import UTC, datetime, timedelta
+
+    from core.database import get_conn
+    from repositories.cop_entity_repo import list_cop_entities
+
+    now = datetime.now(UTC)
+
+    def _t(delta_s):
+        return (now + timedelta(seconds=delta_s)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    with get_conn() as conn:
+        base = "INSERT INTO cop_entities (uid,type,time,start,stale,how,lat,lon,source) VALUES (?,?,?,?,?,?,?,?,?)"
+        # tak: stale 2 分前（窗口 5min 內）→ 保留（變灰）
+        conn.execute(base, ("tak:recent", "a-u-G", "t", "t", _t(-120), "h-g", 24.0, 120.0, "tak"))
+        # tak: stale 6 分前（過窗口）→ 移除
+        conn.execute(base, ("tak:old", "a-u-G", "t", "t", _t(-360), "h-g", 24.0, 120.0, "tak"))
+        # manual: stale 剛過（操作員明確 DELETE）→ 即時移除（無 grace）
+        conn.execute(base, ("manual:del", "b-m-p", "t", "t", _t(-1), "h-g", 24.0, 120.0, "manual"))
+
+    uids = {e["uid"] for e in list_cop_entities(exercise_id=None)}
+    assert "tak:recent" in uids       # 窗口內：保留
+    assert "tak:old" not in uids      # 過窗口：移除
+    assert "manual:del" not in uids   # manual 明確刪除：即時移除

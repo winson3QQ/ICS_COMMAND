@@ -10,8 +10,12 @@ services/geometry_service.py — CoT <shape> + DataSync GeoJSON 幾何統一解�
 """
 
 import logging
+import math
 
 log = logging.getLogger(__name__)
+
+# 圓/橢圓以 N-gon 逼近的頂點數（夠圓滑、頂點數不爆；circle major==minor → 正 N 邊形）。
+_ELLIPSE_SEGMENTS = 48
 
 
 def _localname(tag: str) -> str:
@@ -39,13 +43,52 @@ def _latlon(point: str | None, el=None) -> tuple[float, float] | None:
     return None
 
 
-def _from_shape(shape_el) -> dict | None:
+def _opt_float(value) -> float | None:
+    """字串 → float，None/非數值 → None。"""
+    try:
+        return float(value) if value is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _ellipse_to_polygon(center, major_m, minor_m, angle_deg) -> dict | None:
+    """ATAK <ellipse major minor angle> → GeoJSON Polygon 環（N-gon 逼近，#134/真機圓形）。
+    major/minor = 半長軸/半短軸（**公尺**，circle 時相等）；angle = 旋轉（度，CW）。
+    center=(lat,lon)（CoT event <point>，圓心）。平面近似（數百公尺內誤差可忽略）。
+    座標 GeoJSON lon-lat 序，首尾閉合。缺 center / 軸 ≤0 → None（退回不顯示）。"""
+    if center is None:
+        return None
+    lat, lon = center
+    if lat is None or lon is None or not major_m or not minor_m or major_m <= 0 or minor_m <= 0:
+        return None
+    phi = math.radians(angle_deg or 0.0)
+    cos_p, sin_p = math.cos(phi), math.sin(phi)
+    m_per_deg_lat = 111320.0
+    m_per_deg_lon = 111320.0 * math.cos(math.radians(lat)) or 1e-9  # 防赤道外 cos→極點 0
+    ring = []
+    for i in range(_ELLIPSE_SEGMENTS):
+        t = 2.0 * math.pi * i / _ELLIPSE_SEGMENTS
+        x = major_m * math.cos(t)   # 局部半長軸方向（公尺）
+        y = minor_m * math.sin(t)   # 局部半短軸方向
+        east = x * cos_p - y * sin_p
+        north = x * sin_p + y * cos_p
+        ring.append([lon + east / m_per_deg_lon, lat + north / m_per_deg_lat])
+    ring.append(ring[0])  # 閉合環
+    return {"type": "Polygon", "coordinates": [ring]}
+
+
+def _from_shape(shape_el, center=None) -> dict | None:
     """<shape> 子層解析。<polyline closed=..><vertex point="lat,lon"/>...> → GeoJSON。
-    circle/ellipse 前端無管線 → None + warning（P2-08 已知限制）。"""
+    <ellipse major minor angle/>（圓/橢圓，u-d-c-c）→ N-gon Polygon 逼近（#134，需 center）。"""
     for c in shape_el:
         tag = _localname(c.tag)
         if tag in ("ellipse", "circle"):
-            log.warning("[geometry] CoT shape <%s> 暫不支援（前端無圓形管線，P2-08 限制），略過", tag)
+            poly = _ellipse_to_polygon(
+                center, _opt_float(c.get("major")), _opt_float(c.get("minor")), _opt_float(c.get("angle"))
+            )
+            if poly:
+                return poly
+            log.warning("[geometry] CoT shape <%s> 缺 center/軸 → 略過（無法定圓心半徑）", tag)
             return None
         if tag == "polyline":
             coords = [
@@ -63,17 +106,18 @@ def _from_shape(shape_el) -> dict | None:
     return None
 
 
-def extract_geometry(detail_el) -> dict | None:
+def extract_geometry(detail_el, center=None) -> dict | None:
     """從 CoT <detail> element 抽幾何 → GeoJSON Geometry（LineString / Polygon），無則 None。
 
-    優先 <shape> 巢狀 polyline/polygon；否則多筆 <link point="lat,lon,hae"/>（route）。
-    circle/ellipse 不支援（_from_shape 回 None）。座標 GeoJSON lon-lat 序。
+    優先 <shape> 巢狀 polyline/polygon/ellipse；否則多筆 <link point="lat,lon,hae"/>（route）。
+    <ellipse>（圓/橢圓）需 center=(lat,lon)（event <point> 圓心）→ N-gon Polygon 逼近（#134）。
+    座標 GeoJSON lon-lat 序。
     """
     if detail_el is None:
         return None
     shape = next((c for c in detail_el if _localname(c.tag) == "shape"), None)
     if shape is not None:
-        geom = _from_shape(shape)
+        geom = _from_shape(shape, center)
         if geom:
             return geom
     # 多筆 <link point=..>（ATAK/iTAK route 或封閉繪圖）；非幾何 link（無 point 屬性）自動略過
@@ -83,11 +127,17 @@ def extract_geometry(detail_el) -> dict | None:
         if _localname(c.tag) == "link" and (ll := _latlon(c.get("point")))
     ]
     if len(coords) >= 2:
-        # #159（P2-10 真機 dogfood）：iTAK 封閉繪圖（area/Zone）以**首尾相同**的 <link>
-        # 序列送（非 <shape><polyline closed>）→ 應判 Polygon 非 route。對齊 _from_shape
-        # 的 closed 邏輯（review #132：Polygon 需 ≥3 相異頂點 → 含閉合點 ≥4 coords）。
-        if coords[0] == coords[-1] and len(coords) >= 4:
+        # 是否封閉面（→ Polygon）判斷，兩種 iTAK 真機訊號（P2-10 dogfood）：
+        #   (a) #159：封閉繪圖（freehand area）以**首尾相同**的 <link> 序列送（含閉合點 ≥4 coords）。
+        #   (b) #4（u-d-r 矩形 / 填色面）：4 角 <link> **首尾不同**（不重複首點），但帶 <fillColor>
+        #       = 有填色 = 面。靠 <fillColor> 存在判定為封閉面，補閉合點成環。route（線）無 fillColor。
+        # 兩者都要 review #132 的「Polygon 需 ≥3 相異頂點」門檻（含閉合點 ≥4 coords / ≥3 distinct）。
+        has_fill = any(_localname(c.tag) == "fillColor" for c in detail_el)
+        closed_loop = coords[0] == coords[-1] and len(coords) >= 4
+        if closed_loop:
             return {"type": "Polygon", "coordinates": [coords]}
+        if has_fill and len(coords) >= 3:
+            return {"type": "Polygon", "coordinates": [coords + [coords[0]]]}  # 補閉合點成環
         return {"type": "LineString", "coordinates": coords}
     return None
 

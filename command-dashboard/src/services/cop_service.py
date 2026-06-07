@@ -124,6 +124,32 @@ def _opt_str(d: dict, key: str) -> str | None:
     return v.strip() if isinstance(v, str) and v.strip() else None
 
 
+def _argb_int_to_hex(value) -> str | None:
+    """ATAK 顏色 = 有號 32-bit ARGB 整數字串（如 '-1'=0xFFFFFFFF 白、'2130706432'=0x7F000000）
+    → '#rrggbb'（取 RGB 去 alpha，前端用單色描邊+填色）。非整數 → None。"""
+    if value is None:
+        return None
+    try:
+        n = int(str(value).strip()) & 0xFFFFFFFF
+    except (TypeError, ValueError):
+        return None
+    return f"#{(n >> 16) & 0xFF:02x}{(n >> 8) & 0xFF:02x}{n & 0xFF:02x}"
+
+
+def _extract_color(detail: dict) -> str | None:
+    """CoT shape 顏色 → '#rrggbb'（P2-10 #5：前端 polygon/route 描邊+填色用）。ATAK 真機：
+    shape 走 <strokeColor value>（外框＝使用者選色）/ <fillColor value>（填色，含 alpha）；
+    marker 走 <color argb>。優先外框色 → marker color → 填色（取 RGB）。皆無法解析 → None
+    （前端退預設色）。_extract_detail 把這些 element 收成 {attr: val} dict child。"""
+    for tag, attr in (("strokeColor", "value"), ("color", "argb"), ("color", "value"), ("fillColor", "value")):
+        child = detail.get(tag)
+        if isinstance(child, dict):
+            hexv = _argb_int_to_hex(child.get(attr))
+            if hexv is not None:
+                return hexv
+    return None
+
+
 def _extract_medevac(detail: dict) -> dict | None:
     """從 CoT <_medevac_> element 萃取 9-line 後送請求摘要（P2-09，#135）。
 
@@ -181,6 +207,19 @@ def normalize_cot(cot_event: CoTEventIn) -> CoPEntity:
         if verts:
             detail["kind"] = "polygon" if cot_event.geometry.get("type") == "Polygon" else "route"
             detail["vertices"] = verts
+            # P2-10 #5：把 CoT strokeColor/fillColor → attributes.color，前端才不會一律退灰/藍。
+            color = _extract_color(detail)
+            if color:
+                detail["color"] = color
+            # P2-10：CoT <strokeStyle> 三種筆觸 → 前端渲染旗標（solid→實線，不設旗標）。
+            #   dashed → dash（長虛線）；dotted → dotted（小圓點）。兩者互斥。
+            style = detail.get("strokeStyle")
+            if isinstance(style, dict):
+                sv = str(style.get("value", "")).strip().lower()
+                if sv == "dashed":
+                    detail["dash"] = True
+                elif sv == "dotted":
+                    detail["dotted"] = True
     return CoPEntity(
         uid=cot_event.uid,
         type=cot_event.type,

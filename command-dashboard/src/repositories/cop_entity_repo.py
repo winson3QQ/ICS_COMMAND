@@ -14,6 +14,7 @@ import json
 import logging
 from datetime import UTC, datetime
 
+from core.config import COP_STALE_REMOVE_WINDOW_S
 from core.database import get_conn
 from schemas.cop import CoPEntity, CoPEntityLink, CoPEntityTrack
 
@@ -84,7 +85,15 @@ def list_cop_entities(
         clauses.append("exercise_id = ?")
         params.append(exercise_id)
     if not include_stale:
-        clauses.append("stale > strftime('%Y-%m-%dT%H:%M:%SZ','now')")
+        # TAK soft-stale（#160/#161）：**外部來源**（tak/pi-node/waveink）passive 重播生命週期 —
+        # 過 CoT stale 不立即移除（避免 iTAK 重播間隔 > stale 閃爍 / 無 delete 信號誤判），保留到
+        # stale + COP_STALE_REMOVE_WINDOW_S（對齊 ATAK deleteStaleAfterMillis），窗口內前端變灰。
+        # **manual/command**（指揮部自建）= 操作員明確 DELETE（stale=now）→ 即時移除（嚴格 stale>now）。
+        clauses.append(
+            "((source IN ('manual','command') AND stale > strftime('%Y-%m-%dT%H:%M:%SZ','now')) "
+            "OR (source NOT IN ('manual','command') AND stale > strftime('%Y-%m-%dT%H:%M:%SZ','now',?)))"
+        )
+        params.append(f"-{COP_STALE_REMOVE_WINDOW_S} seconds")
     sql = "SELECT * FROM cop_entities"
     if clauses:
         sql += " WHERE " + " AND ".join(clauses)
