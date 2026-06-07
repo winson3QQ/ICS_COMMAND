@@ -800,6 +800,75 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(
 .ev-popup-back:hover{text-decoration:underline;}
 /* 舊 .ev-popup-reporter 保留，避免其他地方引用報錯 */
 .ev-popup-reporter{display:none;}
+
+/* ═══ RESPONSIVE — tablet / phone ═══════════════════════════════════════ */
+
+/* 預設隱藏 panel toggle btn（桌機不顯示） */
+#panel-toggle-btn{display:none;}
+
+/* pointer:coarse = 任何觸控裝置（iPhone / iPad / Android）—— 放大觸控目標 */
+@media (pointer:coarse){
+  .map-btn{width:44px!important;height:44px!important;font-size:16px!important;}
+  .map-tab{padding:10px 14px!important;font-size:13px!important;min-height:44px;display:flex;align-items:center;}
+  .place-grp{padding:10px 14px!important;font-size:13px!important;min-height:44px;}
+  .csel-btn{min-height:44px!important;font-size:13px!important;padding:0 12px!important;}
+  #mgrs-search-btn{min-height:44px!important;min-width:44px!important;font-size:18px!important;padding:0 10px!important;}
+  #mgrs-search-input{height:44px!important;font-size:14px!important;}
+  /* 防止長按選取文字（地圖操作體驗） */
+  #map-panel{-webkit-user-select:none;user-select:none;}
+  /* 放置模式 banner 按鈕放大 */
+  #poly-draw-banner button,#route-draw-banner button,#node-place-banner button{
+    min-height:44px;padding:0 16px!important;font-size:13px!important;}
+}
+
+/* ≤900px：平板直向 + 大手機橫向 */
+@media (max-width:900px){
+  /* Zone A：精簡 header 高度 64→52px */
+  #zone-a{height:52px!important;padding:0 10px;gap:8px;}
+  #zone-b{height:calc(100vh - 52px)!important;}
+  #zone-a img[alt]{height:38px!important;width:38px!important;}
+  #status-lamp{width:28px!important;height:28px!important;font-size:10px!important;}
+  #dci{display:none!important;}
+  .za-clock{font-size:16px!important;}
+  #zone-a-top{gap:8px;}
+  #date-label{font-size:10px!important;}
+  /* 隱藏 conn 文字標籤，只留燈點 */
+  .conn-label{display:none;}
+  .h-ver{display:none;}
+  /* 右側 panel：overlay 模式，不壓縮地圖寬度 */
+  .side-panel.right{
+    position:absolute!important;
+    right:0;top:0;bottom:0;
+    z-index:50;
+    flex:none!important;
+    width:clamp(260px,75vw,340px)!important;
+    background:var(--bg);
+    border-left:1px solid var(--border);
+    box-shadow:-4px 0 20px rgba(0,0,0,.6);
+    transform:translateX(100%);
+    transition:transform .25s ease;
+  }
+  .side-panel.right.mobile-open{transform:translateX(0)!important;}
+  /* 覆蓋桌機 expanded 樣式 */
+  .side-panel.right.expanded{flex:none!important;width:clamp(260px,75vw,340px)!important;}
+  /* Panel toggle btn 顯示於地圖右下角 */
+  #panel-toggle-btn{display:flex!important;}
+  /* Settings panel 不超出 viewport */
+  #settings-panel{width:min(340px,90vw)!important;right:min(-340px,-90vw)!important;}
+  #settings-panel.show{right:0!important;}
+  /* MGRS input 不溢出 */
+  #mgrs-search-input{width:min(200px,40vw)!important;}
+}
+
+/* ≤600px：手機 */
+@media (max-width:600px){
+  .side-panel.right{width:100vw!important;}
+  .side-panel.right.expanded{width:100vw!important;}
+  #zone-a-right #idle-countdown{display:none;}
+  /* 登出按鈕縮短 */
+  #zone-a-right button[data-action="cmdLogout"]{font-size:9px!important;padding:2px 6px!important;}
+  #mgrs-search-input{width:min(140px,35vw)!important;}
+}
 </style>
 </head>
 <body>
@@ -1063,6 +1132,16 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(
         <button id="mgrs-search-btn" data-action="mgrsSearch" title="跳至座標">🔍</button>
       </div>
     </div>
+    <!-- 行動裝置：右側 panel 展開/收合（≤900px 才顯示，CSS 控制） -->
+    <button id="panel-toggle-btn" data-action="toggleMobilePanel"
+      title="事件追蹤面板"
+      aria-label="開啟事件追蹤面板"
+      style="position:absolute;right:8px;bottom:56px;z-index:20;
+             width:44px;height:44px;border-radius:50%;
+             background:rgba(13,17,23,.9);border:1px solid rgba(255,255,255,.2);
+             color:var(--text);font-size:18px;cursor:pointer;
+             align-items:center;justify-content:center;
+             box-shadow:0 2px 8px rgba(0,0,0,.5);">☰</button>
   </div>
 
   <!-- 右：事件追蹤 + 待裁示 -->
