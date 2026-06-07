@@ -199,6 +199,34 @@ log = structlog.get_logger()
 _TAKCONTROL_TYPE_PREFIX = "t-x-takp"
 
 
+class _TokenBucket:
+    """全域 ingest 速率限制（TAK-E / #151）。單一 subscribe task 內串行呼叫 take()，
+    無並發 → 不需鎖。`now` 由 caller 傳入 event-loop monotonic（asyncio `loop.time()`），
+    不依賴 wall-clock（與專案禁 Date.now 一致，可測可注入）。
+
+    rate=每秒補充 token；capacity=桶上限（容 1 秒 burst，預設 = rate）。
+    """
+
+    def __init__(self, rate_per_sec: float, capacity: float | None = None) -> None:
+        self.rate = rate_per_sec
+        self.capacity = capacity if capacity is not None else max(1.0, rate_per_sec)
+        self._tokens = self.capacity
+        self._last: float | None = None
+        self.dropped = 0  # 累計丟棄筆數（節流 warning 用）
+
+    def take(self, now: float) -> bool:
+        """消耗一個 token；無 token → False（呼叫端丟棄該事件、不中斷串流）。"""
+        if self._last is None:
+            self._last = now
+        self._tokens = min(self.capacity, self._tokens + (now - self._last) * self.rate)
+        self._last = now
+        if self._tokens >= 1.0:
+            self._tokens -= 1.0
+            return True
+        self.dropped += 1
+        return False
+
+
 def build_subscribe_config(
     *,
     cot_url: str,
@@ -265,11 +293,12 @@ def _resolve_ingest():
     return ingest_cot_event
 
 
-async def _consume_cot(raw: bytes, ingest) -> object | None:
-    """處理單筆 raw CoT bytes：parse → 濾 TakControl → ingest。
+async def _consume_cot(raw: bytes, ingest, *, limiter: "_TokenBucket | None" = None) -> object | None:
+    """處理單筆 raw CoT bytes：parse → 濾 TakControl → 速率限制 → ingest。
 
     - 解析失敗：只記 log、回 None，**不 raise**（單筆壞不該斷整條串流）。
     - `t-x-takp-v` 等控制事件：跳過，不進 ingest。
+    - limiter 超量：丟棄該筆（TAK-E #151），節流 warning，**不中斷串流**。
     - 其餘：呼叫 ingest（同步或 async 皆可），回傳其結果。
     """
     import inspect
@@ -282,6 +311,17 @@ async def _consume_cot(raw: bytes, ingest) -> object | None:
     if event.type.startswith(_TAKCONTROL_TYPE_PREFIX):
         log.debug("tak.control_event_skipped", type=event.type, uid=event.uid)
         return None
+    # TAK-E（#151）：全域速率限制。超量丟棄該筆（不中斷串流）；warning 節流（首筆 + 每 100
+    # 筆）避免 log flood。控制事件已先 return，不佔 token（只限真實 entity 寫入率）。
+    if limiter is not None:
+        import asyncio
+
+        if not limiter.take(asyncio.get_running_loop().time()):
+            if limiter.dropped == 1 or limiter.dropped % 100 == 0:
+                log.warning(
+                    "tak.ingest_rate_limited", dropped=limiter.dropped, rate=limiter.rate, uid=event.uid
+                )
+            return None
     try:
         result = ingest(event)
         if inspect.isawaitable(result):
@@ -303,14 +343,15 @@ def _build_receiver_class(pytak):
         （基底 run() 會空轉，不利重連）。
         """
 
-        def __init__(self, queue, config, reader, *, ingest, stop_event=None):
+        def __init__(self, queue, config, reader, *, ingest, stop_event=None, limiter=None):
             super().__init__(queue, config, reader)
             self._ingest = ingest
             self._stop_event = stop_event
+            self._limiter = limiter  # TAK-E（#151）：跨重連共用同一桶（subscribe 建一次）
             self.handled_count = 0  # 本次連線收到的 frame 數（subscribe 用來判連線健康）
 
         async def handle_data(self, data: bytes) -> None:  # 滿足 abstractmethod
-            await _consume_cot(data, self._ingest)
+            await _consume_cot(data, self._ingest, limiter=self._limiter)
 
         async def run(self, _=-1) -> None:
             import asyncio
@@ -333,6 +374,7 @@ async def subscribe(
     stop_event=None,
     backoff_initial: float = 1.0,
     backoff_max: float = 30.0,
+    max_events_per_sec: float | None = None,
 ) -> None:
     """長駐背景 task：mTLS 連 TAK :8089 訂閱 CoT 串流，逐筆 → ingest_cot_event。
 
@@ -356,6 +398,13 @@ async def subscribe(
 
     ingest = ingest or _resolve_ingest()
     Receiver = _build_receiver_class(pytak)
+    # TAK-E（#151）：全域速率桶建一次，跨重連共用（持續 burst 防護不因重連重置）。
+    # max_events_per_sec 預設取 config；<=0 = 關閉限速。
+    if max_events_per_sec is None:
+        from core.config import TAK_INGEST_MAX_EVENTS_PER_SEC
+
+        max_events_per_sec = TAK_INGEST_MAX_EVENTS_PER_SEC
+    limiter = _TokenBucket(max_events_per_sec) if max_events_per_sec and max_events_per_sec > 0 else None
     backoff = backoff_initial
 
     while not (stop_event and stop_event.is_set()):
@@ -371,7 +420,9 @@ async def subscribe(
             continue
 
         log.info("tak.connected", cot_url=config.get("COT_URL"))
-        receiver = Receiver(asyncio.Queue(), config, reader, ingest=ingest, stop_event=stop_event)
+        receiver = Receiver(
+            asyncio.Queue(), config, reader, ingest=ingest, stop_event=stop_event, limiter=limiter
+        )
         try:
             await receiver.run()
         except asyncio.CancelledError:
