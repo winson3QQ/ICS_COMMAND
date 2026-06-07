@@ -1814,5 +1814,25 @@
     "title": "工具 bug：status.sh / doc_sync_check.py 在 Windows 因 cp950 編碼崩潰",
     "updatedAt": "2026-06-07T04:18:53Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/148"
+  },
+  {
+    "assignees": [],
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "body": "## 事實（紅隊 2026-06-05）\n`:8089` 串流訂閱（`tak_service.subscribe` → `_consume_cot` → `ingest_cot_event`）**無流量管制**。每 uid 有 1s 精度守門（`_is_newer` 秒 floor 比較），但 **uid 數量 + 全域事件率無上限**：50 ATAK @ 1Hz = 50 DB write + 50 WS broadcast/s 持續壓。\n\n## 性質 / 急迫度\nDoS 弱面。**但 :8089 是受信任、mTLS 認證的 TAK Server** —— 要灌爆需先攻破 TAK server 或偷憑證，故偏「負載/容量」防護，非高危攻擊面。roadmap 列為「重歸屬 P2-10 / 獨立 hardening」。\n\n## 修法\n- **全域 async token bucket**（events/秒，configurable env `TAK_INGEST_MAX_EVENTS_PER_SEC`，預設 60）套 `_consume_cot`（parse + 濾 TakControl 後、ingest 前）。超量 → 丟棄該筆 + **節流** `log.warning`（避免 log flood）、**不中斷串流**。\n- limiter 經 `subscribe → receiver → _consume_cot` 注入（預設 None = 不限速，既有測試不受影響）。\n\n## 範圍決策\n**per-exercise uid count 上限 descope**：對受信任源價值低、每筆 create 多一次 COUNT query；速率桶已涵蓋「持續高率」DoS。若未來真遇 entity 爆量再開 follow-up。\n\n## DoD\n- [ ] `_TokenBucket` + `_consume_cot` limiter 注入；超量丟棄不中斷\n- [ ] config `TAK_INGEST_MAX_EVENTS_PER_SEC`\n- [ ] 測試：bucket 容量內放行 / 超量丟棄 / 不破壞串流；limiter=None 既有行為不變\n- [ ] `/code-review`（不跑 /security-review —— DoS 屬 review 排除類，但仍人工檢視）\n- [ ] threat_model §8.2 TAK-E 標 ✅ + ROADMAP 標記\n\n## 來源\nROADMAP〈紅隊審查發現待辦〉TAK-E。2026-06-07 使用者指示「把 TAK 清完」→ 唯一現可實作項（A/C 已清、D 卡 P2-12、F 卡 P1-12c/#136）。",
+    "closedAt": null,
+    "comments": [],
+    "createdAt": "2026-06-07T05:06:36Z",
+    "labels": [],
+    "milestone": null,
+    "number": 151,
+    "state": "OPEN",
+    "title": "TAK-E：:8089 CoT 串流無流量管制（多 uid 高頻 burst DoS 弱面）",
+    "updatedAt": "2026-06-07T05:06:36Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/151"
   }
 ]
