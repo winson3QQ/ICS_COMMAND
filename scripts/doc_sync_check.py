@@ -12,6 +12,12 @@ import subprocess
 import sys
 from pathlib import Path
 
+# Windows console 預設 cp950，print 中文 / ✓⚠ 符號會 UnicodeEncodeError（#148）；
+# 強制 stdout/stderr UTF-8。hasattr 守門：stdout 被重導/替換（如 pytest capture）時無 reconfigure。
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(encoding="utf-8")
+
 BASE = Path(__file__).resolve().parent.parent
 WARNINGS: list[str] = []
 
