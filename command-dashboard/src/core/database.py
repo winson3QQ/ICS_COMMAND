@@ -833,7 +833,8 @@ def _rebuild_cop_entities(conn: sqlite3.Connection, source_values: tuple[str, ..
                 role           TEXT,
                 battery        INTEGER,
                 planned        INTEGER NOT NULL DEFAULT 0,
-                simulated      INTEGER NOT NULL DEFAULT 0
+                simulated      INTEGER NOT NULL DEFAULT 0,
+                deleted        INTEGER NOT NULL DEFAULT 0
             )
         """)  # nosec B608 — source_csv 為 code 常數 tuple，非外部輸入
         conn.execute(f"INSERT INTO cop_entities_new ({col_csv}) SELECT {col_csv} FROM cop_entities")  # nosec B608
@@ -879,6 +880,23 @@ def _m018_cop_entities_source_command_down(conn: sqlite3.Connection) -> None:
     _rebuild_cop_entities(conn, _COP_SOURCES_V1)
 
 
+def _m019_cop_entities_deleted(conn: sqlite3.Connection) -> None:
+    """明確刪除墓碑（tombstone），與 stale（新鮮度）分離。
+
+    背景：how=h-*（人工放置標記/繪圖）改持久化、豁免 stale 後，原本「stale=now 當刪除」對
+    它們無效（持久 → 忽略 stale）。故需獨立的明確刪除旗標：deleted=1 在 list 預設**一律排除**，
+    不論 how/stale。TAK `t-x-d-d` 刪除命令、操作員 DELETE 都改設此旗標。INTEGER 0/1
+    NOT NULL DEFAULT 0，既有 row 自動=0（未刪），不需 backfill。
+    """
+    _add_column_if_missing(conn, "cop_entities", "deleted", "INTEGER NOT NULL DEFAULT 0")
+
+
+def _m019_cop_entities_deleted_down(conn: sqlite3.Connection) -> None:
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(cop_entities)")}
+    if "deleted" in cols:
+        conn.execute("ALTER TABLE cop_entities DROP COLUMN deleted")  # nosec B608
+
+
 _MIGRATIONS: list[tuple[int, str, object]] = [
     (1, "events_columns", _m001_events_columns),
     (2, "decisions_columns", _m002_decisions_columns),
@@ -898,6 +916,7 @@ _MIGRATIONS: list[tuple[int, str, object]] = [
     (16, "chats_table", _m016_chats_table),
     (17, "cop_entities_planned_simulated", _m017_cop_entities_planned_simulated),
     (18, "cop_entities_source_command", _m018_cop_entities_source_command),
+    (19, "cop_entities_deleted", _m019_cop_entities_deleted),
 ]
 
 

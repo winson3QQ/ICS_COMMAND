@@ -124,6 +124,32 @@ def _opt_str(d: dict, key: str) -> str | None:
     return v.strip() if isinstance(v, str) and v.strip() else None
 
 
+def _argb_int_to_hex(value) -> str | None:
+    """ATAK 顏色 = 有號 32-bit ARGB 整數字串（如 '-1'=0xFFFFFFFF 白、'2130706432'=0x7F000000）
+    → '#rrggbb'（取 RGB 去 alpha，前端用單色描邊+填色）。非整數 → None。"""
+    if value is None:
+        return None
+    try:
+        n = int(str(value).strip()) & 0xFFFFFFFF
+    except (TypeError, ValueError):
+        return None
+    return f"#{(n >> 16) & 0xFF:02x}{(n >> 8) & 0xFF:02x}{n & 0xFF:02x}"
+
+
+def _extract_color(detail: dict) -> str | None:
+    """CoT shape 顏色 → '#rrggbb'（P2-10 #5：前端 polygon/route 描邊+填色用）。ATAK 真機：
+    shape 走 <strokeColor value>（外框＝使用者選色）/ <fillColor value>（填色，含 alpha）；
+    marker 走 <color argb>。優先外框色 → marker color → 填色（取 RGB）。皆無法解析 → None
+    （前端退預設色）。_extract_detail 把這些 element 收成 {attr: val} dict child。"""
+    for tag, attr in (("strokeColor", "value"), ("color", "argb"), ("color", "value"), ("fillColor", "value")):
+        child = detail.get(tag)
+        if isinstance(child, dict):
+            hexv = _argb_int_to_hex(child.get(attr))
+            if hexv is not None:
+                return hexv
+    return None
+
+
 def _extract_medevac(detail: dict) -> dict | None:
     """從 CoT <_medevac_> element 萃取 9-line 後送請求摘要（P2-09，#135）。
 
@@ -181,6 +207,19 @@ def normalize_cot(cot_event: CoTEventIn) -> CoPEntity:
         if verts:
             detail["kind"] = "polygon" if cot_event.geometry.get("type") == "Polygon" else "route"
             detail["vertices"] = verts
+            # P2-10 #5：把 CoT strokeColor/fillColor → attributes.color，前端才不會一律退灰/藍。
+            color = _extract_color(detail)
+            if color:
+                detail["color"] = color
+            # P2-10：CoT <strokeStyle> 三種筆觸 → 前端渲染旗標（solid→實線，不設旗標）。
+            #   dashed → dash（長虛線）；dotted → dotted（小圓點）。兩者互斥。
+            style = detail.get("strokeStyle")
+            if isinstance(style, dict):
+                sv = str(style.get("value", "")).strip().lower()
+                if sv == "dashed":
+                    detail["dash"] = True
+                elif sv == "dotted":
+                    detail["dotted"] = True
     return CoPEntity(
         uid=cot_event.uid,
         type=cot_event.type,
@@ -294,6 +333,33 @@ def _record_track(entity: dict) -> None:
         log.warning("[tak] 軌跡寫入失敗（不擋同步）uid=%s：%s", entity.get("uid"), e)
 
 
+async def _handle_tak_delete(event: CoTEventIn) -> dict | None:
+    """TAK `t-x-d-d` 刪除命令 → 軟刪目標 entity（墓碑 deleted=1）+ 廣播 op=delete。
+
+    目標 uid 取自 CoT `<link uid=...>`（_extract_detail 收成 detail['link']）。
+    來源所有權守門：只准刪 source='tak' 的 entity（防偽造 t-x-d-d 刪本地 manual 標繪）。
+    目標不存在 / 無 link / 已刪 / 非 tak 來源 → None（不動作）。t-x-d-d 本身不進主表。
+    """
+    link = _dict_child(dict(event.detail or {}), "link")
+    target = link.get("uid") if isinstance(link, dict) else None
+    if not target:
+        log.info("[tak] 收到 t-x-d-d 但無 link uid，忽略")
+        return None
+    existing = cop_entity_repo.get_cop_entity(target)
+    if existing is None or existing.get("deleted"):
+        return None  # 目標未收過 / 早已刪除（重送 t-x-d-d 不重複廣播）
+    if existing.get("source") != "tak":
+        log.warning("[tak] t-x-d-d 指向非 tak 來源 entity，拒刪 uid=%s source=%s", target, existing.get("source"))
+        return None
+    res = cop_entity_repo.delete_cop_entity(target, existing["version_clock"], actor="tak")
+    if res["status"] == "ok":
+        await _broadcast_cop("delete", res["entity"])
+        log.info("[tak] t-x-d-d → 軟刪 uid=%s", target)
+        return res["entity"]
+    # conflict（別人剛改過）/ notfound（剛被刪）→ 不重試，下一筆會校正
+    return None
+
+
 async def ingest_cot_event(event: CoTEventIn) -> dict | None:
     """CoT 進 COP 的**共用消費者（接縫）**：normalize → upsert(CAS) → 廣播。
 
@@ -308,6 +374,11 @@ async def ingest_cot_event(event: CoTEventIn) -> dict | None:
     if event.type.startswith("b-t-f"):
         chat_service.ingest_chat(event)
         return None
+    # TAK 刪除命令（t-x-d-d）：不是 COP 物件，是「移除某 uid」的指令。解出 <link uid> →
+    # 軟刪該 entity（墓碑）→ 廣播 op=delete。本身不存進主表。此前誤把 t-x-d-d 當 entity 存
+    # → 刪除無作用，正是 #161 部分真因（iTAK 其實有送刪除信號，是我們沒處理）。
+    if event.type.startswith("t-x-d-d"):
+        return await _handle_tak_delete(event)
     entity = normalize_cot(event)
     existing = cop_entity_repo.get_cop_entity(entity.uid)
 

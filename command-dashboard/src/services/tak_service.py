@@ -149,7 +149,10 @@ def parse_cot_xml(raw: str | bytes) -> CoTEventIn:
     detail_el = next((c for c in root if _localname(c.tag) == "detail"), None)
 
     callsign, remarks, detail_dict = _extract_detail(detail_el)
-    geometry = geometry_service.extract_geometry(detail_el)  # P2-08：<shape>/<link> → GeoJSON
+    # 圓心（event <point>）給 <ellipse> 算圓/橢圓環（#134）；其餘幾何忽略 center。
+    _clat = _to_float(point_el.get("lat"), field="lat", default=None)
+    _clon = _to_float(point_el.get("lon"), field="lon", default=None)
+    geometry = geometry_service.extract_geometry(detail_el, center=(_clat, _clon))  # <shape>/<link> → GeoJSON
 
     a = root.attrib
     try:
@@ -164,8 +167,8 @@ def parse_cot_xml(raw: str | bytes) -> CoTEventIn:
             access=a.get("access"),
             qos=a.get("qos"),
             opex=a.get("opex"),
-            lat=_to_float(point_el.get("lat"), field="lat", default=None),
-            lon=_to_float(point_el.get("lon"), field="lon", default=None),
+            lat=_clat,
+            lon=_clon,
             hae=_to_float(point_el.get("hae"), field="hae", default=0.0),
             ce=_to_float(point_el.get("ce"), field="ce", default=9999999.0),
             le=_to_float(point_el.get("le"), field="le", default=9999999.0),

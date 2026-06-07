@@ -268,6 +268,79 @@ describe("resync", () => {
   });
 });
 
+// ── 週期對帳（#160/#161 軟 stale）──────────────────────────────────────────
+
+describe("週期 resync（軟 stale 移除 + 變灰）", () => {
+  test("onopen 啟動週期 tick：fire → 再次 resync 並 emit（修 #161 免手動 refresh）", async () => {
+    // 捕捉 WS 實例（驅動 onopen）+ 捕捉 setTimeout 回呼（手動 fire tick）。
+    let wsInstance = null;
+    const Ctor = function () {
+      this.readyState = 1;
+      wsInstance = this;
+    };
+    const timers = [];
+    const fetchCalls = [];
+    let entities = [E("u1", 1)];
+    const authFetch = vi.fn((url) => {
+      fetchCalls.push(url);
+      return _resp(200, { entities });
+    });
+    let fires = 0;
+    const stream = createCopStream({
+      getToken: () => "tok",
+      authFetch,
+      canWrite: () => true,
+      WebSocketCtor: Ctor,
+      setTimeoutFn: (cb) => {
+        timers.push(cb);
+        return timers.length;
+      },
+      clearTimeoutFn: () => {},
+    });
+    stream.onChange(() => {
+      fires += 1;
+    });
+    stream.connect();
+    wsInstance.onopen(); // 觸發首次 resync + 啟動週期 tick
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(stream._byUid.has("u1")).toBe(true); // 首次 resync 帶入
+    const getsAfterOpen = fetchCalls.length;
+    expect(timers.length).toBe(1); // 週期 tick 已排程
+
+    // 模擬 iTAK 刪除：server 列表移除 u1 → fire tick → 前端應對帳移除（不需手動 refresh）
+    entities = [];
+    const firesBefore = fires;
+    await timers[timers.length - 1](); // fire 週期 tick（async）
+    expect(fetchCalls.length).toBeGreaterThan(getsAfterOpen); // tick 內又 resync 一次
+    expect(stream._byUid.has("u1")).toBe(false); // 過窗口移除
+    expect(fires).toBeGreaterThan(firesBefore); // emit 觸發重繪（含變灰重算）
+    expect(timers.length).toBe(2); // self-reschedule 下一輪
+  });
+
+  test("stop() 清掉週期 timer（防 logout 後殘留 tick）", () => {
+    let wsInstance = null;
+    const Ctor = function () {
+      this.readyState = 1;
+      this.close = () => {};
+      wsInstance = this;
+    };
+    const cleared = [];
+    const stream = createCopStream({
+      getToken: () => "tok",
+      authFetch: () => _resp(200, { entities: [] }),
+      canWrite: () => true,
+      WebSocketCtor: Ctor,
+      setTimeoutFn: () => 42,
+      clearTimeoutFn: (id) => cleared.push(id),
+    });
+    stream.connect();
+    wsInstance.onopen();
+    stream.stop();
+    expect(cleared).toContain(42); // refresh timer 被清
+  });
+});
+
 // ── 渲染委派 seam（PR-G1：map.js 接管渲染）─────────────────────────────────
 
 describe("render delegation seam", () => {

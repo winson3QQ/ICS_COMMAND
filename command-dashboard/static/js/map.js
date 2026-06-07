@@ -605,6 +605,25 @@ export function refreshLeafletMarkers() {
  * milsymbol 未載（window.ms 不在）→ bake resolve(false)、icon-image 找不到 → 該 feature
  * 不顯示（fallback：無框，不致報錯）。
  */
+/**
+ * entity 是否已過 CoT stale（#160/#161 軟 stale）。entity.stale 為 ISO 字串；過期 → 前端
+ * 變灰（dim）而非立即移除（移除由 backend soft-stale 窗口 + 週期 resync 處理）。對齊 TAK：
+ * 過 stale 先灰、窗口外才消失。stale 缺漏 / 不可解析 → 視為未過期（不誤灰）。
+ */
+function _isStale(e) {
+  if (!e || !e.stale) return false;
+  const t = Date.parse(e.stale);
+  return Number.isFinite(t) && t <= Date.now();
+}
+
+/**
+ * 是否「活追蹤」單位（CoT how 以 'm' 開頭＝機器/GPS 持續回報）。只有活追蹤才該因 stale 變灰
+ * （存活警示）；how='h-*'（人工放置標記）是靜態標註、無心跳，不該變灰（#160 後續）。
+ */
+function _isLiveTracked(e) {
+  return !!(e && typeof e.how === 'string' && e.how.startsWith('m'));
+}
+
 let _takRenderSeq = 0;
 function _renderTakUnits() {
   if (!_takLayer) return;
@@ -628,6 +647,8 @@ function _renderTakUnits() {
         iconId: 'mil-' + sidc,
         affiliation: affiliationFromCot(e.type),  // 預留 hover/filter（icon 色已由 SIDC 內建）
         label: e.callsign || e.uid,
+        // 只有活追蹤（how=m-*）過 stale 才變灰（存活警示）；人工放置標記（how=h-*）靜態、不變灰。
+        stale: _isStale(e) && _isLiveTracked(e),
       },
     });
   }
@@ -1128,6 +1149,15 @@ function _ensureEntityLayers() {
           'icon-allow-overlap': true,
           'icon-ignore-placement': true,
         },
+        paint: {
+          // #160/#161 軟 stale：過 CoT stale → 變灰（0.4），仍在窗口內（未移除）。對齊 zones
+          // 層 stale 視覺。窗口外由 backend + 週期 resync 真正移除。
+          'icon-opacity': [
+            'case',
+            ['==', ['coalesce', ['get', 'stale'], false], true], 0.4,
+            1,
+          ],
+        },
       },
     ],
   });
@@ -1147,7 +1177,11 @@ function _ensureEntityLayers() {
       },
       {
         id: 'polygons-stroke-solid', type: 'line',
-        filter: ['!', ['coalesce', ['get', 'dash'], false]],
+        // solid = 非 dash 且非 dotted（TAK 三種筆觸的預設）
+        filter: ['all',
+          ['!', ['coalesce', ['get', 'dash'], false]],
+          ['!', ['coalesce', ['get', 'dotted'], false]],
+        ],
         // P1-10e：hover 時 outline 加粗（2→3.5）
         paint: {
           'line-color': ['get', 'color'],
@@ -1161,6 +1195,17 @@ function _ensureEntityLayers() {
           'line-color': ['get', 'color'],
           'line-width': ['case', ['boolean', ['feature-state', 'hover'], false], 3.5, 2],
           'line-dasharray': [2, 1.5],
+        },
+      },
+      {
+        // P2-10：dotted 筆觸（TAK 小圓點）。line-cap:round + [0,n] dasharray → 圓點。
+        id: 'polygons-stroke-dotted', type: 'line',
+        filter: ['==', ['coalesce', ['get', 'dotted'], false], true],
+        layout: { 'line-cap': 'round' },
+        paint: {
+          'line-color': ['get', 'color'],
+          'line-width': ['case', ['boolean', ['feature-state', 'hover'], false], 4, 2.5],
+          'line-dasharray': [0, 2],
         },
       },
       {
@@ -1256,7 +1301,11 @@ function _ensureEntityLayers() {
     layers: [
       {
         id: 'routes-line-solid', type: 'line',
-        filter: ['!', ['coalesce', ['get', 'dash'], false]],
+        // solid = 非 dash 且非 dotted
+        filter: ['all',
+          ['!', ['coalesce', ['get', 'dash'], false]],
+          ['!', ['coalesce', ['get', 'dotted'], false]],
+        ],
         // P1-10e：hover 時加粗（2→3）。route 線細（base 2），讓箭頭相對更顯眼。
         paint: {
           'line-color': ['get', 'color'],
@@ -1272,6 +1321,18 @@ function _ensureEntityLayers() {
           'line-width': ['case', ['boolean', ['feature-state', 'hover'], false], 4.5, 3],
           'line-opacity': 0.9,
           'line-dasharray': [2, 1.5],
+        },
+      },
+      {
+        // P2-10：dotted 筆觸（TAK 小圓點）。line-cap:round + [0,n] dasharray → 圓點。
+        id: 'routes-line-dotted', type: 'line',
+        filter: ['==', ['coalesce', ['get', 'dotted'], false], true],
+        layout: { 'line-cap': 'round' },
+        paint: {
+          'line-color': ['get', 'color'],
+          'line-width': ['case', ['boolean', ['feature-state', 'hover'], false], 4.5, 3],
+          'line-opacity': 0.9,
+          'line-dasharray': [0, 2],
         },
       },
       {
@@ -1556,6 +1617,7 @@ function _ensureEntityLayers() {
   map.on('click', 'infra-circle', (e) => _onInfraClick(e));
   map.on('click', 'routes-line-solid', (e) => _onRouteClick(e));
   map.on('click', 'routes-line-dash', (e) => _onRouteClick(e));
+  map.on('click', 'routes-line-dotted', (e) => _onRouteClick(e));
   map.on('click', 'zones-base', (e) => _onZoneClick(e));
   map.on('click', 'zones-abbr', (e) => _onZoneClick(e));  // abbr 字也可點，跟 base 同 handler
 
@@ -1563,7 +1625,7 @@ function _ensureEntityLayers() {
   // （已 _setSelection），此 general handler 後觸發；queryRenderedFeatures 有命中就不清。
   map.on('click', (e) => {
     const hit = map.queryRenderedFeatures(e.point, {
-      layers: ['polygons-fill', 'routes-line-solid', 'routes-line-dash'],
+      layers: ['polygons-fill', 'routes-line-solid', 'routes-line-dash', 'routes-line-dotted'],
     });
     if (!hit.length) _clearSelection();
   });
@@ -1575,7 +1637,7 @@ function _ensureEntityLayers() {
   const _resetHoverCursor = () => { map.getCanvas().style.cursor = ''; };  // '' = 回 MapLibre 自己管
   [
     'polygons-fill', 'infra-circle',
-    'routes-line-solid', 'routes-line-dash',
+    'routes-line-solid', 'routes-line-dash', 'routes-line-dotted',
     'zones-base', 'zones-abbr',
   ].forEach((id) => {
     map.on('mouseenter', id, () => { _hoverCount += 1; _setHoverCursor(); });
@@ -1608,6 +1670,7 @@ function _ensureEntityLayers() {
     ['polygons-fill', 'polygons'],
     ['routes-line-solid', 'routes'],
     ['routes-line-dash', 'routes'],
+    ['routes-line-dotted', 'routes'],
   ].forEach(([layerId, source]) => {
     map.on('mousemove', layerId, (e) => {
       if (e.features && e.features.length) _hoverOn(source, e.features[0].id);
@@ -1865,15 +1928,39 @@ function _reapplySelection() {
   if (map && _selectedObj) map.setFeatureState(_selectedObj, { selected: true });
 }
 
+/**
+ * 外部來源（TAK / pi-node / waveink）= 非指揮部自建 → 唯讀，不給刪除/編輯。
+ * 對齊 backend _require_editable_source（只 manual/command 可改；外部來源 PUT/DELETE 一律擋）。
+ * 前端據此：點 TAK 圖形只顯示唯讀資訊，不出現刪除對話框（否則按了也被 server 拒、誤導操作員）。
+ */
+function _isReadonlySource(entity) {
+  const s = entity?.source;
+  return !!s && s !== 'manual' && s !== 'command';
+}
+
+/** 外部來源圖形的唯讀資訊 modal（無刪除鈕）。 */
+function _readonlyShapeModal(title, desc, entity) {
+  const src = _escapeHtml(String(entity?.source || '外部'));
+  const who = entity?.callsign ? `　·　${_escapeHtml(String(entity.callsign))}` : '';
+  _deps.openModal?.(title,
+    `<div style="font-size:12px;line-height:1.7;color:var(--text2);">${_escapeHtml(desc)}</div>`
+    + `<div style="font-size:11px;color:var(--text3);margin-top:6px;">來源 ${src}${who}　·　唯讀（TAK 同步圖形）</div>`);
+}
+
 function _onPolygonClick(e) {
   if (!canAccessMapObjects()) return;
   const id = e.features?.[0]?.properties?.id;
   // PR-G1a：polygon 已 cutover 進 cop_entities，從 cop_stream 回查（id = entity uid）。
-  const poly = copEntityToPolygon(_copStream?.getEntity(id));
+  const ent = _copStream?.getEntity(id);
+  const poly = copEntityToPolygon(ent);
   if (!poly) return;
   _setSelection('polygons', id);  // P1-10e
   const typeLabel = POLY_TYPES[poly.poly_type]?.label || poly.poly_type;
   const desc = `${typeLabel}　${poly.latlngs.length} 個頂點`;
+  if (_isReadonlySource(ent)) {  // TAK 來源 → 唯讀，不給刪除（對齊 backend）
+    _readonlyShapeModal(`▱ ${poly.label || '範圍'}`, desc, ent);
+    return;
+  }
   _deps.openModal?.(`▱ ${poly.label || '範圍'}`,
     _featureInfo(desc, 'deletePolygon', poly.id,
       poly.label_anchor ? { resetAnchorAction: 'resetPolyLabelAnchor' } : {}));
@@ -1901,11 +1988,16 @@ function _onRouteClick(e) {
   if (!canAccessMapObjects()) return;
   const id = e.features?.[0]?.properties?.id;
   // PR-G1a：route 已 cutover 進 cop_entities，從 cop_stream 回查（id = entity uid）。
-  const route = copEntityToRoute(_copStream?.getEntity(id));
+  const ent = _copStream?.getEntity(id);
+  const route = copEntityToRoute(ent);
   if (!route) return;
   _setSelection('routes', id);  // P1-10e
   const typeLabel = ROUTE_TYPES[route.route_type]?.label || route.route_type;
   const desc = `${typeLabel}　${route.latlngs.length} 個節點`;
+  if (_isReadonlySource(ent)) {  // TAK 來源 → 唯讀，不給刪除（對齊 backend）
+    _readonlyShapeModal(`↗ ${route.label || '路線'}`, desc, ent);
+    return;
+  }
   _deps.openModal?.(`↗ ${route.label || '路線'}`,
     _featureInfo(desc, 'deleteRoute', route.id,
       route.label_anchor ? { resetAnchorAction: 'resetRouteLabelAnchor' } : {}));

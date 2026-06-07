@@ -521,6 +521,7 @@ export function polygonToFeature(poly) {
       color: poly.color ?? '#888888',
       label: poly.label ?? '',
       dash: !!poly.dash,
+      dotted: !!poly.dotted,   // P2-10：dotted 筆觸（小圓點）
     },
   };
 }
@@ -588,6 +589,7 @@ export function routeToFeature(route) {
       color: route.color ?? '#58a6ff',
       label: route.label ?? '',
       dash: !!route.dash,
+      dotted: !!route.dotted,   // P2-10：dotted 筆觸（小圓點）
     },
   };
 }
@@ -621,6 +623,7 @@ function _copEntityToMapObject(entity, typeField, defaultColor) {
     [typeField]: attrs[typeField] ?? null,
     label: entity.callsign ?? '',
     dash: !!attrs.dash,
+    dotted: !!attrs.dotted,   // P2-10：TAK dotted 筆觸（小圓點），與 dash 互斥
     label_anchor: Array.isArray(attrs.label_anchor) ? attrs.label_anchor : undefined,
   };
 }

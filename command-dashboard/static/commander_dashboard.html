@@ -16,7 +16,10 @@
 ::-webkit-scrollbar-track{background:transparent;}
 ::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
 ::-webkit-scrollbar-thumb:hover{background:var(--text3);}
-html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(--text);font-family:var(--mono),-apple-system,sans-serif;}
+/* overscroll-behavior:none + body position:fixed：鎖住整頁，禁止 iOS Safari 把 HEAD 隨 URL bar 一起捲走。
+   真正解是下方 #zone-b 用 100dvh（內容剛好等於可視高度，無溢出可捲）；body 固定為雙保險（#165 iPad 修正）。 */
+html,body{width:100%;height:100%;overflow:hidden;overscroll-behavior:none;background:var(--bg);color:var(--text);font-family:var(--mono),-apple-system,sans-serif;}
+body{position:fixed;inset:0;}
 
 /* ═══ ZONE A ═══ */
 #zone-a{
@@ -57,7 +60,8 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(
 /* ═══ ZONE B ═══ */
 #zone-b{
   /* P1-11: zone-c (52px) 已刪，把那 52px 收回給 zone-b */
-  display:flex;height:calc(100vh - 64px);overflow:hidden;
+  /* 100dvh（dynamic viewport）：iOS Safari URL bar 收合時高度跟著變，內容永遠塞滿可視區、HEAD 不被擠出（#165 iPad 修正）。 */
+  display:flex;height:calc(100dvh - 64px);overflow:hidden;
 }
 
 /* 側欄面板 */
@@ -824,11 +828,13 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(
     min-height:44px;padding:0 16px!important;font-size:13px!important;}
 }
 
-/* ≤900px：平板直向 + 大手機橫向 */
-@media (max-width:900px){
+/* ≤1100px：平板直向（含 iPad Pro 12.9" 直向 1024px）+ 大手機橫向。
+   原 900px 漏掉 iPad Pro 12.9 直向（1024px）→ 漢堡鈕/overlay panel 不出現（#165 iPad 修正）。
+   1100 落在「平板直向 1024」與「平板橫向 1180+」之間，橫向仍走桌機雙欄。 */
+@media (max-width:1100px){
   /* Zone A：精簡 header 高度 64→52px */
   #zone-a{height:52px!important;padding:0 10px;gap:8px;}
-  #zone-b{height:calc(100vh - 52px)!important;}
+  #zone-b{height:calc(100dvh - 52px)!important;}
   #zone-a img[alt]{height:38px!important;width:38px!important;}
   #status-lamp{width:28px!important;height:28px!important;font-size:10px!important;}
   #dci{display:none!important;}
@@ -1135,7 +1141,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(
         <button id="mgrs-search-btn" data-action="mgrsSearch" title="跳至座標">🔍</button>
       </div>
     </div>
-    <!-- 行動裝置：右側 panel 展開/收合（≤900px 才顯示，CSS 控制） -->
+    <!-- 行動裝置：右側 panel 展開/收合（≤1100px 才顯示，CSS 控制；地圖右下角圓鈕） -->
     <button id="panel-toggle-btn" data-action="toggleMobilePanel"
       title="事件追蹤面板"
       aria-label="開啟事件追蹤面板"
