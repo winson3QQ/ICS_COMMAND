@@ -1784,15 +1784,15 @@
       "name": ""
     },
     "body": "## 來源\n[#145](https://github.com/winson3QQ/ICS_COMMAND/issues/145)（TAK-B 來源所有權守門）PR 的 `/code-review` 衍生發現。\n\n## 事實\nTAK-B（#145）擋住「TAK CoT → 覆寫本地 entity」**單一方向**。**反向未擋**：\n\n`PUT /api/cop/entities/{uid}`（`routers/cop.py`）只在 `_PUT_FORBIDDEN_FIELDS` 擋住竄改 `source` **欄位本身**，但**不檢查「呼叫者只能改自己來源的物件」**。\n\n→ 已登入 operator（`WRITE_ROLES`，非 commander 級）只要知道某 `source='tak'` entity 的 uid + 當前 `version_clock`（GET 可取），即可 PUT 覆寫該 TAK 單位的 type/lat/lon/callsign/heading 等。`source` 仍維持 `'tak'` → 廣播給所有訂閱者時看起來像真 TAK 資料。**完整性風險（內部威脅 / Tampering）。**\n\n## 需設計（非單純照抄 #145）\n反向修法要先定**哪些 source 是儀表板可經 PUT 編輯的**：\n- 可編輯：`manual`、`command`（P2-11b 新增，指揮部自建）\n- 不可編輯：`tak`、`pi-node`、`waveink`（外部來源鏡像，唯讀）\n\n修法方向：PUT handler 取 `existing` 後，若 `existing.source` 不在可編輯白名單 → 403。需確認無合法流程會 PUT tak/pi-node/waveink entity（cop_stream 是 WS 讀，TAK 更新走 ingest 非 PUT）。\n\n## DoD\n- [ ] PUT（及 DELETE 若同樣缺口）來源所有權白名單檢查\n- [ ] 負向測試：operator PUT tak entity → 403\n- [ ] threat_model §8.2 更新（補反向缺口已修）\n- [ ] `/code-review` + `/security-review`\n\n## 分級\nMEDIUM（需已認證 WRITE_ROLES 內部操作者 + 知道 uid/version；非外部匿名）。",
-    "closedAt": null,
+    "closedAt": "2026-06-07T04:59:02Z",
     "comments": [],
     "createdAt": "2026-06-07T03:30:52Z",
     "labels": [],
     "milestone": null,
     "number": 146,
-    "state": "OPEN",
+    "state": "CLOSED",
     "title": "TAK-B-rev：operator PUT 可覆寫 tak 來源 entity（反向所有權缺口）",
-    "updatedAt": "2026-06-07T03:30:52Z",
+    "updatedAt": "2026-06-07T04:59:02Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/146"
   },
   {

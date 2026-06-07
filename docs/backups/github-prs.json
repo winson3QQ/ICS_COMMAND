@@ -2608,5 +2608,26 @@
     "title": "fix(tooling): scripts 強制 UTF-8 輸出 — 修 Windows cp950 崩潰（#148）",
     "updatedAt": "2026-06-07T04:18:55Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/149"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "## ROADMAP item\n- Closes #146\n- 紅隊 TAK-B 反向缺口（#145 PR code-review 衍生）\n\n## What changed\n補 TAK-B 反向：operator 經 `PUT`/`DELETE /api/cop/entities` 可竄改/刪除真實 tak 單位位置。加**來源所有權 + 情境守門**（server 權威）：`manual`/`command` 永遠可編輯；`tak`/pi-node/waveink **僅演習(TTX)可編輯、實戰鎖死**。並順手關注入後門：POST /api/tak/* 收緊 COMMAND_ROLES。\n\n## DoD checklist\n- [x] Tests added（cop_router 4 + tak_events 1）\n- [x] `pytest` green（379 passed 廣域回歸、pyflakes clean）\n- [x] threat_model §8.2 + ROADMAP 更新\n- [x] `/code-review`（注入後門已關）+ `/security-review`（0 finding）\n\n## §8 Human Verification Script\n\n```bash\ncd command-dashboard\n# Step 1: 實戰（無 active exercise）擋 tak PUT/DELETE\npython -m pytest tests/integration/test_cop_router.py -k 'tak_blocked_in_realops' -v\n# 預期：PASS（PUT/DELETE tak 來源 → 403，位置不被改）\n\n# Step 2: 演習(TTX)模式放行 tak 編輯 + manual 對照\npython -m pytest tests/integration/test_cop_router.py -k 'tak_allowed_in_ttx or manual_allowed_in_realops' -v\n# 預期：PASS（TTX 下 tak 可改；manual 任何模式可改）\n\n# Step 3: 注入後門關閉 — operator 不可 POST /api/tak/events\npython -m pytest tests/integration/test_tak_events.py -k 'operator_cannot_post' -v\n# 預期：PASS（operator → 403，未落 cop_entities）\n\n# Step 4: 廣域回歸\npython -m pytest tests/ -k 'rbac or role or tak or cop or exercise' -q\n# 預期：全綠\n```\n\n## Out of scope / known limitations\n- 守門**不能加在 ingest 路徑**（:8089 串流實戰本就該寫 tak entity，加了會擋死真實資料流）。\n- 機器對機器認證（HMAC inbound）仍為 **TAK-A**，延後不變 —— 本 PR 只把 REST 端點注入面從 operator 收到指揮層。\n- 規則為**模式級**（active exercise type），非 entity 級綁定；演習中所有 tak 可編輯（對齊使用者決策）。\n\n## Notes for reviewer\n- 守門點：`_require_editable_source`（cop.py），PUT 前 fetch existing、DELETE 複用既有 _ent。\n- 情境（演習/實戰）= server 的 active exercise `type`（immutable、COMMAND_ROLES 才能建）→ client 無法偽造。\n- role_enum `/api/tak/` 改動為**嚴格收緊**（WRITE_ROLES⊋COMMAND_ROLES），不影響其他路徑。",
+    "closedAt": "2026-06-07T04:59:01Z",
+    "comments": [],
+    "createdAt": "2026-06-07T04:58:50Z",
+    "headRefName": "fix/issue-146-tak-b-rev-source-edit-gate",
+    "labels": [],
+    "mergedAt": "2026-06-07T04:59:01Z",
+    "number": 150,
+    "state": "MERGED",
+    "title": "fix(cop): TAK-B-rev 來源所有權+情境守門 — 實戰鎖死外部來源編輯（#146）",
+    "updatedAt": "2026-06-07T04:59:03Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/150"
   }
 ]
