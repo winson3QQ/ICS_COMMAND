@@ -1844,15 +1844,15 @@
       "name": ""
     },
     "body": "紅隊現役發現 + 操作安全的無依賴 hardening，獨立 PR（不夾帶 feature，PROCESS 陷阱 #3）。\n\n## RT-H1：`GET /api/snapshots/{type}` 匿名可讀\n`auth/middleware.py:46` 豁免該 GET，handler 無 auth、全 repo 查無呼叫者（dashboard 走 service 層）。\n**修**：移除該 GET 豁免行 → 走預設 READ_ROLES。⚠️保住同檔 `POST /api/snapshots` 的 HMAC 豁免（Pi push 命脈）。翻 `test_snapshot_get_is_open_by_design`。\n\n## RT-L4：`audit-log?limit=` 無服務端上限\n`routers/admin.py:282` `limit` 全由呼叫端控。\n**修**：`limit = min(limit, 1000)` clamp + 負向測試。\n\n## OP-1：`suspend_all_accounts` 不排除發起者 → 自鎖\n`account_repo.py:168` SQL `WHERE status='active'` 無排除本人；一觸發零 active 帳號、需主機 shell 救。\n**修**：SQL 加 `AND username != :operator`；端點強制 body `confirm:\"SUSPEND_ALL\"`（422）；測「sysadmin 不被自鎖」。\n\n## OP-5：標 ✅ 已緩解（不動 code）\nreality check：預設 PIN 1234 風險**已被 first-run gate + 隨機 PIN 消解** —— production 用 `ensure_initial_admin_token`（隨機 PIN）、`first_run_gate_middleware` 對 `is_default_pin=1` 帳號擋全部 /api/*（423）強制改 PIN。`ensure_default_admin` 為**測試 fixture 命脈**（production 零 caller），刪除會打掉全套測試登入、零 production 效益 → 保留，OP-5 標已緩解。\n\n## DoD\n- [ ] RT-H1/L4/OP-1 三項程式 + 測試；`/code-review` + `/security-review`\n- [ ] ROADMAP RT-H1/L4 + OP-1/OP-5 標記\n- [ ] pytest green\n\n## 來源\nROADMAP〈紅隊審查發現待辦〉現役表 + 〈使用者操作安全風險〉。2026-06-07 使用者指示處理。",
-    "closedAt": null,
+    "closedAt": "2026-06-07T05:39:17Z",
     "comments": [],
     "createdAt": "2026-06-07T05:25:00Z",
     "labels": [],
     "milestone": null,
     "number": 153,
-    "state": "OPEN",
+    "state": "CLOSED",
     "title": "安全 hardening batch：RT-H1 + RT-L4 + OP-1（OP-5 標已緩解）",
-    "updatedAt": "2026-06-07T05:25:00Z",
+    "updatedAt": "2026-06-07T05:39:17Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/153"
   }
 ]

@@ -2650,5 +2650,26 @@
     "title": "fix(tak): TAK-E :8089 ingest 速率限制（全域 token bucket，#151）",
     "updatedAt": "2026-06-07T05:15:36Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/152"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "## ROADMAP item\n- Closes #153\n- 紅隊現役表 RT-H1/RT-L4 + 操作安全 OP-1/OP-5（無依賴 hardening，獨立 PR）\n\n## What changed\n| 項 | 修法 |\n|---|---|\n| **RT-H1** | 移除 `GET /api/snapshots/{type}` 匿名豁免 → READ_ROLES（保 POST HMAC）|\n| **RT-L4** | `audit_log` `limit=max(0,min(limit,1000))`（含負值 LIMIT -1 全撈破口）|\n| **OP-1** | `suspend_all_accounts` 排除發起者 + 端點強制 `confirm:\"SUSPEND_ALL\"` |\n| **OP-5** | reality check 標 ✅ 已緩解（first-run gate + 隨機 PIN）—— 不動 code |\n\n## DoD checklist\n- [x] RT-H1/L4/OP-1 程式 + 測試\n- [x] `pytest` green（152 admin/auth/snapshot/account/rbac 廣域）、pyflakes clean、doc_sync ✓\n- [x] `/code-review`（0 finding，RT-H1 完整性驗證）+ `/security-review`（0 finding）\n- [x] ROADMAP RT-H1/L4 + OP-1/OP-5 標記\n\n## §8 Human Verification Script\n\n```bash\ncd command-dashboard\n# Step 1: RT-H1 — GET snapshots 不再匿名可讀\npython -m pytest tests/security/test_auth_bypass.py -k snapshot -v\n# 預期：test_snapshot_get_requires_auth PASS（無 session → 401）\n\n# Step 2: RT-L4 + OP-1\npython -m pytest tests/security/test_admin_gate.py -k 'AuditLogLimit or SuspendAll' -v\n# 預期：超大/負 limit clamp、confirm 強制、sysadmin 不被自鎖，全 PASS\n\n# Step 3: 廣域回歸（含 RBAC、HMAC POST snapshots 未連坐）\npython -m pytest tests/ -k 'admin or auth or snapshot or account or rbac' -q\n# 預期：全綠\n```\n\n## Out of scope / known limitations\n- **OP-5 不動 code**：風險已被 first-run gate + 隨機 PIN 消解；`ensure_default_admin` 為測試 fixture 命脈（production 零 caller），刪除零效益。\n- **RT-M1**（直連 :8000 XFF 偽造）= 部署設定（systemd `--host`/防火牆），非 app code，留上線前 checklist。\n- **RT-M3**（input_safety 引號）= 卡 P2-07/P2-12（sink 改 textContent）。\n- RT-C1/H2/L3 休眠 Node 層（Wave 7+）；M2/M4/L1/L2 非 bug/刻意/已緩解。\n\n## Notes for reviewer\n- RT-H1 完整性：`AUTH_EXEMPT_EXACT`/`PREFIXES` 不含 snapshots → 無其他匿名路徑。\n- OP-1 authz 順序：`/api/admin/*` 中央 gate SYSADMIN_ONLY 先擋 → 非 sysadmin 在 body 驗證前已 403。\n- RT-L4 順手修原規劃漏洞（只寫 min 會漏負值）。",
+    "closedAt": "2026-06-07T05:39:16Z",
+    "comments": [],
+    "createdAt": "2026-06-07T05:39:07Z",
+    "headRefName": "fix/issue-153-hardening-rt-h1-l4-op1",
+    "labels": [],
+    "mergedAt": "2026-06-07T05:39:16Z",
+    "number": 154,
+    "state": "MERGED",
+    "title": "fix(security): 紅隊 hardening batch — RT-H1/RT-L4/OP-1（OP-5 已緩解，#153）",
+    "updatedAt": "2026-06-07T05:39:18Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/154"
   }
 ]
