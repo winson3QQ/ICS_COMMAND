@@ -2629,5 +2629,26 @@
     "title": "fix(cop): TAK-B-rev 來源所有權+情境守門 — 實戰鎖死外部來源編輯（#146）",
     "updatedAt": "2026-06-07T04:59:03Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/150"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "## ROADMAP item\n- Closes #151\n- 紅隊 TAK-E（最後一個可實作的 TAK 紅隊項）\n\n## What changed\n:8089 CoT 串流加**全域 token bucket** 速率限制：多 uid 高頻 burst 超量時丟棄該筆 + 節流 warning、**不中斷串流**。config `TAK_INGEST_MAX_EVENTS_PER_SEC`（預設 60）。\n\n## DoD checklist\n- [x] `_TokenBucket` + `_consume_cot` limiter 注入（超量丟棄不中斷）\n- [x] config knob（`<=0` 關閉）\n- [x] 測試（容量/補充、超量丟棄、控制事件不佔 token、limiter=None 向後相容）\n- [x] `pytest` green（265 tak/cop 廣域）、pyflakes clean、doc_sync ✓\n- [x] `/code-review`（桶數學無誤、跨重連持久、向後相容）\n- [x] threat_model §8.2 + ROADMAP TAK-E ✅\n\n## §8 Human Verification Script\n\n```bash\ncd command-dashboard\n# Step 1: token bucket + 限速單元測試\npython -m pytest tests/unit/test_tak_subscribe.py -k 'token_bucket or rate_limited or no_limiter or does_not_consume_token' -v\n# 預期：PASS（容量內放行、超量丟棄、控制事件不佔 token、無 limiter 向後相容）\n\n# Step 2: subscribe 端到端回歸（限速接上後仍正常 ingest + 過濾 + 重連）\npython -m pytest tests/unit/test_tak_subscribe.py -q\n# 預期：14 passed\n\n# Step 3: tak/cop 廣域回歸\npython -m pytest tests/ -k 'tak or cop or ingest or lifespan or subscribe' -q\n# 預期：265 passed\n```\n\n## Out of scope / known limitations\n- **per-exercise uid count cap descope**：受信任 mTLS 源價值低、每筆 create 多一 COUNT query；速率桶已涵蓋持續高率 DoS。未來 entity 爆量再開 follow-up。\n- 限速套 :8089 串流（unbounded burst 來源）；REST POST /api/tak/events 已於 #146 收緊 COMMAND_ROLES（低量人為）。\n- DoS 屬 `/security-review` 排除類，未跑該 skill（人工已檢視；source 為 mTLS 受信任）。\n\n## Notes for reviewer\n- 限速點：`_consume_cot` 在 parse + 濾 TakControl **後**、ingest **前** → 控制事件不佔 token。\n- `_TokenBucket` 用 event-loop monotonic time（`loop.time()`）注入，單一 subscribe task serial 呼叫無並發、不需鎖。\n- limiter 建一次於 `subscribe` while 迴圈外 → 跨重連共用（burst 防護不重置）。",
+    "closedAt": "2026-06-07T05:15:33Z",
+    "comments": [],
+    "createdAt": "2026-06-07T05:15:24Z",
+    "headRefName": "fix/issue-151-tak-e-ingest-rate-limit",
+    "labels": [],
+    "mergedAt": "2026-06-07T05:15:33Z",
+    "number": 152,
+    "state": "MERGED",
+    "title": "fix(tak): TAK-E :8089 ingest 速率限制（全域 token bucket，#151）",
+    "updatedAt": "2026-06-07T05:15:36Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/152"
   }
 ]
