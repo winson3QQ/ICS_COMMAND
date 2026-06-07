@@ -2692,5 +2692,26 @@
     "title": "fix(tooling): roadmap_issue_sync drift 假陽性修正（#155）",
     "updatedAt": "2026-06-07T05:53:10Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/156"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "## ROADMAP item\n- Closes #157\n- P2-10 純後端子項（座標越界已 P2-04；本 PR 補 type/callsign）\n\n## What changed\n`CoTEventIn` 加 type/callsign field_validator —— **:8089 串流 + REST push 兩路徑皆涵蓋**,ingest 邊界擋畸形/惡意 CoT（任何 ATAK 可推 → 最後防線）。\n\n## DoD checklist\n- [x] type 白名單（2525 grammar）+ callsign 白名單 + 座標越界確認\n- [x] 11 測試（注入/越界負向 + O'Brien 正向 + 串流收斂 CoTParseError）\n- [x] `pytest` green（166 tak/cop 廣域）、pyflakes clean\n\n## §8 Human Verification Script\n\n```bash\ncd command-dashboard\n# Step 1: 內容層白名單測試\npython -m pytest tests/unit/test_tak_cot_parse.py -k 'type or callsign or coord or parse_error' -v\n# 預期：注入 type/危險 callsign 被拒、O'Brien 放行、越界拒、串流路徑收斂 CoTParseError\n\n# Step 2: 廣域回歸（既有 CoT 型別不被誤殺）\npython -m pytest tests/ -k 'cot or tak or ingest or normalize' -q\n# 預期：全綠\n```\n\n## Out of scope / known limitations\n- 只做 P2-10 的**純後端內容層**。P2-10 的 (1) 真機 <5s 上圖 / (2) shape 渲染 human verify / (3) mock 整合 **待 TAK server 上線**（Windows Docker 部署中）。\n- callsign **刻意放行 `'`**（RT-M3 陷阱：別誤殺 O'Brien）；渲染端 XSS 仍走 textContent（P2-12 / #136）。\n\n## Notes for reviewer\n- type regex `^[a-z](?:-[A-Za-z0-9]+)+$` 對所有既有 CoT 型別（a-f-G-U-C / b-a-o-tbl-medevac / t-x-takp-v / b-d / b-m-p-w）皆通過,擋 `<script>`/空白/`;`/首字大寫或數字。ReDoS-safe（dash 錨定無歧義）。\n- 放 schema 層 → 兩 ingest 路徑（串流 parse_cot_xml 收斂 CoTParseError 不中斷 / REST 422）統一涵蓋。\n- 自審：regex 對既有型別零誤殺 + 注入字元全擋,測試覆蓋負/正向。",
+    "closedAt": "2026-06-07T06:19:55Z",
+    "comments": [],
+    "createdAt": "2026-06-07T06:19:45Z",
+    "headRefName": "feat/p2-10-cot-content-validation",
+    "labels": [],
+    "mergedAt": "2026-06-07T06:19:55Z",
+    "number": 158,
+    "state": "MERGED",
+    "title": "feat(tak): P2-10 CoT 內容層白名單 — type / callsign（最後防線，#157）",
+    "updatedAt": "2026-06-07T06:19:57Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/158"
   }
 ]

@@ -1884,15 +1884,15 @@
       "name": ""
     },
     "body": "## 背景\nP2-10 DoD 含「CoT 內容層驗證：座標越界拒絕、callsign 字元白名單、type prefix 白名單 —— 任何 ATAK 裝置可推 CoT，此為最後一道防線」。本 issue = P2-10 的**純後端安全子項**（不需 TAK server/裝置，可先做；P2-10 的真機 <5s + shape 渲染 human verify 仍待 TAK 上線）。\n\n## 現況\n- ✅ 座標越界：已由 `CoTEventIn` lat/lon `ge/le` 約束擋下（P2-04）。\n- ❌ type prefix 白名單：原只 `min_length=1`。\n- ❌ callsign 字元白名單：原無。\n\n## 修法\n`CoTEventIn`（schemas/tak.py）加 field_validator —— **:8089 串流 + REST push 兩路徑皆涵蓋**：\n- `type`：須符 CoT 2525 grammar `^[a-z](-[A-Za-z0-9]+)+$`（首域字母 + dash token），擋 `<script>`/空白/`;`/注入。\n- `callsign`：白名單 `[\\w \\-./()'+#]`（含 unicode），擋 `<>&\"` 反引號/控制字元；**放行 `'`**（O'Brien，對齊紅隊 RT-M3 陷阱 1 別誤殺合法輸入）。\n\n## DoD\n- [ ] type/callsign validator + 越界確認\n- [ ] 測試（注入 type / 危險 callsign 負向 + O'Brien 正向 + 越界 + 串流路徑收斂 CoTParseError）\n- [ ] `/code-review`\n\n## 來源\nP2-10 子項。2026-06-07 趁 TAK server 安裝平行完成。",
-    "closedAt": null,
+    "closedAt": "2026-06-07T06:19:56Z",
     "comments": [],
     "createdAt": "2026-06-07T06:18:22Z",
     "labels": [],
     "milestone": null,
     "number": 157,
-    "state": "OPEN",
+    "state": "CLOSED",
     "title": "P2-10 內容層驗證：CoT type / callsign 白名單（純後端，最後防線）",
-    "updatedAt": "2026-06-07T06:18:22Z",
+    "updatedAt": "2026-06-07T06:19:56Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/157"
   }
 ]
