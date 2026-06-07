@@ -616,6 +616,14 @@ function _isStale(e) {
   return Number.isFinite(t) && t <= Date.now();
 }
 
+/**
+ * 是否「活追蹤」單位（CoT how 以 'm' 開頭＝機器/GPS 持續回報）。只有活追蹤才該因 stale 變灰
+ * （存活警示）；how='h-*'（人工放置標記）是靜態標註、無心跳，不該變灰（#160 後續）。
+ */
+function _isLiveTracked(e) {
+  return !!(e && typeof e.how === 'string' && e.how.startsWith('m'));
+}
+
 let _takRenderSeq = 0;
 function _renderTakUnits() {
   if (!_takLayer) return;
@@ -639,7 +647,8 @@ function _renderTakUnits() {
         iconId: 'mil-' + sidc,
         affiliation: affiliationFromCot(e.type),  // 預留 hover/filter（icon 色已由 SIDC 內建）
         label: e.callsign || e.uid,
-        stale: _isStale(e),   // #160/#161：過 CoT stale → icon 變灰（仍在窗口內、未移除）
+        // 只有活追蹤（how=m-*）過 stale 才變灰（存活警示）；人工放置標記（how=h-*）靜態、不變灰。
+        stale: _isStale(e) && _isLiveTracked(e),
       },
     });
   }

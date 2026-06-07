@@ -43,15 +43,15 @@ WARNING_THRESHOLD_SECONDS: int = int(os.getenv("ICS_WARNING_THRESHOLD_SECONDS", 
 # 注意：PinLock（UI 層 idle 鎖定）是獨立機制，與此 server-side timeout 無關
 
 # ── App ───────────────────────────────────
-APP_VERSION = "2.3.0"  # MINOR：P2-10 TAK CoT 繪圖 ingest 功能組（矩形/圓/顏色/三筆觸）+ COP 軟 stale（#160/#161/#4/#5/#134）
+APP_VERSION = "2.4.0"  # MINOR：COP 實體生命週期正解（how-based stale 治理：活追蹤 vs 人工標註持久）+ t-x-d-d 刪除處理 + deleted 墓碑（#161）
 
 # CMD_VERSION：前端 UI 功能版本（不同於後端 SemVer APP_VERSION；規則見 CLAUDE.md 版號規則）
 # 兩軌版本命名，不可混用。由 /api/version 提供給前端，是唯一 source-of-truth；release 時更新此值。
 # v1.0.0：拆分自 ICS_DMAS 後首個完整可用形態（MapLibre 地圖引擎全換 P1-10b + PWA 移除 P1-11
 #         + 演習/放置/稽核 UI P1-13/14/16/#93 + 分類編輯器 #66）→ 0.x 畢業為 MAJOR 紀元。
 CMD_VERSION: str = os.getenv(
-    "CMD_VERSION", "v1.2.0"
-)  # MINOR：P2-10 TAK COP 視覺保真（軟 stale 變灰 + solid/dashed/dotted 三筆觸 + TAK 圖形唯讀）+ iPad 響應式修正（dvh/斷點，#165 follow-up）
+    "CMD_VERSION", "v1.2.1"
+)  # PATCH：stale 變灰只套活追蹤（how=m-*）；人工放置標記不再誤淡（#160 後續）
 
 # ── CORS（C1-B）──────────────────────────
 # 架構備忘：PWA→Pi→Command 為 hub-and-spoke，瀏覽器無跨源呼叫，CORS 在主流程中無作用。

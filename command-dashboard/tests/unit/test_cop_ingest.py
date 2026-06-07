@@ -227,7 +227,8 @@ def test_tak_event_updates_own_tak_entity(captured_broadcasts):
 
 
 def test_soft_stale_window_external_grace_manual_immediate():
-    """外部來源（tak）過 stale 在窗口內仍顯示（變灰）、過窗口移除；manual 明確刪除即時移除。"""
+    """stale 治理按 how：tak 活追蹤(how=m)窗口內保留/過窗口移除；tak 人工標記(how=h)持久；
+    manual 明確刪除即時移除。"""
     from datetime import UTC, datetime, timedelta
 
     from core.database import get_conn
@@ -240,14 +241,61 @@ def test_soft_stale_window_external_grace_manual_immediate():
 
     with get_conn() as conn:
         base = "INSERT INTO cop_entities (uid,type,time,start,stale,how,lat,lon,source) VALUES (?,?,?,?,?,?,?,?,?)"
-        # tak: stale 2 分前（窗口 5min 內）→ 保留（變灰）
-        conn.execute(base, ("tak:recent", "a-u-G", "t", "t", _t(-120), "h-g", 24.0, 120.0, "tak"))
-        # tak: stale 6 分前（過窗口）→ 移除
-        conn.execute(base, ("tak:old", "a-u-G", "t", "t", _t(-360), "h-g", 24.0, 120.0, "tak"))
+        # tak 活追蹤（how=m-*）: stale 2 分前（窗口 5min 內）→ 保留（變灰）
+        conn.execute(base, ("tak:recent", "a-f-G-U-C", "t", "t", _t(-120), "m-g", 24.0, 120.0, "tak"))
+        # tak 活追蹤: stale 6 分前（過窗口）→ 移除
+        conn.execute(base, ("tak:old", "a-f-G-U-C", "t", "t", _t(-360), "m-g", 24.0, 120.0, "tak"))
+        # tak 人工放置標記（how=h-*）: stale 6 分前也**持久**（靜態標註、無心跳，不該因 stale 消失）
+        conn.execute(base, ("tak:placed", "a-u-G", "t", "t", _t(-360), "h-g-i-g-o", 24.0, 120.0, "tak"))
         # manual: stale 剛過（操作員明確 DELETE）→ 即時移除（無 grace）
-        conn.execute(base, ("manual:del", "b-m-p", "t", "t", _t(-1), "h-g", 24.0, 120.0, "manual"))
+        conn.execute(base, ("manual:del", "b-m-p", "t", "t", _t(-1), "h-e", 24.0, 120.0, "manual"))
 
     uids = {e["uid"] for e in list_cop_entities(exercise_id=None)}
-    assert "tak:recent" in uids       # 窗口內：保留
-    assert "tak:old" not in uids      # 過窗口：移除
+    assert "tak:recent" in uids       # 活追蹤窗口內：保留
+    assert "tak:old" not in uids      # 活追蹤過窗口：移除
+    assert "tak:placed" in uids       # 人工標記：持久，不因 stale 消失
     assert "manual:del" not in uids   # manual 明確刪除：即時移除
+
+
+# ── TAK t-x-d-d 刪除命令處理（#161 正解：iTAK 其實有送刪除信號）───────────────
+
+
+def test_tak_delete_command_soft_deletes_target(captured_broadcasts):
+    """t-x-d-d → 軟刪 <link uid> 指向的 tak entity（墓碑 deleted=1）、廣播 op=delete、本身不進主表。"""
+    from repositories.cop_entity_repo import list_cop_entities
+
+    created = _ingest(_event(uid="TAK-DEL-TGT", time="2026-06-05T04:00:00Z"))
+    assert created is not None
+    out = _ingest(_event(uid="del-cmd-1", type="t-x-d-d", time="2026-06-05T04:05:00Z",
+                         detail={"link": {"uid": "TAK-DEL-TGT", "type": "a-f-G-U-C", "relation": "p-p"}}))
+    assert out is not None and out["uid"] == "TAK-DEL-TGT"          # 回傳被刪 entity
+    assert "TAK-DEL-TGT" not in {e["uid"] for e in list_cop_entities()}  # 預設 list 移除
+    tgt = get_cop_entity("TAK-DEL-TGT")
+    assert tgt is not None and tgt["deleted"] is True               # row 還在（墓碑，可 audit）
+    assert get_cop_entity("del-cmd-1") is None                       # t-x-d-d 本身不存
+    assert captured_broadcasts[-1][0]["op"] == "delete"             # 廣播 op=delete
+    assert captured_broadcasts[-1][0]["uid"] == "TAK-DEL-TGT"
+
+
+def test_tak_delete_ownership_guard_protects_non_tak(captured_broadcasts):
+    """t-x-d-d 指向非 tak 來源（manual）→ 拒刪（防偽造刪本地標繪）。"""
+    from core.database import get_conn
+    from repositories.cop_entity_repo import list_cop_entities
+
+    with get_conn() as conn:
+        conn.execute(
+            "INSERT INTO cop_entities (uid,type,time,start,stale,how,lat,lon,source) "
+            "VALUES ('manual:keep','b-m-p','t','t','2099-01-01T00:00:00Z','h-e',24.0,120.0,'manual')"
+        )
+    out = _ingest(_event(uid="del-cmd-2", type="t-x-d-d", time="2026-06-05T04:00:00Z",
+                         detail={"link": {"uid": "manual:keep"}}))
+    assert out is None
+    assert "manual:keep" in {e["uid"] for e in list_cop_entities()}  # 沒被刪
+
+
+def test_tak_delete_no_link_ignored(captured_broadcasts):
+    """t-x-d-d 無 <link uid> → 忽略（None），不炸、不廣播。"""
+    n = len(captured_broadcasts)
+    out = _ingest(_event(uid="del-cmd-3", type="t-x-d-d", time="2026-06-05T04:00:00Z"))
+    assert out is None
+    assert len(captured_broadcasts) == n

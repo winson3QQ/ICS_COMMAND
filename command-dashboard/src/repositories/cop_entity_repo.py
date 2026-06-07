@@ -85,13 +85,19 @@ def list_cop_entities(
         clauses.append("exercise_id = ?")
         params.append(exercise_id)
     if not include_stale:
-        # TAK soft-stale（#160/#161）：**外部來源**（tak/pi-node/waveink）passive 重播生命週期 —
-        # 過 CoT stale 不立即移除（避免 iTAK 重播間隔 > stale 閃爍 / 無 delete 信號誤判），保留到
-        # stale + COP_STALE_REMOVE_WINDOW_S（對齊 ATAK deleteStaleAfterMillis），窗口內前端變灰。
-        # **manual/command**（指揮部自建）= 操作員明確 DELETE（stale=now）→ 即時移除（嚴格 stale>now）。
+        # 墓碑：明確刪除（t-x-d-d / 操作員 DELETE）預設一律排除，不論 how/stale（#161 正解）。
+        # include_stale=True（audit/回放）則連刪除的也撈得到。
+        clauses.append("COALESCE(deleted, 0) = 0")
+        # stale（新鮮度）治理只對「活追蹤」，判別用 CoT `how`（機器追蹤 vs 人工放置）：
+        #  - manual/command（指揮部自建）：維持嚴格 stale>now（既有行為；刪除走 deleted 墓碑）。
+        #  - 外部 how=h-*（人工放置標記 / 繪圖）：靜態標註，無心跳 → **持久化**，豁免 stale。
+        #  - 外部 how=m-*（GPS/感測活追蹤，或 how 缺漏）：過 stale 仍保留到 stale+窗口（變灰），
+        #    窗口外移除（對齊 ATAK deleteStaleAfterMillis）。心跳停 = 失聯 → 該淡出。
         clauses.append(
             "((source IN ('manual','command') AND stale > strftime('%Y-%m-%dT%H:%M:%SZ','now')) "
-            "OR (source NOT IN ('manual','command') AND stale > strftime('%Y-%m-%dT%H:%M:%SZ','now',?)))"
+            "OR (source NOT IN ('manual','command') AND how LIKE 'h%') "
+            "OR (source NOT IN ('manual','command') AND COALESCE(how,'') NOT LIKE 'h%' "
+            "AND stale > strftime('%Y-%m-%dT%H:%M:%SZ','now',?)))"
         )
         params.append(f"-{COP_STALE_REMOVE_WINDOW_S} seconds")
     sql = "SELECT * FROM cop_entities"
@@ -296,7 +302,9 @@ def delete_cop_entity(
     回 conflict（不會盲刪別人剛改過的 entity）。回傳契約同 update_cop_entity_cas。
     """
     now = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
-    return update_cop_entity_cas(uid, expected_version_clock, {"stale": now}, actor)
+    # deleted=1：明確刪除墓碑（list 一律排除，不論 how/stale），解決持久化 how=h-* entity
+    #   無法靠 stale=now 移除的問題。stale=now 一併設（兼容舊查詢/活追蹤的即時排除）。
+    return update_cop_entity_cas(uid, expected_version_clock, {"deleted": 1, "stale": now}, actor)
 
 
 # ── cop_entity_tracks ────────────────────────────────────────────────────────
@@ -466,8 +474,8 @@ def _row_to_entity_dict(row) -> dict:
                 exc_info=e,
             )
             d["attributes"] = {}
-    # P2-11b（#140）：SQLite 無 bool type，planned/simulated 存 INTEGER 0/1 → 轉回 bool
-    for _flag in ("planned", "simulated"):
+    # P2-11b（#140）：SQLite 無 bool type，planned/simulated/deleted 存 INTEGER 0/1 → 轉回 bool
+    for _flag in ("planned", "simulated", "deleted"):
         if d.get(_flag) is not None:
             d[_flag] = bool(d[_flag])
     return d

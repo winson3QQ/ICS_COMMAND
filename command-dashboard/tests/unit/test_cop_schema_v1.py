@@ -387,17 +387,30 @@ class TestCopEntityRepo:
                 )
             )
         )
+        # 'dead'：**活追蹤**（how=m-*，GPS）過 stale+窗口 → 預設過濾（離線/失聯）。
         insert_cop_entity(
             CoPEntity(
                 **_valid_entity_payload(
                     uid="dead",
+                    how="m-g",
+                    stale="2000-01-01T00:00:00Z",
+                )
+            )
+        )
+        # 'placed'：**人工放置標記**（how=h-*）即使過 stale 也**持久**（靜態標註，無心跳，不該消失）。
+        insert_cop_entity(
+            CoPEntity(
+                **_valid_entity_payload(
+                    uid="placed",
+                    how="h-g-i-g-o",
                     stale="2000-01-01T00:00:00Z",
                 )
             )
         )
         uids = {e["uid"] for e in list_cop_entities()}
         assert "alive" in uids
-        assert "dead" not in uids
+        assert "dead" not in uids       # 活追蹤過 stale → 移除
+        assert "placed" in uids         # 人工標記 → 持久，不因 stale 消失
 
         uids_all = {e["uid"] for e in list_cop_entities(include_stale=True)}
         assert "dead" in uids_all
@@ -409,7 +422,8 @@ class TestCopEntityRepo:
         assert tak_uids == {"t1"}
 
     def test_mark_stale(self, tmp_db):
-        insert_cop_entity(CoPEntity(**_valid_entity_payload(uid="s1")))
+        # how=m-* 活追蹤：標 stale 後預設 list 過濾（人工標記 how=h-* 會持久、不適用本不變式）。
+        insert_cop_entity(CoPEntity(**_valid_entity_payload(uid="s1", how="m-g")))
         assert mark_stale("s1", "2000-01-01T00:00:00Z") is True
         assert mark_stale("nonexistent", "2000-01-01T00:00:00Z") is False
         # 標 stale 後預設 list 應該過濾掉
