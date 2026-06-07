@@ -1954,5 +1954,25 @@
     "title": "前端即時同步缺口：TAK 刪除/stale 物件未即時從 dashboard 移除（需 refresh）",
     "updatedAt": "2026-06-07T09:20:54Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/161"
+  },
+  {
+    "assignees": [],
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "body": "## 來源\nP2-10 真機 dogfood 通盤考慮(2026-06-07)。iTAK 自己有「CONNECTED 綠燈」,但 **ICS dashboard 完全看不出自己跟 TAK server 連著沒**。\n\n## 問題(操作風險)\n`tak_service.subscribe()` 在 main.py lifespan 背景跑,**斷線/重連/連不上全無 UI 信號**。後果:\n- TAK feed 斷掉(server 重啟 / 網路 / cert 過期)時,指揮官看到「地圖沒單位」會**誤以為「現場沒人」,實為「feed 斷了」** —— COP 嚴重誤判。\n- 對照:iTAK 端有明確 CONNECTED 狀態;指揮部這個「總覽端」反而沒有。\n\n## 需求\n- dashboard header / TAK 面板顯示 **ICS↔TAK 連線狀態**:connected / disconnected / reconnecting。\n- 加「**最後收到 CoT 的時間**」(feed 健康度,即使 TCP 連著但無資料也看得出)。\n- 後端:expose subscribe() 的連線狀態(目前只有 log,無 API)。\n- 前端:狀態指示 widget。\n\n## 關聯\nP2-12(TAK 面板統一落地 —— 此狀態列併入)、P2-03(subscribe wiring)、本批 soft-stale(stale 也是 feed 健康度的一環)。\n\n## 性質\n通盤考慮先提,**既有 soft-stale 問題解完後再做**。",
+    "closedAt": null,
+    "comments": [],
+    "createdAt": "2026-06-07T10:09:22Z",
+    "labels": [],
+    "milestone": null,
+    "number": 163,
+    "state": "OPEN",
+    "title": "Dashboard 顯示 ICS↔TAK server 連線狀態(指揮部需看得到 feed 是否活著)",
+    "updatedAt": "2026-06-07T10:09:22Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/163"
   }
 ]
