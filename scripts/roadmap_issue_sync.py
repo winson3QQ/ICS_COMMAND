@@ -19,6 +19,12 @@ import subprocess
 import sys
 from pathlib import Path
 
+# Windows console 預設 cp950，print 狀態 marker（✅⏳🚧 / ✓⚠✗ℹ）+ 中文會 UnicodeEncodeError（#148）；
+# 強制 stdout/stderr UTF-8。hasattr 守門：stdout 被重導/替換時無 reconfigure。
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(encoding="utf-8")
+
 BASE = Path(__file__).resolve().parent.parent
 ROADMAP = BASE / "docs" / "ROADMAP.md"
 
@@ -69,7 +75,9 @@ def gh_issues() -> list[dict]:
              "--state", "all",
              "--limit", "200",
              "--json", "number,title,state,labels"],
-            capture_output=True, text=True, check=True, timeout=15,
+            # encoding 明指 UTF-8：gh 輸出含中文 issue 標題，Windows 預設 cp950 解碼會
+            # UnicodeDecodeError → out.stdout=None → json.loads 炸（#148 status.sh 崩根因）。
+            capture_output=True, text=True, encoding="utf-8", check=True, timeout=15,
         )
         return json.loads(out.stdout)
     except FileNotFoundError:
