@@ -16,7 +16,24 @@ CoT 2.0 規格來源：MITRE CoT Event XSD（event/point/detail），與 `schema
 CoPEntity 的 CoT 核心欄位對齊（uid/type/time/start/stale/how/version + lat/lon/hae/ce/le）。
 """
 
-from pydantic import BaseModel, ConfigDict, Field
+import re
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+# ── P2-10 內容層白名單 ──────────────────────────────────────────────────────
+# 任何 ATAK 裝置都能推 CoT 進 TAK Server → COP，TAK Server 的裝置准入是其管理員責任；
+# 本層為 ICS 端「**最後一道防線**」，在 ingest 邊界（CoTEventIn 建構）擋畸形/惡意內容。
+# 座標越界已由 lat/lon 的 ge/le 約束擋下（下方）。本處補 type / callsign。
+
+# CoT type 須符 MIL-STD-2525 grammar：首為單一域字母（a=atoms/b=bits/t=tasking/…），
+# 其後 dash 分隔的 alphanumeric token（如 a-f-G-U-C / b-a-o-tbl-medevac / t-x-takp-v）。
+# 擋掉 `<script>`、空白、`;`、注入字元等非法 type。
+_COT_TYPE_RE = re.compile(r"^[a-z](?:-[A-Za-z0-9]+)+$")
+
+# callsign 允許：字母（含 unicode，\w）/數字/底線 + 空格與常見標點 `- . / ( ) ' + #`。
+# **刻意允許 `'`**（容 O'Brien 等真實呼號，對齊紅隊 RT-M3 陷阱 1：別誤殺合法輸入）；
+# 擋 `< > & " 反引號 ; =` 與控制字元等注入/破壞字元（縱深防護；渲染端另走 textContent）。
+_CALLSIGN_RE = re.compile(r"^[\w \-./()'+#]{1,128}$")
 
 
 class CoTEventIn(BaseModel):
@@ -53,3 +70,19 @@ class CoTEventIn(BaseModel):
     remarks: str | None = None
     detail: dict = Field(default_factory=dict)  # 結構化 detail children（P2-04 → attributes）
     geometry: dict | None = None  # CoT <shape>/<link> → GeoJSON（P2-08，geometry_service 填）
+
+    # ── P2-10 內容層白名單（ingest 邊界最後防線）──────────────────────────
+    @field_validator("type")
+    @classmethod
+    def _validate_type(cls, v: str) -> str:
+        if not _COT_TYPE_RE.match(v):
+            raise ValueError(f"CoT type 不符 2525 grammar 白名單：{v!r}")
+        return v
+
+    @field_validator("callsign")
+    @classmethod
+    def _validate_callsign(cls, v: str | None) -> str | None:
+        # None / 空字串放行（無呼號）；非空則須過字元白名單。
+        if v and not _CALLSIGN_RE.match(v):
+            raise ValueError("callsign 含內容層白名單不允許的字元")
+        return v
