@@ -43,8 +43,9 @@ async def auth_middleware(request: Request, call_next):
         return await call_next(request)
     if method == "POST" and path == "/api/sync/push":
         return await call_next(request)
-    if method == "GET" and path.startswith("/api/snapshots/"):
-        return await call_next(request)
+    # RT-H1（#153）：移除 `GET /api/snapshots/{type}` 的匿名豁免 —— 該路由無呼叫者
+    # （dashboard 走 service 層 get_snapshots），孤兒豁免讓資源快照（床位/傷亡聚合）匿名可讀。
+    # 移除後走預設 READ_ROLES gate。POST /api/snapshots 的 HMAC 豁免（上方，Pi push 命脈）保留。
     if path in ("/api/health", "/api/status"):
         return await call_next(request)
 

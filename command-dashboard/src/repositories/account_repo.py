@@ -168,11 +168,13 @@ def delete_account(username: str, operator: str) -> bool:
 def suspend_all_accounts(operator: str) -> int:
     now = now_utc()
     with get_conn() as conn:
+        # OP-1（#153）：排除發起者本人 —— 否則執行後零 active 帳號，系統進入「需主機 shell
+        # 直操 DB 才能解救」的自鎖狀態（操作失誤門檻低、不可逆）。
         cur = conn.execute(
-            "UPDATE accounts SET status='suspended', updated_at=? WHERE status='active'",
-            (now,),
+            "UPDATE accounts SET status='suspended', updated_at=? WHERE status='active' AND username != ?",
+            (now, operator),
         )
-    audit(operator, None, "all_accounts_suspended", "accounts", "*", {})
+    audit(operator, None, "all_accounts_suspended", "accounts", "*", {"excluded_self": operator})
     return cur.rowcount
 
 
