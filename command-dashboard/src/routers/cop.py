@@ -39,7 +39,7 @@ from starlette.websockets import WebSocketDisconnect
 from auth.role_enum import COMMAND_ROLES, READ_ROLES, is_role_allowed
 from auth.service import check_session
 from core.input_safety import validate_no_unsafe_strings
-from repositories import cop_entity_repo
+from repositories import cop_entity_repo, exercise_repo
 from repositories._helpers import NULL_SCOPE, audit
 from schemas.cop import CoPEntity
 from services.exercise_service import current_exercise_id, resolve_scope
@@ -56,6 +56,28 @@ _STALE_DEFAULT_HOURS = 24  # 手動建立未帶 stale 時的預設存活時間
 # 其餘 uid / version_clock / updated_by / updated_at / received_at 由 repo raise ValueError
 # （此處列出是為了在 router 層先回明確 422，不必等 repo 拋例外）。
 _PUT_FORBIDDEN_FIELDS = frozenset({"source", "uid", "version_clock", "updated_by", "updated_at", "received_at"})
+
+# #146（TAK-B-rev）：來源所有權 + 情境守門 —— 哪些既有 entity 可經 PUT/DELETE 手動編輯。
+# - manual / command（指揮部自建）：永遠可編輯。
+# - tak / pi-node / waveink（外部現場鏡像）：僅**演習(TTX)模式**可手動編輯（道具/合成）；
+#   **實戰模式鎖死** —— 保護真實前線位置不被造假 / 誤刪。下令請建 source='command' 新物件
+#   （P2-13），不覆寫真實 TAK 單位。情境（演習/實戰）由 server 的 active exercise type 決定
+#   （server 權威，不信 client 宣告；對齊 TAK-C）。無 active exercise = 實戰池 → 鎖死。
+# 反向對應 cop_service.ingest_cot_event 的 TAK→本地 守門（#145），補齊本地→TAK 反向。
+_DASHBOARD_OWNED_SOURCES = frozenset({"manual", "command"})
+
+
+def _require_editable_source(existing: dict) -> None:
+    src = (existing or {}).get("source")
+    if src in _DASHBOARD_OWNED_SOURCES:
+        return
+    active = exercise_repo.get_active_exercise()
+    if active is not None and active.get("type") == "ttx":
+        return
+    raise HTTPException(
+        403,
+        f"實戰模式下 {src} 來源物件唯讀（外部現場鏡像，禁手動覆寫/刪除；下令請建指揮部物件）",
+    )
 
 # P1-16（security review HIGH-1）：節點(zone)/設施(infra)的「建立 / 刪除」限指揮層。
 # 前端 canUseRealModeControls() 只是 UI 遮罩，非安全邊界；此處為後端真實授權。
@@ -266,6 +288,12 @@ async def update_entity(uid: str, request: Request, response: Response):
     if not body:
         raise HTTPException(422, "patch 不可為空")
 
+    # #146：來源所有權 + 情境守門（外部來源 entity 實戰模式唯讀）。existing 為 None 時
+    # 不擋，交由下方 CAS 回 notfound→404（語意一致，不洩漏「不存在 vs 唯讀」差異）。
+    existing = cop_entity_repo.get_cop_entity(uid)
+    if existing is not None:
+        _require_editable_source(existing)
+
     try:
         result = cop_entity_repo.update_cop_entity_cas(uid, expected, body, actor=_actor(request))
     except ValueError as e:  # repo 欄位白名單 / 受保護欄位
@@ -291,6 +319,7 @@ async def delete_entity(uid: str, request: Request, response: Response):
     _ent = cop_entity_repo.get_cop_entity(uid)
     if _ent is not None:
         _require_command_for_kind(request, (_ent.get("attributes") or {}).get("kind"))
+        _require_editable_source(_ent)  # #146：實戰模式 TAK/外部來源禁手動刪除
     result = cop_entity_repo.delete_cop_entity(uid, expected, actor=_actor(request))
 
     if result["status"] == "notfound":
