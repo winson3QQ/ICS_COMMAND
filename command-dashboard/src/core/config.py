@@ -123,3 +123,9 @@ TAK_MARTI_MAX_RETRIES: int = int(os.getenv("TAK_MARTI_MAX_RETRIES", "3"))
 # 都落一筆軌跡 → 表爆量。抽樣基準 = CoT event time（非 wall-clock）。不同演習場景
 # （高速載具 vs 步兵）可經此覆寫，免改 code 重部署。
 TRACK_MIN_INTERVAL_S: float = float(os.getenv("TRACK_MIN_INTERVAL_S", "5.0"))
+
+# ── TAK :8089 串流流量管制（TAK-E / #151）────────────────────────────────────
+# 全域 token bucket：ingest 每秒最多處理幾筆 CoT（含全部 uid）。防多 uid 高頻 burst
+# 持續壓 DB write + WS broadcast（50 ATAK @ 1Hz = 50/s）。超量丟棄該筆、節流 warning、
+# 不中斷串流。0 或負值 = 關閉限速（不建議）。預設 60（典型演習人車數 × 1Hz 充裕）。
+TAK_INGEST_MAX_EVENTS_PER_SEC: float = float(os.getenv("TAK_INGEST_MAX_EVENTS_PER_SEC", "60"))

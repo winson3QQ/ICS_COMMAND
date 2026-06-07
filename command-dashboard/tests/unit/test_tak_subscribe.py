@@ -61,6 +61,64 @@ def test_consume_awaits_async_ingest():
     assert len(got) == 1
 
 
+# ── TAK-E（#151）：ingest 速率限制（_TokenBucket + _consume_cot limiter）──────
+
+
+def test_token_bucket_allows_within_capacity_and_refills():
+    from services.tak_service import _TokenBucket
+
+    b = _TokenBucket(rate_per_sec=2.0)  # capacity 預設 = max(1, rate) = 2
+    assert b.take(0.0) is True  # token 2 → 1
+    assert b.take(0.0) is True  # token 1 → 0
+    assert b.take(0.0) is False  # 空桶 → 丟棄
+    assert b.dropped == 1
+    # 經 1 秒補 rate×1 = 2 token（capped at capacity）
+    assert b.take(1.0) is True
+    assert b.take(1.0) is True
+    assert b.take(1.0) is False
+    assert b.dropped == 2
+
+
+def test_consume_rate_limited_drops_when_bucket_empty():
+    """容量耗盡後同一時刻的後續 CoT 被丟棄（不進 ingest），但不丟例外、不中斷。"""
+    from services.tak_service import _TokenBucket
+
+    bucket = _TokenBucket(rate_per_sec=1.0)  # capacity 1
+    got = []
+
+    async def run():
+        await _consume_cot(_VALID, got.append, limiter=bucket)  # 有 token → ingest
+        await _consume_cot(_VALID, got.append, limiter=bucket)  # 同 loop tick 無 token → 丟棄
+
+    asyncio.run(run())
+    assert len(got) == 1  # 只有第一筆進 ingest
+    assert bucket.dropped == 1
+
+
+def test_consume_control_event_does_not_consume_token():
+    """TakControl 事件在限速前已被濾掉 → 不佔 token（限速只算真實 entity 寫入率）。"""
+    from services.tak_service import _TokenBucket
+
+    bucket = _TokenBucket(rate_per_sec=1.0)  # capacity 1
+    got = []
+
+    async def run():
+        await _consume_cot(_CONTROL, got.append, limiter=bucket)  # 控制事件，不佔 token
+        await _consume_cot(_VALID, got.append, limiter=bucket)  # token 仍在 → ingest
+
+    asyncio.run(run())
+    assert len(got) == 1  # 真實 entity 進了（控制事件沒消耗 token）
+    assert bucket.dropped == 0
+
+
+def test_consume_no_limiter_keeps_existing_behavior():
+    """limiter=None（預設）→ 不限速，沿用既有 ingest 行為（向後相容）。"""
+    got = []
+    for _ in range(5):
+        asyncio.run(_consume_cot(_VALID, got.append))  # 無 limiter
+    assert len(got) == 5
+
+
 # ── build_subscribe_config ────────────────────────────────────────────────
 
 
