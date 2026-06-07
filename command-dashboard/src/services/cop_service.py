@@ -311,6 +311,20 @@ async def ingest_cot_event(event: CoTEventIn) -> dict | None:
     entity = normalize_cot(event)
     existing = cop_entity_repo.get_cop_entity(entity.uid)
 
+    # TAK-B（紅隊）：來源所有權守門。CoT uid 由來源系統命名、規格上應已全域唯一
+    # （The Developer's Guide to CoT：來源前綴 + MITRE 發放，如 Link16.01520），且標準
+    # 要求轉傳時**保留 uid 不改寫**（供 P2-13 下行對 ATAK 下令時 uid 對位）。故**不前綴
+    # 改名**，改以「來源所有權」隔離：TAK 事件只准動 source='tak' 的 entity；若 uid 撞上
+    # 本地他源 entity（manual:* / pi-node / waveink，可能是惡意偽造或意外碰撞），一律拒絕
+    # 覆寫（不動 type/lat/lon/callsign），回 None 不廣播，記 log 供查。
+    if existing is not None and existing.get("source") != "tak":
+        log.warning(
+            "[tak] uid 撞本地他源 entity，拒絕覆寫（防偽造/碰撞）uid=%s existing_source=%s",
+            entity.uid,
+            existing.get("source"),
+        )
+        return None
+
     # 新 uid → insert
     if existing is None:
         try:

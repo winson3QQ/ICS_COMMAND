@@ -181,3 +181,43 @@ def test_severity_not_downgraded_by_normal_frame(captured_broadcasts):
     assert created["severity"] == "critical"
     row = _ingest(_event(time="2026-06-05T04:01:00Z"))  # 無 _medevac_ 的普通位置幀
     assert row["severity"] == "critical"  # 保留，非倒退成 info
+
+
+# ── TAK-B（紅隊）：來源所有權守門 — TAK 事件不得覆寫本地非 tak entity ──────────
+
+
+def test_tak_event_does_not_overwrite_non_tak_entity(captured_broadcasts):
+    """紅隊 TAK-B：偽造/碰撞 uid 撞上本地 source='manual' entity 時，TAK ingest 一律
+    拒絕（不覆寫 type/lat/lon/callsign），回 None、不廣播。CoT uid 不改寫（保留供 P2-13
+    下行對位），改以來源所有權隔離。"""
+    from core.database import get_conn
+
+    # 本地 manual entity（指揮部自畫，權威）；uid 故意取成 TAK 可能碰撞 / 被偽造的值
+    with get_conn() as conn:
+        conn.execute(
+            "INSERT INTO cop_entities (uid,type,time,start,stale,how,lat,lon,source,callsign) "
+            "VALUES ('manual:victim','b-m-p','2026-06-05T04:00:00Z','2026-06-05T04:00:00Z',"
+            "'2099-01-01T00:00:00Z','h-g',24.5,120.5,'manual','LOCAL-PIN')"
+        )
+
+    n = len(captured_broadcasts)
+    # TAK CoT 帶同 uid + 較新時間 → 一般邏輯會 CAS update 覆寫；來源守門須擋下
+    out = _ingest(
+        _event(uid="manual:victim", time="2026-06-05T05:00:00Z", lat=0.0, lon=0.0, callsign="SPOOF")
+    )
+    assert out is None  # 被守門丟棄
+
+    cur = get_cop_entity("manual:victim")
+    assert cur["source"] == "manual"  # 來源沒被改
+    assert (cur["lat"], cur["lon"]) == (24.5, 120.5)  # 位置沒被覆寫
+    assert cur["callsign"] == "LOCAL-PIN"  # callsign 沒被覆寫
+    assert len(captured_broadcasts) == n  # 沒有新廣播
+
+
+def test_tak_event_updates_own_tak_entity(captured_broadcasts):
+    """正向對照：source='tak' 的既有 entity 仍可被後續 TAK 事件正常 update（守門不誤殺）。"""
+    _ingest(_event(uid="TAK-OWN-1", time="2026-06-05T04:00:00Z", lat=24.0, lon=120.0))
+    row = _ingest(_event(uid="TAK-OWN-1", time="2026-06-05T04:01:00Z", lat=25.0, lon=121.0))
+    assert row is not None
+    assert row["version_clock"] == 2
+    assert (row["lat"], row["lon"]) == (25.0, 121.0)
