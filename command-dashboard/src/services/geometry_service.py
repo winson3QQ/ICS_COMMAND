@@ -76,13 +76,18 @@ def extract_geometry(detail_el) -> dict | None:
         geom = _from_shape(shape)
         if geom:
             return geom
-    # 多筆 <link point=..>（ATAK route）；非幾何 link（無 point 屬性）自動略過
+    # 多筆 <link point=..>（ATAK/iTAK route 或封閉繪圖）；非幾何 link（無 point 屬性）自動略過
     coords = [
         [ll[1], ll[0]]
         for c in detail_el
         if _localname(c.tag) == "link" and (ll := _latlon(c.get("point")))
     ]
     if len(coords) >= 2:
+        # #159（P2-10 真機 dogfood）：iTAK 封閉繪圖（area/Zone）以**首尾相同**的 <link>
+        # 序列送（非 <shape><polyline closed>）→ 應判 Polygon 非 route。對齊 _from_shape
+        # 的 closed 邏輯（review #132：Polygon 需 ≥3 相異頂點 → 含閉合點 ≥4 coords）。
+        if coords[0] == coords[-1] and len(coords) >= 4:
+            return {"type": "Polygon", "coordinates": [coords]}
         return {"type": "LineString", "coordinates": coords}
     return None
 

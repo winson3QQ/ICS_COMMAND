@@ -63,6 +63,26 @@ def test_link_route_to_linestring():
     }
 
 
+def test_link_closed_ring_to_polygon():
+    # #159：iTAK 封閉繪圖（area）以首尾相同的 <link> 序列送 → 應判 Polygon（非 route）。
+    el = _detail('<detail>'
+                 '<link point="24.1,120.6,0"/><link point="24.2,120.7,0"/>'
+                 '<link point="24.0,120.8,0"/><link point="24.1,120.6,0"/>'  # 末點==首點 → 封閉
+                 '</detail>')
+    geom = geometry_service.extract_geometry(el)
+    assert geom["type"] == "Polygon"
+    assert geom["coordinates"][0][0] == geom["coordinates"][0][-1]  # 環封閉
+
+
+def test_link_open_three_points_stays_linestring():
+    # 首尾不同 → 仍是開放 route（不誤判 polygon）。
+    el = _detail('<detail>'
+                 '<link point="24.1,120.6,0"/><link point="24.2,120.7,0"/>'
+                 '<link point="24.0,120.8,0"/>'
+                 '</detail>')
+    assert geometry_service.extract_geometry(el)["type"] == "LineString"
+
+
 def test_circle_unsupported_returns_none():
     el = _detail('<detail><shape><ellipse major="100" minor="50" angle="0"/></shape></detail>')
     assert geometry_service.extract_geometry(el) is None
