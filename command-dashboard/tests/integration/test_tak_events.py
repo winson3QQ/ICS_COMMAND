@@ -6,7 +6,7 @@
 
 from __future__ import annotations
 
-from auth.role_enum import ROLE_OBSERVER_ZH
+from auth.role_enum import ROLE_OBSERVER_ZH, ROLE_OPERATOR_ZH
 from repositories import cop_entity_repo
 from repositories.account_repo import create_account
 
@@ -70,7 +70,18 @@ def test_observer_cannot_post(client):
     create_account("obs_tak", "1234", ROLE_OBSERVER_ZH, "Observer TAK", "observer")
     headers = _login(client, "obs_tak", "1234")
     r = client.post("/api/tak/events", json=_cot_body(uid="TAK-OBS"), headers=headers)
-    assert r.status_code == 403  # observer 非 WRITE_ROLES
+    assert r.status_code == 403  # observer 非 COMMAND_ROLES
+
+
+def test_operator_cannot_post(client):
+    """#146：REST ingest 收緊到 COMMAND_ROLES —— operator（WRITE_ROLES 但非指揮層）不可
+    經此端點注入/竄改 tak 物件（繞過 cop PUT/DELETE 來源守門的後門已關）。"""
+    create_account("op_tak", "1234", ROLE_OPERATOR_ZH, "Operator TAK", "operator")
+    headers = _login(client, "op_tak", "1234")
+    r = client.post("/api/tak/events", json=_cot_body(uid="TAK-OP"), headers=headers)
+    assert r.status_code == 403
+    # 真的沒落 cop_entities（注入被擋）
+    assert cop_entity_repo.get_cop_entity("TAK-OP") is None
 
 
 def test_post_invalid_schema_422(client, auth):

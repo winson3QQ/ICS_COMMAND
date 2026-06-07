@@ -266,3 +266,67 @@ def test_update_rejects_xss_in_attributes(client):
         headers={**h, "If-Match": "1"},
     )
     assert r.status_code == 422
+
+
+# ── #146（TAK-B-rev）：來源所有權 + 情境守門 — 實戰鎖死外部來源，演習(TTX)可編輯 ──
+
+
+def _insert_tak_entity(uid: str = "tak:UNIT-1", lat: float = 24.0, lon: float = 120.0) -> str:
+    """直插一筆 source='tak' entity（_create 一律強制 manual，無法測外部來源）。"""
+    from core.database import get_conn
+
+    with get_conn() as conn:
+        conn.execute(
+            "INSERT INTO cop_entities (uid,type,time,start,stale,how,lat,lon,source,callsign,version_clock) "
+            "VALUES (?,?,?,?,?,?,?,?,'tak','REAL-UNIT',1)",
+            (uid, "a-f-G-U-C", "2026-06-05T04:00:00Z", "2026-06-05T04:00:00Z",
+             "2099-01-01T00:00:00Z", "m-g", lat, lon),
+        )
+    return uid
+
+
+def test_put_tak_blocked_in_realops(client):
+    """實戰（無 active exercise）：不可 PUT 覆寫 tak 來源 entity（403），位置不被改。"""
+    h = _login(client)
+    uid = _insert_tak_entity()
+    r = client.put(
+        f"/api/cop/entities/{uid}",
+        json={"lat": 0.0, "lon": 0.0, "callsign": "SPOOF"},
+        headers={**h, "If-Match": "1"},
+    )
+    assert r.status_code == 403, r.text
+    cur = client.get(f"/api/cop/entities/{uid}", headers=h).json()
+    assert cur["lat"] == 24.0 and cur["callsign"] == "REAL-UNIT"  # 沒被覆寫
+
+
+def test_delete_tak_blocked_in_realops(client):
+    """實戰：不可手動 DELETE tak 來源 entity（403）—— 真實單位移除走 stale CoT，非手刪。"""
+    h = _login(client)
+    uid = _insert_tak_entity(uid="tak:UNIT-2")
+    r = client.delete(f"/api/cop/entities/{uid}", headers={**h, "If-Match": "1"})
+    assert r.status_code == 403, r.text
+
+
+def test_put_tak_allowed_in_ttx(client, active_exercise):
+    """演習(TTX)模式：tak 來源 entity 可編輯（道具/合成）—— server 權威 type='ttx' 放行。"""
+    h = _login(client)
+    uid = _insert_tak_entity(uid="tak:SIM-1")
+    r = client.put(
+        f"/api/cop/entities/{uid}",
+        json={"lat": 25.0},
+        headers={**h, "If-Match": "1"},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["lat"] == 25.0
+
+
+def test_put_manual_allowed_in_realops(client):
+    """對照：manual 來源（指揮部自建）實戰模式仍可編輯（永遠可，不誤殺）。"""
+    h = _login(client)
+    uid = _create(client, h)["uid"]  # source=manual
+    r = client.put(
+        f"/api/cop/entities/{uid}",
+        json={"callsign": "EDIT"},
+        headers={**h, "If-Match": "1"},
+    )
+    assert r.status_code == 200, r.text

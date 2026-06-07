@@ -121,7 +121,10 @@ def allowed_roles_for(method: str, path: str) -> frozenset[str] | None:
     if path.startswith("/api/sync/") and method != "GET":
         return COMMAND_ROLES
     if path.startswith("/api/tak/"):
-        return WRITE_ROLES if method == "POST" else READ_ROLES
+        # #146：REST ingest（POST /api/tak/events）收緊到 COMMAND_ROLES —— 防 operator 經此
+        # 端點注入/竄改 tak 物件、繞過 cop PUT/DELETE 的來源守門。真實 TAK 資料走 :8089 串流
+        # （背景 task 直呼 ingest，不經 HTTP RBAC），故收緊無生產影響。機器對機器 auth = TAK-A。
+        return COMMAND_ROLES if method == "POST" else READ_ROLES
     if method in {"GET", "HEAD", "OPTIONS"}:
         return READ_ROLES
     return WRITE_ROLES
