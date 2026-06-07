@@ -1764,15 +1764,15 @@
       "name": ""
     },
     "body": "## 事實（紅隊 2026-06-05 審查）\n\n`cop_entities.uid` 為單欄 PRIMARY KEY，無來源命名空間隔離。TAK CoT 的 `uid` 在 `cop_service.normalize_cot` 直通（`uid=cot_event.uid`），未加任何前綴。本地 entity 則帶 `manual:` 前綴（`routers/cop.py` `uid=f\"manual:{uuid.uuid4()}\"`）。\n\n→ 惡意偽造或意外碰撞的 CoT `uid`（如 `uid=\"manual:<已知>\"` + 較新時間戳）可經 `ingest_cot_event` 的 CAS update 覆寫本地 entity 的 type/lat/lon/callsign/remarks。**完整性風險（Tampering）。**\n\n## 業界/標準查證\n\nCoT 標準（The Developer's Guide to Cursor on Target）：uid 由來源系統命名、應已全域唯一（來源前綴 + MITRE 發放，如 `Link16.01520`），且**轉傳時要保留 uid 不改寫**（供下行對 ATAK 下令時 uid 對位，P2-13）。真實 ATAK uid（`ANDROID-*`/GUID）與本地 `manual:` 命名空間天生不撞 → 撞名只發生在偽造情境。故**不採前綴改名**（會破壞 CoT 標準的 uid 保留 + 下行對位），改以**來源所有權**隔離。\n\n## 修法\n\n`ingest_cot_event` 取得 `existing` 後加守門：TAK 事件只准動 `source='tak'` 的 entity；若 uid 撞上本地他源（`manual:*` / pi-node / waveink），一律拒絕覆寫、回 None 不廣播、記 log。uid **不改寫**。\n\n## DoD\n\n- [ ] `cop_service.ingest_cot_event` 來源所有權守門\n- [ ] 負向測試（偽造 uid 撞 manual entity → 不覆寫、回 None、不廣播）+ 正向對照（source='tak' 仍正常 update）\n- [ ] `/code-review` + `/security-review` 通過\n- [ ] threat_model §8.2 + ROADMAP TAK-B 標記\n- [ ] ROADMAP TAK-B row 標 ✅ + (#PR, hash)\n\n## 來源\nROADMAP〈紅隊審查發現待辦〉TAK-B（2026-06-05 全系統紅隊審查）。動工時機原標 P2-10，2026-06-07 使用者指示提前處理。",
-    "closedAt": null,
+    "closedAt": "2026-06-07T03:45:32Z",
     "comments": [],
     "createdAt": "2026-06-07T03:30:30Z",
     "labels": [],
     "milestone": null,
     "number": 145,
-    "state": "OPEN",
+    "state": "CLOSED",
     "title": "TAK-B：TAK CoT uid 可覆寫本地他源 entity（來源所有權守門）",
-    "updatedAt": "2026-06-07T03:30:30Z",
+    "updatedAt": "2026-06-07T03:45:32Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/145"
   },
   {
@@ -1794,5 +1794,25 @@
     "title": "TAK-B-rev：operator PUT 可覆寫 tak 來源 entity（反向所有權缺口）",
     "updatedAt": "2026-06-07T03:30:52Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/146"
+  },
+  {
+    "assignees": [],
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "body": "## 事實\n在 Windows 跑下列腳本會 crash（Mac 無感）：\n\n1. `./status.sh` 的 **ROADMAP status 區段** → `scripts/roadmap_issue_sync.py` 解 `gh` 輸出時 `UnicodeDecodeError: 'cp950' codec can't decode byte 0x85`，且 subprocess 讀 stdout 用 cp950 解中文 JSON 失敗。\n2. `python scripts/doc_sync_check.py` → 檢查**全通過**（exit 0 邏輯成立），但最後 `print(\"✓ doc-sync check passed\")` 印 `✓` 時 `UnicodeEncodeError: 'cp950' codec can't encode character '\\u2713'`。\n\n## 根因\nWindows console 預設 code page = cp950（繁中），Python 的 stdout/subprocess 預設用該編碼處理含 CJK / Unicode 符號的文字 → 編解碼炸掉。Mac/Linux 預設 UTF-8 故無感。\n\n## 影響\n- 換 Windows 機器 / Windows 接手者跑 `status.sh` 看不到 ROADMAP 全景（orientation 半瞎）。\n- `doc_sync_check.py`（PROCESS step 7.5 merge gate）在 Windows 看似 fail（有 traceback）但實為 pass —— 容易誤判擋 merge。\n\n## 修法（擇一/併用）\n- subprocess 讀 `gh` 輸出時顯式 `encoding='utf-8'`（`roadmap_issue_sync.py`）。\n- 腳本開頭 `sys.stdout.reconfigure(encoding='utf-8')`，或以 `PYTHONUTF8=1` / `PYTHONIOENCODING=utf-8` 跑。\n- `status.sh` 內呼叫 python 時帶 `PYTHONUTF8=1`。\n\n## 來源\n2026-06-07 TAK 紅隊 task 過程中，於 Windows 開發機跑 orientation + doc_sync_check 時親見（dogfood 副發現）。獨立工具修補，與 TAK-B（#145）無關。",
+    "closedAt": null,
+    "comments": [],
+    "createdAt": "2026-06-07T03:45:20Z",
+    "labels": [],
+    "milestone": null,
+    "number": 148,
+    "state": "OPEN",
+    "title": "工具 bug：status.sh / doc_sync_check.py 在 Windows 因 cp950 編碼崩潰",
+    "updatedAt": "2026-06-07T03:45:20Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/148"
   }
 ]
