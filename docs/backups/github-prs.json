@@ -2551,5 +2551,41 @@
     "title": "#141 cop_entities.source 加 command（table rebuild，P2-11b 補完）",
     "updatedAt": "2026-06-07T01:51:42Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/144"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "## ROADMAP item\n- Closes #145\n- 紅隊 TAK-B（ROADMAP〈紅隊審查發現待辦〉）\n\n## What changed\nTAK CoT 進 COP 的共用接縫 `ingest_cot_event` 加**來源所有權守門**：TAK 事件只准動 `source='tak'` 的 entity；偽造/碰撞的 uid 撞上本地他源（`manual:*`/pi-node/waveink）一律拒絕覆寫、回 None 不廣播、記 log。**uid 不改寫**（符 CoT 標準 uid 保留 + P2-13 下行對位）。\n\n## DoD checklist\n- [x] Tests added（負向覆寫防護 + 正向 tak-update 對照）\n- [x] `pytest` green（COP/TAK 相關 265 passed，0 regression）\n- [x] N/A `npm test`（無 JS 改動）\n- [x] threat_model §8 TAK 信任邊界補齊\n- [x] ROADMAP TAK-A/B/D 標記\n\n## §8 Human Verification Script\n\n```bash\n# Step 1: 負向 — 偽造 TAK uid 不得覆寫本地 manual entity\ncd command-dashboard && python -m pytest tests/unit/test_cop_ingest.py::test_tak_event_does_not_overwrite_non_tak_entity -v\n# 預期：PASS（manual entity 的 source/lat/lon/callsign 不變，ingest 回 None、不廣播）\n\n# Step 2: 正向 — source='tak' entity 仍正常 update（守門不誤殺）\npython -m pytest tests/unit/test_cop_ingest.py::test_tak_event_updates_own_tak_entity -v\n# 預期：PASS（version_clock=2、位置更新成功）\n\n# Step 3: 全 ingest 接縫回歸無破壞\npython -m pytest tests/unit/test_cop_ingest.py -q\n# 預期：12 passed\n```\n\n## Out of scope / known limitations\n- **反向缺口不在本 PR**：operator 經 `PUT /api/cop/entities/{uid}` 仍可覆寫 `source='tak'` entity 的座標/類型（router 只擋改 source 欄位本身，未擋來源所有權）→ **[#146](https://github.com/winson3QQ/ICS_COMMAND/issues/146) follow-up**（需自身設計：哪些 source 可經 PUT 編輯）。依 PROCESS 陷阱 #3「hardening 不夾帶」拆出。\n- TAK-A（HMAC inbound）決策已定、延後實作；TAK-D 重歸屬 P2-12 —— 皆本 PR 文件留痕，無 code。\n\n## Notes for reviewer\n- 守門點：`cop_service.ingest_cot_event` 取得 `existing` 後、insert/update 前。\n- 設計取捨：用「來源所有權」非「uid 前綴」—— 理由見 commit message + threat_model §8.2（CoT 標準要求保留 uid 供下行對位）。\n- `/code-review`：diff 無 bug，soft-delete 誤報已反駁（加 stale 過濾反而會重開覆寫破口）。`/security-review`：0 finding。",
+    "closedAt": null,
+    "comments": [
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## §8 Verification — 自動測試證據（CA 跑過一遍）\n\n```\n# Step 1+2: 守門負向 + 正向對照\n$ python -m pytest tests/unit/test_cop_ingest.py::test_tak_event_does_not_overwrite_non_tak_entity                     tests/unit/test_cop_ingest.py::test_tak_event_updates_own_tak_entity -v\n======================== 2 passed, 3 warnings in 0.61s ========================\n\n# Step 3: ingest 接縫全回歸\n$ python -m pytest tests/unit/test_cop_ingest.py -q\n12 passed in 1.71s\n\n# 廣域回歸（COP/TAK 相關全套）\n$ python -m pytest tests/ -k \"cop or tak or geochat or ingest or medevac or shape or squad\"\n265 passed, 504 deselected in 36.20s\n```\n\n**結果：全綠，0 regression。** doc_sync_check 亦通過（exit 0）。\n\n> 註：Step 1/2 `-v` 個別 PASSED 行省略，summary `2 passed` 即兩測皆過。",
+        "createdAt": "2026-06-07T03:33:53Z",
+        "id": "IC_kwDOSnBjpc8AAAABFKTR9Q",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/147#issuecomment-4641313269"
+      }
+    ],
+    "createdAt": "2026-06-07T03:32:31Z",
+    "headRefName": "fix/issue-145-tak-b-source-ownership",
+    "labels": [],
+    "mergedAt": null,
+    "number": 147,
+    "state": "OPEN",
+    "title": "fix(tak): TAK-B 來源所有權守門 — 防 CoT uid 覆寫本地他源 entity（#145）",
+    "updatedAt": "2026-06-07T03:33:53Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/147"
   }
 ]
