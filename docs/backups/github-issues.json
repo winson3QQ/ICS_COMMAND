@@ -1994,5 +1994,38 @@
     "title": "Dashboard 可手動啟用/停用 TAK 連線(runtime toggle,非僅 TAK_ENABLED env)",
     "updatedAt": "2026-06-07T10:09:43Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/164"
+  },
+  {
+    "assignees": [],
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "body": "## 問題\n\nDashboard 目前為純桌機版 layout，無法在 iPhone/iPad 正常使用：\n\n1. **零 media queries** — layout 完全固定，小螢幕右側事件面板壓縮地圖到無法操作\n2. **觸控目標過小** — `.map-btn` 僅 28×28px，觸控規格需 ≥44px（P2-20 DoD 要求）\n3. **地圖長按無觸控支援** — `maplibre_core.js` 只綁 `mousedown/mousemove/mouseup`，iPad 上長按新增事件完全無效\n4. **Settings panel 硬寬 340px；MGRS input 硬寬 200px** — 窄螢幕溢出\n\n## Reality Check 發現\n\n| 項目 | 現況 |\n|---|---|\n| Viewport meta | ✅ 已設（`width=device-width, initial-scale=1, user-scalable=no`）|\n| CSS media queries | ❌ 零條 |\n| 右側 panel 寬度 | 硬寫 `flex: 0 0 20%`（展開 30%）|\n| Zone-A 高度 | 硬寫 `64px` |\n| `.map-btn` 大小 | 28×28px |\n| 地圖長按 | 僅 `mousedown/mousemove/mouseup` |\n| Modal 寬度 | ✅ 已用 `min(Npx, 94vw)` |\n\n## 修法\n\n1. **CSS responsive breakpoints**（`@media (max-width: 900px)` + `@media (max-width: 600px)`）：\n   - Zone-A 在 ≤900px 精簡（縮時鐘、隱 DCI/conn dots，高度 64→52px）\n   - 右側 panel 在 ≤900px 預設 collapse，地圖佔滿；panel toggle 按鈕顯示於地圖右下\n   - Settings panel / MGRS input 不超出 viewport\n\n2. **`@media (pointer: coarse)` 觸控目標**：\n   - `.map-btn`, `.map-tab`, `.place-grp`, `.csel-btn` min 44px tall/wide\n\n3. **地圖長按 touch events**（`maplibre_core.js`）：\n   - `touchstart` 啟動 650ms 計時器\n   - `touchmove` 偵測位移超過 10px 取消（finger wobble 容差）\n   - `touchend` / `touchcancel` 取消\n\n4. **右側 panel 滑入/滑出**：\n   - 新增 `#panel-toggle-btn` 浮於地圖右下角\n   - 點擊展開/收合右側 panel（overlay 模式，不壓縮地圖）\n\n## 影響範圍\n\n- `command-dashboard/static/commander_dashboard.html`（CSS + HTML toggle btn）\n- `command-dashboard/static/js/map/maplibre_core.js`（touch long-press）\n- `command-dashboard/static/js/main.js`（panel toggle handler）\n\n## DoD\n\n- [ ] iPad portrait（768px）：地圖佔滿，右側 panel 可展開收合\n- [ ] iPad landscape（1024px）：版面正常，touch 目標 ≥44px\n- [ ] iPhone（390px）：地圖可操作，panel 為 overlay\n- [ ] 長按新增事件：觸控 650ms 後正確觸發 popup\n- [ ] `npm test` 全綠（純 CSS/HTML/JS 改動，不改後端）\n- [ ] Human verify：iPad 瀏覽器截圖",
+    "closedAt": null,
+    "comments": [],
+    "createdAt": "2026-06-07T10:26:37Z",
+    "labels": [
+      {
+        "color": "a2eeef",
+        "description": "New feature or request",
+        "id": "LA_kwDOSnBjpc8AAAACklX2xg",
+        "name": "enhancement"
+      },
+      {
+        "color": "ededed",
+        "description": "",
+        "id": "LA_kwDOSnBjpc8AAAACmYAwmg",
+        "name": "ui"
+      }
+    ],
+    "milestone": null,
+    "number": 165,
+    "state": "OPEN",
+    "title": "feat(ui): Dashboard 響應式 + 觸控支援（iPhone/iPad）",
+    "updatedAt": "2026-06-07T10:26:37Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/165"
   }
 ]
