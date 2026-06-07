@@ -1864,15 +1864,15 @@
       "name": ""
     },
     "body": "## 事實\n`scripts/roadmap_issue_sync.py` 的 drift 報告有 3 類假陽性，誤導接手者以為有 PROCESS 8.5 漏勾（2026-06-07 查證，ROADMAP 實際全部正確）：\n\n1. **交叉引用過度對映**：`issue_item_ids` 把 issue 標題裡**每個** item ID 都對映。\n   - #27「split map_config (P1-13, **P1-12 prep**)」→ 誤算給 P1-12（其實是 P1-13 的 issue）。\n   - #140「P2-11b…（source command **延 P2-13**）」→ 誤算給 P2-13（其實是 P2-11b 的 issue）。\n2. **狀態讀散文先於表格列**：`parse_roadmap_status` 讀 item ID **第一次出現**的 marker。P2-01 第一次出現在 reality-check 散文段（`>` blockquote，無 marker）→ 誤報 pending，但 line 94 表格列明明 `✅ P2-01`。\n3. **「✅ 但無 issue」誤報 drift**：P1-04/10/15/16 走多個子 PR 完成、無單一對映 issue → 報「ROADMAP ✅ 但 issue missing」，實為正常。\n\n## 修法\n1. **狀態**：`parse_roadmap_status` 只認**表格列**（`|` 開頭），且從**首格**（item ID 所在 cell）讀 marker，跳過散文/其他 cell 的交叉引用。\n2. **對映**：`issue_item_ids` 排除交叉引用 ID —— ID 後接 `prep`、或前接 `延/依賴/解鎖/對齊/取代/替代/見/為` 等 context 詞 → 不對映。保留 bundled（`P1-05 + P1-06 + P1-07` 全對映）。\n3. **drift**：「done 但無 issue」不算 drift（只「done 但 issue OPEN」才是真矛盾）。\n\n## DoD\n- [ ] 3 項修法 + 單元測試（用 #27/#99/#140 真實標題 fixture 驗對映、P2-01 散文 vs 表格列驗狀態、無 issue 不 drift）\n- [ ] 跑 `roadmap_issue_sync.py` 確認 7 個假 drift 歸零\n- [ ] `/code-review`\n\n## 來源\n2026-06-07「show roadmap → 查 drift」衍生。與 #148（同檔 cp950）同類工具修補。",
-    "closedAt": null,
+    "closedAt": "2026-06-07T05:53:09Z",
     "comments": [],
     "createdAt": "2026-06-07T05:45:34Z",
     "labels": [],
     "milestone": null,
     "number": 155,
-    "state": "OPEN",
+    "state": "CLOSED",
     "title": "工具：roadmap_issue_sync.py drift 假陽性（交叉引用 + 散文 marker + 無 issue 誤報）",
-    "updatedAt": "2026-06-07T05:45:34Z",
+    "updatedAt": "2026-06-07T05:53:09Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/155"
   }
 ]

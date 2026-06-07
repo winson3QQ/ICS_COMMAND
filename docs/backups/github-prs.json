@@ -2671,5 +2671,26 @@
     "title": "fix(security): 紅隊 hardening batch — RT-H1/RT-L4/OP-1（OP-5 已緩解，#153）",
     "updatedAt": "2026-06-07T05:39:18Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/154"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "## ROADMAP item\n- Closes #155\n- 工具修補（同 #148/#149 類，非 ROADMAP item）\n\n## What changed\n`roadmap_issue_sync.py` 的 drift 報告 7 個假陽性 → 0。ROADMAP 本身一字未改（查證後本就正確）。三類根因修法：\n1. **交叉引用過度對映** → `_is_crossref` 排除「P1-12 prep / 延 P2-13 / P2-13 前置」這種順帶提及（bundled `P1-05 + P1-06` 仍全對映）。\n2. **狀態讀散文** → `_iter_item_rows` 只認表格列首格，跳 reality-check blockquote（修 P2-01 誤報 pending）。\n3. **done+無 issue 誤報 drift** → 改成只「done 但 issue OPEN」才是真矛盾。\n\n## DoD checklist\n- [x] 3 項修法 + 10 單元測試（4 真實標題對映 + bundled + 散文/表格列 + drift 三態）\n- [x] drift 7→0 實測\n- [x] pyflakes clean、doc_sync ✓\n\n## §8 Human Verification Script\n\n```bash\n# Step 1: 單元測試（對映/狀態/drift 三類）\ncd command-dashboard && python -m pytest tests/unit/test_roadmap_sync.py -v\n# 預期：10 passed（#27→P1-13 不含 P1-12、#140→P2-11b、#141→空、bundled 全保留…）\n\n# Step 2: 端到端 drift 歸零\ncd .. && python scripts/roadmap_issue_sync.py 2>&1 | grep -c '狀態 drift'\n# 預期：0（無 drift section）\n```\n\n## Out of scope / known limitations\n- 只修 **drift 報告**假陽性。Gap Report 的「missing（pending 無 issue）/ orphan（issue 無 roadmap）」為**獨立的盤點資訊**，非 drift，本 PR 不動。\n- `_is_crossref` 為關鍵字 heuristic（prep/前置/前提/延/依賴/解鎖/取代/替代）；對現有 4 個真實 cross-ref 全涵蓋，未來新詞形如漏網再補。\n\n## Notes for reviewer\n- heuristic 對 4 真實標題（#27/#140/#141/#99）+ bundled + 邊界（ID 在開頭/結尾）皆有測試覆蓋。\n- 順手清既有 pyflakes f-string nit（missing placeholder）。",
+    "closedAt": "2026-06-07T05:53:08Z",
+    "comments": [],
+    "createdAt": "2026-06-07T05:52:57Z",
+    "headRefName": "fix/issue-155-roadmap-sync-drift-falsepos",
+    "labels": [],
+    "mergedAt": "2026-06-07T05:53:08Z",
+    "number": 156,
+    "state": "MERGED",
+    "title": "fix(tooling): roadmap_issue_sync drift 假陽性修正（#155）",
+    "updatedAt": "2026-06-07T05:53:10Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/156"
   }
 ]
