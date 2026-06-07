@@ -2713,5 +2713,26 @@
     "title": "feat(tak): P2-10 CoT 內容層白名單 — type / callsign（最後防線，#157）",
     "updatedAt": "2026-06-07T06:19:57Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/158"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "## Closes #159（P2-10 真機 dogfood）\n\n## What changed\niTAK 封閉繪圖（area/Zone）以首尾相同的 `<link>` 序列送 → `geometry_service` 的 `<link>` 路徑原本永遠回 LineString（route）。加封閉偵測：首尾座標相同 + ≥4 coords → Polygon。\n\n## §8 Verify\n```bash\ncd command-dashboard\npython -m pytest tests/unit/test_geometry_service.py -k 'link' -v   # 封閉→Polygon、開放→LineString\n```\n**真機**：合 PR 後重啟 dashboard，iTAK 重畫封閉區域 → ICS 應渲染成填滿多邊形（非路線箭頭）。\n\n## DoD\n- [x] 封閉→polygon / 開放→linestring 測試\n- [x] 116 廣域回歸綠、pyflakes clean\n- [x] 對齊 _from_shape closed 邏輯（review #132 ≥3 相異頂點）\n\n## Notes\n小範圍幾何修補,自審：邏輯鏡像既有 `<polyline closed>` 分支。stale 消失(#160)/即時刪除(#161)另案。",
+    "closedAt": "2026-06-07T09:31:04Z",
+    "comments": [],
+    "createdAt": "2026-06-07T09:30:31Z",
+    "headRefName": "fix/issue-159-itak-closed-polygon",
+    "labels": [],
+    "mergedAt": "2026-06-07T09:31:04Z",
+    "number": 162,
+    "state": "MERGED",
+    "title": "fix(tak): iTAK 封閉繪圖（area）判為 polygon 非 route（#159）",
+    "updatedAt": "2026-06-07T09:31:06Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/162"
   }
 ]

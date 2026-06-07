@@ -1904,15 +1904,15 @@
       "name": ""
     },
     "body": "## 來源\nP2-10 真機 iTAK dogfood（2026-06-07）。使用者在 iTAK 畫封閉區域「曙豐-3QQ-Zone」廣播 → ICS dashboard 渲染成**路線+方向箭頭**（route / axis-of-advance），非填滿多邊形（area-control）。\n\n## 事實（資料證實）\n該 entity：`type=u-d-f`（iTAK 自由繪圖）、`attributes.kind=route`、5 vertices（封閉形狀）、`attributes` 含 `link`（CoT `<link>` 點序列）。\n\n## 根因\niTAK 把封閉區域以 CoT `<link>` 點序列送（u-d-f）。`geometry_service` 解成 **LineString**；`normalize_cot` 的 `kind = 'polygon' if geometry.type=='Polygon' else 'route'` → 因非 Polygon 判 route。**未偵測「封閉」**（首尾點相同 / closed 旗標）。\n\n## 修法方向\n- `geometry_service`：偵測 `<link>` 序列是否封閉（首 vertex == 末 vertex，或 CoT shape 帶 closed 屬性）→ 產 Polygon geometry。\n- 或 `normalize_cot`：依 vertices 封閉性補判 kind=polygon。\n- 對齊 P2-05 route(線+箭頭) vs polygon(填滿面) 渲染。\n\n## DoD\n- [ ] 封閉 iTAK 繪圖 → kind=polygon + 真機驗渲染成面\n- [ ] 開放線仍 route；測試覆蓋兩者\n- [ ] /code-review\n\n依賴/關聯：P2-08（#132 geometry_service）、P2-05 渲染。",
-    "closedAt": null,
+    "closedAt": "2026-06-07T09:31:05Z",
     "comments": [],
     "createdAt": "2026-06-07T09:20:13Z",
     "labels": [],
     "milestone": null,
     "number": 159,
-    "state": "OPEN",
+    "state": "CLOSED",
     "title": "P2-08 follow-up：iTAK 封閉繪圖（area/Zone）被判為 route 而非 polygon",
-    "updatedAt": "2026-06-07T09:20:13Z",
+    "updatedAt": "2026-06-07T09:31:05Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/159"
   },
   {
