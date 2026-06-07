@@ -446,12 +446,13 @@ document.addEventListener('click', function (e) {
 });
 
 // ── 行動裝置：點 panel 外部關閉 overlay panel（#165）──
+// matchMedia 與 CSS 斷點同值；改用 data-action 做 guard 避免未來包容器元素時 closest('#id') 失效
+const _mobileBreak = window.matchMedia('(max-width:900px)');
 document.addEventListener('click', function (e) {
   const panel = document.getElementById('panel-right');
   if (!panel || !panel.classList.contains('mobile-open')) return;
-  // 只在 overlay 模式（≤900px）才處理
-  if (window.getComputedStyle(panel).position !== 'absolute') return;
-  if (!panel.contains(e.target) && !e.target.closest('#panel-toggle-btn')) {
+  if (!_mobileBreak.matches) return;
+  if (!panel.contains(e.target) && !e.target.closest('[data-action="toggleMobilePanel"]')) {
     panel.classList.remove('mobile-open');
     const btn = document.getElementById('panel-toggle-btn');
     if (btn) { btn.textContent = '☰'; btn.setAttribute('aria-label', '開啟事件追蹤面板'); }

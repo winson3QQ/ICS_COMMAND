@@ -69,6 +69,9 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(
 }
 .side-panel.right{border-right:none;border-left:1px solid var(--border);transition:flex-basis .25s;}
 .side-panel.right.expanded{flex-basis:30%;}
+/* ⚠️ .collapsed (display:none) 與行動裝置的 .mobile-open (transform) 是兩套獨立機制。
+   若未來將 .collapsed 套到 #panel-right，display:none 優先於 transform，.mobile-open 無效。
+   #panel-right 目前不使用 .collapsed（僅 panel-left 用），勿複製給右 panel。 */
 .side-panel.collapsed{display:none !important;}
 
 /* 中：地圖 */
@@ -854,7 +857,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(
   /* Panel toggle btn 顯示於地圖右下角 */
   #panel-toggle-btn{display:flex!important;}
   /* Settings panel 不超出 viewport */
-  #settings-panel{width:min(340px,90vw)!important;right:min(-340px,-90vw)!important;}
+  #settings-panel{width:min(340px,90vw)!important;right:max(-340px,-90vw)!important;}
   #settings-panel.show{right:0!important;}
   /* MGRS input 不溢出 */
   #mgrs-search-input{width:min(200px,40vw)!important;}

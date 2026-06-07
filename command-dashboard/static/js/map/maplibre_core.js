@@ -188,7 +188,11 @@ export function initMaplibre(containerId, callbacks = {}) {
   // 長按 650ms → onLongPress（取代 Leaflet 的 mousedown/mousemove/mouseup 組合）
   let lpTimer = null;
   let lpMoved = false;
+  // touch 進行中旗標：阻止 touch 結束後瀏覽器補發的 synthetic mousedown 重啟計時器，
+  // 避免 lpTimer/lpMoved 在 mouse/touch 兩條路徑間互相干擾（#165 code-review fix）
+  let _touchActive = false;
   _map.on('mousedown', (e) => {
+    if (_touchActive) return;
     if (e.originalEvent && e.originalEvent.button !== 0) return;
     // 短路：mousedown target 在 maplibregl.Marker（drag handle / coord pin / 未來
     // 任何 HTML marker）內 → 不啟動長按計時器。否則使用者在 event circle 上按住
@@ -218,6 +222,7 @@ export function initMaplibre(containerId, callbacks = {}) {
   const TOUCH_SLOP = 10;
   let lpTouchOrigin = null;
   _map.getCanvas().addEventListener('touchstart', (ev) => {
+    _touchActive = true;
     if (ev.touches.length !== 1) return;
     if (isSuppressed()) return;
     if (ev.target.closest?.('.maplibregl-marker')) return;
@@ -245,11 +250,14 @@ export function initMaplibre(containerId, callbacks = {}) {
   _map.getCanvas().addEventListener('touchend', () => {
     if (lpTimer) { clearTimeout(lpTimer); lpTimer = null; }
     lpTouchOrigin = null;
+    // 延遲清旗標，讓 synthetic mousedown（touchend 後約 300ms 補發）仍被攔截
+    setTimeout(() => { _touchActive = false; }, 400);
   }, { passive: true });
   _map.getCanvas().addEventListener('touchcancel', () => {
     lpMoved = true;
     if (lpTimer) { clearTimeout(lpTimer); lpTimer = null; }
     lpTouchOrigin = null;
+    setTimeout(() => { _touchActive = false; }, 400);
   }, { passive: true });
 
   // ── sessionStorage view restore ──
