@@ -160,9 +160,47 @@ _Session D 填入。例：Pi 實體被盜之資料外洩風險無法完全消除
 
 ---
 
-## 8. 審查歷程
+## 8. TAK 介面信任邊界（P2 整合）
+
+> 2026-06-07 建立。對應 ROADMAP P2-17（TAK 信任邊界文件化）與紅隊 TAK-A~F 審查處理。
+> COP 第一個外部資料源是 TAK Server，引入兩條新鏈路（上行收 / 下行送），信任假設與既有 Pi/PWA 不同，獨立列管。
+
+### 8.1 新增鏈路與傳輸加密
+
+| 方向 | 鏈路 | 加密 / 認證 | 狀態 |
+|---|---|---|---|
+| **上行** | TAK Server → Command（CoT 串流 `tls://:8089`）| **TLS**；Command 驗 server 憑證（對 step-ca 信任鏈），**fail-closed**——無 cafile 且未顯式 `allow_insecure_tls` → 拒連，不裸奔（`tak_service.build_subscribe_config`）| ✅ 已實作（P2-02/03）|
+| **下行** | Command → TAK Server Marti REST（`https://:8443`）| **mTLS（雙向憑證）**；Command 自證 client cert + 驗 server，同 fail-closed（`tak_rest_client.build_marti_ssl_context`）| 🔧 傳輸層已建（P2-11）；查詢消費（P2-12）/ Mission 下令（P2-13）**功能未實作** → 現階段下行無實際流量 |
+
+**傳輸加密殘餘**：上行 `check_hostname=False`（`tak_service.py`）—— 驗「憑證由我方 CA 簽發」但**不驗「憑證簽給此連線位址」**。在全自簽、單一內網 PKI（所有 cert 由同一 step-ca 發放且皆受控）下可接受；嚴格收緊需開啟 hostname 檢查（程式已寫明此取捨原因）。
+
+**At-rest（落地）**：CoT 收進後存 `cop_entities` 為**明文**（同 §3.4 at-rest 邊界）。硬碟被盜 / 備份外洩 / 主機被入侵時可讀。緩解 = P1-12c SQLCipher（**尚未實作**）。見 TAK-F。
+
+### 8.2 STRIDE — TAK 介面（紅隊 2026-06-05 審查 → 2026-06-07 處理）
+
+| 代號 | STRIDE | 威脅（事實）| 處理 / 決策 |
+|---|---|---|---|
+| **TAK-A** | Spoofing / EoP | inbound `POST /api/tak/events` 無機器間認證；外部 TAK/federation 拿不到 session token | **決策（2026-06-07）：選 HMAC inbound，延後實作**。端點現況 session-gated（WRITE_ROLES）本就擋外部機器、僅測試/internal 可呼叫，**無現役破口**；production 上行走 :8089 pull、federation server↔server 落 :8089，皆不經此端點。真有「外部系統 REST 推 CoT 進 Command」需求時才接 HMAC inbound（對齊 Pi-node `verify_hmac`）|
+| **TAK-B** | Tampering | TAK CoT uid 直通，可偽造/碰撞 `manual:*` 等本地他源 uid → `ingest_cot_event` CAS 覆寫本地 entity | **✅ 已修（[#145](https://github.com/winson3QQ/ICS_COMMAND/issues/145)，2026-06-07）：來源所有權守門**。CoT 標準要求轉傳保留 uid 不改寫（供 P2-13 下行對位）→ 不前綴改名；改為 TAK 事件只准動 `source='tak'`，撞本地他源一律拒絕覆寫、回 None 記 log（`cop_service.ingest_cot_event` + 負向測試）。**反向缺口待修**：operator 經 `PUT /api/cop/entities/{uid}` 仍可覆寫 `source='tak'` entity 的座標/類型（router 只擋改 source 欄位本身，未擋來源所有權）→ [#146](https://github.com/winson3QQ/ICS_COMMAND/issues/146) follow-up |
+| **TAK-C** | — | `opex` 決定演習/實戰歸屬 | **❌ 不採**：違反 server-authoritative；模式由指揮部 active exercise 決定，不信 client `opex`（見 commit `74db9e8`）|
+| **TAK-D** | Info Disclosure | `visible_to` 預設 `["all"]`，TAK entity 全可見（含 observer）；`cop_hub` 無分級過濾 | **🔶 重歸屬 P2-12**：UI 分層時建 CoT `access`→`visible_to` 映射；現況 observer=read-only、無多分類部署下無害 |
+| **TAK-E** | DoS | :8089 訂閱無流量管制，多 uid 高頻 burst（單 uid 已有 1s 保護）| **⏳ 重歸屬 P2-10 / 獨立 hardening**：per-exercise uid 上限 + 全域 token bucket，超量 warn 不中斷 |
+| **TAK-F** | Info Disclosure | CoT `<detail>`（含 MEDEVAC 9-line）明文存 attributes + 廣播 | **🔶 部分處理**：9-line 釐清為**聚合後送態勢非個資**（P2-09 設計 B，不開 medical_records 表）；殘餘 = 明文 at-rest 邊界（→ P1-12c）+ ingest 無 server-side XSS escape（→ [#136](https://github.com/winson3QQ/ICS_COMMAND/issues/136)）|
+
+### 8.3 裝置准入信任假設（缺口 #7）
+
+Command **信任 TAK Server 轉發的所有 CoT** —— 即使傳輸加密（§8.1）且 server 憑證已驗，**資料內容的可信度只等同 TAK Server 的裝置准入控管**（cert enrollment 是 TAK 管理員責任，非 Command 可驗）。任何被 TAK 接納的 ATAK 裝置都能推 CoT 進 COP。
+
+兩層信任，勿混淆：
+- **連到對的 server**（§8.1 憑證驗證）≠ **server 送的資料可信**（本節）。
+- Command 端對「資料內容」的最後防線 = **P2-10 內容層白名單**（座標越界拒絕 / callsign 字元白名單 / type prefix 白名單）+ TAK-B 來源所有權守門。
+
+---
+
+## 9. 審查歷程
 
 | 日期 | Version | 變更 |
 |---|---|---|
 | 2026-04-25 | 0.1 | 骨架建立（Session D 完稿）|
 | 2026-06-04 | 0.2 | §3.4 加 at-rest 加密邊界（only 防靜止，不防 runtime）；§7 加「特權 runtime 存取（含 AI agent）」殘餘風險 + OS/政策緩解（dogfood 提問衍生）|
+| 2026-06-07 | 0.3 | 新增 §8「TAK 介面信任邊界」：上行/下行傳輸加密（fail-closed cert 驗證 + check_hostname 取捨 + at-rest 明文邊界）、STRIDE TAK-A~F 處理（TAK-B 來源所有權守門已修、TAK-A HMAC inbound 決策延後、C/D/E/F 歸屬）、裝置准入信任假設（缺口 #7）|
