@@ -1,8 +1,8 @@
 """
 schemas/cop.py — COP（Common Operational Picture）正規化層 Pydantic 模型 v1
 
-P1-03 schema 凍結（issue #15）。對齊 TAK CoT 規格（不自創欄位），支援 4 source：
-manual / pi-node / tak / waveink。
+P1-03 schema 凍結（issue #15）。對齊 TAK CoT 規格（不自創欄位）。source：
+manual / pi-node / tak / waveink（P1-03）+ command（#141 解凍，P2-13 下行指令來源）。
 
 設計引用：
 - TAK Server CoT Event XSD + CoT_link.xsd（官方規格）
@@ -18,7 +18,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 # ── 共用型別 alias ────────────────────────────────────────────────────────────
 
-CoPSource    = Literal["manual", "pi-node", "tak", "waveink"]
+CoPSource    = Literal["manual", "pi-node", "tak", "waveink", "command"]  # command：#141 P1-03 解凍（P2-13 下行指令來源）
 CoPSeverity  = Literal["info", "warning", "critical"]
 
 

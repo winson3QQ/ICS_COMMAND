@@ -751,6 +751,134 @@ def _m017_cop_entities_planned_simulated_down(conn: sqlite3.Connection) -> None:
             conn.execute(f"ALTER TABLE cop_entities DROP COLUMN {col}")  # nosec B608
 
 
+_COP_SOURCES_V1 = ("manual", "pi-node", "tak", "waveink")  # P1-03 凍結
+_COP_SOURCES_V2 = (*_COP_SOURCES_V1, "command")  # #141：加 command（P2-13 下行指令來源）
+
+
+def _rebuild_cop_entities(conn: sqlite3.Connection, source_values: tuple[str, ...]) -> None:
+    """rebuild cop_entities，source CHECK 用給定 enum 值（#141 up/down 共用）。
+
+    背景：SQLite **CHECK 不可 ALTER**，改 source 合法值集合只能整表 rebuild。cop_entities
+    被 cop_entity_tracks / cop_entity_links 以 `ON DELETE CASCADE` reference，且 `get_conn`
+    設 `PRAGMA foreign_keys=ON`。naive `DROP TABLE` parent（FK on）會觸發隱式 `DELETE FROM`
+    → child CASCADE → **tracks/links 全刪**。
+
+    解法：SQLite 官方 12-step 的 `foreign_keys=OFF` 版（實測 legacy_alter_table 在 3.50
+    無法阻止 rename 改寫 child FK，不可用）——
+      1. `PRAGMA foreign_keys=OFF`（DROP parent 不 cascade、不檢查 dangling）
+      2. CREATE cop_entities_new（完整 33 欄，source CHECK = source_values）
+      3. INSERT 用**動態舊欄位清單**（漏欄即 SQL 報錯，不靜默丟資料）
+      4. DROP cop_entities（不 rename，避免 child FK 被改寫指向 _old）
+      5. rename _new → cop_entities（child FK reference 'cop_entities' 對上 new）
+      6. 動態重建所有原 index（讀 sqlite_master，含 m015 team_color，免手列漏）、`PRAGMA foreign_keys=ON`
+
+    ⚠️ `foreign_keys` PRAGMA 只能在**無 transaction**時設，而 migration 跑在 init_db
+    大 transaction 內 → 本函式先 `conn.commit()` 結束當前 transaction、切 autocommit、自開
+    `BEGIN`/`COMMIT` 包 rebuild 保原子性（失敗 ROLLBACK），結束再切回。source_csv 由 code
+    常數 tuple 組（非外部輸入）。
+    """
+    source_csv = ", ".join(f"'{s}'" for s in source_values)
+
+    conn.commit()  # 結束 init_db 大 transaction（前面 migration 落地），讓 PRAGMA foreign_keys 可設
+    prev_isolation = conn.isolation_level
+    conn.isolation_level = None  # autocommit：PRAGMA foreign_keys 才生效
+    began = False
+    try:
+        conn.execute("PRAGMA foreign_keys=OFF")
+        conn.execute("BEGIN")
+        began = True
+        old_cols = [r[1] for r in conn.execute("PRAGMA table_info(cop_entities)")]
+        col_csv = ", ".join(old_cols)
+        # 存所有 user index 的 CREATE SQL（DROP cop_entities 連帶刪 → rebuild 後動態重建，
+        # 含 _m015 的 idx_cop_entities_team_color；手列 index 會漏建，review #141-1）
+        idx_sqls = [
+            r[0]
+            for r in conn.execute(
+                "SELECT sql FROM sqlite_master WHERE type='index' "
+                "AND tbl_name='cop_entities' AND sql IS NOT NULL"
+            )
+        ]
+        conn.execute(f"""
+            CREATE TABLE cop_entities_new (
+                uid            TEXT PRIMARY KEY,
+                type           TEXT NOT NULL,
+                time           TEXT NOT NULL,
+                start          TEXT NOT NULL,
+                stale          TEXT NOT NULL,
+                how            TEXT NOT NULL,
+                version        TEXT NOT NULL DEFAULT '2.0',
+                lat            REAL NOT NULL,
+                lon            REAL NOT NULL,
+                hae            REAL NOT NULL DEFAULT 0,
+                ce             REAL NOT NULL DEFAULT 9999999,
+                le             REAL NOT NULL DEFAULT 9999999,
+                heading_deg    REAL,
+                speed_mps      REAL,
+                source         TEXT NOT NULL CHECK(source IN ({source_csv})),
+                received_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+                exercise_id    INTEGER REFERENCES exercises(id),
+                access         TEXT,
+                visible_to     TEXT NOT NULL DEFAULT '["all"]',
+                origin_node_id TEXT,
+                last_synced_at TEXT,
+                version_clock  INTEGER NOT NULL DEFAULT 1,
+                callsign       TEXT,
+                remarks        TEXT,
+                severity       TEXT NOT NULL DEFAULT 'info'
+                    CHECK(severity IN ('info','warning','critical')),
+                attributes     TEXT NOT NULL DEFAULT '{{}}',
+                updated_by     TEXT,
+                updated_at     TEXT,
+                team_color     TEXT,
+                role           TEXT,
+                battery        INTEGER,
+                planned        INTEGER NOT NULL DEFAULT 0,
+                simulated      INTEGER NOT NULL DEFAULT 0
+            )
+        """)  # nosec B608 — source_csv 為 code 常數 tuple，非外部輸入
+        conn.execute(f"INSERT INTO cop_entities_new ({col_csv}) SELECT {col_csv} FROM cop_entities")  # nosec B608
+        conn.execute("DROP TABLE cop_entities")  # foreign_keys=OFF → 不 cascade child（tracks/links 保留）
+        conn.execute("ALTER TABLE cop_entities_new RENAME TO cop_entities")  # child FK 'cop_entities' 對上 new
+        for idx_sql in idx_sqls:  # 動態重建所有原 index（含 m015 team_color，免手列漏建）
+            conn.execute(idx_sql)
+        conn.execute("COMMIT")
+    except Exception:
+        if began:  # BEGIN 前出錯時無 active transaction，ROLLBACK 會反拋蓋掉原因（review #141-4）
+            conn.execute("ROLLBACK")
+        raise
+    finally:
+        conn.execute("PRAGMA foreign_keys=ON")
+        conn.isolation_level = prev_isolation
+
+
+def _m018_cop_entities_source_command(conn: sqlite3.Connection) -> None:
+    """#141：cop_entities.source CHECK 加 'command'（P1-03 解凍，P2-13 下行指令來源）。
+
+    table rebuild（CHECK 不可 ALTER）；idempotent：schema 已含 'command' 則 skip。
+    詳見 _rebuild_cop_entities（foreign_keys=OFF 避 FK cascade）。
+    """
+    existing = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='cop_entities'"
+    ).fetchone()
+    if existing and "'command'" in existing[0]:
+        return  # 已含 command（重跑）
+    _rebuild_cop_entities(conn, _COP_SOURCES_V2)
+
+
+def _m018_cop_entities_source_command_down(conn: sqlite3.Connection) -> None:
+    """rollback：source CHECK 回 P1-03 的 4 值。
+
+    ⚠️ 前提：rollback 前無 source='command' 的資料（否則 4-值 CHECK 在 INSERT 階段擋下、
+    rebuild 失敗）。down 為 dev rollback 用途，正式環境不走。
+    """
+    existing = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='cop_entities'"
+    ).fetchone()
+    if existing and "'command'" not in existing[0]:
+        return  # 已不含 command
+    _rebuild_cop_entities(conn, _COP_SOURCES_V1)
+
+
 _MIGRATIONS: list[tuple[int, str, object]] = [
     (1, "events_columns", _m001_events_columns),
     (2, "decisions_columns", _m002_decisions_columns),
@@ -769,6 +897,7 @@ _MIGRATIONS: list[tuple[int, str, object]] = [
     (15, "cop_entities_squad_cols", _m015_cop_entities_squad_cols),
     (16, "chats_table", _m016_chats_table),
     (17, "cop_entities_planned_simulated", _m017_cop_entities_planned_simulated),
+    (18, "cop_entities_source_command", _m018_cop_entities_source_command),
 ]
 
 

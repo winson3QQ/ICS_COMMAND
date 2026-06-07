@@ -59,9 +59,9 @@ class TestCoPEntitySchema:
         assert e.version_clock == 1  # default
         assert e.attributes == {}  # default
 
-    def test_source_enum_locked_to_4_values(self):
-        """ROADMAP P1-03 必填 source: enum[manual, pi-node, tak, waveink]"""
-        for src in ("manual", "pi-node", "tak", "waveink"):
+    def test_source_enum_accepts_p1_03_plus_command(self):
+        """source enum：P1-03 的 4 值 + #141 加 command（P2-13 下行指令來源）。"""
+        for src in ("manual", "pi-node", "tak", "waveink", "command"):
             CoPEntity(**_valid_entity_payload(source=src))
 
         with pytest.raises(ValidationError):
@@ -234,6 +234,101 @@ class TestMigration017PlannedSimulated:
         got = get_cop_entity("ps-true")
         assert got["planned"] is True
         assert got["simulated"] is True
+
+
+class TestMigration018SourceCommand:
+    """#141：source CHECK 加 command（table rebuild，legacy_alter_table 避 FK cascade）。"""
+
+    def test_command_source_accepted_at_db(self, tmp_db):
+        """rebuild 後 DB CHECK 接受 command（P2-13 來源）。"""
+        insert_cop_entity(CoPEntity(**_valid_entity_payload(uid="cmd-1", source="command")))
+        assert get_cop_entity("cmd-1")["source"] == "command"
+
+    def test_db_check_still_blocks_bogus_after_rebuild(self, tmp_db):
+        """rebuild 後 CHECK 仍擋非法 source（DB 層防線保留，即使 Pydantic 被 bypass）。"""
+        import sqlite3
+
+        with pytest.raises(sqlite3.IntegrityError), get_conn() as c:
+            c.execute(
+                "INSERT INTO cop_entities (uid, type, time, start, stale, how, "
+                "lat, lon, source) VALUES "
+                "('x','a-f-G-U-C','t','t','t','h-e',25.0,121.0,'bogus')"
+            )
+
+    def test_rebuild_preserves_data_and_cascade(self, tmp_db):
+        """★ 核心安全網：rebuild 前塞 entity+tracks+links → 跑 _m018 → 資料完整 + cascade 仍運作。
+
+        驗 legacy_alter_table 方案正確（child FK 不被 cascade 刪光）——這是 #141 整個風險所在。
+        """
+        from core.database import (
+            _COP_SOURCES_V1,
+            _m018_cop_entities_source_command,
+            _rebuild_cop_entities,
+        )
+
+        # tmp_db 已 migrate 到 18（5 值）。先 rebuild 回 V1（4 值）模擬「未加 command」起點
+        with get_conn() as c:
+            _rebuild_cop_entities(c, _COP_SOURCES_V1)
+            c.commit()
+        # 塞既有資料（2 entity + 3 tracks + 1 link）
+        insert_cop_entity(CoPEntity(**_valid_entity_payload(uid="keep-1")))
+        insert_cop_entity(CoPEntity(**_valid_entity_payload(uid="keep-2")))
+        for i in range(3):
+            insert_cop_track(CoPEntityTrack(uid="keep-1", t=f"2026-01-01T00:0{i}:00Z", lat=25.0, lon=121.0))
+        insert_cop_link(CoPEntityLink(src_uid="keep-1", relation="follows", target_uid="keep-2", target_type="a-f-G"))
+        # 跑 _m018 rebuild（加 command）
+        with get_conn() as c:
+            _m018_cop_entities_source_command(c)
+            c.commit()
+        # ★ rebuild 後既有資料完整（tracks/links 沒被 cascade 刪光）
+        assert get_cop_entity("keep-1") is not None
+        assert len(list_cop_tracks("keep-1")) == 3
+        assert len(list_cop_links(src_uid="keep-1")) == 1
+        # ★ cascade 經 rebuild 仍運作：刪 entity → tracks/links 隨刪
+        with get_conn() as c:
+            c.execute("PRAGMA foreign_keys=ON")
+            c.execute("DELETE FROM cop_entities WHERE uid='keep-1'")
+            c.commit()
+        assert len(list_cop_tracks("keep-1")) == 0
+        assert len(list_cop_links(src_uid="keep-1")) == 0
+
+    def test_m018_idempotent(self, tmp_db):
+        """重跑 _m018（schema 已含 command）→ skip 不報錯。"""
+        from core.database import _m018_cop_entities_source_command
+
+        with get_conn() as c:
+            _m018_cop_entities_source_command(c)  # 已 migrate 過，應 skip
+            c.commit()
+        insert_cop_entity(CoPEntity(**_valid_entity_payload(uid="idem-1", source="command")))
+        assert get_cop_entity("idem-1")["source"] == "command"
+
+    def test_rebuild_preserves_all_indexes(self, tmp_db):
+        """rebuild 後所有原 index 都重建（含 m015 idx_cop_entities_team_color，review #141-1：
+        手列 index 會漏掉 team_color → P2-06d GROUP BY 走 full scan）。"""
+        with get_conn() as c:
+            idxs = {
+                r[0]
+                for r in c.execute(
+                    "SELECT name FROM sqlite_master WHERE type='index' "
+                    "AND tbl_name='cop_entities' AND sql IS NOT NULL"
+                )
+            }
+        assert "idx_cop_entities_team_color" in idxs  # m015 的 index 不被 rebuild 漏掉
+        assert {
+            "idx_cop_entities_stale",
+            "idx_cop_entities_source",
+            "idx_cop_entities_type",
+            "idx_cop_entities_exercise",
+        } <= idxs
+
+    def test_source_constant_matches_schema_literal(self):
+        """_COP_SOURCES_V2（DB CHECK 來源）與 schema CoPSource Literal 集合一致（防兩處漂移，#141-3）。"""
+        from typing import get_args
+
+        from core.database import _COP_SOURCES_V2
+        from schemas.cop import CoPSource
+
+        assert set(_COP_SOURCES_V2) == set(get_args(CoPSource))
 
 
 # ── 3. Repository CRUD 來回一致 ──────────────────────────────────────────────
