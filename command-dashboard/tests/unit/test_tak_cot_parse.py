@@ -101,3 +101,53 @@ def test_invalid_inputs_raise(name):
 def test_empty_or_malformed_raise(raw):
     with pytest.raises(CoTParseError):
         parse_cot_xml(raw)
+
+
+# ── P2-10 內容層白名單（type / callsign / 座標越界）—— ingest 端最後防線 ──────
+
+from pydantic import ValidationError  # noqa: E402
+
+from schemas.tak import CoTEventIn  # noqa: E402
+
+_BASE = dict(
+    uid="T-1", type="a-f-G-U-C", time="2026-06-05T04:00:00Z",
+    start="2026-06-05T04:00:00Z", stale="2026-06-05T04:05:00Z", how="m-g",
+    lat=24.0, lon=120.0,
+)
+
+
+def test_valid_type_and_callsign_pass():
+    e = CoTEventIn(**{**_BASE, "type": "b-a-o-tbl-medevac", "callsign": "ALPHA-1"})
+    assert e.type == "b-a-o-tbl-medevac" and e.callsign == "ALPHA-1"
+
+
+@pytest.mark.parametrize("bad", ["<script>", "a f G", "a;drop", "x", "9-a-b", "A-f-G", ""])
+def test_bad_type_rejected(bad):
+    with pytest.raises(ValidationError):
+        CoTEventIn(**{**_BASE, "type": bad})
+
+
+def test_callsign_apostrophe_allowed():
+    # 紅隊 RT-M3 陷阱 1：O'Brien 等含 ' 的合法呼號不可誤殺（內容層別過濾引號）
+    assert CoTEventIn(**{**_BASE, "callsign": "O'Brien-1"}).callsign == "O'Brien-1"
+
+
+@pytest.mark.parametrize("bad", ["<script>", 'a"b', "a&b", "a`b", "a\x00b", "a;b", "a<b>c"])
+def test_bad_callsign_rejected(bad):
+    with pytest.raises(ValidationError):
+        CoTEventIn(**{**_BASE, "callsign": bad})
+
+
+@pytest.mark.parametrize("lat,lon", [(91.0, 0.0), (-91.0, 0.0), (0.0, 181.0), (0.0, -181.0)])
+def test_out_of_bounds_coord_rejected(lat, lon):
+    with pytest.raises(ValidationError):
+        CoTEventIn(**{**_BASE, "lat": lat, "lon": lon})
+
+
+def test_invalid_type_via_stream_becomes_parse_error():
+    # :8089 路徑：parse_cot_xml 把 ValidationError 收斂成 CoTParseError（不中斷串流）。
+    bad = ('<event version="2.0" uid="T" type="a f G" time="2026-06-05T04:00:00Z" '
+           'start="2026-06-05T04:00:00Z" stale="2026-06-05T04:05:00Z" how="m-g">'
+           '<point lat="24.0" lon="120.0" hae="0" ce="9" le="9"/><detail/></event>')
+    with pytest.raises(CoTParseError):
+        parse_cot_xml(bad)
