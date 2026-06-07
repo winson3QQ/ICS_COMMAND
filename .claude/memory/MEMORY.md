@@ -8,3 +8,4 @@ ICS_DMAS 的 memory（行為規則、架構決策、HTTPS 決策、Remote SoT、
 - [Boris 路線工作流](process-workflow-boris-route.md) — Claude Code 內建 skill + 兩個自寫 quality gate；3 角色不形式化 handoff
 - [事件符號 / 分類體系決策](event-symbology-classification.md) — NAPSG/CoT/台灣 四軸對照、視覺 affiliation-aware（敵我=2525框/類型=NAPSG象形/severity=halo）、type-first 建立流程、字典擴充模型；#66 編輯器(剩 C2) / #64 硬化(剩 #3→P1-10h) 狀態 + 環境 quirk
 - [TAK Server = 官方 5.7 / Marti REST 走 cert 非 OAuth2](tak-server-marti-cert-not-oauth.md) — 部署官方 tak.gov 5.7-RELEASE-43；Marti :8443 認證 = client cert(mTLS) 非 OAuth2；ROADMAP P2-11 OAuth2 規格錯誤已改正(#138)；TAK REST 一律 aiohttp+cert 沿用 TAK_CLIENT_CERT/KEY
+- [演習/實戰歸屬 = server-authoritative](exercise-scope-server-authoritative.md) — exercise_id 由指揮部 current_exercise_id() 決定,不信 client(ATAK opex)宣告；紅隊 TAK-C(讀 opex 分流)評估後不採(違反 doctrine)；TAK/指揮部獨立啟停,歸屬恆 server 決定
