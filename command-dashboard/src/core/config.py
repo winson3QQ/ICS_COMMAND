@@ -50,8 +50,8 @@ APP_VERSION = "2.2.1"  # PATCH：#101 TAK web tier 兩根因修正（RSA 憑證 
 # v1.0.0：拆分自 ICS_DMAS 後首個完整可用形態（MapLibre 地圖引擎全換 P1-10b + PWA 移除 P1-11
 #         + 演習/放置/稽核 UI P1-13/14/16/#93 + 分類編輯器 #66）→ 0.x 畢業為 MAJOR 紀元。
 CMD_VERSION: str = os.getenv(
-    "CMD_VERSION", "v1.0.1"
-)  # PATCH：P2-05 UI（調色盤對齊 / MGRS 多zone+精度 / MIL-STD-2525 符號）
+    "CMD_VERSION", "v1.1.0"
+)  # MINOR：P1-18 響應式 layout + 觸控支援（iPhone/iPad，#165/#166）
 
 # ── CORS（C1-B）──────────────────────────
 # 架構備忘：PWA→Pi→Command 為 hub-and-spoke，瀏覽器無跨源呼叫，CORS 在主流程中無作用。

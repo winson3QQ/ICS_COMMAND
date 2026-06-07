@@ -11,3 +11,6 @@ defusedxml==0.7.1
 # pytak/takproto 維護者 Greg Albrecht / Sensors & Signals LLC（美國），Apache-2.0/MIT，非中國。
 # pytak 核心零必填相依；with_takproto extra 拉 takproto（protobuf，v1 用）。
 pytak[with_takproto]==7.3.10
+# P2-11 (#138) — Marti REST HTTP client（aiohttp）。pytak 7.x 不再把 aiohttp 列為
+# 必填傳遞相依，需明確聲明。維護者 aio-libs（歐美開源社群），Apache-2.0，非中國。
+aiohttp>=3.9

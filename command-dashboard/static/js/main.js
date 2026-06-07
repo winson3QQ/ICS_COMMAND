@@ -428,8 +428,36 @@ document.addEventListener('click', function (e) {
       import('./exercises.js').then(m => m.handleExRefresh());
       break;
     }
+
+    // ── 行動裝置：右側 panel 展開/收合（#165）──
+    case 'toggleMobilePanel': {
+      const panel = document.getElementById('panel-right');
+      const toggleBtn = document.getElementById('panel-toggle-btn');
+      if (!panel) break;
+      const isOpen = panel.classList.contains('mobile-open');
+      panel.classList.toggle('mobile-open', !isOpen);
+      if (toggleBtn) {
+        toggleBtn.textContent = isOpen ? '☰' : '✕';
+        toggleBtn.setAttribute('aria-label', isOpen ? '開啟事件追蹤面板' : '關閉事件追蹤面板');
+      }
+      break;
+    }
   }
 });
+
+// ── 行動裝置：點 panel 外部關閉 overlay panel（#165）──
+// matchMedia 與 CSS 斷點同值；改用 data-action 做 guard 避免未來包容器元素時 closest('#id') 失效
+const _mobileBreak = window.matchMedia('(max-width:900px)');
+document.addEventListener('click', function (e) {
+  const panel = document.getElementById('panel-right');
+  if (!panel || !panel.classList.contains('mobile-open')) return;
+  if (!_mobileBreak.matches) return;
+  if (!panel.contains(e.target) && !e.target.closest('[data-action="toggleMobilePanel"]')) {
+    panel.classList.remove('mobile-open');
+    const btn = document.getElementById('panel-toggle-btn');
+    if (btn) { btn.textContent = '☰'; btn.setAttribute('aria-label', '開啟事件追蹤面板'); }
+  }
+}, { capture: false });
 
 // ── 長按事件卡片（mousedown / touchstart）──
 document.addEventListener('mousedown', function (e) {
