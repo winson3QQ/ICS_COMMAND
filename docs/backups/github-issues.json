@@ -1804,15 +1804,15 @@
       "name": ""
     },
     "body": "## 事實\n在 Windows 跑下列腳本會 crash（Mac 無感）：\n\n1. `./status.sh` 的 **ROADMAP status 區段** → `scripts/roadmap_issue_sync.py` 解 `gh` 輸出時 `UnicodeDecodeError: 'cp950' codec can't decode byte 0x85`，且 subprocess 讀 stdout 用 cp950 解中文 JSON 失敗。\n2. `python scripts/doc_sync_check.py` → 檢查**全通過**（exit 0 邏輯成立），但最後 `print(\"✓ doc-sync check passed\")` 印 `✓` 時 `UnicodeEncodeError: 'cp950' codec can't encode character '\\u2713'`。\n\n## 根因\nWindows console 預設 code page = cp950（繁中），Python 的 stdout/subprocess 預設用該編碼處理含 CJK / Unicode 符號的文字 → 編解碼炸掉。Mac/Linux 預設 UTF-8 故無感。\n\n## 影響\n- 換 Windows 機器 / Windows 接手者跑 `status.sh` 看不到 ROADMAP 全景（orientation 半瞎）。\n- `doc_sync_check.py`（PROCESS step 7.5 merge gate）在 Windows 看似 fail（有 traceback）但實為 pass —— 容易誤判擋 merge。\n\n## 修法（擇一/併用）\n- subprocess 讀 `gh` 輸出時顯式 `encoding='utf-8'`（`roadmap_issue_sync.py`）。\n- 腳本開頭 `sys.stdout.reconfigure(encoding='utf-8')`，或以 `PYTHONUTF8=1` / `PYTHONIOENCODING=utf-8` 跑。\n- `status.sh` 內呼叫 python 時帶 `PYTHONUTF8=1`。\n\n## 來源\n2026-06-07 TAK 紅隊 task 過程中，於 Windows 開發機跑 orientation + doc_sync_check 時親見（dogfood 副發現）。獨立工具修補，與 TAK-B（#145）無關。",
-    "closedAt": null,
+    "closedAt": "2026-06-07T04:18:53Z",
     "comments": [],
     "createdAt": "2026-06-07T03:45:20Z",
     "labels": [],
     "milestone": null,
     "number": 148,
-    "state": "OPEN",
+    "state": "CLOSED",
     "title": "工具 bug：status.sh / doc_sync_check.py 在 Windows 因 cp950 編碼崩潰",
-    "updatedAt": "2026-06-07T03:45:20Z",
+    "updatedAt": "2026-06-07T04:18:53Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/148"
   }
 ]

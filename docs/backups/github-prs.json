@@ -2587,5 +2587,26 @@
     "title": "fix(tak): TAK-B 來源所有權守門 — 防 CoT uid 覆寫本地他源 entity（#145）",
     "updatedAt": "2026-06-07T03:45:34Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/147"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "## ROADMAP item\n- Closes #148\n- 工具 bug（非 ROADMAP item，2026-06-07 TAK 紅隊 task dogfood 副發現）\n\n## What changed\n`status.sh` / `doc_sync_check.py` 在 Windows（console 預設 cp950）崩潰，Mac 無感。兩腳本強制 stdout/stderr UTF-8 + `gh` subprocess 顯式 `encoding=\"utf-8\"`。\n\n## DoD checklist\n- [x] 在真實 repro 環境（Windows）實機驗過\n- [x] `doc_sync_check` exit 0 印 `✓`；`roadmap_issue_sync` 印完整 Status Report 不崩；`status.sh` ROADMAP 區段完整渲染\n- [x] N/A pytest/npm（dev 工具腳本，無 app 邏輯變更）\n\n## §8 Human Verification Script\n\n```bash\n# Step 1: doc_sync_check 不崩、印 ✓、exit 0\npython scripts/doc_sync_check.py; echo \"EXIT=$?\"\n# 預期：✓ doc-sync check passed / EXIT=0\n\n# Step 2: roadmap_issue_sync 印完整 Status Report（✅ marker + 中文標題不崩）\npython scripts/roadmap_issue_sync.py | head -8\n# 預期：=== ROADMAP Status Report === + P1: X/N done... 不再有 UnicodeDecodeError traceback\n\n# Step 3: status.sh ROADMAP 區段端到端渲染\nbash ./status.sh 2>&1 | sed -n '/ROADMAP status/,/Gap Report/p' | head\n# 預期：完整 item 清單，無 cp950 traceback\n```\n\n## Out of scope / known limitations\n- 只修編碼崩潰；不改 status.sh（它只是 pipe python，腳本修好即連帶修好）。\n- 修好後 `roadmap_issue_sync` 正常顯示的既有 drift（如 P1-12 issue closed 未勾 ROADMAP）屬另案，非本 PR 範圍。\n\n## Notes for reviewer\n- 修法 in-script（`sys.stdout/stderr.reconfigure(encoding='utf-8')` + gh subprocess encoding）—— self-contained，不依賴呼叫端帶 `PYTHONUTF8`。\n- `reconfigure` 以 `hasattr` 守門：pytest capture 等替換 stream 時安全略過。\n- 純 dev 工具編碼修補，無 app/runtime/資安面、無不可信輸入路徑。",
+    "closedAt": "2026-06-07T04:18:52Z",
+    "comments": [],
+    "createdAt": "2026-06-07T04:18:40Z",
+    "headRefName": "fix/issue-148-windows-cp950-encoding",
+    "labels": [],
+    "mergedAt": "2026-06-07T04:18:52Z",
+    "number": 149,
+    "state": "MERGED",
+    "title": "fix(tooling): scripts 強制 UTF-8 輸出 — 修 Windows cp950 崩潰（#148）",
+    "updatedAt": "2026-06-07T04:18:55Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/149"
   }
 ]
