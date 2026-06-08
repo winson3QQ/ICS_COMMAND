@@ -2277,6 +2277,20 @@
         "minimizedReason": "",
         "reactionGroups": [],
         "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/176#issuecomment-4648132306"
+      },
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## ⚠️ 更正前一則的「missions 空 []」(2026-06-08，admin GUI 實證)\n\n前一則 reality check 我寫 `/Marti/api/missions` → `data:[]`。**那是用 operator `icscop` 憑證查的結果，會誤導——實際上 server 上有 mission。**\n\nadmin GUI（`Data → Mission (COP) Manager`）顯示 **2 個 mission**：\n- `exchecktemplates`（Tool: ExCheck）、`citrap`（Tool: citrap）——皆 `__ANON__` group、2026-06-07 setup 時自動建（**預設 mission，非使用者 COP**）。\n\n**根因 = mission 可見性 group-scoped**：`/Marti/api/missions` 回傳依**請求憑證的 group 成員資格**過濾。`icscop`（operator）不在 `__ANON__` → 看到 `[]`；admin 憑證看得到 2 個。\n\n### 對 P2-14 設計的意涵（修正前提）\n- mission **存在**，只是**要對的 group 才查得到/同步**得到 → **ICS 的 DataSync 同步 cert 必須是正確 group 成員**，否則 poll `/missions`、`/cot`、`/changes` 全看不到該 mission（看似空、實則 scope 沒對上）。\n- 「使用者共享 COP mission」仍需另建（那 2 個是 ExCheck/citrap 預設）。\n- 連帶：`mission/{name}/cot` `/changes` 等 resync/可靠刪除端點同樣 group-scoped。\n\n→ 動工前的「DataSync API reality check」請把 **group 成員資格**納入（ICS cert 屬哪些 group、能否看到目標 mission），別以「[] = 沒 mission」為前提。",
+        "createdAt": "2026-06-08T15:03:54Z",
+        "id": "IC_kwDOSnBjpc8AAAABFS6Vrw",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/176#issuecomment-4650341807"
       }
     ],
     "createdAt": "2026-06-08T10:00:42Z",
@@ -2285,7 +2299,7 @@
     "number": 176,
     "state": "OPEN",
     "title": "P2-14 reality check：Mission/DataSync 同步 — 路徑成立 / #173 範圍修正 / 與 P2-13 共用面協調",
-    "updatedAt": "2026-06-08T10:54:59Z",
+    "updatedAt": "2026-06-08T15:03:54Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/176"
   }
 ]
