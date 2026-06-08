@@ -1974,7 +1974,7 @@
       "name": ""
     },
     "body": "## 來源\nP2-10 真機 iTAK dogfood（2026-06-07）。使用者在 iTAK **刪除**繪圖/標記後,dashboard **不即時反應**,要手動 refresh 才消失。\n\n## 事實 / 根因（推論）\n- TAK 刪除語意 = 送同 uid、`stale=now`（過期）的 CoT。ICS `ingest_cot_event` 收到 → CAS update 把 entity `stale` 設過去 → `cop_hub` 廣播 update。\n- **但前端 `cop_stream.js` 收到該 update 廣播時,未判「已 stale → 從地圖移除」**;只有整頁 refresh 重抓(套 `stale > now` 過濾)才會消失。\n- 同理 #160 的自然過期物件也是 refresh 才消失(非即時)。\n\n## 修法方向\n- 前端 `cop_stream` / EntityLayer:收到 entity update 時,若 `stale <= now` → 即時從圖上移除(等同 delete op)。\n- 後端可選:對 stale 化的 entity 廣播明確 `op=delete`(或標記),讓前端直接移除,不必每筆比對 stale。\n- 對齊 P1-15（#29）即時同步管線（已有 op=create/update/delete 廣播；確認 delete/ stale 路徑前端有接）。\n\n## DoD\n- [ ] iTAK 刪除 → dashboard 即時移除(真機驗,無需 refresh)\n- [ ] 自然過期(stale)亦即時移除\n- [ ] /code-review\n\n關聯：P1-15 即時管線、P2-12、#160（stale 策略）。",
-    "closedAt": null,
+    "closedAt": "2026-06-08T08:35:08Z",
     "comments": [
       {
         "author": {
@@ -2017,15 +2017,29 @@
         "minimizedReason": "",
         "reactionGroups": [],
         "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/161#issuecomment-4646791334"
+      },
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "#174 已 merge（squash f3db03e）→ command-v2.4.1/cmd-v1.2.2。ICS streaming 對齊 TAK 原生 honor stale+archive，真機 VERIFY-PASS。衍生 #173（reconnect resync→P2-14）。",
+        "createdAt": "2026-06-08T08:35:07Z",
+        "id": "IC_kwDOSnBjpc8AAAABFPi-0A",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/161#issuecomment-4646813392"
       }
     ],
     "createdAt": "2026-06-07T09:20:54Z",
     "labels": [],
     "milestone": null,
     "number": 161,
-    "state": "OPEN",
+    "state": "CLOSED",
     "title": "前端即時同步缺口：TAK 刪除/stale 物件未即時從 dashboard 移除（需 refresh）",
-    "updatedAt": "2026-06-08T08:31:59Z",
+    "updatedAt": "2026-06-08T08:35:08Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/161"
   },
   {

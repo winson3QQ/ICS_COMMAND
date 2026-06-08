@@ -2818,5 +2818,26 @@
     "title": "fix(tak): issue-tak-certs.sh 補雙層 CA truststore + 參數化 server SAN (#170)",
     "updatedAt": "2026-06-08T02:41:16Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/171"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "## 摘要\n#161 reality check：ICS streaming 顯示對齊 TAK 原生 **honor `stale` + honor `<archive/>`**，退掉 WIP `0ba8fde` 的 last-heard time 窗口。真機 iTAK + 活 server wire/Marti 雙證。\n\n- archived（CoT `<archive/>`）→ 持久豁免 stale；無 archive → 依 stale 過期（原生）。\n- `parse_cot_xml` 抽 `<archive/>` → `CoPEntity.archived`（`_m020` ADD COLUMN）。\n- 前端 `_isAging`：archived 不變灰、非 archived 過 stale 才灰（退 150s 時窗）。\n\n詳細證據鏈 + 設計動機見 [issue #161](https://github.com/winson3QQ/ICS_COMMAND/issues/161) 留痕。\n\n## §8 Verification（真機 dogfood VERIFY-PASS）\n1. 起 server（worktree code + dev DB，TAK_ENABLED）。\n2. iTAK 放 2 marker（敵/不明，帶 `<archive/>`）+ 1 區域（u-d-r）。\n3. ✅ archived marker `archived=1`、撐過 2min stale 仍在地圖、不變灰。\n4. ✅ 非 archived 區域過 stale 移除。\n5. ✅ ICS 發 t-x-d-d → 敵人軟刪離開地圖（server archive 仍留 → 副發現 #173）。\n- 自動化：pytest 全套綠 + vitest 249；補測 `<archive/>` parse ×2 / 原生 list / 復活墓碑 ×2。\n\n## 衍生\n- [#173](https://github.com/winson3QQ/ICS_COMMAND/issues/173)：ICS 重連漏靜態標記 → Marti 權威 resync（P2-14）。\n- 操作員「移出 COP」走 t-x-d-d 下行 → P2-13。\n\n## 版號\n`command-v2.4.1` / `cmd-v1.2.2`\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n",
+    "closedAt": "2026-06-08T08:33:51Z",
+    "comments": [],
+    "createdAt": "2026-06-08T08:33:11Z",
+    "headRefName": "fix/issue-161-tak-stale-parity-wt",
+    "labels": [],
+    "mergedAt": "2026-06-08T08:33:51Z",
+    "number": 174,
+    "state": "MERGED",
+    "title": "fix(tak): #161 ICS streaming 對齊 TAK 原生 honor stale + honor <archive/>",
+    "updatedAt": "2026-06-08T08:33:53Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/174"
   }
 ]
