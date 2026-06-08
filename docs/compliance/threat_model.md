@@ -195,6 +195,31 @@ Command **信任 TAK Server 轉發的所有 CoT** —— 即使傳輸加密（§
 - **連到對的 server**（§8.1 憑證驗證）≠ **server 送的資料可信**（本節）。
 - Command 端對「資料內容」的最後防線 = **P2-10 內容層白名單**（座標越界拒絕 / callsign 字元白名單 / type prefix 白名單）+ TAK-B 來源所有權守門。
 
+### 8.4 同機部署的 at-rest 與統一金鑰託管（缺口）
+
+**事實**：TAK Server 與 ICS Command **部署在同一台主機**。同一顆碟上同時有：ICS `cop_entities`（SQLite）、**TAK Server 的 PostgreSQL repository**（存每個 uid 最新 CoT、mission、GeoChat）、step-ca / TAK 憑證與**私鑰**、log、map_config、上傳檔。
+
+**威脅 → 為何「只加密 ICS DB」不一致**：
+- §8.1 / TAK-F 的緩解寫「P1-12c SQLCipher 加密 `cop_entities`」，但**TAK PostgreSQL 在同碟仍明文** → 偷碟 / 備份外洩 / 主機被入侵時，攻擊者**直接讀 TAK PG 就拿到同一批敵我位置/mission**，繞過 SQLCipher。**per-app 加密在同機部署下給假安全感。**
+- **私鑰明文落地**：mTLS client key（`icscop-nopass.key` 為**解密**狀態）、step-ca CA key、TAK keystore 在碟上 → 偷碟即可**冒充 ICS 對 TAK 注入/刪 CoT、讀 Marti**（與 §8.3 裝置信任合流放大）。
+
+**控制策略（分層、機器層為底）**：
+- **L1 主控（必備）= 整碟加密 LUKS**（Linux/Pi）/ BitLocker（Windows）——一次涵蓋 ICS SQLite + **TAK PG** + 憑證/私鑰 + log。**這翻轉 P1-12c「SQLCipher 不取代 LUKS」的相對定位**：**同機部署下 LUKS 是主控必備，SQLCipher 退為內層縱深**（非可選）。
+- **L2 縱深** = SQLCipher（ICS DB，P1-12c）+ TAK PG 強密碼（汰 dev 的 `takdevpass123`）+ PG 只綁 localhost。
+- **統一金鑰託管** = P1-12a 的 FIDO2→HKDF 階層**加一個 `disk-v1` child（如 `child[3]`）= LUKS unlock key** → **一次 FIDO2 unlock 同時開：開機碟 + ICS app + backup**；**勿**讓 LUKS / app / TAK-PG 各持一把獨立 unlock secret（碎裂託管才是真風險）。
+- **Trade-off（需拍板）**：FIDO2 開機解 LUKS = **需人在場摸 token 才能開機** → manned C2 可接受；**無人值守 Pi 停電重啟會卡**。依部署形態決定。
+- **Blast radius**：同機 = 單一 host root 被穿透即 ICS + TAK **一起爆**。單盒可部署形態**接受並於此文件記明**；高保證場景才考慮 ICS / TAK **分機 + 分網段**。
+
+→ **回饋 P1-12a 設計**：key 階層新增 `disk-v1` child（統一 unlock）。**動工前先訂部署 at-rest 策略，再讓 P1-12 照它做。**
+
+### 8.5 憑證撤銷控制缺口（被擄裝置）
+
+§8.3 描述「任一被 TAK 接納的裝置都能推 CoT」這個**威脅**；對應的**控制缺口**＝**無憑證撤銷機制**。被擄/失竊的場端裝置，其 client cert 在 TLS 有效期內仍在信任邊界內 → 可**注入假敵我位置、或用 `t-x-d-d` 刪 COP 物件**（完整性威脅，對 C2 ≥ 機密性）。
+
+- **現況**：step-ca 曾發 24h 短期 cert（ROADMAP #98 drift），但**無 CRL/OCSP、無被擄裝置撤銷 SOP**。
+- **緩解方向**：短 cert TTL + 自動續期 + **撤銷機制（CRL/OCSP）** + 「裝置遺失 → 立即撤銷」操作 SOP。撤銷責任在 TAK 管理員（cert enrollment 端），ICS 為下游消費者。連動 P2-15（federation peer cert profile）+ step-ca 90 天 patch。
+- **ICS 端可加的縱深**：來源標註（哪張 cert/裝置推的）+ 異常偵測（同 uid 位置跳變 / 大量刪除），留 P2-12/P2-19。
+
 ---
 
 ## 9. 審查歷程
@@ -205,3 +230,4 @@ Command **信任 TAK Server 轉發的所有 CoT** —— 即使傳輸加密（§
 | 2026-06-04 | 0.2 | §3.4 加 at-rest 加密邊界（only 防靜止，不防 runtime）；§7 加「特權 runtime 存取（含 AI agent）」殘餘風險 + OS/政策緩解（dogfood 提問衍生）|
 | 2026-06-07 | 0.3 | 新增 §8「TAK 介面信任邊界」：上行/下行傳輸加密（fail-closed cert 驗證 + check_hostname 取捨 + at-rest 明文邊界）、STRIDE TAK-A~F 處理（TAK-B 來源所有權守門已修、TAK-A HMAC inbound 決策延後、C/D/E/F 歸屬）、裝置准入信任假設（缺口 #7）|
 | 2026-06-07 | 0.4 | §8.2 TAK-B 反向缺口已修（#146）：cop PUT/DELETE 來源所有權 + 情境守門（實戰鎖死外部來源、演習 TTX 可編輯，server 權威）；TAK-A 補強內部威脅洞見（已認證 operator 可經 POST /api/tak/events 注入 → 順手收緊 COMMAND_ROLES）|
+| 2026-06-08 | 0.5 | 新增 §8.4「同機部署 at-rest 與統一金鑰託管」（TAK Server 與 ICS 同機 → TAK PostgreSQL 同碟明文使「只加密 ICS DB」不一致；**LUKS 整碟翻為主控必備、SQLCipher 退內層**；P1-12a key 階層加 `disk-v1` child 統一 FIDO2 unlock；私鑰明文落地；blast radius）+ §8.5「憑證撤銷控制缺口」（被擄裝置 cert 在信任邊界內可注入/刪 COP；無 CRL/OCSP / 撤銷 SOP）。源於 dogfood 安全策略對話 |
