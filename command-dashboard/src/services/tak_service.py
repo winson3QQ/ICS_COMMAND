@@ -296,7 +296,45 @@ def _resolve_ingest():
     return ingest_cot_event
 
 
-async def _consume_cot(raw: bytes, ingest, *, limiter: "_TokenBucket | None" = None) -> object | None:
+# ── P2-23（#163）：TAK 連線健康狀態 ──────────────────────────────────────────
+# 單一背景 subscribe task（app `--workers 1`，cop_hub 同前提）→ 模組級單例即可，
+# 不跨 process。供 GET /api/tak/status 讀，前端 header 連線指示燈用。
+_tak_status: dict = {
+    "connected": False,  # mTLS :8089 socket 是否連著
+    "last_cot_at": None,  # 最後收到真實 CoT（非控制事件）的 UTC ISO，None=從未
+    "last_change_at": None,  # connected 狀態最後變動 UTC ISO
+}
+
+
+def _status_now_iso() -> str:
+    from datetime import UTC, datetime
+
+    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _set_tak_connected(value: bool) -> None:
+    """更新連線旗標；狀態真的翻轉才記 last_change_at。subscribe loop 三處呼叫。"""
+    if _tak_status["connected"] != value:
+        _tak_status["last_change_at"] = _status_now_iso()
+    _tak_status["connected"] = value
+
+
+def _mark_tak_cot() -> None:
+    """收到一筆真實 CoT（連線有串流）→ 戳 last_cot_at。"""
+    _tak_status["last_cot_at"] = _status_now_iso()
+
+
+def get_tak_status() -> dict:
+    """TAK 連線健康快照（唯讀拷貝，供 router）。"""
+    return dict(_tak_status)
+
+
+def reset_tak_status() -> None:
+    """測試用：重置模組級狀態，避免跨測試污染。"""
+    _tak_status.update(connected=False, last_cot_at=None, last_change_at=None)
+
+
+async def _consume_cot(raw: bytes, ingest, *, limiter: _TokenBucket | None = None) -> object | None:
     """處理單筆 raw CoT bytes：parse → 濾 TakControl → 速率限制 → ingest。
 
     - 解析失敗：只記 log、回 None，**不 raise**（單筆壞不該斷整條串流）。
@@ -314,6 +352,7 @@ async def _consume_cot(raw: bytes, ingest, *, limiter: "_TokenBucket | None" = N
     if event.type.startswith(_TAKCONTROL_TYPE_PREFIX):
         log.debug("tak.control_event_skipped", type=event.type, uid=event.uid)
         return None
+    _mark_tak_cot()  # P2-23：收到真實 CoT（連線有串流）—— 即使下面被限速/ingest 失敗，wire 上確實有資料
     # TAK-E（#151）：全域速率限制。超量丟棄該筆（不中斷串流）；warning 節流（首筆 + 每 100
     # 筆）避免 log flood。控制事件已先 return，不佔 token（只限真實 entity 寫入率）。
     if limiter is not None:
@@ -321,9 +360,7 @@ async def _consume_cot(raw: bytes, ingest, *, limiter: "_TokenBucket | None" = N
 
         if not limiter.take(asyncio.get_running_loop().time()):
             if limiter.dropped == 1 or limiter.dropped % 100 == 0:
-                log.warning(
-                    "tak.ingest_rate_limited", dropped=limiter.dropped, rate=limiter.rate, uid=event.uid
-                )
+                log.warning("tak.ingest_rate_limited", dropped=limiter.dropped, rate=limiter.rate, uid=event.uid)
             return None
     try:
         result = ingest(event)
@@ -423,9 +460,8 @@ async def subscribe(
             continue
 
         log.info("tak.connected", cot_url=config.get("COT_URL"))
-        receiver = Receiver(
-            asyncio.Queue(), config, reader, ingest=ingest, stop_event=stop_event, limiter=limiter
-        )
+        _set_tak_connected(True)  # P2-23：socket 連上
+        receiver = Receiver(asyncio.Queue(), config, reader, ingest=ingest, stop_event=stop_event, limiter=limiter)
         try:
             await receiver.run()
         except asyncio.CancelledError:
@@ -433,6 +469,7 @@ async def subscribe(
         except Exception as exc:  # noqa: BLE001 — 串流中斷統一進重連
             log.warning("tak.stream_error", error=str(exc))
         finally:
+            _set_tak_connected(False)  # P2-23：本次連線結束（斷線/錯誤/取消）→ 標斷線
             if writer is not None:
                 try:
                     writer.close()  # asyncio：關 writer 即拆共用 transport（reader 一併結束）

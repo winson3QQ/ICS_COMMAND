@@ -139,7 +139,10 @@ let _mgrsGridVisible = sessionStorage.getItem('_mgrsGridVisible') !== '0';
 // 由 _layerVis.zones（節點）/ _layerVis.events（事件）控制，feature-level 過濾（取消勾「節點」
 // 不再連帶把事件藏掉）。
 // P1-17：facilities（永久設施基準層）預設**關**——唯讀參考層，需要才從面板開，避免雜訊。
-const _layerVis = { zones: true, events: true, polygons: true, infra: true, routes: true, facilities: false, mgrs: _mgrsGridVisible };
+const _layerVis = { zones: true, events: true, polygons: true, infra: true, routes: true, facilities: false, tak: true, mgrs: _mgrsGridVisible };
+// P2-25（#163 系列）：TAK 單位（2525 markers）的地圖篩選器——純前端 view filter（不刪資料）。
+// affiliation 對映 affiliationFromCot 的四態；showStale=false 隱藏過 stale 的活追蹤單位。
+const _takFilter = { friendly: true, hostile: true, neutral: true, unknown: true, showStale: true };
 
 const _HSINCHU_CENTER = [24.8283, 121.0149];
 const _HSINCHU_ZOOM = 15;
@@ -627,6 +630,8 @@ function _isLiveTracked(e) {
 let _takRenderSeq = 0;
 function _renderTakUnits() {
   if (!_takLayer) return;
+  _takLayer.setVisible(_layerVis.tak);          // P2-25：TAK 單位圖層總開關
+  if (!_layerVis.tak) { _takLayer.clear(); return; }
   const seq = ++_takRenderSeq;  // 每輪遞增；async bake 回來時憑此判斷是否仍是最新一輪
   if (!_copStream) { _takLayer.clear(); return; }
   const map = _getMap();
@@ -653,12 +658,35 @@ function _renderTakUnits() {
     });
   }
   _takLayer.update(features);
+  _applyTakFilter();   // P2-25：套 affiliation / stale 篩選（MapLibre setFilter）
   // bake 為 async SVG raster：每個不同 SIDC bake 一次；完成後若有新 icon **且本輪仍最新**
   // → re-update 顯框（seq guard 防舊輪 .then 用過時 features 蓋掉新位置）。
   if (map && sidcs.size) {
     Promise.all([...sidcs].map((s) => bakeMilSymbol(map, s)))
       .then((rs) => { if (rs.some(Boolean) && _takLayer && seq === _takRenderSeq) _takLayer.update(features); });
   }
+}
+
+/**
+ * P2-25：把 _takFilter 套到 tak-units-icon layer（MapLibre setFilter）。
+ * affiliation ∈ 啟用集合 AND（showStale 或 非 stale）。純前端視圖篩選，不動資料。
+ */
+function _applyTakFilter() {
+  const map = _getMap();
+  if (!map || !map.getLayer || !map.getLayer('tak-units-icon')) return;
+  const affs = ['friendly', 'hostile', 'neutral', 'unknown'].filter((a) => _takFilter[a]);
+  const affClause = ['in', ['get', 'affiliation'], ['literal', affs]];
+  const staleClause = _takFilter.showStale ? true : ['!', ['coalesce', ['get', 'stale'], false]];
+  map.setFilter('tak-units-icon', ['all', affClause, staleClause]);
+}
+
+/** P2-25：切換 TAK 篩選器某一維度（affiliation 四態 or 'stale'）→ 套用 + 重建面板。 */
+export function toggleTakFilter(key) {
+  if (key === 'stale') _takFilter.showStale = !_takFilter.showStale;
+  else if (key in _takFilter) _takFilter[key] = !_takFilter[key];
+  else return;
+  _applyTakFilter();
+  _rebuildLayerPanel();
 }
 
 // P1-17：渲染永久設施基準層。lazy —— 預設關，首次開圖層才抓 /api/facilities（8000+ 點，
@@ -804,6 +832,7 @@ function _rebuildLayerPanel() {
     { key: 'infra',    icon: '＋', label: '設施' },
     { key: 'routes',   icon: '↗', label: '路線' },
     { key: 'facilities', icon: '⊕', label: '公共設施' },  // P1-17：永久設施基準層（唯讀）
+    { key: 'tak',      icon: '⬡', label: 'TAK 單位' },    // P2-25：TAK 2525 markers 總開關
     { key: 'mgrs',     icon: '⊞', label: 'MGRS 格線' },
   ];
   let html = '<h4>圖層</h4>';
@@ -814,6 +843,24 @@ function _rebuildLayerPanel() {
     html += `<div class="layer-check${on ? ' on' : ''}">${on ? '✓' : ''}</div>`;
     html += `<span style="font-size:11px;color:${on ? 'var(--text)' : 'var(--text3)'};">${layer.icon} ${layer.label}</span>`;
     html += `</div>`;
+    // P2-25：TAK 單位開啟時，展開 affiliation / stale 子篩選（純前端視圖過濾）。
+    if (layer.key === 'tak' && _layerVis.tak) {
+      const affs = [
+        { k: 'friendly', c: '#3da9fc', t: '友軍' },
+        { k: 'hostile',  c: '#f85149', t: '敵軍' },
+        { k: 'neutral',  c: '#3fb950', t: '中立' },
+        { k: 'unknown',  c: '#e3b341', t: '不明' },
+      ];
+      for (const a of affs) {
+        const on2 = _takFilter[a.k];
+        html += `<div class="layer-row" data-action="toggleTakFilter" data-takfilter="${a.k}" style="padding-left:26px;">`;
+        html += `<div class="layer-check${on2 ? ' on' : ''}">${on2 ? '✓' : ''}</div>`;
+        html += `<span style="font-size:11px;color:${on2 ? a.c : 'var(--text3)'};">● ${a.t}</span></div>`;
+      }
+      html += `<div class="layer-row" data-action="toggleTakFilter" data-takfilter="stale" style="padding-left:26px;">`;
+      html += `<div class="layer-check${_takFilter.showStale ? ' on' : ''}">${_takFilter.showStale ? '✓' : ''}</div>`;
+      html += `<span style="font-size:11px;color:${_takFilter.showStale ? 'var(--text)' : 'var(--text3)'};">◌ 含過期(stale)</span></div>`;
+    }
   }
   html += `<div style="border-top:1px solid var(--border);margin:4px 0 2px;padding:4px 12px 2px;font-size:9px;color:var(--text3);letter-spacing:.1em;text-transform:uppercase;">地圖設定</div>`;
   // P1-16 PR-2：on-demand 放置設施入口（限指揮層；operator/observer 不顯示，mirror 放置節點）
@@ -2401,7 +2448,8 @@ export function _toggleLayer(key) {
   }
   if (!(key in _layerVis)) return;
   _layerVis[key] = !_layerVis[key];
-  refreshLeafletMarkers();
+  if (key === 'tak') _renderTakUnits();   // P2-25：總開關 → setVisible + 重繪
+  else refreshLeafletMarkers();
   _rebuildLayerPanel();
 }
 // ══════════════════════════════════════════════════════════════

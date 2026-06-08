@@ -69,7 +69,7 @@ import {
   admRemoveMapImage, _cancelNodePlace, _cancelInfraPlace, _cancelEventPin,
   _openNodePlacePicker, _startNodePlace, _deleteNode,
   applyMapRoleUiGuards,
-  _toggleLayer, _closeLayerPanel,
+  _toggleLayer, _closeLayerPanel, toggleTakFilter,
   setCopStream,
   applyEventTaxonomy,
 } from './map.js';
@@ -270,6 +270,7 @@ document.addEventListener('click', function (e) {
     case 'setBasemapTheme': setBasemapTheme(btn.dataset.theme); break;
     case 'toggleLayerPanel': _toggleLayerPanel(); break;
     case 'toggleLayer': _toggleLayer(btn.dataset.layer); break;
+    case 'toggleTakFilter': toggleTakFilter(btn.dataset.takfilter); break;
     case 'closeLayerPanel': _closeLayerPanel(); break;
     case 'openMapConfigPanel': openMapConfigPanel(); break;
     case 'closeMapConfigPanel': closeMapConfigPanel(); break;
