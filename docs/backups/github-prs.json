@@ -2839,5 +2839,26 @@
     "title": "fix(tak): #161 ICS streaming 對齊 TAK 原生 honor stale + honor <archive/>",
     "updatedAt": "2026-06-08T08:33:53Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/174"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "## 摘要\n#161 merge 後補跑 `/code-review` + `/security-review` 的 follow-up 修正（**0 HIGH**）。\n\n| 項 | 嚴重度 | 修法 |\n|---|---|---|\n| **archived coalesce** | MED (correctness) / LOW (sec) | `ingest_cot_event`：缺 `<archive/>` 的更新幀不把既有 archived 打回 0（比照 team_color coalesce）。否則 archived marker 收到輕量更新幀就失去持久 = 重現 #161 本 bug。單調設真；un-archive 走明確刪除。 |\n| **archive 內容容錯** | LOW | `parse_cot_xml` 的 `<archive/>` 偵測 crash-safe，`<archive>false</archive>`/`0` 不誤判（CoT 慣例為無值）。 |\n| **map.js 註解 drift** | LOW (doc) | `_isAging` call-site + paint 兩處註解仍描述已退場的 last-heard/window 模型 → 改原生語意。 |\n\nsecurity review：unbounded persistence DoS = **既有 P2-14(B) 殘留**（非本次新引入，舊 how-based 模型也無界）；SQL/XSS/XXE/所有權守門/migration 全乾淨。\n\n## §8 Verification\n- `test_archived_not_reset_by_update_without_archive` + `test_archive_can_be_set_by_later_update`（coalesce 雙向）\n- `test_archive_explicit_false_not_archived`（4 變體）\n- 完整 pytest 全綠（1 skip）；ruff lint + format 乾淨。map.js 純註解 → vitest 不受影響。\n\n## 版號\n`command-v2.4.2`（後端行為；cmd 不動＝純註解）\n\n關聯：#161（原修法）、post-merge review。\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n",
+    "closedAt": "2026-06-08T09:16:59Z",
+    "comments": [],
+    "createdAt": "2026-06-08T09:16:46Z",
+    "headRefName": "fix/161-followup-review",
+    "labels": [],
+    "mergedAt": "2026-06-08T09:16:59Z",
+    "number": 175,
+    "state": "MERGED",
+    "title": "fix(tak): #161 post-merge review — archived coalesce + 容錯 + 註解 drift",
+    "updatedAt": "2026-06-08T09:17:01Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/175"
   }
 ]

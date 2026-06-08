@@ -2185,14 +2185,29 @@
     },
     "body": "## 來源\n#161 dogfood（2026-06-08，真機 iTAK + 活 TAK server）t-x-d-d 刪除實驗的副發現。\n\n## 事實（wire 實證）\n從 ICS 用 cert 開**新 streaming subscriber** 連 :8089，8 秒內 server 只補發**自身位置（PLI）**，**不補發任何靜態標記**（archived marker `不明` 仍在 server archive、但沒被推送；其他 zone 也沒）。\n\n## 根因 / 影響\n- TAK server `<latestSA>` 對新連線只推 **live SA（contacts/PLI）**，**不重播靜態 archived 標記/繪圖**。\n- ICS 是 streaming-fed → **重啟 / 斷線重連期間，server 上既有的（或別人放的）靜態 marker 不會被重新送達 ICS** → ICS 的 COP 與 server / 其他 TAK client **分歧（少物件）**。\n- 現況 ICS 只有「即時收 broadcast」一條路；缺「主動拉權威全集」的路。\n\n## 修法方向（屬 P2-14 Mission/DataSync）\n- ICS 啟動 / 重連時，透過 **Marti REST（`tak_rest_client`，P2-11 已建）主動拉權威態勢**（Mission contents / SA query），對帳 cop_entities，補回 streaming 漏掉的。\n- 沿用 cert（[memory tak-server-marti-cert-not-oauth]）。\n- 與 P2-14 DataSync client 合併設計（同一條「主動查 Marti」管線）。\n\n## 關聯\nP2-14（DataSync）、P2-11（tak_rest_client）、#161（archive 持久化）、memory tak-streaming-archive-stale-vs-mission。\n",
     "closedAt": null,
-    "comments": [],
+    "comments": [
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## Gate 已解鎖（2026-06-08）\n\nP2-14 已自實戰延伸層**提前解鎖**（ROADMAP commit `30add4f`）——不再受 TTX Gateway(P2-22) 限制，與 #161/#173 同屬一個 TAK 同步 feature、是當前 dogfood 需求。\n\n本 issue（ICS reconnect 漏靜態標記 → Marti 權威 resync）= P2-14 的 **(C) 權威 resync** 子塊，建議**承接 #161 之後動工**。分階段：先落 (C) resync + (A) 可靠刪除 + 安全網（沿用 P2-11 `tak_rest_client` + cert），完整 DataSync（照片/route）後做。",
+        "createdAt": "2026-06-08T09:44:57Z",
+        "id": "IC_kwDOSnBjpc8AAAABFQM_6g",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/173#issuecomment-4647501802"
+      }
+    ],
     "createdAt": "2026-06-08T08:32:01Z",
     "labels": [],
     "milestone": null,
     "number": 173,
     "state": "OPEN",
     "title": "ICS 重連/重啟漏靜態 TAK 標記 — streaming 不重播，需 Marti 權威 resync（P2-14）",
-    "updatedAt": "2026-06-08T08:32:01Z",
+    "updatedAt": "2026-06-08T09:44:57Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/173"
   }
 ]
