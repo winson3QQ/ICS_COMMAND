@@ -10,8 +10,6 @@ tests/unit/test_cop_schema_v1.py — P1-03 COP schema v1 contract test
 - repo CRUD 來回一致（insert → get / list / mark_stale）
 """
 
-from datetime import UTC, datetime, timedelta
-
 import pytest
 from pydantic import ValidationError
 
@@ -380,25 +378,25 @@ class TestCopEntityRepo:
         assert got["attributes"]["channel"] == "NetA"
 
     def test_list_filters_stale_by_default(self, tmp_db):
-        # 新鮮度治理（#161 reality check 2026-06-08，TAK parity / last-heard）：外部 TAK 來源存活看
-        # 「最後聽到」= CoT time（**不信 client stale**：iTAK 對繪圖會凍結 stale 卻持續重送）。time 在
-        # 窗口內 → 保留；另尊重 stale>now（明確遠期有效，place-once）。預設 payload time=2026-05-26（遠
-        # 過窗口）= 「久未聽到」。
-        recent = (datetime.now(UTC) - timedelta(seconds=30)).strftime("%Y-%m-%dT%H:%M:%SZ")
-        # 'valid_future'：time 久未聽到，但 stale 遠未來 → 保留（明確有效）。
+        # 新鮮度治理（#161 reality check 2026-06-08，TAK 原生 honor stale + honor <archive/>；取代 WIP
+        # last-heard 時窗）：外部 TAK entity —— archived=1（CoT <archive/>）→ 持久豁免 stale；
+        # 無 archive → 依 stale>now 過期。預設 payload stale=遠過去（除非顯式覆寫）。
+        # 'valid_future'：無 archive，stale 遠未來 → 保留。
         insert_cop_entity(CoPEntity(**_valid_entity_payload(uid="valid_future", stale="2099-01-01T00:00:00Z")))
-        # 'heard_recent'：繪圖型——stale 凍在過去，但 time 剛剛（仍重送）→ 保留（最後聽到夠近，不誤刪）。
+        # 'archived_persist'：archived=1（放置標記）+ stale 過去 → 保留（archive 豁免 stale）。
         insert_cop_entity(
             CoPEntity(
-                **_valid_entity_payload(uid="heard_recent", how="h-g-i-g-o", time=recent, stale="2000-01-01T00:00:00Z")
+                **_valid_entity_payload(
+                    uid="archived_persist", how="h-g-i-g-o", archived=True, stale="2000-01-01T00:00:00Z"
+                )
             )
         )
-        # 'gone'：time 久未聽到（過窗口）且 stale 過去 → 移除（停止重送 / 已刪 / 離線）。
+        # 'gone'：無 archive 且 stale 過去 → 移除（原生 deleteStaleAfter）。
         insert_cop_entity(CoPEntity(**_valid_entity_payload(uid="gone", how="m-g", stale="2000-01-01T00:00:00Z")))
         uids = {e["uid"] for e in list_cop_entities()}
         assert "valid_future" in uids
-        assert "heard_recent" in uids  # 最後聽到夠近 → 保留（繪圖凍結 stale 也不誤刪）
-        assert "gone" not in uids  # 停止重送 + 過期 → 移除
+        assert "archived_persist" in uids  # <archive/> 持久 → 過 stale 也保留
+        assert "gone" not in uids  # 無 archive + 過期 → 移除
 
         uids_all = {e["uid"] for e in list_cop_entities(include_stale=True)}
         assert "gone" in uids_all  # include_stale（audit/回放）仍撈得到

@@ -14,7 +14,6 @@ import json
 import logging
 from datetime import UTC, datetime
 
-from core.config import COP_STALE_REMOVE_WINDOW_S
 from core.database import get_conn
 from schemas.cop import CoPEntity, CoPEntityLink, CoPEntityTrack
 
@@ -88,23 +87,21 @@ def list_cop_entities(
         # 墓碑：明確刪除（t-x-d-d / 操作員 DELETE）預設一律排除，不論 how/stale（#161 正解）。
         # include_stale=True（audit/回放）則連刪除的也撈得到。
         clauses.append("COALESCE(deleted, 0) = 0")
-        # 新鮮度治理——分兩類（#161 reality check 2026-06-08）：
+        # 新鮮度治理——對齊 TAK 原生 streaming subscriber 行為（#161 reality check 2026-06-08，
+        # 真機 iTAK + 活 server wire/Marti 雙證；取代 WIP 0ba8fde 的 last-heard time 窗口）：
         #  - manual/command（指揮部自建）：維持嚴格 stale>now（既有行為；刪除走 deleted 墓碑）。
-        #  - 外部來源（tak / pi-node / waveink）：存活看「**最後聽到**」= CoT `time`，**不信 client `stale`**。
-        #    ★ TAK parity（核心原則）：ICS 看 TAK 要跟「TAK client 看 TAK」一致 = 「持續聽得到就持續顯示」。
-        #      dogfood 實證 client `stale` 不是可靠存活訊號：iTAK 對**繪圖**(u-d-*) 每次 keep-alive 只推進
-        #      `time`、卻把 `start`/`stale` **凍結在建立當下**（time=04:47 但 stale=02:57，仍持續重送 vc>1）；
-        #      標記(a-*) 才會送新 stale。故改以 `time`（最後廣播時刻，標記/繪圖皆隨 keep-alive 前進，系統本就
-        #      信任 time 做版本排序）+ 窗口判存活：最近聽得到(time > now-窗口) → 保留；停止重送(刪除/離線)
-        #      → time 老化過窗口 → 移除。另保留 `stale > now`：尊重 client 明確宣告的遠期有效（place-once）。
-        #      （舊版「h-* 永生豁免 stale」會讓場端刪的標記永遠賴著＝態勢圖不同步；且無界成長資安洞 P2-14(A)。）
+        #  - 外部來源（tak / pi-node / waveink）：honor `<archive/>` + honor `stale`：
+        #      · archived=1（CoT 帶 <archive/>，如放置標記 a-*）→ **持久**，過 stale 也保留，
+        #        只有明確刪除（deleted 墓碑）才移除＝對齊 TAK server repository + 其他 TAK client。
+        #      · 無 archive（如繪圖 u-d-*）→ 依 `stale>now` 過期移除＝原生 client deleteStaleAfterMillis。
+        #    ★ ICS 就是個 TAK subscriber，顯示語意照 TAK 原生（archive/stale 是 CoT 規格定義）。
+        #    可靠刪除傳播 / 權威 resync 走 Mission/DataSync（streaming 給不了）→ P2-14；見 memory
+        #    [[tak-streaming-archive-stale-vs-mission]]。
         clauses.append(
             "((source IN ('manual','command') AND stale > strftime('%Y-%m-%dT%H:%M:%SZ','now')) "
             "OR (source NOT IN ('manual','command') AND "
-            "(time > strftime('%Y-%m-%dT%H:%M:%SZ','now',?) "
-            "OR stale > strftime('%Y-%m-%dT%H:%M:%SZ','now'))))"
+            "(COALESCE(archived, 0) = 1 OR stale > strftime('%Y-%m-%dT%H:%M:%SZ','now'))))"
         )
-        params.append(f"-{COP_STALE_REMOVE_WINDOW_S} seconds")
     sql = "SELECT * FROM cop_entities"
     if clauses:
         sql += " WHERE " + " AND ".join(clauses)
@@ -479,8 +476,8 @@ def _row_to_entity_dict(row) -> dict:
                 exc_info=e,
             )
             d["attributes"] = {}
-    # P2-11b（#140）：SQLite 無 bool type，planned/simulated/deleted 存 INTEGER 0/1 → 轉回 bool
-    for _flag in ("planned", "simulated", "deleted"):
+    # SQLite 無 bool type，旗標欄位存 INTEGER 0/1 → 轉回 bool（planned/simulated P2-11b、archived #161）
+    for _flag in ("planned", "simulated", "deleted", "archived"):
         if d.get(_flag) is not None:
             d[_flag] = bool(d[_flag])
     return d

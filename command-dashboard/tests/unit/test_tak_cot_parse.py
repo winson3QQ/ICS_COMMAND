@@ -103,6 +103,24 @@ def test_empty_or_malformed_raise(raw):
         parse_cot_xml(raw)
 
 
+# ── #161：CoT <archive/> 持久標記偵測（list 豁免 stale 的依據）─────────────────
+
+_ARCH_XML = (
+    '<event version="2.0" uid="A" type="a-h-G" time="2026-06-05T04:00:00Z" '
+    'start="2026-06-05T04:00:00Z" stale="2026-06-05T04:05:00Z" how="h-g-i-g-o">'
+    '<point lat="24.0" lon="120.0" hae="0" ce="9" le="9"/>'
+    '<detail><contact callsign="M1"/>{arch}</detail></event>'
+)
+
+
+def test_archive_flag_detected():
+    assert parse_cot_xml(_ARCH_XML.format(arch="<archive/>")).archived is True
+
+
+def test_archive_absent_defaults_false():
+    assert parse_cot_xml(_ARCH_XML.format(arch="")).archived is False
+
+
 # ── P2-10 內容層白名單（type / callsign / 座標越界）—— ingest 端最後防線 ──────
 
 from pydantic import ValidationError  # noqa: E402
@@ -110,9 +128,14 @@ from pydantic import ValidationError  # noqa: E402
 from schemas.tak import CoTEventIn  # noqa: E402
 
 _BASE = dict(
-    uid="T-1", type="a-f-G-U-C", time="2026-06-05T04:00:00Z",
-    start="2026-06-05T04:00:00Z", stale="2026-06-05T04:05:00Z", how="m-g",
-    lat=24.0, lon=120.0,
+    uid="T-1",
+    type="a-f-G-U-C",
+    time="2026-06-05T04:00:00Z",
+    start="2026-06-05T04:00:00Z",
+    stale="2026-06-05T04:05:00Z",
+    how="m-g",
+    lat=24.0,
+    lon=120.0,
 )
 
 
@@ -146,8 +169,10 @@ def test_out_of_bounds_coord_rejected(lat, lon):
 
 def test_invalid_type_via_stream_becomes_parse_error():
     # :8089 路徑：parse_cot_xml 把 ValidationError 收斂成 CoTParseError（不中斷串流）。
-    bad = ('<event version="2.0" uid="T" type="a f G" time="2026-06-05T04:00:00Z" '
-           'start="2026-06-05T04:00:00Z" stale="2026-06-05T04:05:00Z" how="m-g">'
-           '<point lat="24.0" lon="120.0" hae="0" ce="9" le="9"/><detail/></event>')
+    bad = (
+        '<event version="2.0" uid="T" type="a f G" time="2026-06-05T04:00:00Z" '
+        'start="2026-06-05T04:00:00Z" stale="2026-06-05T04:05:00Z" how="m-g">'
+        '<point lat="24.0" lon="120.0" hae="0" ce="9" le="9"/><detail/></event>'
+    )
     with pytest.raises(CoTParseError):
         parse_cot_xml(bad)

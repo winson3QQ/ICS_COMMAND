@@ -609,17 +609,20 @@ export function refreshLeafletMarkers() {
  * 不顯示（fallback：無框，不致報錯）。
  */
 /**
- * TAK entity 是否「老化」（#161）→ 前端變灰（dim）而非立即移除（移除由 backend time+窗口 + 週期
- * resync 處理）。以「**最後聽到**」= CoT `time` 為準，**不看 client `stale`**：dogfood 實證 iTAK 對
- * 繪圖(u-d-*) 會凍結 stale 卻持續推進 time，信 stale 會把還活著的物件誤判過期。time 距今超過門檻
- * （設得比 keep-alive 間隔大、比後端移除窗口小）→ 視為老化變灰。time 缺漏/不可解析 → 不老化（不誤灰）。
+ * TAK entity 是否「老化」（#161）→ 前端變灰（dim）= 即將被後端移除的視覺提示。對齊 TAK 原生
+ * streaming subscriber（取代 WIP 的 last-heard time 窗口）：
+ *  - archived（CoT `<archive/>` 持久標記，如放置標記 a-*）→ **永不老化**（持久顯示，
+ *    只有明確刪除才移除）＝對齊 TAK server repository + 其他 TAK client。
+ *  - 非 archived（如繪圖 u-d-*）→ 過 `stale` 即老化（原生 client deleteStaleAfter 行為）；
+ *    後端 list 亦依 stale 移除，前端 grey 是移除前的短暫過渡提示。
+ * stale 缺漏/不可解析 → 不老化（不誤灰）。
  */
-const _TAK_STALE_GREY_AFTER_MS = 150000; // 150s：> iTAK keep-alive(~1-2min)、< 後端移除窗口(預設 300s)
 function _isAging(e) {
-  const raw = e && e.time;
+  if (!e || e.archived) return false; // archived 持久，不老化
+  const raw = e.stale;
   if (!raw) return false;
   const t = Date.parse(raw);
-  return Number.isFinite(t) && t <= Date.now() - _TAK_STALE_GREY_AFTER_MS;
+  return Number.isFinite(t) && t <= Date.now();
 }
 
 let _takRenderSeq = 0;

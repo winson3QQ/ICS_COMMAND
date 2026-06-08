@@ -43,15 +43,16 @@ WARNING_THRESHOLD_SECONDS: int = int(os.getenv("ICS_WARNING_THRESHOLD_SECONDS", 
 # 注意：PinLock（UI 層 idle 鎖定）是獨立機制，與此 server-side timeout 無關
 
 # ── App ───────────────────────────────────
-APP_VERSION = "2.4.0"  # MINOR：COP 實體生命週期正解（how-based stale 治理：活追蹤 vs 人工標註持久）+ t-x-d-d 刪除處理 + deleted 墓碑（#161）
+# PATCH：#161 ——TAK streaming 對齊原生 honor stale + honor <archive/>（退 last-heard time 窗口）
+APP_VERSION = "2.4.1"
 
 # CMD_VERSION：前端 UI 功能版本（不同於後端 SemVer APP_VERSION；規則見 CLAUDE.md 版號規則）
 # 兩軌版本命名，不可混用。由 /api/version 提供給前端，是唯一 source-of-truth；release 時更新此值。
 # v1.0.0：拆分自 ICS_DMAS 後首個完整可用形態（MapLibre 地圖引擎全換 P1-10b + PWA 移除 P1-11
 #         + 演習/放置/稽核 UI P1-13/14/16/#93 + 分類編輯器 #66）→ 0.x 畢業為 MAJOR 紀元。
 CMD_VERSION: str = os.getenv(
-    "CMD_VERSION", "v1.2.1"
-)  # PATCH：stale 變灰只套活追蹤（how=m-*）；人工放置標記不再誤淡（#160 後續）
+    "CMD_VERSION", "v1.2.2"
+)  # PATCH：_isAging 改原生語意（archived 不變灰、非 archived 過 stale 才灰；退 150s 時窗）（#161）
 
 # ── CORS（C1-B）──────────────────────────
 # 架構備忘：PWA→Pi→Command 為 hub-and-spoke，瀏覽器無跨源呼叫，CORS 在主流程中無作用。
@@ -130,8 +131,6 @@ TRACK_MIN_INTERVAL_S: float = float(os.getenv("TRACK_MIN_INTERVAL_S", "5.0"))
 # 不中斷串流。0 或負值 = 關閉限速（不建議）。預設 60（典型演習人車數 × 1Hz 充裕）。
 TAK_INGEST_MAX_EVENTS_PER_SEC: float = float(os.getenv("TAK_INGEST_MAX_EVENTS_PER_SEC", "60"))
 
-# ── COP soft-stale 移除窗口（#160/#161）────────────────────────────────────────
-# 對齊 TAK：過 CoT stale 不立即移除（避免重播間隔 > stale 造成閃爍 / 誤判刪除）。
-# 保留到 stale + 本窗口才移除；窗口內前端把 entity 變灰（stale 視覺）。
-# 預設 300s = ATAK deleteStaleAfterMillis 預設（grey out → 5~10min 移除）。
-COP_STALE_REMOVE_WINDOW_S: int = int(os.getenv("COP_STALE_REMOVE_WINDOW_S", "300"))
+# 註：舊 COP_STALE_REMOVE_WINDOW_S（#160/#161 WIP last-heard 時窗）已於 #161 reality check
+# 退場——改對齊 TAK 原生 honor `<archive/>` + honor `stale`（見 cop_entity_repo.list_cop_entities
+# 與 memory tak-streaming-archive-stale-vs-mission）。env knob 一併移除避免 dead config 誤導。

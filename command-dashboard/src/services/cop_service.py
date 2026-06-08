@@ -56,6 +56,7 @@ _TAK_UPDATE_FIELDS = (
     "lat", "lon", "hae", "ce", "le",
     "heading_deg", "speed_mps", "access", "callsign", "remarks", "attributes",
     "team_color", "role", "battery",  # P2-06c：小隊欄位隨 update 刷新（battery 會變）
+    "archived",  # #161：archive 狀態隨 update 刷新（重畫可能加/去 <archive/>）
 )  # fmt: skip
 _CAS_MAX_RETRY = 3
 
@@ -240,6 +241,7 @@ def normalize_cot(cot_event: CoTEventIn) -> CoPEntity:
         access=cot_event.access,
         callsign=cot_event.callsign,
         remarks=cot_event.remarks,
+        archived=cot_event.archived,  # CoT <archive/> 持久標記（#161）；list 豁免 stale
         # P2-09：MEDEVAC 事件升 critical（地圖醒目 + P2-12 pulse）；其餘維持 info。
         # severity 不在 _TAK_UPDATE_FIELDS → 後續位置更新不覆寫，critical 維持（#135）。
         severity="critical" if medevac is not None else "info",
