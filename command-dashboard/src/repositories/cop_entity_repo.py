@@ -88,16 +88,21 @@ def list_cop_entities(
         # 墓碑：明確刪除（t-x-d-d / 操作員 DELETE）預設一律排除，不論 how/stale（#161 正解）。
         # include_stale=True（audit/回放）則連刪除的也撈得到。
         clauses.append("COALESCE(deleted, 0) = 0")
-        # stale（新鮮度）治理只對「活追蹤」，判別用 CoT `how`（機器追蹤 vs 人工放置）：
+        # 新鮮度治理——分兩類（#161 reality check 2026-06-08）：
         #  - manual/command（指揮部自建）：維持嚴格 stale>now（既有行為；刪除走 deleted 墓碑）。
-        #  - 外部 how=h-*（人工放置標記 / 繪圖）：靜態標註，無心跳 → **持久化**，豁免 stale。
-        #  - 外部 how=m-*（GPS/感測活追蹤，或 how 缺漏）：過 stale 仍保留到 stale+窗口（變灰），
-        #    窗口外移除（對齊 ATAK deleteStaleAfterMillis）。心跳停 = 失聯 → 該淡出。
+        #  - 外部來源（tak / pi-node / waveink）：存活看「**最後聽到**」= CoT `time`，**不信 client `stale`**。
+        #    ★ TAK parity（核心原則）：ICS 看 TAK 要跟「TAK client 看 TAK」一致 = 「持續聽得到就持續顯示」。
+        #      dogfood 實證 client `stale` 不是可靠存活訊號：iTAK 對**繪圖**(u-d-*) 每次 keep-alive 只推進
+        #      `time`、卻把 `start`/`stale` **凍結在建立當下**（time=04:47 但 stale=02:57，仍持續重送 vc>1）；
+        #      標記(a-*) 才會送新 stale。故改以 `time`（最後廣播時刻，標記/繪圖皆隨 keep-alive 前進，系統本就
+        #      信任 time 做版本排序）+ 窗口判存活：最近聽得到(time > now-窗口) → 保留；停止重送(刪除/離線)
+        #      → time 老化過窗口 → 移除。另保留 `stale > now`：尊重 client 明確宣告的遠期有效（place-once）。
+        #      （舊版「h-* 永生豁免 stale」會讓場端刪的標記永遠賴著＝態勢圖不同步；且無界成長資安洞 P2-14(A)。）
         clauses.append(
             "((source IN ('manual','command') AND stale > strftime('%Y-%m-%dT%H:%M:%SZ','now')) "
-            "OR (source NOT IN ('manual','command') AND how LIKE 'h%') "
-            "OR (source NOT IN ('manual','command') AND COALESCE(how,'') NOT LIKE 'h%' "
-            "AND stale > strftime('%Y-%m-%dT%H:%M:%SZ','now',?)))"
+            "OR (source NOT IN ('manual','command') AND "
+            "(time > strftime('%Y-%m-%dT%H:%M:%SZ','now',?) "
+            "OR stale > strftime('%Y-%m-%dT%H:%M:%SZ','now'))))"
         )
         params.append(f"-{COP_STALE_REMOVE_WINDOW_S} seconds")
     sql = "SELECT * FROM cop_entities"

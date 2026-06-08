@@ -609,22 +609,17 @@ export function refreshLeafletMarkers() {
  * 不顯示（fallback：無框，不致報錯）。
  */
 /**
- * entity 是否已過 CoT stale（#160/#161 軟 stale）。entity.stale 為 ISO 字串；過期 → 前端
- * 變灰（dim）而非立即移除（移除由 backend soft-stale 窗口 + 週期 resync 處理）。對齊 TAK：
- * 過 stale 先灰、窗口外才消失。stale 缺漏 / 不可解析 → 視為未過期（不誤灰）。
+ * TAK entity 是否「老化」（#161）→ 前端變灰（dim）而非立即移除（移除由 backend time+窗口 + 週期
+ * resync 處理）。以「**最後聽到**」= CoT `time` 為準，**不看 client `stale`**：dogfood 實證 iTAK 對
+ * 繪圖(u-d-*) 會凍結 stale 卻持續推進 time，信 stale 會把還活著的物件誤判過期。time 距今超過門檻
+ * （設得比 keep-alive 間隔大、比後端移除窗口小）→ 視為老化變灰。time 缺漏/不可解析 → 不老化（不誤灰）。
  */
-function _isStale(e) {
-  if (!e || !e.stale) return false;
-  const t = Date.parse(e.stale);
-  return Number.isFinite(t) && t <= Date.now();
-}
-
-/**
- * 是否「活追蹤」單位（CoT how 以 'm' 開頭＝機器/GPS 持續回報）。只有活追蹤才該因 stale 變灰
- * （存活警示）；how='h-*'（人工放置標記）是靜態標註、無心跳，不該變灰（#160 後續）。
- */
-function _isLiveTracked(e) {
-  return !!(e && typeof e.how === 'string' && e.how.startsWith('m'));
+const _TAK_STALE_GREY_AFTER_MS = 150000; // 150s：> iTAK keep-alive(~1-2min)、< 後端移除窗口(預設 300s)
+function _isAging(e) {
+  const raw = e && e.time;
+  if (!raw) return false;
+  const t = Date.parse(raw);
+  return Number.isFinite(t) && t <= Date.now() - _TAK_STALE_GREY_AFTER_MS;
 }
 
 let _takRenderSeq = 0;
@@ -652,8 +647,9 @@ function _renderTakUnits() {
         iconId: 'mil-' + sidc,
         affiliation: affiliationFromCot(e.type),  // 預留 hover/filter（icon 色已由 SIDC 內建）
         label: e.callsign || e.uid,
-        // 只有活追蹤（how=m-*）過 stale 才變灰（存活警示）；人工放置標記（how=h-*）靜態、不變灰。
-        stale: _isStale(e) && _isLiveTracked(e),
+        // TAK parity（#161）：以「最後聽到」(CoT time) 判老化變灰（不信 client stale，繪圖會凍結）——
+        // 對齊「TAK client 看 TAK」：持續聽得到＝亮著；停止重送後 time 老化先灰、窗口外由後端移除。
+        stale: _isAging(e),
       },
     });
   }
