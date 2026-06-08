@@ -49,7 +49,7 @@
 | **動作/應變** | 颱風/水災疏散收容 | 待挖 |
 | **動作/應變** | 野火延燒應變 | 待挖 |
 | **動作/應變** | 危險物質 (HazMat) 洩漏 | 待挖 |
-| **動作/應變** | 重大傷亡後送 (MCI/MEDEVAC) | 待挖 |
+| **動作/應變** | 重大傷亡後送 (MCI/MEDEVAC) | ✅ 本批 |
 | **動作/應變** | 關鍵設施巡邏監控 | 待挖 |
 | **高威脅/多組織/訓練** | RTF 武裝掩護搜救 | 待挖（有對話內容） |
 | **高威脅/多組織/訓練** | 多機構聯合災害指揮 | 待挖 |
@@ -357,7 +357,54 @@ SDR（軟體定義無線電）感測器——或 **WaveInk**（你的 SDR 多頻
 ## 颱風/水災疏散收容　_待深挖_
 ## 野火延燒應變　_待深挖_
 ## 危險物質（HazMat）洩漏　_待深挖_
-## 重大傷亡後送（MCI/MEDEVAC）　_待深挖_
+## 重大傷亡後送（MCI / MEDEVAC）
+
+> 與 SAR 配成救命鏈：**搜救(找到/接觸) → 檢傷(分類) → 後送(送醫)**。SAR 四層已引 9-line（P2-09），本情境把「檢傷 + 後送」展開。
+
+### 實際案例（佐證，非杜撰 — 附來源）
+| # | 案例 | 性質 | 來源 |
+|---|---|---|---|
+| ✅ A | **美陸軍 25th Combat Aviation Brigade ＋ 後勤支援艦 LSV-3**（夏威夷 Honolulu 外海，2024-08 示範）：ATAK 配置於 **MEDEVAC 指揮所（Wheeler 陸航機場）** 與 **艦上指揮所（LSV-3）**，用來**傳 9-line 後送請求**（地面部隊→MEDEVAC CP）+ 兩 CP 間傳檢查表 pro-words 做指管；示範以行進間艦艇當「海上救護車交換點(AXP)」，假人由兩架 HH-60 黑鷹 MEDEVAC 直升機吊掛轉運 | **ATAK + 9-line MEDEVAC 指管的軍方實證** | [arXiv 2408.13847](https://arxiv.org/abs/2408.13847) |
+| ✅ B | **9-line MEDEVAC 標準格式**：Line 1-5 為發機必填、6-9 可機上補；美陸軍 ATP 4-02.2 / 工作編號 081-831-0101 | 後送請求**標準化格式**（非發明）| [Army ATP 4-02.2](https://rdl.train.army.mil/catalog-ws/view/100.ATSC/56A63282-F1E1-488B-8817-C9E44E3FF4F2-1408535571708/atp4_02x2.pdf) |
+| ✅ C | **BATDOK（AFRL，Battlefield Assisted Trauma Distributed Observation Kit）**：智慧手機創傷醫療工具，吃感測器資料做多名傷患即時生理監測，與 ATAK 整合 | 點傷處生理監測 + ATAK 整合實證 | [Forterra/CivTAK 醫療](https://thelastmile.forterra.com/four-useful-atak-app-plugins/) |
+| ✅ D | **MCI 檢傷分類 START / SALT**：大量傷患現場「Sort-Assess-Lifesaving-Treat/Transport」，傷患移向**傷患集結點(CCP)**再分類；研究指 SALT 整體較 START 準（START 易低估傷勢） | MCI 檢傷**既有實務標準** | [EMS1 SALT](https://www.ems1.com/mass-casualty-incidents-mci/articles/how-to-use-salt-to-triage-mci-patients-ioh8pD88282FDTdy/)、[START/SALT 比較](https://pubmed.ncbi.nlm.nih.gov/28822212/) |
+| ✅ E | **馬德里 2004 通勤列車連環爆**：四列車 10 枚炸彈、250 名重傷（軟組織 85% / 爆震肺 63% / 頭部 52%），常引為 MCI 檢傷研究實案 | 真實 MCI 規模案例 | [MCI 檢傷綜述 PMC](https://pmc.ncbi.nlm.nih.gov/articles/PMC11488218/) |
+
+> **❗誠實邊界（紅線）**：ATAK 在**軍方 MEDEVAC 指管**有直接實證（A）；但**民間 EMS 大量傷患的「逐一患者電子追蹤」**多為外掛/研究階段（BATDOK C、RFID 患者追蹤研究），**未見單一大規模公開部署案例**。故下文「民間 MCI 患者追蹤的 TAK 用法」標 ❓ 偏推論；9-line / 檢傷 / CCP 是既有實務（B/D/E）。
+
+### 作業案例（實況）
+一起事件**傷患數超過現場醫療量能**（爆炸、地震倒塌、連環車禍、大型集會踩踏）。流程（軍/民共通骨架）：傷患在**點傷處(point of injury)** → 現場**檢傷分類**（START/SALT：紅 T1 立即／黃 T2 延遲／綠 T3 輕傷／黑 T4 期待，案例 D）→ 集中到**傷患集結點 CCP** → 依優先級**後送**（救護車/直升機，經 **HLZ 起降點** 或 **AXP 救護車交換點**，案例 A）→ 送達**醫院/收容**。後送請求走 **9-line MEDEVAC**（案例 B）。
+
+沒有數位共享時：傷患數量/分布/分類**靠無線電口報**（「這邊大概 10 個紅標」）→ 指揮**腦中拼湊**、易錯、講完即逝；9-line **口述轉錄**易漏行；後送資源（車/機）**誰空著、誰最近**不明 → 重複派、漏派；CCP/HLZ 位置口頭交代；事後**反應時間無資料**可檢討。
+
+### 痛點 → 需求邏輯
+指揮（與醫療官）需要：① **傷患數/分類/位置即時上圖**（多少 T1/T2 在哪，免口報拼湊）；② **9-line 結構化傳送**（免口述漏行、pickup 點精確 geo）；③ **後送資源可視 + 就近派遣**（哪台車/機可用、最近）；④ **CCP/HLZ/AXP 幾何上圖**全員同圖；⑤ **反應時間留痕**（請求→發機→後送→交接，供 AAR/品管）。效率關鍵 = **把口述的傷亡態勢與 9-line 數位化成即時 COP，後送鏈在同一張圖上協調、且時間可量化**。
+
+### TAK/ICS 怎麼用（四層 + 為什麼）
+| 層 | 怎麼用 | 為什麼 |
+|---|---|---|
+| ① Client (ATAK/iTAK) | 醫療兵在**點傷處填 9-line→傳**（✅ 案例 A：地面→MEDEVAC CP）；放**傷患標記 + 檢傷色**（紅/黃/綠/黑）；標 **CCP / HLZ / AXP**；**BATDOK** 接生理感測（✅ 案例 C）；GeoChat 醫療網通聯（iTAK 精確按鈕路徑 ❓）| 9-line 數位傳＝免口述漏行、pickup 點精確 geo；檢傷色讓指揮**一眼看傷亡分布**免口報拼湊 |
+| ② 協定/資料 | 9-line＝CoT `<_medevac_>`（P2-09 已萃取為結構化摘要 + severity=critical）；MEDEVAC 機＝`a-f-*` 友軍 track；傷患/CCP＝2525 醫療符號 + 檢傷色＝severity | 9-line 是**標準格式**（案例 B，Line1-5 必填發機）；2525 醫療符號跨單位/多國一致；severity 驅動視覺優先 |
+| ③ TAK Server | 直通多為**零設定**；醫療網用 **Groups** 分流；**CCP/HLZ/AXP 走 Mission/DataSync** 持久；查在飛 MEDEVAC 機位置走 **Marti REST**（P2-11）；HLZ 俯視走 **Video Feed Manager** | Groups 分醫療網免雜訊；後送點是**持久權威**標記（換班/增援要看到）→ 須 Mission 非只 streaming |
+| ④ ICS Dashboard | **MEDEVAC incident card**（P2-09 9-line + critical pulse，UI 落 P2-12）；傷患＝cop_entity + severity halo；**CCP/HLZ/AXP** 走 P1-16 zone；**後送資源 + 就近**看小隊聚合（P2-06d）；MEDEVAC 機 track（P2-02~05）+ stale 治理；**反應時間→演習指標 P2-21 / AAR P2-20** | incident card 讓指揮**結構化讀 9-line**；P2-21 已明列「MEDEVAC 請求→確認反應時間」＝本情境的量化價值；9-line 走 attributes（P2-09 設計 B：**聚合態勢非個別 PII**）符單一 COP 不開新表 |
+
+### 效率提升
+- **9-line 數位傳 vs 口述**（✅ 案例 A）→ 免漏行、pickup 點精確、兩端指管同步（含 pro-words 檢查表）。
+- **傷亡分布一眼讀**：多少 T1/T2 在哪 → 指揮**按優先級分配後送資源**，不重複不漏。
+- **就近 + 資源可視派遣**：哪台車/機空著、最近 → 看圖派，免無線電問。
+- **後送鏈同圖協調**：CCP→HLZ/AXP→醫院在一張 COP（呼應案例 A 的 AXP 概念）。
+- **反應時間量化**：請求→發機→後送→交接時戳留痕 → **AAR/品管**（P2-21 已列為演習指標）。
+
+### 注意 / 失效模式
+- **9-line 語音仍常為主**：許多單位語音是法定/慣用主通道，數位是**augment 非取代**（案例 A 也是雙 CP 並用）。
+- **PII 邊界**：9-line 是**聚合後送態勢**（傷亡數 by precedence / 位置 / 通訊），P2-09 設計 B 已定調**非個別病患 PII**（無姓名病史）→ 進 attributes 隨 COP 透明可見。**但若加 BATDOK 生理/姓名＝個資** → retention（缺口 #13 TTL）+ at-rest 加密（P1-12c SQLCipher）。
+- **COP 完整性＝人命**：誤標檢傷色（紅標成綠）＝後送優先級錯 → 同 SAR 的 blast radius 是生命；severity **P2-09 設計只升不降**（避免誤把惡化傷患降級）。
+- **點傷處通訊**：可能離網/收訊差 → 9-line 送不出 → 需 mesh 中繼或人工中繼（同 SAR）。
+- **民間多機構**：醫院端患者追蹤（RFID/HIS）**超出 TAK 範疇**，TAK 管到「現場→後送」，院內交接是另一系統（案例 C/RFID 研究屬此銜接區，整合 ❓）。
+
+---
+
+## 颱風/水災疏散收容　_待深挖_
 ## 關鍵設施巡邏監控　_待深挖_
 
 # 群：高威脅 / 多組織 / 訓練　（待深挖）
