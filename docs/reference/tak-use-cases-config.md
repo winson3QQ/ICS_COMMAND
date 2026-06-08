@@ -48,7 +48,7 @@
 | **動作/應變** | 都市地震搜救 (SAR / USAR) | ✅ 本批 |
 | **動作/應變** | 颱風/水災疏散收容 | ✅ 本批 |
 | **動作/應變** | 野火延燒應變 (WUI) | ✅ 本批 |
-| **動作/應變** | 都市 / 結構火災 (高樓/延燒，室內 GPS-denied) | 待挖（2026-06-09 自野火拆出）|
+| **動作/應變** | 都市 / 結構火災 (高樓/延燒，室內 GPS-denied) | ✅ 本批（2026-06-09 自野火拆出）|
 | **動作/應變** | 危險物質 (HazMat) 洩漏 | 待挖 |
 | **動作/應變** | 重大傷亡後送 (MCI/MEDEVAC) | ✅ 本批 |
 | **動作/應變** | 關鍵設施巡邏監控 | 待挖 |
@@ -450,7 +450,58 @@ SDR（軟體定義無線電）感測器——或 **WaveInk**（你的 SDR 多頻
 
 ---
 
-## 都市 / 結構火災（Structure / Urban Fire）　_待深挖（2026-06-09 自野火拆出；重心：高樓/延燒、室內 GPS-denied、消防員問責 PAR/RIT、TAK 室內先天弱——誠實寫清適配邊界）_
+## 都市 / 結構火災（Structure / Urban Fire）
+
+> 與野火**相反的 TAK 適配 profile**：野火戶外 GPS 可用、TAK 強配；結構火災**核心痛點在室內(GPS-denied)、TAK 先天弱**。本節誠實寫清：**TAK 幫得上的是「外部/事件級 COP」，幫不上的是「室內消防員定位/問責」（那是別的專用技術）**。
+
+### 實際案例（佐證，非杜撰 — 附來源）
+| # | 案例 | 性質 | 來源 |
+|---|---|---|---|
+| ✅ A | **CivTAK「ATAK serves Fire Fighters」(2018)**：某消防局救下一所學校——IC 在 ATAK 上**依建物熱感測器觸發位置**下標記、導引隊伍快速會合 | TAK 用於**結構火災(外部/事件級)的實證** | [CivTAK 2018](https://www.civtak.org/2018/11/27/atak-serves-fire-fighters/) |
+| ✅ B | **CoE 結構火災 TAK 通訊韌性**：無網時 TAK 可走**無線電直傳**或**現場小型 server 中繼**地圖；科羅拉多消防員用高功率無線電組網讓手機互通 | TAK 在無網/密集都市的**通訊韌性實證** | [CivTAK firefighting](https://www.civtak.org/tag/firefighting/) |
+| ✅ C | **NIST 無基礎設施室內定位**：聲學 + UWB，2015 微軟室內定位賽冠軍(平均 31cm)；周界佈 3-4 信標 + 每名消防員穿戴單元(IMU/UWB/LoRa/氣壓)，**指揮官在建物外平板看每人室內位置** | 室內消防員定位的**專用技術（非 TAK）** | [NIST 室內定位](https://www.nist.gov/ctl/pscr/infrastructure-free-localization-system-firefighters) |
+| ✅ D | **DynoLoc 真實消防演練**：10 名消防員各配 tag 進模擬重大火場，**火場指揮官在外用即時儀表板追蹤每一步移動** | 室內定位**真實演練實證（非 TAK）** | [DynoLoc arXiv](https://arxiv.org/pdf/2110.07365) |
+| ✅ E | **Mayday / RIT 問責致命教訓**：某結構火災「**人員問責直到 MAYDAY 發生後才建立**」、RIT companies 因無線電訊息混亂、安全官未設；**ePAR(SEMS II)** 讓 IC 免無線電廣播查 PAR、消防員經 **SCBA PASS console** 回覆 | 結構火災**問責致命教訓 + ePAR 專用解** | [Firehouse Mayday 教訓](https://www.firehouse.com/operations-training/article/53078076/11-lessons-learned-mayday-oh-firefighter-falls-through-floor)、[Emergent 問責系統](https://www.emergent.tech/blog/firefighter-accountability-systems) |
+
+> **❗誠實邊界（核心）**：TAK 在結構火災**外部/事件級有實證（A/B）**；但**最致命核心「室內消防員在哪 / 人員問責」是 GPS-denied，由專用技術解（NIST 聲學/UWB、DynoLoc、ePAR/SCBA PASS，案例 C/D/E）——不是 TAK**。故「TAK 做結構火災」= **外部 COP 適配、室內先天弱**；ICS 頂多**未來整合室內定位 feed 來顯示**（❓ 推論，類 SDR sensor source 模式），現非範疇。**不可假裝 TAK/ICS 解決室內問責。**
+
+### 作業案例（實況）
+建物起火（住宅/商辦/高樓/工廠）。應變＝消防車到場佈水線、進攻組**室內進攻**搜救+滅火、**RIT(快速介入組)** 待命救受困消防員、控制**延燒(exposure)** 到鄰棟（都市密集區會釀大火 conflagration）。**核心安全骨架＝人員問責(accountability)**：誰進去了、在哪一層/哪一區、空氣還剩多少——`MAYDAY` 時要立刻定位。高樓另需**垂直分區**（divisions by floor）。最致命＝**消防員受困/迷失/塌陷**而問責失靈（案例 E：問責常到 MAYDAY 後才建立）。
+
+沒有數位共享時：外部車輛/水源/延燒面靠 IC 腦中與無線電；室內人員位置**靠紙本/磁釦問責板 + 無線電點名**（PAR），煙霧中口述樓層/方位；延燒鄰棟靠目視回報。
+
+### 痛點 → 需求邏輯
+分兩塊，**TAK 適配天差地別**：
+- **外部/事件級（TAK 幫得上）**：① 車輛/水源(消防栓)/staging 佈署上圖；② **延燒面(exposures B/C/D 側)** 與鄰棟風險可視；③ **分區/任務指派**；④ **相互支援(mutual aid)** 多隊同圖；⑤ HazMat 疊合（工廠/危品）。
+- **室內/問責（TAK 幫不上，核心痛點）**：⑥ **室內每名消防員位置 + 空氣 + PAR 狀態** + MAYDAY 定位——**GPS-denied，須專用室內定位/ePAR**（案例 C/D/E）。
+
+效率關鍵 = **TAK 把「外部事件級 COP」做好（尤其大型/多隊/延燒/高樓），室內問責交給專用系統、未來至多整合顯示**。
+
+### TAK/ICS 怎麼用（四層 + 為什麼）
+| 層 | 怎麼用 | 為什麼 |
+|---|---|---|
+| ① Client (ATAK/iTAK) | 車輛/單位**外部 PLI**（GPS 戶外可用）；IC 標**起火建物/延燒鄰棟/消防栓/staging/RIT 位置**；依**建物警報/熱感測器**下標記導引（✅ 案例 A）；GeoChat。**室內進攻組＝GPS-denied，TAK 不追蹤其室內位置**（靠 ePAR/SCBA PASS，案例 E）| 外部 GPS 可用故車輛/水源可視；案例 A 證實「依感測器標記導引」可行；**室內不硬塞 TAK＝誠實，免給假定位** |
+| ② 協定/資料 | 車輛＝`a-f-*` track；起火建物/延燒面＝`u-d-f`(面)、分區/水線＝`u-d-r`(線)；標記＝2525/NAPSG 火災符號（火/延燒/消防栓）| 面/線表達延燒範圍與管制；符號跨多隊一致（mutual aid） |
+| ③ TAK Server | division/sector 用 **Groups** 分流；**事件圖走 Mission/DataSync** 持久；**無網時無線電直傳/現場小 server 中繼**（✅ 案例 B，密集都市/地下室常無訊號）；室內定位系統(NIST/DynoLoc)若整合＝外部 sensor feed（❓）| Groups 分區；無網中繼是結構火災現實剛需（案例 B）；室內 feed 整合屬未來、非現成 |
+| ④ ICS Dashboard | COP 渲染車輛（P2-02~05）+ 外部單位問責看小隊聚合（P2-06d）；起火建物/延燒/分區走 P1-16 zone / P2-08 shape；**P1-17 設施層已含消防分隊**（mutual-aid 來源）；**室內消防員問責＝非 TAK/ICS**（若整合室內定位 feed＝類 SDR normalize，❓ P3 後）；軌跡→AAR（P2-20，MAYDAY 調查）| P1-17 消防站省畫；**誠實：dashboard 顯示得了外部，顯示不了室內**（除非接專用 feed）；AAR 對問責失靈調查關鍵（案例 E）|
+
+### 效率提升（限「外部/事件級」，誠實不誇大）
+- **車輛/水源/延燒面同圖** → 都市大火(conflagration)延燒管理、水源調度（案例 E 水源管理失靈是真痛）。
+- **依建物感測器標記導引**（✅ 案例 A 救下學校）。
+- **相互支援多隊同圖** → 大型/多分局火場協同（TAK 價值在**大型而非例行小火**）。
+- **無網無線電中繼**（✅ 案例 B）→ 密集都市/地下室仍可維持外部 COP。
+- **AAR** → MAYDAY/問責失靈的事後調查（案例 E）。
+
+### 注意 / 失效模式
+- **🔴 室內 GPS-denied＝TAK 在火場第一痛點先天弱**：「室內消防員在哪」TAK 解不了，須 **NIST 聲學/UWB、DynoLoc、ePAR/SCBA PASS**（案例 C/D/E 都是**非 TAK 的專用系統**）。**ICS 絕不可假裝解決室內問責**——這是本情境最重要的誠實邊界。
+- **問責是頭號殺手**：案例 E「問責到 MAYDAY 後才建立」。正解是 ePAR + RIT 紀律，**不是 TAK**；TAK 至多管外部單位問責。
+- **節奏快**：結構火災是**分鐘級**快速進攻，TAK 操作開銷不可拖慢 fast-attack → **TAK 價值在大型/多隊/高樓/延燒/HazMat 疊合，非例行小火**。
+- **垂直高樓**：2D COP **表達不了樓層(Z 軸)**；高樓需 divisions-by-floor，TAK/2D 地圖原生不擅（❓ 需垂直分區呈現）。
+- **通訊**：地下室/鋼構/高樓深處訊號差 → 須無線電中繼/現場 server（案例 B 緩解）。
+- **室內定位 feed 整合（若做）＝未來**：類 SDR/WaveInk 的 sensor source normalize 進 COP（架構上可行，❓ 屬 P3 後，現非範疇）。
+
+---
+
 ## 危險物質（HazMat）洩漏　_待深挖_
 ## 重大傷亡後送（MCI / MEDEVAC）
 
