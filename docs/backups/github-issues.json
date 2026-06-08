@@ -2057,5 +2057,25 @@
     "title": "feat(ui): Dashboard 響應式 + 觸控支援（iPhone/iPad）",
     "updatedAt": "2026-06-07T11:56:00Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/165"
+  },
+  {
+    "assignees": [],
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "body": "ROADMAP **P2-25**（2026-06-08 P2-10 真機 dogfood 衍生）。\n\n## 動機\n真機可見 COP 易塞——多 affiliation marker（友/敵/中立/不明 2525 框）+ 矩形/多邊形/圓繪圖疊在一起（dogfood 截圖驗證）。操作員需要在地圖上篩選顯示哪些 TAK 內容。\n\n## 性質\n**純前端 view 篩選**——只改「自己看到什麼」，不刪資料、不改 server、不送 TAK。\n- **RBAC**：`READ_ROLES`（純視圖過濾、無 server 變更、**無 audit**）。\n\n## v1 篩選維度\n1. **圖層開關**：TAK 單位（2525 markers）總開關（延伸既有 `_layerVis` + EntityLayer `setVisible`）。\n2. **敵我 affiliation**：友/敵/中立/不明勾選（對映 2525 色；前端依 `type` 推 affiliation；MapLibre `setFilter`）。\n3. **stale 顯示**：顯示/隱藏已過 stale 的活追蹤單位。\n\n## enhancement（v2，本 issue 不含）\n- team_color 分組、callsign 文字搜尋、how（活追蹤 vs 人工標註）分流。\n- TAK 繪圖（polygon/route/circle）依 source 細分篩選（目前 polygon/route 圖層 manual+TAK 混在一起）。\n\n## 依賴 / 現況\n- 依賴 P2-05（2525 渲染、affiliation 推導已備）。\n- 落地於既有地圖工具列 ☰ 圖層面板。\n- **實作已在分支 `feat/issue-163-tak-status-filter`**（與 P2-23/#163 一起做；commit `06ac8cf`），待真機驗證 → review → PR/merge。",
+    "closedAt": null,
+    "comments": [],
+    "createdAt": "2026-06-08T00:49:24Z",
+    "labels": [],
+    "milestone": null,
+    "number": 168,
+    "state": "OPEN",
+    "title": "Dashboard 地圖 TAK 篩選器（map-side TAK filter）",
+    "updatedAt": "2026-06-08T00:49:24Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/168"
   }
 ]
