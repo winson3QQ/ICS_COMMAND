@@ -422,6 +422,11 @@ async def ingest_cot_event(event: CoTEventIn) -> dict | None:
     for _f in ("team_color", "role", "battery"):
         if patch.get(_f) is None:
             patch.pop(_f, None)
+    # #161（post-merge review）：archived coalesce —— 缺 <archive/> 的更新幀**不可**把既有 archived
+    # 打回 0（否則 archived marker 收到輕量更新幀就失去持久 = 重現本 bug，與 team_color 同理）。
+    # 只在幀明確帶 <archive/> 時才更新（單調設真）；un-archive 走明確刪除（deleted 墓碑），不靠 stream 倒退。
+    if not event.archived:
+        patch.pop("archived", None)
     # P2-09（review #135-3）：severity 不在 _TAK_UPDATE_FIELDS（位置幀不打回 info），但需允許
     # **單調升級**——同 uid 先普通幀（info）後 MEDEVAC 幀，critical 應升上去（否則漏升=地圖不醒目）。
     # 只升不降：critical 才寫入 patch；普通幀（info）不寫 → 保留既有值，不把既有 critical 打回。

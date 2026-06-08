@@ -121,6 +121,12 @@ def test_archive_absent_defaults_false():
     assert parse_cot_xml(_ARCH_XML.format(arch="")).archived is False
 
 
+@pytest.mark.parametrize("body", ["false", "0", "False", " FALSE "])
+def test_archive_explicit_false_not_archived(body):
+    # 容錯非標準 <archive>false</archive>（post-merge review）：不誤判為 archived
+    assert parse_cot_xml(_ARCH_XML.format(arch=f"<archive>{body}</archive>")).archived is False
+
+
 # ── P2-10 內容層白名單（type / callsign / 座標越界）—— ingest 端最後防線 ──────
 
 from pydantic import ValidationError  # noqa: E402

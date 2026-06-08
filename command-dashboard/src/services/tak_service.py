@@ -153,6 +153,11 @@ def parse_cot_xml(raw: str | bytes) -> CoTEventIn:
     _clat = _to_float(point_el.get("lat"), field="lat", default=None)
     _clon = _to_float(point_el.get("lon"), field="lon", default=None)
     geometry = geometry_service.extract_geometry(detail_el, center=(_clat, _clon))  # <shape>/<link> → GeoJSON
+    # <archive/>（detail 空元素，_extract_detail 已收進 detail_dict）→ 持久標記（#161）。CoT 慣例為無值
+    # <archive/>；容錯非標準 <archive>false</archive>（極罕見）：有此元素且文字非 false/0 才視為 archived。
+    _arch = detail_dict.get("archive")
+    _arch_text = str(_arch.get("_text", "")).strip().lower() if isinstance(_arch, dict) else ""
+    _archived = _arch is not None and _arch_text not in ("false", "0")
 
     a = root.attrib
     try:
@@ -176,8 +181,7 @@ def parse_cot_xml(raw: str | bytes) -> CoTEventIn:
             remarks=remarks,
             detail=detail_dict,
             geometry=geometry,
-            # <archive/>（detail 空元素，_extract_detail 已收進 detail_dict）→ 持久標記（#161）
-            archived="archive" in detail_dict,
+            archived=_archived,  # 見上方 <archive/> 偵測（#161）
         )
     except CoTParseError:
         raise

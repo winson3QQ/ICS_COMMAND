@@ -348,3 +348,23 @@ def test_older_event_does_not_resurrect_tombstone(captured_broadcasts):
     out = _ingest(_event(uid="RES-2", time="2026-06-05T04:00:00Z"))  # 比 target 舊
     assert out is None  # 落後幀丟棄
     assert get_cop_entity("RES-2")["deleted"] is True  # 仍墓碑（未復活）
+
+
+# ── archived coalesce（#161 post-merge review）：不帶 <archive/> 的更新幀不可把 archived 打回 0 ──
+
+
+def test_archived_not_reset_by_update_without_archive(captured_broadcasts):
+    """archived marker 收到**不帶 <archive/>** 的更新幀 → 保留 archived（coalesce；否則失去持久＝重現本 bug）。"""
+    created = _ingest(_event(uid="ARCH-1", time="2026-06-05T04:00:00Z", type="a-h-G", how="h-g-i-g-o", archived=True))
+    assert created["archived"] is True
+    row = _ingest(_event(uid="ARCH-1", time="2026-06-05T04:01:00Z", type="a-h-G", how="h-g-i-g-o"))  # 無 archive
+    assert row is not None
+    assert row["archived"] is True  # coalesce：不被打回 0
+
+
+def test_archive_can_be_set_by_later_update(captured_broadcasts):
+    """非 archived marker 後續幀帶 <archive/> → archived 升為 True（單調設真）。"""
+    _ingest(_event(uid="ARCH-2", time="2026-06-05T04:00:00Z", type="a-u-G", how="h-g-i-g-o"))
+    assert get_cop_entity("ARCH-2")["archived"] is False
+    row = _ingest(_event(uid="ARCH-2", time="2026-06-05T04:01:00Z", type="a-u-G", how="h-g-i-g-o", archived=True))
+    assert row["archived"] is True
