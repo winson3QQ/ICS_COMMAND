@@ -2112,5 +2112,25 @@
     "title": "deploy: issue-tak-certs.sh 雙層 CA + 裝置連線兩缺口（truststore 缺 intermediate / server SAN 缺 FQDN·IP）",
     "updatedAt": "2026-06-08T02:40:57Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/170"
+  },
+  {
+    "assignees": [],
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "body": "## 來源\n#161 修法（TAK last-heard 存活，2026-06-08）落地後的視覺收尾。當時決議「先落核心、繪圖 fade 另追」。\n\n## 現況（#161 已做）\n- 後端：外部 TAK 存活改看「最後聽到」= CoT `time`（不信 client 凍結的 `stale`）→ 標記與繪圖「沒刪卻消失」皆已修；停止重送/刪除後 `time` 老化過窗口 → 移除。\n- 前端 **atom 標記**（a-* SIDC 圖示）：`_isAging(e)`（`time` 距今 > `_TAK_STALE_GREY_AFTER_MS`=150s）→ 變灰（icon-opacity 0.4）。\n- 前端 **繪圖**（route / polygon / infra）：**消失已修，但不會先變灰 fade**——是另一條 render（`copEntityTo{Polygon,Route,Infra}` adapter → `{polygon,route,infra}ToFeature` builder → 各自 layer paint），目前未串 aging。\n\n## 要做\n把 `_isAging`（或等義的 last-heard 老化判定）串進三條繪圖 render：\n1. adapter / feature builder 在 feature `properties` 設 `stale`（= aging）。\n2. route(line-opacity)/polygon(fill+stroke-opacity)/infra(circle-opacity) layer paint 依 `['get','stale']` dim（注意別蓋掉既有 selection-pulse / hover 的 opacity 表達式）。\n3. 補 JS 測試（draw_tools / 對應 render 測試）。\n\n## 驗收\nTAK 繪圖停止重送後，dashboard 上**先變灰再消失**（與 atom 標記一致 = 全 TAK 物件統一 fade，呼應「ICS 看 TAK 要跟 TAK 看 TAK 一樣」）。\n\n## 關聯\n#161（last-heard 存活、atom fade 已做）。",
+    "closedAt": null,
+    "comments": [],
+    "createdAt": "2026-06-08T05:20:57Z",
+    "labels": [],
+    "milestone": null,
+    "number": 172,
+    "state": "OPEN",
+    "title": "前端：TAK 繪圖（route/polygon/infra）老化變灰 fade（#161 衍生）",
+    "updatedAt": "2026-06-08T05:20:57Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/172"
   }
 ]
