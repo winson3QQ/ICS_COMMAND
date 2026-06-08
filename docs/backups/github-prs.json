@@ -2755,5 +2755,26 @@
     "title": "feat(ui): 響應式 layout + 觸控支援（iPhone/iPad）(#165)",
     "updatedAt": "2026-06-07T11:55:59Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/166"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "iTAK 真機 E2E（P2-10）一輪 dogfood 的成果，三個 commit：\n\n## 1. iPad 響應式修正（`24e6738`，#165 follow-up）\n- 漢堡鈕斷點 900→1100px（涵蓋 iPad Pro 12.9 直向 1024px）\n- `100vh`→`100dvh` + body 鎖頁：修 iOS Safari 把 HEAD 捲走\n\n## 2. TAK CoT 繪圖 ingest 功能組（`d87cf32`，`command-v2.3.0`/`cmd-v1.2.0`）\n- #4 矩形 `u-d-r`：4 角 link + `<fillColor>` → 補閉合判 Polygon（原誤判 route）\n- #5 顏色：解析 strokeColor/fillColor/`<color argb>` ARGB → `attributes.color`（原退灰）\n- #134 圓 `u-d-c-c`：`<ellipse>` + 圓心 → 48-gon Polygon 逼近\n- 三筆觸 solid/dashed/dotted；TAK 圖形唯讀（對齊 backend `_require_editable_source`）\n\n## 3. COP 實體生命週期正解（`9e97a34`，`command-v2.4.0`/`cmd-v1.2.1`）\n依 CoT `how` 區分「活追蹤 vs 靜態標註」：\n- `how=m-*`（GPS 活追蹤）→ stale 治理（離線→變灰→移除）\n- `how=h-*`（人工放置標記+繪圖）→ **持久化**，豁免 stale\n- `t-x-d-d` 刪除命令處理 → 軟刪 + 即時廣播 `op=delete`（來源所有權守門）\n- `deleted` 墓碑（migration `_m019`）與 stale 分離；`include_stale` 仍可 audit\n\n## ⚠️ 實證得出的硬限制（非 bug）\niTAK 對「dropped marker / drawn shape」刪除**不送任何串流信號**（無 t-x-d-d、無 past-stale 重送）。\n故串流模型無法可靠偵測這類刪除 → **可靠刪除清理留 P2-14（Mission/DataSync server 權威）**，\n短期可加操作員「移出 COP」。\n\n## 議題對應\n- Addresses #160（stale 誤消失 → 持久化）、#134（圓形）、#4/#5（矩形/顏色）\n- #161（刪除同步）**部分**：t-x-d-d 已處理，但 iTAK 不送 → 可靠刪除 deferred P2-14\n- follow-up #159（封閉多邊形）、#165（觸控）\n\n## 測試\n完整後端套件 exit 0、JS 249 passed、pyflakes clean、map.js node --check。\n新增：幾何（矩形/圓/橢圓/三筆觸）、顏色 ARGB、soft-stale how 持久化、t-x-d-d 刪除+守門、deleted 墓碑、週期 resync。\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+    "closedAt": "2026-06-07T14:17:29Z",
+    "comments": [],
+    "createdAt": "2026-06-07T14:17:16Z",
+    "headRefName": "feat/tak-soft-stale-160-161",
+    "labels": [],
+    "mergedAt": "2026-06-07T14:17:29Z",
+    "number": 167,
+    "state": "MERGED",
+    "title": "feat(tak): P2-10 真機 dogfood — TAK 繪圖 ingest + COP 生命週期正解 + iPad 修正",
+    "updatedAt": "2026-06-07T14:17:33Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/167"
   }
 ]

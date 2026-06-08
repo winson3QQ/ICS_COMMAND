@@ -1617,15 +1617,30 @@
       "name": ""
     },
     "body": "## 背景（P2-08 #132 review 衍生）\nP2-08 落地了 CoT `<shape>` 的 **polyline/polygon**（→ route/polygon），但 **circle/ellipse 暫不支援** —— `geometry_service._from_shape` 對 `<ellipse>`/`<circle>` 回 None + log.warning。\n\n## 問題\noperator 在 ATAK 畫圓形警戒區（爆炸半徑、無人機禁航圈是常見用法）→ CoT 進指揮部後整個 shape 消失，COP 圖上看不到該區，**只有後端 log 一行 warning，前端與 operator 都不會察覺「畫的東西沒過去」**，可能誤判該區未設防。\n\n## 修法方向\n1. **前端圓形管線**：entity_layer / cop adapter 加 circle 渲染（圓心 + 半徑），對齊既有 route/polygon。\n2. **後端**：`geometry_service` 支援 `<shape><ellipse major minor angle/>`（圓心在 `<point>`）→ 新 `kind='circle'` + attributes 存 radius/major/minor/angle。\n3. ATAK ellipse 是橢圓（major/minor 半軸），circle 是特例（major==minor）。\n\n依賴：前端圓形渲染（屬 P1-10 地圖層延伸 / P2-12 範圍評估）。",
-    "closedAt": null,
-    "comments": [],
+    "closedAt": "2026-06-08T00:45:08Z",
+    "comments": [
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "已解決 — PR #167（merge 17988d0，command-v2.3.0；P2-08 follow-up）。\n\nCoT 圓 `u-d-c-c` 的 `<ellipse major minor angle>`（半徑公尺）+ 圓心 `<point>` → ingest 時轉 **48-gon Polygon 逼近**（`geometry_service._ellipse_to_polygon`，平面近似），沿用既有 polygon 渲染管線（填色/描邊/顏色/solid+dashed+dotted 三筆觸全到位）。真機 iTAK 畫圓驗過，肉眼即圓。\n\n實作取捨：多邊形逼近重用整條 polygon 管線、零新渲染器。",
+        "createdAt": "2026-06-08T00:45:08Z",
+        "id": "IC_kwDOSnBjpc8AAAABFNdpDg",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/134#issuecomment-4644628750"
+      }
+    ],
     "createdAt": "2026-06-06T06:21:45Z",
     "labels": [],
     "milestone": null,
     "number": 134,
-    "state": "OPEN",
+    "state": "CLOSED",
     "title": "P2-08 follow-up: CoT circle/ellipse 幾何 + 前端圓形管線",
-    "updatedAt": "2026-06-06T06:21:45Z",
+    "updatedAt": "2026-06-08T00:45:08Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/134"
   },
   {
@@ -1924,15 +1939,30 @@
       "name": ""
     },
     "body": "## 來源\nP2-10 真機 iTAK dogfood（2026-06-07）。使用者廣播的標記/繪圖在 dashboard 出現後**幾分鐘消失**。\n\n## 事實（資料證實）\nZone entity：`time=2026-06-07T09:13:45Z`、`stale=2026-06-07T09:14:43Z` → **iTAK 只給約 58 秒有效期**。過 stale 後 `list_cop_entities` 依 `stale > now` 過濾 → 從地圖消失。\n\n## 性質\n這是 **CoT stale 語意的正確行為**（entity 有效期）—— 非 bug。但**繪圖/標記的 UX 期待是持久**（操作員畫的區域不該 1 分鐘後自己消失）。\n\n## 設計決策（需討論）\n- (A) 嚴格遵守 CoT stale（現況）—— 繪圖會過期消失，依賴 iTAK 端設長 stale / 重播。\n- (B) 對 ICS 端「指揮部關注的繪圖」延長 stale / 持久化（如 kind∈{route,polygon} 的 TAK entity 給較長保留）。\n- (C) UI 提示「此物件 N 秒後過期」讓操作員有感。\n- 注意：與 P2-06a 軌跡 / exercise archive 的保留策略一致性。\n\n## DoD\n- [ ] 決策方向拍板（A/B/C）\n- [ ] 若 B：實作 + 不破壞自身位置 stale 即時性\n- [ ] 文件化 stale/retention 策略（對齊 threat_model PII retention）\n\n關聯：P2-10、P2-20 AAR 回放（stale 物件回放需求）。",
-    "closedAt": null,
-    "comments": [],
+    "closedAt": "2026-06-08T00:45:06Z",
+    "comments": [
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "已解決 — PR #167（merge 17988d0，command-v2.4.0）。\n\n根因：iTAK 給繪圖/標記固定短 stale 且不續播，原模型把「移動單位的 stale 治理」誤套到靜態標註上 → 過 stale 就被移除/變灰。\n\n修法：依 CoT `how` 區分**活追蹤(how=m-*)** vs **人工標註(how=h-*)**——how=h-*（繪圖 + 手放標記）改**持久化**、豁免 stale 變灰/移除（`cop_entity_repo` list filter + 前端 `_isLiveTracked` 變灰閘）。真機 iTAK dogfood 驗過（持久化不再誤消失）。",
+        "createdAt": "2026-06-08T00:45:06Z",
+        "id": "IC_kwDOSnBjpc8AAAABFNdonQ",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/160#issuecomment-4644628637"
+      }
+    ],
     "createdAt": "2026-06-07T09:20:34Z",
     "labels": [],
     "milestone": null,
     "number": 160,
-    "state": "OPEN",
+    "state": "CLOSED",
     "title": "TAK 繪圖 stale 策略：iTAK 短 stale（~1min）導致繪圖在 dashboard 幾分鐘後消失",
-    "updatedAt": "2026-06-07T09:20:34Z",
+    "updatedAt": "2026-06-08T00:45:06Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/160"
   },
   {
