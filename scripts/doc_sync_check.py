@@ -50,12 +50,16 @@ def warn(msg: str):
 # Markdown 路徑提取：matches `path/to/file.py`、(path/to/file.md)、[label](path)
 PATH_PATTERNS = [
     re.compile(r"`([a-zA-Z0-9_\-./]+\.(?:py|js|md|html|css|json|yml|yaml|sh|toml))`"),
-    re.compile(r"\[[^\]]+\]\(([a-zA-Z0-9_\-./]+\.(?:py|js|md|html|css|json|yml|yaml|sh|toml))\)"),
+    re.compile(
+        r"\[[^\]]+\]\(([a-zA-Z0-9_\-./]+\.(?:py|js|md|html|css|json|yml|yaml|sh|toml))\)"
+    ),
 ]
 
 # 不檢查這些（外部 URL、placeholder、模板示意）
 SKIP_PATHS = {
-    "command-vX.Y.Z",
+    "command-vX.Y.Z",  # 舊 tag 前綴 placeholder（歷史引用仍在）
+    "backend-vX.Y.Z",  # 新 tag 前綴 placeholder（2026-06-08 改名）
+    "frontend-vX.Y.Z",
     "<branch>",
     "<指令>",
     "static/badge.png",  # gitignored 但 README 提到
@@ -116,7 +120,9 @@ def check_doc(doc_path: Path):
 # 2. ROADMAP 點名的具體 router / service / repo 檔案要存在
 # ─────────────────────────────────────────────────────────────
 # 例如 ROADMAP 寫 `routers/pi_push.py` 應對應 command-dashboard/src/routers/pi_push.py
-ROADMAP_CODE_REF = re.compile(r"`(routers/[a-z_]+\.py|services/[a-z_]+\.py|repositories/[a-z_]+\.py)`")
+ROADMAP_CODE_REF = re.compile(
+    r"`(routers/[a-z_]+\.py|services/[a-z_]+\.py|repositories/[a-z_]+\.py)`"
+)
 SRC_ROOT = BASE / "command-dashboard" / "src"
 
 

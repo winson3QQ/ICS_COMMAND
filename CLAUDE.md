@@ -80,9 +80,11 @@
 
 **兩軌版本，不可混用**（`/api/version` 同時回兩者）：
 
-### 後端 SemVer — `command-vX.Y.Z`（`APP_VERSION`，code SoT = `core/config.py`）
+> **[2026-06-08 tag 前綴改名]** 為辨識度,tag 前綴自此改 `backend-v*` / `frontend-v*`（語意自明,且避開與專案名 ICS_**Command** 撞字）。**切換邊界**：`command-v2.4.2` / `cmd-v1.2.2` 為**舊 scheme 最後一版**；下一版起用新前綴（`backend-v2.4.3` / `frontend-v1.2.3` …）。**舊 tag 不 re-tag**（commit message / ROADMAP 完成記錄已寫死引用,屬歷史事實,保留）。內部變數名 `APP_VERSION`/`CMD_VERSION` 不改（識別碼,連動 /api/version 與前端,churn 不值）。
 
-- `command-vX.Y.Z` — 指揮部後端 + 儀表板（git tag）
+### 後端 SemVer — `backend-vX.Y.Z`（`APP_VERSION`，code SoT = `core/config.py`；舊前綴 `command-v*`）
+
+- `backend-vX.Y.Z` — 指揮部後端 + 儀表板（git tag）
 - `server-vX.Y.Z` — Node.js relay（若獨立演進才打）
 
 | 位號 | 觸發 |
@@ -91,7 +93,7 @@
 | MINOR +1 | 一個功能完整可用 |
 | MAJOR +1 | 介面或資料格式破壞性變更（API、DB schema） |
 
-### 前端 UI — `cmd-vX.Y.Z`（`CMD_VERSION`，SoT = `core/config.py`，dashboard chrome 顯示）
+### 前端 UI — `frontend-vX.Y.Z`（`CMD_VERSION`，SoT = `core/config.py`，dashboard chrome 顯示；舊前綴 `cmd-v*`）
 
 追蹤**前端使用者可感的 UI 演進**，與後端 SemVer 脫鉤（後端只動 API、前端零變動時不進前端版，反之亦然）。
 
@@ -103,7 +105,7 @@
 
 > `v1.0.0` 起算點：拆分自 ICS_DMAS 後首個完整可用形態（MapLibre 全換 + PWA 移除 + 演習/放置/稽核 UI）。v0.x 為繼承自 DMAS 的 pre-1.0 開發線。
 
-每次 commit 包含**任一軌**版號遞增**必須同時打對應 git tag**（`command-v*` 或 `cmd-v*`）。
+每次 commit 包含**任一軌**版號遞增**必須同時打對應 git tag**（`backend-v*` 或 `frontend-v*`；2.4.2/1.2.2 以前為舊前綴 `command-v*` / `cmd-v*`）。
 
 ## 功能完成定義（Definition of Done）
 
