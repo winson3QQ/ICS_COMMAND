@@ -330,10 +330,12 @@ SDR（軟體定義無線電）感測器——或 **WaveInk**（你的 SDR 多頻
 指揮（與 OSOCC）需要：① **全體搜救員即時位置**（誰在哪個 sector/worksite，不必點名）；② **worksite/分區幾何上圖**（誰負責哪塊、進度幾級）；③ **傷患/危害/已清區的標記累積成廢墟全景**（非口述即逝）；④ **找到傷患→就近後送協調（9-line）**；⑤ **搜救員問責**（誰逾時失聯＝安全）。效率關鍵 = **把 INSARAG 紙本分區/標記/回報數位化成即時共享 COP，免重複口述與紙本彙整斷層**。
 
 ### TAK/ICS 怎麼用（四層 + 為什麼）
-- **① Client (ATAK/iTAK)**：搜救員連上**自動廣播 PLI**（✅ dogfood 見每分鐘；直解案例 A「看不到人」根痛）；在**傷患/危害/已清位置**放標記 + 註記；畫**分區/搜索範圍多邊形**（對映 INSARAG sector/worksite）；**SOS Token** 對可通訊的失蹤者發 URL 回收 GPS（✅ 案例 A 實證，限野地非埋壓）；拍照附到標記（廢墟災損/傷患）；GeoChat 隊內通聯。（PLI/放標記 ✅；iTAK 精確按鈕路徑 ❓）
-- **② 協定/資料**：搜救員 = `a-f-*` 友軍 track；分區/路線 = `u-d-f`(多邊形)/`u-d-r`(線)（✅ dogfood 送過）；標記用 2525/NAPSG 語意色（紅=危害、傷患點）；後送 = **MEDEVAC 9-line**（埋 `<_medevac_>`，P2-09 已萃取）。*為什麼*：符號讓多國隊**一眼讀懂**免語言轉譯（INSARAG 多國場景關鍵）。
-- **③ TAK Server**：搜救直通多為**零設定**；多隊/多機構用 **Groups** 分流（各隊先看自己 sector，呼應 INSARAG 分區）；**worksite 標記要「持久且重連補齊」→ 走 Mission/DataSync**（持久權威 COP），不能只靠 streaming（刪不掉/重連漏靜態標記＝廢墟標記消失，致命）；無人機俯視塌樓走 **Video Feed Manager**（✅ 選單實證）。
-- **④ ICS Dashboard**：COP 渲染搜救員（P2-02~05）+ **小隊聚合**（P2-06d，按 team_color 看各隊在線/失聯/質心＝對映 INSARAG 各隊狀態）；**分區/worksite 多邊形**走 P1-16 zone / P2-08 shape；**MEDEVAC incident card**（P2-09/P2-12）做傷患後送；照片 **reference-only URI 不 proxy**（P2-14，防 SSRF）；搜救員**過 stale 變灰 = 該隊失聯**（安全告警，呼應案例 A「看不到人」）；軌跡→**AAR 回放**（P2-20）供事後問責與 INSARAG worksite 報告。
+| 層 | 怎麼用 | 為什麼 |
+|---|---|---|
+| ① Client (ATAK/iTAK) | 搜救員連上**自動廣播 PLI**（✅ dogfood 每分鐘）；在**傷患/危害/已清位置**放標記 + 註記；畫**分區/搜索多邊形**（對映 INSARAG sector/worksite）；**SOS Token** 對可通訊失蹤者發 URL 回收 GPS（✅ 案例 A，限野地非埋壓）；拍照附標記；GeoChat 隊內通聯（iTAK 精確按鈕路徑 ❓）| 自動 PLI＝零操作員負擔、直解案例 A「人藏松冠層下看不到」根痛；就地標記比回指揮所畫快、貼合廢墟實況 |
+| ② 協定/資料 | 搜救員＝`a-f-*` 友軍 track；分區/路線＝`u-d-f`(面)/`u-d-r`(線)（✅ dogfood 送過）；標記用 2525/NAPSG 語意色（紅＝危害/傷患點）；後送＝**MEDEVAC 9-line**（埋 `<_medevac_>`，P2-09 已萃取）| 符號讓**多國隊一眼讀懂、免語言轉譯**（INSARAG 多國場景關鍵）；9-line 為標準化後送格式 |
+| ③ TAK Server | 搜救直通多為**零設定**；多隊/多機構用 **Groups** 分流；**worksite 標記走 Mission/DataSync**（持久權威 COP，非只靠 streaming）；無人機俯視塌樓走 **Video Feed Manager**（✅ 選單實證）| Groups 對映 INSARAG 分區（各隊先看自己 sector）；streaming 刪不掉/重連漏靜態標記＝廢墟標記消失（致命）→ 持久共享須走 Mission |
+| ④ ICS Dashboard | COP 渲染搜救員（P2-02~05）+ **小隊聚合**（P2-06d，按 team_color 看各隊在線/失聯/質心）；**分區/worksite 多邊形**走 P1-16 zone / P2-08 shape；**MEDEVAC incident card**（P2-09/P2-12）做後送；照片 **reference-only URI 不 proxy**（P2-14 防 SSRF）；搜救員**過 stale 變灰＝該隊失聯**；軌跡→**AAR 回放**（P2-20）| 小隊聚合對映 INSARAG 各隊狀態；變灰＝主動關注救援員安全（呼應案例 A「看不到人」）；AAR 供 INSARAG worksite 報告與訓練檢討 |
 
 ### 效率提升
 - **砍掉「你在哪/搜到哪」無線電** → 頻道留給真正救援指令（最大效率點，案例 A/B 共同見效）。
