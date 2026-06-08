@@ -212,6 +212,8 @@ Command **信任 TAK Server 轉發的所有 CoT** —— 即使傳輸加密（§
 
 → **回饋 P1-12a 設計**：key 階層新增 `disk-v1` child（統一 unlock）。**動工前先訂部署 at-rest 策略，再讓 P1-12 照它做。**
 
+**[2026-06-08 retention 實證，連動 PII / 缺口 #13]**：同一顆碟上**兩個資料域目前都無界成長**（= 更多明文 PII 暴露面 + 磁碟耗盡 DoS）：① **TAK PG**——TAK 有 Data Retention GUI（per-type TTL：Cot/GeoChat/Mission(含 tracks)/Files + 排程），但**現況 TTL 全空、排程 `Never`**（預設留全部）；② **ICS `cop_entity_tracks`**（SQLite，TAK 保留管不到）。緩解：兩域各設 TTL（90 天 / exercise 刪除 cascade）——TAK 側開 GUI、ICS 側自管。
+
 ### 8.5 憑證撤銷控制缺口（被擄裝置）
 
 §8.3 描述「任一被 TAK 接納的裝置都能推 CoT」這個**威脅**；對應的**控制缺口**＝**無憑證撤銷機制**。被擄/失竊的場端裝置，其 client cert 在 TLS 有效期內仍在信任邊界內 → 可**注入假敵我位置、或用 `t-x-d-d` 刪 COP 物件**（完整性威脅，對 C2 ≥ 機密性）。

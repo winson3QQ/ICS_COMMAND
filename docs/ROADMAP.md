@@ -145,7 +145,7 @@
 | 10 | **O/C 控制頁落點** | 無 sysadmin 專屬頁面；放主 dashboard 學員可能看到 | P2-19 | 獨立頁面 `/admin/exercise-control`（sysadmin role-gate）|
 | 11 | **scenario_designer.html 脫離 API** | 52KB 靜態工具，無任何 API 連接 | P2-19 | 補 export → JSON → `POST /api/exercises/{id}/scenario/upload` 接線 |
 | 12 | **AAR 頁面 layout 未定** | 無現成頁面；嵌主 dashboard 與即時 ops 模式衝突 | P2-20 | 獨立頁面 `/aar/{exercise_id}` |
-| 13 | **軌跡 PII retention policy 未定義** | `cop_entity_tracks` 累積 = 人員移動時間序列（高度敏感）；無清除 SOP | P2-06a/P2-20 | 90 天 TTL 或 exercise 刪除 cascade；文件化於 threat_model.md（P2-17）|
+| 13 | **PII retention policy 未定義（兩個保留域，目前都無界）** | `cop_entity_tracks` 累積 = 人員移動時間序列（高度敏感）；無清除 SOP。**[2026-06-08 admin UI 實證]** 還有**第二個域**：TAK Server PG。TAK 有保留 GUI（`Administrative → Data Retention`，per-type TTL：Cot/GeoChat/**Mission(含 tracks/files)**/Files + 排程器），**但現況全 TTL 空白、排程 `Never`** → TAK PG 也無界（呼應 #161 server 留全部）| P2-06a/P2-20 | **兩域分治**：① TAK 側 = 部署時開 Data Retention GUI（設 TTL + 排程）② ICS 側 = `cop_entity_tracks` 自管 TTL（TAK 保留管不到 ICS SQLite）。皆 90 天 TTL 或 exercise 刪除 cascade；文件化 threat_model.md（P2-17）|
 | 14 | **Scenario runner 並發控制** | 無 per-exercise mutex；兩腳本同時跑 → 學員地圖混亂 | P2-19 | `exercises.scenario_running` 欄位；第二個 run 請求 409 |
 | 15 | **REST ingest 端點缺機器間認證**（→ TAK-A）| `POST /api/tak/events` 要求 WRITE_ROLES session token；外部 TAK server / federation 無 session 取得機制（無 API key / HMAC inbound / service account 路徑）→ 端點對「REST federation push」用途事實上不可呼叫 | P2-03 後 / 任何需要 REST federation push 的場景前 | **三選一**：(A) HMAC inbound（對齊 Pi-node `verify_hmac` 模式）；(B) mTLS inbound client cert；(C) 只保留 :8089 pull、標此端點 internal-only。動工前先確認 TAK federation 架構需求（影響 P2-11 M2M auth 設計） |
 
