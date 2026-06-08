@@ -1680,14 +1680,29 @@
     },
     "body": "## 背景（P2-09 #135 security-review pre-existing 發現）\n\n`/security-review` 於 P2-09 MEDEVAC 審查時發現的 **pre-existing**（非 P2-09 新引入）hardening 缺口:\n\nTAK ingest path（`routers/tak.py POST /api/tak/events` + `:8089` 串流 → `cop_service.ingest_cot_event` → `normalize_cot` → `insert_cop_entity`）**全程無 server-side XSS escape**。自 P2-04 起,所有 TAK 來源字串（`callsign` / `remarks` / 每個 `detail` 屬性,含 P2-09 的 `attributes.medevac.*`）都 **raw 存** `cop_entities.attributes`。\n\n對比:\n- operator-facing router 寫入（`routers/cop.py`）有 `validate_no_unsafe_strings`（`core/input_safety.py`）\n- P2-07 `chat_service.html.escape()` 只 escape chat/GeoChat 分支\n- **COP attributes(TAK path)兩者都沒走**\n\n## 現況風險評估\n- **目前無前端 HTML sink**:`attributes.medevac` 尚未被任何 `static/` 前端消費;既有 TAK attributes 走 MapLibre WebGL text layer（`entity_layer.js` 的 `label`/feature props),**非 `innerHTML`** → 目前不可觸發。\n- **風險點 = 未來 P2-12 panel**:P2-12「MEDEVAC incident card」+「通聯記錄面板」會渲染 `medevac.*` / chat。若該 panel 用 `innerHTML` 渲染 raw TAK 字串 → **stored XSS**。\n\n## 建議（與 P2-12 一起做）\n1. 在 `ingest_cot_event`（或 `normalize_cot`）persist 前對 TAK 來源字串落 server-side escape / `validate_no_unsafe_strings`,讓 TAK path 與 operator 寫入有同等防線。\n2. P2-12 panel 強制 `textContent`（ROADMAP P2-12 已列「前端 textContent 禁 innerHTML」）作為第二道防線。\n3. 兩道一起 = defense-in-depth。\n\n## 觸發時機\nP2-12 動工時（panel 渲染 `medevac.*` / chat 之前必須先落地後端 escape）。本 issue 為 P2-12 的 security 前置依賴。\n\n## 來源\nP2-09（#135）`/security-review`,信心 9（pre-existing/consistent）。",
     "closedAt": null,
-    "comments": [],
+    "comments": [
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## 框架釐清（2026-06-08，安全策略對話）— 給接 P2-12 的 session\n\n**決策**：本 issue **併 P2-12 做**（維持 body「觸發時機」），不獨立修。但 body 的「建議 #1（ingest 時 escape）」要修正框架，避免修錯層：\n\n### 正解 = 輸出層 contextual output encoding，不是 ingest escape\n- **主防線**：P2-12 panel 渲 `medevac.*` / `remarks` / chat 一律 **`textContent`**（或 `html.escape()` 後才進 HTML）。escape 發生在 **HTML sink 那一刻**（OWASP 正解）。\n- **⚠️ 勿 escape-at-ingest / 勿改存 escaped 字串**：CoP entity 該**存 raw**。理由：既有 TAK 字串也餵 **MapLibre WebGL text layer（`entity_layer.js` label，非 HTML）**——若存成 `&lt;...&gt;`，**WebGL 會literally 顯示 `&lt;`**（保真破壞）。同理也別在 API JSON 序列化時全域 escape（會讓 `textContent` 二次編碼）。\n- **後端 escape 僅 optional 縱深**：真要做，限「給 HTML 消費端的那條輸出路徑」，不動 stored raw、不動 WebGL 路徑。\n\n### 暴露面釐清\n- `callsign` **已被 P2-10 白名單 `_CALLSIGN_RE` 擋 `<>`** → 非破口。\n- 真正 free-form 暴露 = **`remarks` + `medevac.*` + 其他 detail 屬性**（未白名單）。\n- **目前 0 可利用**（無 HTML sink）；風險隨 P2-12 panel 出現才成立 → 故併 P2-12、panel 落地前先備好 `textContent` 約定即可。\n\n→ 一句話：**P2-12 panel 用 textContent = 修掉本 issue；別在 ingest 動手腳。**",
+        "createdAt": "2026-06-08T13:29:14Z",
+        "id": "IC_kwDOSnBjpc8AAAABFSFSTg",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/136#issuecomment-4649472590"
+      }
+    ],
     "createdAt": "2026-06-06T09:13:33Z",
     "labels": [],
     "milestone": null,
     "number": 136,
     "state": "OPEN",
     "title": "TAK ingest path 無 server-side XSS escape（P2-12 panel 連動 hardening）",
-    "updatedAt": "2026-06-06T09:13:33Z",
+    "updatedAt": "2026-06-08T13:29:14Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/136"
   },
   {
