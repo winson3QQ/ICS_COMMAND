@@ -56,10 +56,14 @@ fi
 
 echo "[啟動] FastAPI :8000 ..."
 # --reload 本就單 process（隱含 workers=1）→ 滿足 COP in-process hub 需求（issue #29 PR-D）
+# --reload-dir 限定只看 src/ + static/：預設遞迴監看整個 cwd（含 .venv/），
+# pip/_vendor 等檔被動到會誤觸 reload，reload 瞬間 DB 連線中斷 → 偶發 transient 500。
 .venv/bin/uvicorn main:app --app-dir src \
   --host 0.0.0.0 \
   --port 8000 \
   --reload \
+  --reload-dir src \
+  --reload-dir static \
   > /tmp/ics_command.log 2>&1 &
 COMMAND_PID=$!
 echo "[OK] PID $COMMAND_PID"

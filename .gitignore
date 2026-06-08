@@ -69,3 +69,6 @@ command-dashboard/static/tiles/
 
 # 本地暫存 / 實驗區（mockup、抓取腳本、中間檔；保留品已搬進 static/）
 _scratch/
+
+# 本機 TAK dev 啟動器（機器專屬憑證路徑，不進版控）
+dev_tak_mac.sh
