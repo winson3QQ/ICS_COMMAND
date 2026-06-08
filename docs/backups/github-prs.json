@@ -2816,7 +2816,7 @@
     "number": 171,
     "state": "MERGED",
     "title": "fix(tak): issue-tak-certs.sh 補雙層 CA truststore + 參數化 server SAN (#170)",
-    "updatedAt": "2026-06-08T02:40:56Z",
+    "updatedAt": "2026-06-08T02:41:16Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/171"
   }
 ]

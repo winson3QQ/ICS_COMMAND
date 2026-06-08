@@ -1975,14 +1975,29 @@
     },
     "body": "## 來源\nP2-10 真機 iTAK dogfood（2026-06-07）。使用者在 iTAK **刪除**繪圖/標記後,dashboard **不即時反應**,要手動 refresh 才消失。\n\n## 事實 / 根因（推論）\n- TAK 刪除語意 = 送同 uid、`stale=now`（過期）的 CoT。ICS `ingest_cot_event` 收到 → CAS update 把 entity `stale` 設過去 → `cop_hub` 廣播 update。\n- **但前端 `cop_stream.js` 收到該 update 廣播時,未判「已 stale → 從地圖移除」**;只有整頁 refresh 重抓(套 `stale > now` 過濾)才會消失。\n- 同理 #160 的自然過期物件也是 refresh 才消失(非即時)。\n\n## 修法方向\n- 前端 `cop_stream` / EntityLayer:收到 entity update 時,若 `stale <= now` → 即時從圖上移除(等同 delete op)。\n- 後端可選:對 stale 化的 entity 廣播明確 `op=delete`(或標記),讓前端直接移除,不必每筆比對 stale。\n- 對齊 P1-15（#29）即時同步管線（已有 op=create/update/delete 廣播；確認 delete/ stale 路徑前端有接）。\n\n## DoD\n- [ ] iTAK 刪除 → dashboard 即時移除(真機驗,無需 refresh)\n- [ ] 自然過期(stale)亦即時移除\n- [ ] /code-review\n\n關聯：P1-15 即時管線、P2-12、#160（stale 策略）。",
     "closedAt": null,
-    "comments": [],
+    "comments": [
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## 2026-06-08 重驗：原根因假設需校正（dogfood 證據）\n\n重新拿真機 iTAK 驗證「刪除後 dashboard 不消失」，發現本 issue 開立時的**根因假設不成立**，特此校正並補證據。\n\n### 原假設（本 issue 開立時）\n> TAK 刪除語意 = 送同 uid、`stale=now` 的 CoT → ICS 設 stale → 廣播 update；前端不即時移除，**refresh 才消失**。\n\n### 實測校正\n這假設被 P2-14(A) dogfood（PR #167）推翻：**iTAK 刪除 dropped marker / drawn shape 時，TAK `:8089` 不送任何串流信號**（無 `t-x-d-d`、也不重送 past-stale CoT）。ICS `ingest_cot_event` 根本收不到刪除事件 → entity `deleted` 永遠 0、`stale` 維持最後一次的值。**對人工放置（`how=h-*`）標記而言，refresh 也不會消失。**\n\n### live db 證據（重驗當下 UTC ≈ 02:54Z）\n截圖中刪不掉的 affiliation 標記：\n\n| uid | type | how | stale | deleted |\n|---|---|---|---|---|\n| 7226BB48 | a-f-G（友）| `h-g-i-g-o` | 02:51Z（**已過**）| 0 |\n| 2E171BEB | a-h-G（敵）| `h-g-i-g-o` | 02:50Z（**已過**）| 0 |\n| 0EC70D78 | a-u-G（不明）| `h-g-i-g-o` | 02:50Z（**已過**）| 0 |\n\n三筆都是 `how=h-*`（人工放置）、都已過 stale、但 `deleted=0` 仍在圖上、也不變灰。\n\n### 為何 `h-*` 連 refresh 都救不了（兩層疊加）\n1. **前端不變灰**：`map.js:655` 只對活追蹤（`how=m-*`）過 stale 變灰；`h-*` 故意靜態不變灰（設計）。\n2. **後端不清理**：`how=h-*` 持久化後**豁免 stale → 無自動清理 sweeper**（見 P2-14(A) 安全註記）。\n\n→ 結論：人工放置的 TAK 標記，**刪了 / 過期了都會永遠賴在 dashboard 上**。本 issue 原描述（「需 refresh」）只適用於活追蹤（`m-*`）的即時移除缺口；`h-*` 是更深一層的**生命週期無終點**問題。\n\n### 修法（分層）\n- **即時移除缺口（m-* / 本 issue 原範圍）**：前端 `cop_stream`/EntityLayer 收到 entity update 時，`stale <= now` 即時移除，不必等 refresh。\n- **h-* 生命週期（本次校正帶出）**：正解是 **P2-14(A) server 權威 create/update/delete 生命週期**（DataSync，受 TTX gate P2-22 保護、較遠）；過渡期可加「`h-*` 絕對最大壽命 sweeper」（`stale` 超過可調 `PERSIST_MAX_AGE` 即移除）或操作員「移出 COP」手動鍵。\n\n### 關聯\nP2-14(A)（#167，server 權威刪除根因）、P2-22（TTX gate）、#160（stale 策略）。",
+        "createdAt": "2026-06-08T03:03:43Z",
+        "id": "IC_kwDOSnBjpc8AAAABFN5yiA",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/161#issuecomment-4645089928"
+      }
+    ],
     "createdAt": "2026-06-07T09:20:54Z",
     "labels": [],
     "milestone": null,
     "number": 161,
     "state": "OPEN",
     "title": "前端即時同步缺口：TAK 刪除/stale 物件未即時從 dashboard 移除（需 refresh）",
-    "updatedAt": "2026-06-07T09:20:54Z",
+    "updatedAt": "2026-06-08T03:03:43Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/161"
   },
   {
