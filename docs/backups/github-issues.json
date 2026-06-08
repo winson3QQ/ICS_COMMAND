@@ -2248,6 +2248,20 @@
         "minimizedReason": "",
         "reactionGroups": [],
         "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/176#issuecomment-4647904728"
+      },
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## Marti API reality check 數據（平行 session 順手撈，供參，非設計）\n\n來源：2026-06-08 查 TAK Server API 文件時順手實測，同台 Windows TAK Server **5.7-RELEASE-43-HEAD**、活 server。用既有 **`icscop` client cert（mTLS）** 直連 :8443，**非 admin、非 OAuth**。\n\n### ✅ 路徑成立：cert 就能用，端點全回 v3 schema\n| 端點 | 狀態 | 回應 |\n|---|---|---|\n| `GET /Marti/api/version` | 200 | `5.7-RELEASE-43-HEAD` |\n| `GET /Marti/api/missions` | 200 | `{\"version\":\"3\",\"type\":\"Mission\",\"data\":[]}` |\n| `GET /Marti/api/sync/search` | 200 | `{\"version\":\"3\",\"type\":\"Resource\",\"data\":[]}` |\n| `GET /Marti/api/clientEndPoints` | 200 | 含 `曙豐-3QQ-…`（活 iTAK）|\n| `GET /Marti/api/groups/all` | 200 | `__ANON__` group |\n\n→ 對齊 memory `tak-server-marti-cert-not-oauth`：**複用 :8089 同一套 step-ca/icscop cert 即可，毋須 admin/OAuth**。missions/sync 空 `[]` 與 #161 結論一致（裸 streaming、無 mission 權威物件）。\n\n### API 文件 3 來源\n- 官方線上（權威）：`https://docs.tak.gov/api/takserver`（release 的 `oas/redoc.html` 直接載這個）\n- PDF：`release/tak/docs/TAK_Server_Configuration_Guide.pdf`（5.5MB）\n- 機器可讀：`GET /Marti/api/openapispec.json` → **403**（operator cert 不夠，需 admin cert；`oas/swagger.html` 渲染它）\n\n### ⚠️ 省時間 gotcha\n- **Windows `curl` 無法用**（Schannel 不吃 PEM client cert：`0x80092002`）→ 改用 Python `ssl.SSLContext.load_cert_chain` / httpx + PEM。\n- `/swagger-ui/*`、`/v3/api-docs` → 500（CDN/render 問題，非 API 問題；API 本身 200 正常）。\n\n複測指令（Python，3 秒）：\n```python\nimport ssl, http.client\nctx=ssl.create_default_context(); ctx.load_cert_chain('icscop.pem','icscop-nopass.key')\nctx.check_hostname=False; ctx.verify_mode=ssl.CERT_NONE\nc=http.client.HTTPSConnection('localhost',8443,context=ctx); c.request('GET','/Marti/api/missions'); print(c.getresponse().read())\n```\n\n— 純 reality-check 數據，#176 設計/scope 仍歸該 session。",
+        "createdAt": "2026-06-08T10:54:59Z",
+        "id": "IC_kwDOSnBjpc8AAAABFQze0g",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/176#issuecomment-4648132306"
       }
     ],
     "createdAt": "2026-06-08T10:00:42Z",
@@ -2256,7 +2270,7 @@
     "number": 176,
     "state": "OPEN",
     "title": "P2-14 reality check：Mission/DataSync 同步 — 路徑成立 / #173 範圍修正 / 與 P2-13 共用面協調",
-    "updatedAt": "2026-06-08T10:23:27Z",
+    "updatedAt": "2026-06-08T10:54:59Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/176"
   }
 ]
