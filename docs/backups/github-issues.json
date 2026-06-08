@@ -2209,5 +2209,25 @@
     "title": "ICS 重連/重啟漏靜態 TAK 標記 — streaming 不重播，需 Marti 權威 resync（P2-14）",
     "updatedAt": "2026-06-08T09:44:57Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/173"
+  },
+  {
+    "assignees": [],
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "body": "**動工前 reality check**（ROADMAP P2-14 明令「動工前 DataSync API reality check」）。盤現有 code + 對活 TAK server（5.7-RELEASE-43）實測 Marti Mission API + OpenTAKServer 文件雙證。承接 #161 同步主線；與 P2-13 並行（見 §5 協調）。\n\n## 1. 可複用（已建，綠燈）— 入向地基幾乎齊\n| 元件 | 提供 | 來源 |\n|---|---|---|\n| `services/tak_rest_client.py` | `get_json` / `poll(interval, stop_event)` / mTLS cert / retry+backoff / rate-limit / `_join_url` SSRF 守門 / `build_tak_rest_client` factory | P2-11 |\n| `services/geometry_service.py` | `geojson_to_vertices`（mission geometry → 前端格式） | P2-08 |\n| `cop_service.ingest_cot_event` 接縫 | normalize → upsert(version_clock CAS) → cop_hub 廣播；含 `_handle_tak_delete` 軟刪 | P1-15/P2-04 |\n| `cop_entity_repo` | `insert` / `update_cop_entity_cas` / **`soft_delete`(CAS)** / `list` | — |\n| `core/config` | `TAK_MARTI_URL` / cert / 間隔 / retries | P2-11 |\n\n→ `services/datasync_service.py` **greenfield**，但**大部分是 orchestration**：poll mission → 每筆 CoT 丟既有 `parse_cot_xml` + `ingest_cot_event`。新 code 量比原 scope 想的少。\n\n## 2. Marti Mission API（實測 + OpenTAKServer 文件雙證）\n- `GET /Marti/api/missions` → 清單（實測空 `[]`）\n- `GET /Marti/api/missions/{name}/cot` → **mission 全 CoT dump**（`<events>` 包）← **resync 全集對帳來源**\n- `GET /Marti/api/missions/{name}/changes` → **ADD/REMOVE 變更 feed** ← **可靠刪除 + 增量同步來源**\n- `PUT/DELETE /Marti/api/missions/{name}/subscription` → 訂閱\n- mission CoT = 標準 CoT XML → **直接餵 `parse_cot_xml`（零新解析）**\n\n→ **核心路徑成立**：poll `/changes`（增量、含 REMOVE = 可靠刪除）+ reconnect 時 `/cot` 全 dump 對帳。\n\n## 3. 🔴 關鍵發現 — #173 範圍修正\n實測 + OpenTAKServer 文件雙證：**TAK server 沒有「拉全部當前 SA」的 bulk 端點**（`cot/sa` 不開放、`allEvents` 404、`sync/search` 是檔案 Resource、`contacts`/`clientEndPoints` 只有人員 PLI、只有 per-uid `cot/xml/{uid}`）。\n\n**意涵**：#173 的「reconnect 漏靜態標記」那些 marker **不在 mission 裡 → server 端無權威端點能重新供給**。\n- **#173 乾淨解 = 該持久共享的物件必須在 Mission 裡**（mission `/cot` resync 才蓋得到）。裸 streaming 的 ad-hoc 標記，TAK 平台本身就無法重供 —— 非 ICS 能單邊補。\n- **ROADMAP P2-14 (C)「Marti 主動拉權威全集對帳」對 mission 成立、對非-mission streaming 不成立**，需修正為「mission resync + 『共享物件放 mission』doctrine」。\n- （官方 TAK.gov API 文件 auth-walled，無法 100% 排除隱藏端點；empirical+OpenTAKServer 強烈指向無。）\n\n## 4. 動工前決策（drift / 待拍板）\n1. **mission-source tag**：cop_entity 要記「來自哪個 mission」（changes REMOVE → 軟刪對應 entity；resync diff 用）→ 新欄位/attribute。\n2. **reconcile 策略**：`/cot` 全 dump（startup/reconnect 對帳）+ `/changes` 增量（持續、含可靠刪除）。\n3. **與 streaming 去重**：同 uid 可能同時走 :8089 + mission（社群實證 mission CoT 也會廣播到 stream）→ 沿用 `version_clock`/`_is_newer`。\n4. **格式重用**：mission `/cot` = 標準 CoT → `parse_cot_xml` + `ingest_cot_event` 直接吃，新解析 = 0。\n5. **安全網（過渡）**：`PERSIST_MAX_AGE` / 來源上限 / 操作員「移出 COP」仍 greenfield（給非-mission streaming 兜底）。\n\n## 5. ⚠️ 與 P2-13 並行協調（兩 session 同時做）\n- **共用檔衝突**：P2-13（Mission CRUD push）+ P2-14（Mission poll read）**都改 `tak_rest_client.py` / 都打 mission API** → merge conflict 高風險。\n- **建議**：mission API client 方法（create/get/cot/changes/subscription/addContent/removeContent）**在 `tak_rest_client.py` 一次定義好**，13/14 各自 consume。**先協調誰落地這個共用骨架**（或先開小 PR 放骨架，兩 session 接）。\n\n## 動工前 reality check 待補（需 server 寫入授權）\n- 建一個測試 mission → 觀察 `/cot` 與 `/changes` 的**實際 JSON/XML 形狀**（本次因「對 shared infra 寫入」被擋，未實測）。動工時建 `ICS-RC-TEST` mission 探完即刪。\n\n關聯：#161（streaming 顯示對齊，已 merged）、#173（reconnect resync = 本項 (C) 子塊）、P2-13（並行、共用 mission client 面）、P2-17（文件收尾）。\n",
+    "closedAt": null,
+    "comments": [],
+    "createdAt": "2026-06-08T10:00:42Z",
+    "labels": [],
+    "milestone": null,
+    "number": 176,
+    "state": "OPEN",
+    "title": "P2-14 reality check：Mission/DataSync 同步 — 路徑成立 / #173 範圍修正 / 與 P2-13 共用面協調",
+    "updatedAt": "2026-06-08T10:00:42Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/176"
   }
 ]
