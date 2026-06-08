@@ -219,6 +219,7 @@ Command **信任 TAK Server 轉發的所有 CoT** —— 即使傳輸加密（§
 - **現況**：step-ca 曾發 24h 短期 cert（ROADMAP #98 drift），但**無 CRL/OCSP、無被擄裝置撤銷 SOP**。
 - **緩解方向**：短 cert TTL + 自動續期 + **撤銷機制（CRL/OCSP）** + 「裝置遺失 → 立即撤銷」操作 SOP。撤銷責任在 TAK 管理員（cert enrollment 端），ICS 為下游消費者。連動 P2-15（federation peer cert profile）+ step-ca 90 天 patch。
 - **ICS 端可加的縱深**：來源標註（哪張 cert/裝置推的）+ 異常偵測（同 uid 位置跳變 / 大量刪除），留 P2-12/P2-19。
+- **[2026-06-08 admin UI 實證]**：TAK Server admin GUI（`Administrative → Client Certificates`）**有內建撤銷功能**（`Revoke Selected` + `Show Revoked` 過濾）→ 撤銷機制存在。**但關鍵限制**：該清單對本部署顯示 **"No Certificates Found"**——現行 `icscop`/`admin`/`itak` 等 cert 由 **`makeCert.sh` 離線簽發（CA 信任鏈通，但未經 TAK enrollment 註冊）** → **TAK 不視為 managed cert、此 GUI 撤銷不到它們**。**意涵**：被擄裝置 cert 的撤銷，現行離線 cert 模型下**只能靠 CA 層 CRL 或改 truststore**（非 GUI 一鍵）。**修正方向**：場端裝置 cert 應走 **TAK enrollment（:8446）發行**（才進 managed 清單、可 GUI 撤銷 + `Show Revoked` 稽核），或建 CA CRL 並確認 ICS/TAK mTLS 驗證會 honor。
 
 ---
 
