@@ -2077,5 +2077,25 @@
     "title": "Dashboard 地圖 TAK 篩選器（map-side TAK filter）",
     "updatedAt": "2026-06-08T00:49:24Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/168"
+  },
+  {
+    "assignees": [],
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "body": "## 來源\nP2-23（#163）真機 iTAK onboarding dogfood（2026-06-08）。把 iTAK 接 Mac TAK server :8089 時連續撞兩關，`deploy/tak-server/pki/issue-tak-certs.sh` 對「雙層 step-ca + 裝置用 IP/FQDN 連」有兩個缺口。**已在 Mac 本機手動補（gitignored release/，per-machine），腳本本身未修。**\n\n## 缺口 1：`truststore-root.jks` 缺 intermediate（client 驗證失敗）\n- 現況：section 3 只匯入 step-ca **root**。\n- 問題：step-ca 是**雙層**（root→intermediate→leaf）。iTAK 等 client 只送 **leaf**（不附 intermediate）時，server 用「只有 root」的 truststore **建不出 leaf→intermediate→root** → `SSLHandshakeException: peer not verified`。\n- 證據：messaging log `Certificate error: peer not verified`；本機加 intermediate 進 truststore 後，leaf-only client cert 即被接受。\n- 修：truststore-root.jks 同時匯入 root **+ intermediate**（`keytool -importcert` 兩張）。\n\n## 缺口 2：server cert SAN 缺裝置可達位址（client hostname 驗證失敗）\n- 現況：section 1 SAN = `tak.ics.local` / `localhost` / `127.0.0.1` / `takserver`。\n- 問題：裝置用 **LAN IP**（或 FQDN）連時，server cert SAN 沒這個 → iTAK 嚴格 hostname 驗證 `IP address mismatch, certificate is not valid for '<IP>'` → disconnected。\n- 修（**參數化，勿寫死 IP**）：\n  - 加 env `TAK_EXTRA_SANS`（逗號分隔）餵進 `step ca certificate --san`。\n  - **doctrine**：**prod = FQDN**（`TAK_HOSTNAME` 設真網域，cert 綁名、DNS 管 IP，IP 浮動/failover 不用重簽）；**IP-SAN 只用於無 DNS 的 dev/LAN**。\n\n## 附帶\n- 兩個重簽都要 server cert 維持 **RSA**（#101 jwkSource 寫死 RSAPublicKey），離線簽（step-ca daemon 與 TAK 撞 :8443）。\n- 文件：README / POLICY 補「prod FQDN vs dev IP-SAN」+ iTAK data package 封裝（config.pref + itak.p12 + truststore-root.p12，密碼慣例）。\n\n## 關聯\n#163（P2-23，發現於此 dogfood）、#101（RSA cert 根因）、P2-07（federation peer cert，同 truststore 機制）。\n",
+    "closedAt": null,
+    "comments": [],
+    "createdAt": "2026-06-08T02:19:01Z",
+    "labels": [],
+    "milestone": null,
+    "number": 170,
+    "state": "OPEN",
+    "title": "deploy: issue-tak-certs.sh 雙層 CA + 裝置連線兩缺口（truststore 缺 intermediate / server SAN 缺 FQDN·IP）",
+    "updatedAt": "2026-06-08T02:19:01Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/170"
   }
 ]
