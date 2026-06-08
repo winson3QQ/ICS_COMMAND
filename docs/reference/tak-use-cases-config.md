@@ -1,145 +1,123 @@
-# TAK / COP 使用情境 ↔ 四層配置對照
+# TAK / COP 使用情境深挖 ↔ 四層配置
 
-> 把使用情境拆成 **① Client(ATAK/iTAK) / ② 協定 / ③ TAK Server / ④ ICS Dashboard** 四層，
-> 每層列出要動什麼。供 CONOPS ↔ 配置對照、ROADMAP item 回溯「為哪個情境而做」。
-> 衍生自 2026-06 真機 dogfood + admin GUI 實證 + 安全策略對話。
+> 每個情境深挖：**作業案例 → 痛點/需求邏輯 → TAK/ICS 怎麼用（四層+為什麼）→ 效率提升 → 注意/失效模式**。
+> 目的：把「為什麼這情境要用這功能」的**作業邏輯**講清楚，讓個人/團隊在該情境下更有效率；並讓 ROADMAP item 回溯「為哪個情境而做」。
+> 衍生自 2026-06 真機 dogfood + admin GUI 實證 + CONOPS 對話。**基礎 → 進階**排序，逐批深挖（一次 2 個）。
 
-## ⚠️ 可信度標註（重要，不亂掰）
-- **✅ 實證**：dogfood 真機（iTAK + 活 server）、admin GUI 截圖、或 ICS code 直接確認。
-- **❓ 未查證**：需對 **ATAK/iTAK 官方文件 / 實機 / TAK_Server_Configuration_Guide.pdf** 確認，本文**不編造**。
-- 特別：**TAK Client（ATAK/iTAK）的精確選單/按鈕路徑大多為 ❓**——dogfood 只確認「行為與送出的 CoT」，沒逐一記按鈕名。下文 client 層只寫**已實證行為**，精確操作路徑標 ❓。
+## ⚠️ 可信度標註（不亂掰）
+- **作業案例**：ICS / C2 / 應變的**既有實務**（領域知識，非發明）。
+- **TAK/ICS 怎麼用**：多為**從功能用途推導的邏輯**（非官方 CONOPS——那種權威「情境→配置食譜」基本不存在）；**屬合理推論，動工前仍應對 `TAK_Server_Configuration_Guide.pdf` / 實機驗證**。
+- **✅ 實證** = dogfood 真機 / admin GUI 截圖 / ICS code；**❓ 未查證** = 需對 ATAK/iTAK 文件或實機確認，本文不編造（尤其 **iTAK 精確按鈕路徑大多 ❓**）。
 
 ## 四層定義
 | 層 | 是什麼 | 配置面 |
 |---|---|---|
-| **① Client (ATAK/iTAK)** | 操作員在 app 的動作；server 直通轉發 | 發包(group/cert) + 操作員操作 |
-| **② 協定/資料** | CoT type / MIL-STD-2525 符號 / 9-line schema | 格式，**不用配** |
-| **③ TAK Server** | admin GUI / CoreConfig.xml 設定 | **真正的 server 設定** |
-| **④ ICS Dashboard** | ICS 端 normalize/渲染/COP（我們的 code） | ROADMAP P1/P2 item |
+| **① Client (ATAK/iTAK)** | 操作員在 app 的動作；server 直通轉發 | 發包(group/cert) + 操作 |
+| **② 協定/資料** | CoT type / MIL-STD-2525 / 9-line | 格式，不用配 |
+| **③ TAK Server** | admin GUI / CoreConfig.xml | **真正的 server 設定** |
+| **④ ICS Dashboard** | ICS normalize/渲染/COP（我們的 code） | ROADMAP P1/P2 |
 
----
-
-## ③ TAK Server admin GUI 菜單（✅ 2026-06-08 實證，本文引用基準）
-> 進入：`https://<host>:8443/` → 接受 Distribution Statement → 需 **admin client cert**（operator cert 看不到管理頁）。各情境下文以這些選單名引用。
-
+## ③ TAK Server admin GUI 菜單（✅ 2026-06-08 實證，引用基準）
+進入 `https://<host>:8443/` → 接受 Distribution Statement → 需 **admin client cert**。
 - **Data**：Cot Query｜File Manager｜Send Mission Package｜Video Feed Manager｜**Mission (COP) Manager**｜ExCheck
 - **Situation Awareness**：Export Mission｜KML SA Feed｜WebTAK
-- **Configuration**：**Inputs and Data Feeds**｜**Federation**｜Federate Certificate Authorities｜**Injectors**｜Security and Authentication
-- **Administrative**：Database｜**Data Retention**｜Manage Users｜**Client Certificates**｜Tokens｜Device Logs｜**Device Profiles**｜File Config｜VBM Configuration
+- **Configuration**：**Inputs and Data Feeds**｜**Federation**（現 DISABLED）｜Federate Certificate Authorities｜**Injectors**｜Security and Authentication
+- **Administrative**：Database｜**Data Retention**（TTL 全空/排程 Never）｜Manage Users｜**Client Certificates**（Revoke 只管 enrollment cert）｜Tokens｜Device Logs｜**Device Profiles**｜File Config｜VBM Configuration
 - **Monitoring**：Alarms｜Metrics Dashboard｜Client Dashboard
 
-> **實證重點**：① Client Certificates 有 `Revoke Selected`/`Show Revoked`，但只管 **enrollment 發的 cert**（離線 makeCert cert 不在清單）。② Federation 現 **DISABLED**（scaffold+fed-truststore 在、無 peer）。③ Data Retention 全 TTL 空、排程 `Never`（預設無限保留）。④ Mission Manager 可 `ADD`/`DELETE` mission，可見性 **group-scoped**。
+## 通則
+- **動作型情境**：③ TAK Server 多為**零/極少設定**（:8089 通 + cert/group 對即直通）；重心在 ① 發包 + ④ ICS。
+- **③ 設定吃重**集中在：Federation / Mission(DataSync) / Inputs and Data Feeds / Video / ExCheck / Data Retention / Groups —— 對到 ROADMAP 未做 P2 item。
 
 ---
 
-## 通則：多數「動作型」情境的 server 設定其實很少
-- **① Client + ④ ICS 為主、③ TAK Server 幾乎零設定**的情境：只要 :8089 通 + cert/group 對，operator 操作就直通進 COP。
-- **③ TAK Server 設定吃重**的，集中在：**Federation / Mission(DataSync) / Inputs and Data Feeds / Video / ExCheck / Data Retention / Groups(Manage Users)** —— 也正好對到 ROADMAP 未做的 P2 item。
+# 深挖順序（基礎 → 進階）
+
+| 階 | 情境 | 狀態 |
+|---|---|---|
+| **0 基礎** | 友軍即時定位 (BFT) | ✅ 已挖 |
+| **0 基礎** | 共同作戰圖 (Shared COP) | ✅ 已挖 |
+| **1 單隊作業** | 目標偵查與回報 (Recon) | 待挖 |
+| **1 單隊作業** | 都市地震搜救 (SAR) | 待挖 |
+| **1 單隊作業** | 重大傷亡後送 (MCI/MEDEVAC) | 待挖 |
+| **2 多元素應變** | 颱風/水災疏散收容 | 待挖 |
+| **2 多元素應變** | 野火延燒應變 | 待挖 |
+| **2 多元素應變** | 危險物質 (HazMat) 洩漏 | 待挖 |
+| **2 多元素應變** | 關鍵設施巡邏監控 | 待挖 |
+| **3 進階 ISR** | 多影像情資 (IMINT) | 待挖 |
+| **3 進階 ISR** | SDR/RF 感測 (→ WaveInk/P3) | 待挖 |
+| **4 高威脅/多組織/訓練** | RTF 武裝掩護搜救 | 待挖（整理對話內容） |
+| **4 高威脅/多組織/訓練** | 多機構聯合災害指揮 | 待挖 |
+| **4 高威脅/多組織/訓練** | 桌上推演 (TTX) + AAR | 待挖 |
 
 ---
 
-# 使用情境（14）
+# 階 0：基礎
 
-## A. 動作 / 應變類
+## 友軍 / 人員即時定位（Blue Force Tracking, BFT）
 
-### #1 友軍/人員即時定位（Blue Force Tracking）
-- **① Client**：iTAK 連上即**自動上報自身 GPS 位置**（✅ dogfood 見 `曙豐-3QQ` 每分鐘 PLI）。精確設定路徑 ❓。
-- **② 協定**：`a-f-G-U-C` 等 atom CoT + `<track>`；2525 友軍框。✅
-- **③ TAK Server**：**幾乎零設定**——只需 :8089 input 開（預設）+ client cert/group。Groups 經 `Administrative → Manage Users`。
-- **④ ICS**：✅ 已做（P2-02~05 串流→COP→2525 渲染）。
+### 作業案例（實況）
+一支隊伍散在區域裡（人員、車輛）。沒有 BFT 時，指揮要知道誰在哪只能靠**無線電點名**（「A 組你位置？」）。問題鏈：點名**佔線**（災害/戰術現場無線電是瓶頸）；口述座標**易錯、一問完就過時**（人在動）；指揮**無即時空間圖** → 新任務不知「誰最近」、重複派遣、把人派進危險、**友軍誤擊**（RTF/戰時尤甚）。
 
-### #2 共同作戰圖標繪（Shared COP）
-- **① Client**：iTAK 繪圖工具畫區域/放標記（✅ dogfood 實證送 `u-d-f`/`u-d-r`/`u-d-c-c` + 顏色 + solid/dashed/dotted）。精確按鈕 ❓。
-- **② 協定**：`u-d-*` + `<shape>`/`<link>` + strokeColor/strokeStyle。✅
-- **③ TAK Server**：純串流標繪零設定；**要「持久共享/可靠刪除」→ `Data → Mission (COP) Manager`**（放進 mission 才權威同步）。
-- **④ ICS**：🔶 上行標繪✅（P2-08 幾何）；可靠共享/刪除=P2-14。
+### 痛點 → 需求邏輯
+指揮需要：**連續、自動、準確的全員位置，不必開口問**。效率關鍵 = **消除「你在哪」的無線電流量** + **即時就近調度**。
 
-### #3 都市地震搜救（Urban SAR）
-- **① Client**：畫搜索責任區(多邊形)、標已清/發現、隊員 BFT、GeoChat 回報。✅(行為) / 按鈕 ❓
-- **② 協定**：多邊形 CoT + 標記 + `b-t-f`(GeoChat)。✅
-- **③ TAK Server**：基本零設定；多隊分流可用 **Groups**；責任區若要共享持久→ Mission Manager。
-- **④ ICS**：🔶 幾何/GeoChat 後端✅；「責任區覆蓋率/分派」工作流未做。
+### TAK/ICS 怎麼用（四層 + 為什麼）
+- **① Client**：iTAK 連上即**自動廣播自身 GPS（PLI）**（✅ dogfood 見 `曙豐-3QQ` 每分鐘）。*為什麼有效*：自動 = 零操作員負擔、零無線電佔線，直解「點名佔線」根痛。
+- **② 協定**：`a-f-*` + `<track>`，2525 **友軍藍框**。*為什麼*：敵我框讓指揮**一眼分出自己人**（RTF 是生死）。
+- **③ TAK Server**：幾乎零設定；多隊用 **Groups（Manage Users）** 分流。*為什麼*（推論）：大行動不該讓每人圖上塞滿所有單位 → 按角色 scope，看到的才相關。
+- **④ ICS**：dashboard COP 渲染（✅ P2-02~05）；**敵我/隊伍篩選器（P2-25）**讓指揮只看自己隊；**活追蹤過 stale 變灰 = 失聯警示**。
 
-### #4 野火延燒應變
-- **① Client**：畫火線(會移動)、疏散區；空拍見 #13。❓按鈕
-- **② 協定**：u-d-* 多邊形 + （影像見 #13）。✅
-- **③ TAK Server**：火線串流零設定；**空拍影像→ `Data → Video Feed Manager`**；外部氣象/風向 feed→ `Configuration → Inputs and Data Feeds`。
-- **④ ICS**：🔶 繪圖✅；影像=P2-16、外部 feed=未列(見 #14/P3)。
+### 效率提升
+- 砍掉「點名/回報位置」無線電 → **頻道留給真正指令**（最大效率點）。
+- **就近派遣**：事件跳出 → 看圖派最近的人，不用問。
+- **失聯偵測**：變灰 = 這隊掉了 → 主動關注（安全）。
+- **降友軍誤擊**：看得到自己人位置。
 
-### #5 颱風/水災疏散收容
-- **① Client**：標避難所、畫疏散路線、回報。❓按鈕
-- **② 協定**：標記 + 路線 CoT。✅
-- **③ TAK Server**：**外部水位/氣象 feed → `Configuration → Inputs and Data Feeds`**（核心設定點）。
-- **④ ICS**：避難所/路線 COP 大致✅（P1-16/P2-08）；水位 feed 進 COP 未做。
+### 注意 / 失效模式
+依賴 GPS + 通聯；變灰 = 不確定（非確定離線）；**OPSEC**——位置會被截收（戰時/RTF）→ 連回 mTLS 加密 + COP poisoning 顧慮（假位置→誤判）。
 
-### #6 危險物質(HazMat)洩漏
-- **① Client**：標毒煙擴散/隔離區、下風疏散、追蹤處置人員。❓按鈕
-- **② 協定**：多邊形(擴散) + 標記 + 2525 hazard。✅(框架)/IED-style 專用符號 ❓
-- **③ TAK Server**：基本零設定。
-- **④ ICS**：🔶 繪圖✅；hazard 專用符號待確認。
+## 共同作戰圖（Shared COP）
 
-### #7 重大傷亡事件(MCI)後送
-- **① Client**：檢傷點、MEDEVAC 9-line、後送路線。9-line 表單 iTAK 路徑 ❓。
-- **② 協定**：MEDEVAC CoT（9-line in `<detail>`）+ 路線。✅(P2-09 解析過)
-- **③ TAK Server**：零設定（串流直通）。
-- **④ ICS**：✅ 後端(P2-09)；MEDEVAC card 面板=P2-12。
+### 作業案例（實況）
+事件事實一直變：危險區、封路、避難所、集結點、目標。沒有共享圖時，每人/每隊各有腦中/紙本地圖 → **發散**。問題鏈：甲標了危險點，**乙被口頭告知前不知道**→走進去；指揮與現場**看的不是同一張圖**→決策衝突、反覆 re-brief；換班/增援**沒當前圖**→重新口述交接，慢且漏。
 
-### #8 多機構聯合災害指揮（跨組織）
-- **① Client**：各機構 client 各自 cert/group。發包設定 ❓細節。
-- **② 協定**：CoT 跨域轉發。
-- **③ TAK Server**：**`Configuration → Federation`（現 DISABLED，需開+設 peer）+ `Federate Certificate Authorities`（fed CA）+ `Manage Users`(group need-to-know)**。← server 設定最吃重的情境。
-- **④ ICS**：⏳ P2-15（gated，未做）。
+### 痛點 → 需求邏輯
+需求：**所有人（現場+指揮）看同一張當前圖，更新自動傳所有人，免反覆口頭同步**。效率關鍵 = **共享態勢免重複口述**。
 
-### #9 關鍵設施巡邏監控
-- **① Client**：巡邏 BFT、geofence、入侵應變。geofence 設定 iTAK 路徑 ❓。
-- **② 協定**：BFT + 標記 + （影像 #13）。
-- **③ TAK Server**：監視器→ `Video Feed Manager`；感測→ `Inputs and Data Feeds`。
-- **④ ICS**：🔶 BFT✅；影像/感測未做。
+### TAK/ICS 怎麼用（四層 + 為什麼）
+- **① Client**：operator 在 iTAK 就地畫區/放標記（✅ dogfood 送 `u-d-f`/`u-d-r`/`u-d-c-c`）。*為什麼*：現場就地標，比回指揮所畫快、貼合實況。
+- **② 協定**：`u-d-*` + 形狀 + **顏色/符號語意**（紅=危險）。*為什麼*：符號讓人一眼讀懂，免文字解釋。
+- **③ TAK Server**：**串流 = 即時但短暫共享**（快，但刪除/resync 不可靠）；**Mission/DataSync = 持久權威 COP**（耐久共享疊層的正解）。*邏輯*：即時 SA 用串流、耐久共享用 mission。
+- **④ ICS**：dashboard 為指揮端權威視圖；`cop_entities` + WS 廣播即時同步所有觀看者；**生命週期（archive/stale/可靠刪除）直接決定 COP 可不可信**。
 
-### #10 指揮所桌上推演(TTX) + 複盤
-- **① Client**：學員 iTAK 收注入的合成情境並應變。
-- **② 協定**：合成 CoT（`how="h-g-i-g-o"` → `simulated`）。
-- **③ TAK Server**：**`Configuration → Injectors`**（情境注入，待查證確切用法 ❓）。
-- **④ ICS**：⏳ P2-19(注入/O-C) + P2-20(AAR 回放)，未做。
+### 效率提升
+- **標一次→全員看到**：免重複 brief（核心效率點）。
+- 指揮+現場**同圖** → 決策對齊不衝突。
+- 增援/換班**秒接當前圖** → 交接效率。
 
-### #11 RTF 武裝掩護搜救（暖區、有敵情/爆裂物）
-- **① Client**：標敵方(紅 2525)、IED/UXO、熱/暖/冷區、武裝+醫護雙編組 BFT、靜默 GeoChat。✅(放敵我色/畫區/GeoChat 實證) / IED 專用符號 + 精確按鈕 ❓。
-- **② 協定**：`a-h-*`(敵)、`u-d-*`(區)、2525 hostile/（IED 符號 ❓）、`b-t-f`。✅(敵我框)
-- **③ TAK Server**：串流零設定；但 **integrity 要求最高**（見下）。
-- **④ ICS**：✅ 2525 敵我(P2-05)+敵我篩選(P2-25)+archive/stale(#161)；**這些在 RTF 是剛需非裝飾**。
-- **⚠️ 安全**：此情境 **COP 完整性=人命**（假敵標→走進埋伏、漏 IED→傷亡、刪不乾淨→誤判暖/熱區）→ 拉高 **§8.3 poisoning / #161 可靠刪除 / P2-14** 的優先級。
-
-## B. 情報 / 監偵類（ISR）
-
-### #12 目標偵查與回報（Recon & Report）
-- **① Client**：偵查員 BFT + 標目標(2525 敵/不明) + GeoChat 回報。✅(行為)/結構化 spot report 表單 ❓。
-- **② 協定**：atom CoT + `b-t-f`；spot report 可塞 `<detail>`。
-- **③ TAK Server**：零設定。
-- **④ ICS**：✅ ingest+GeoChat；結構化 spot report 未做。
-
-### #13 多影像情資回傳（IMINT）
-- **① Client**：拍多張照片 geo-tag 回傳。iTAK 附件路徑 ❓。
-- **② 協定**：照片走 Enterprise Sync / DataSync 附件（URI reference）。
-- **③ TAK Server**：**`Data → File Manager` / Mission 附件**（Enterprise Sync）。
-- **④ ICS**：⏳ P2-14——**照片=reference-only URI、永不 follow（防 SSRF）**。← 本情境證明該守則有真實需求。
-
-### #14 SDR/RF 感測回傳 radio pattern（SIGINT/RF）
-- **① Client / 感測源**：SDR 裝置或 **WaveInk**（SDR 多頻 + ASR）產生 RF 資料。
-- **② 協定**：RF emitter → sensor-type CoT（位置/方位，確切 type ❓）或 WaveInk 自有格式。
-- **③ TAK Server**：若走 TAK→ **`Configuration → Inputs and Data Feeds`**（接 SDR feed）。
-- **④ ICS**：**= WaveInk = COP 第二外部來源（Phase 3，全未做）**。對到「外部 data feed」缺口。
+### 注意 / 失效模式（**本情境暴露核心 backlog**）
+- **COP 完整性放大**：一個錯標**誤導所有人**（blast radius 比個人圖大）。
+- **可靠刪除/resync 缺口（#161/#173）直接侵蝕本情境效率**：刪不乾淨、重連漏靜態標記 → 共享的是錯/舊圖，**比沒有更糟** → **這就是 P2-14 對本情境為何是必需，非 nice-to-have**。
 
 ---
 
-## 觀察與用途
-1. **動作型情境（#1-7,9,11-12）**：③ TAK Server 多為**零/極少設定**；配置重心在 ① 發包(cert/group) + ④ ICS 渲染。
-2. **③ TAK Server 設定吃重**：**#8 federation、#4/5/14 inputs/data-feed、#4/9 video、#10 injectors、#13 file/mission、retention** —— 對到 ROADMAP 未做 P2 item。
-3. **#11 RTF 是 integrity 天花板**：把 COP 完整性/可靠刪除/敵我篩選從「nice-to-have」拉成「人命」。
-4. **#14 SDR = WaveInk(P3)**：補上「外部感測 data feed」這條，且是 COP 第二來源。
+# 階 1：單隊作業　（待深挖）
+## 目標偵查與回報（Recon & Report）　_待深挖_
+## 都市地震搜救（Urban SAR）　_待深挖_
+## 重大傷亡後送（MCI / MEDEVAC）　_待深挖_
 
-## 待查證清單（❓，動工前補）
-- TAK Client（iTAK/ATAK）各操作的**精確選單/按鈕路徑**（本文只列已實證行為）。
-- IED/UXO / HazMat 的 **2525 專用符號** 是否在我們渲染管線可用。
-- **Injectors** 的確切用法（#10）。
-- RF/sensor CoT 的**確切 type**（#14）。
-- 來源：ATAK/iTAK 官方文件、`TAK_Server_Configuration_Guide.pdf`、實機。
+# 階 2：多元素應變　（待深挖）
+## 颱風/水災疏散收容　_待深挖_
+## 野火延燒應變　_待深挖_
+## 危險物質（HazMat）洩漏　_待深挖_
+## 關鍵設施巡邏監控　_待深挖_
+
+# 階 3：進階 ISR　（待深挖）
+## 多影像情資（IMINT）　_待深挖_
+## SDR/RF 感測（→ WaveInk / P3）　_待深挖_
+
+# 階 4：高威脅 / 多組織 / 訓練　（待深挖）
+## RTF 武裝掩護搜救　_待深挖（已有對話內容可整理：integrity=人命、敵我/IED/暖冷區、拉高 §8.3/#161/P2-14 優先級）_
+## 多機構聯合災害指揮　_待深挖（federation/groups 為核心 server 設定）_
+## 桌上推演（TTX）+ AAR　_待深挖（injectors/simulated/回放）_
