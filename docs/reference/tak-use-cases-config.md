@@ -45,7 +45,7 @@
 | **感知/偵查** | SDR/RF 感測 (→ WaveInk/P3) | ✅ 本批 |
 | **計劃/決策** | 軍用計劃流程（MDMP/METT-TC，含 COA 標繪/Tasking/下達 + **誠實缺口**：天氣/地形分析/兵推/OPORD/同步矩陣）| ✅ 本批 |
 | **計劃驗證** | 桌上演習 (TTX) + AAR 回放（計劃→TTX→行動；ICS 強項 P2-19~22）| ✅ 本批 |
-| **動作/應變** | 都市地震搜救 (SAR) | 待挖 |
+| **動作/應變** | 都市地震搜救 (SAR / USAR) | ✅ 本批 |
 | **動作/應變** | 颱風/水災疏散收容 | 待挖 |
 | **動作/應變** | 野火延燒應變 | 待挖 |
 | **動作/應變** | 危險物質 (HazMat) 洩漏 | 待挖 |
@@ -302,8 +302,56 @@ SDR（軟體定義無線電）感測器——或 **WaveInk**（你的 SDR 多頻
 
 ---
 
-# 群：動作 / 應變　（待深挖）
-## 都市地震搜救（SAR）　_待深挖_
+# 群：動作 / 應變
+
+## 都市地震搜救（SAR / Urban USAR）
+
+### 實際案例（佐證，非杜撰 — 附來源）
+> 本情境的**作業案例與流程**有實證；但須先講清楚一條**誠實邊界**——
+
+| # | 案例 | 性質 | 來源 |
+|---|---|---|---|
+| ✅ A | **Bernalillo County Sheriff（新墨西哥 Sandia 山區）**：攀岩者墜崖、多處骨折瀕臨失血→ ATAK + **SOS Token**（發 URL 簡訊讓傷者回傳 GPS）+ **RapidSOS** 協調空中/地面/救護車完成救援。副警長原話：過去飛過去「人員藏在 ponderosa 松冠層下根本看不到」 | TAK 用於 **野地/山域 SAR** 的直接實證 | [Samsung Insights 2020](https://insights.samsung.com/2020/11/10/bernalillo-county-uses-atak-to-improve-search-and-rescue/) |
+| ✅ B | **七場颶風（Harvey/Irma/Maria/Florence/Lane/Michael/Dorian）**：TAK 支援救出**逾 2,000 人**，DHS 數千人員使用 | TAK 用於 **水患災害 SAR** 的實證（與情境#5 颱風水災重疊，該情境再展開）| [Wikipedia: ATAK](https://en.wikipedia.org/wiki/Android_Team_Awareness_Kit) |
+| ✅ C | **AFRL SAR plugin / CivTAK**：尋找失蹤者（迷途登山客、墜機飛行員），公開為 web 工具 + ATAK 外掛 | TAK SAR 工具生態實證 | [CivTAK 2026-03](https://www.civtak.org/2026/03/23/search-rescue-plugin-released/) |
+| ✅ D | **INSARAG 指南**：都市倒塌建物 USAR 國際標準——5 級 ASR、分區(Sector)、worksite ID `1-1`、標記框 1.2m×1.0m | **地震 USAR 流程**的權威實務（非 TAK，是作業方法本身）| [INSARAG Vol II Man B](https://insarag.org/wp-content/uploads/2021/09/INSARAG20Guidelines20Vol20II2C20Man20B.pdf)、[ASR Levels](https://learn.pcpm.org.pl/wp-content/uploads/2020/08/Insarag-Manual-B-ch-5.7.pdf) |
+| ✅ E | **Christchurch 2011 地震**：INSARAG 搜救標記系統實戰檢討 | 真實地震 USAR 標記案例 | [USAR marking review](https://www.researchgate.net/publication/317552357) |
+
+> **❗誠實邊界（紅線）**：已查到的 **TAK SAR 實證是野地/山域（A）與水患（B）**；**「地震倒塌建物 USAR」的 TAK 實際部署，未查到公開案例**。故下文「地震 USAR 的 TAK 用法」是**從已證實 SAR 用途（A/C）＋ INSARAG 既有流程（D/E）推論**，標 ❓——**不冒充地震 USAR 已有 TAK 實戰**。
+
+### 作業案例（實況）
+兩種 SAR 形態，作業邏輯共通（搜索 → 定位 → 接觸 → 後送），但場景差異大：
+- **野地/山域搜索**（案例 A/C）：人員散在大面積地形找失蹤者；地形遮蔽（樹冠/峽谷）、分隊各搜各的、找到傷者要協調空中吊掛/地面後送。
+- **都市地震倒塌建物 USAR**（案例 D/E，INSARAG）：城市大面積倒塌，多國/多隊進場。先**廣域評估(ASR-1)**訂**分區(Sector A/B…以河川/大馬路切)**→ 各隊在分到的 sector 做**worksite 分檢(ASR-2)**→ 對每個有生還機會的 worksite 編 **ID（`1-1`：sector-序號，連字號分隔）**、在主入口畫 **1.2m×1.0m 標記框**（隊號/已完成 ASR 級別/日期/失蹤·已救出·罹難數，隨進度更新）→ 初級(ASR-3)/次級(ASR-4)搜救。**核心痛點是「多隊在同一片廢墟、誰搜了哪、哪些 void 還沒清、傷患在哪、別重複搜也別漏搜」**。
+
+沒有共享數位 COP 時：分隊位置只能無線電點名（野地像案例 A「看不到人」）；worksite 標記只在實體牆上噴漆（外隊/指揮所/換班看不到全局）；傷患位置口述轉錄；指揮所(OSOCC/UCC)的 worksite 進度靠紙本回報彙整→**慢、易漏、換班斷層**。
+
+### 痛點 → 需求邏輯
+指揮（與 OSOCC）需要：① **全體搜救員即時位置**（誰在哪個 sector/worksite，不必點名）；② **worksite/分區幾何上圖**（誰負責哪塊、進度幾級）；③ **傷患/危害/已清區的標記累積成廢墟全景**（非口述即逝）；④ **找到傷患→就近後送協調（9-line）**；⑤ **搜救員問責**（誰逾時失聯＝安全）。效率關鍵 = **把 INSARAG 紙本分區/標記/回報數位化成即時共享 COP，免重複口述與紙本彙整斷層**。
+
+### TAK/ICS 怎麼用（四層 + 為什麼）
+- **① Client (ATAK/iTAK)**：搜救員連上**自動廣播 PLI**（✅ dogfood 見每分鐘；直解案例 A「看不到人」根痛）；在**傷患/危害/已清位置**放標記 + 註記；畫**分區/搜索範圍多邊形**（對映 INSARAG sector/worksite）；**SOS Token** 對可通訊的失蹤者發 URL 回收 GPS（✅ 案例 A 實證，限野地非埋壓）；拍照附到標記（廢墟災損/傷患）；GeoChat 隊內通聯。（PLI/放標記 ✅；iTAK 精確按鈕路徑 ❓）
+- **② 協定/資料**：搜救員 = `a-f-*` 友軍 track；分區/路線 = `u-d-f`(多邊形)/`u-d-r`(線)（✅ dogfood 送過）；標記用 2525/NAPSG 語意色（紅=危害、傷患點）；後送 = **MEDEVAC 9-line**（埋 `<_medevac_>`，P2-09 已萃取）。*為什麼*：符號讓多國隊**一眼讀懂**免語言轉譯（INSARAG 多國場景關鍵）。
+- **③ TAK Server**：搜救直通多為**零設定**；多隊/多機構用 **Groups** 分流（各隊先看自己 sector，呼應 INSARAG 分區）；**worksite 標記要「持久且重連補齊」→ 走 Mission/DataSync**（持久權威 COP），不能只靠 streaming（刪不掉/重連漏靜態標記＝廢墟標記消失，致命）；無人機俯視塌樓走 **Video Feed Manager**（✅ 選單實證）。
+- **④ ICS Dashboard**：COP 渲染搜救員（P2-02~05）+ **小隊聚合**（P2-06d，按 team_color 看各隊在線/失聯/質心＝對映 INSARAG 各隊狀態）；**分區/worksite 多邊形**走 P1-16 zone / P2-08 shape；**MEDEVAC incident card**（P2-09/P2-12）做傷患後送；照片 **reference-only URI 不 proxy**（P2-14，防 SSRF）；搜救員**過 stale 變灰 = 該隊失聯**（安全告警，呼應案例 A「看不到人」）；軌跡→**AAR 回放**（P2-20）供事後問責與 INSARAG worksite 報告。
+
+### 效率提升
+- **砍掉「你在哪/搜到哪」無線電** → 頻道留給真正救援指令（最大效率點，案例 A/B 共同見效）。
+- **搜救員問責 + 失聯偵測**：誰在哪 sector、誰逾時變灰＝主動關注（廢墟內救援員安全第一）。
+- **worksite/傷患/危害標記累積成廢墟全景**（vs 紙本噴漆 + 口述）→ 換班/增援/外隊**秒接當前圖**，消 INSARAG 紙本彙整斷層。
+- **就近派遣 + 9-line 後送**：找到傷患→看圖派最近隊 + geo-located 後送請求，免口述轉錄。
+- **AAR**：逐事件回放供 INSARAG worksite 報告與訓練檢討（軌跡＝問責資料）。
+
+### 注意 / 失效模式
+- **GPS 在廢墟/都市峽谷衰減**：倒塌結構間、地下 void 收訊差 → PLI 不準或無；**埋壓傷者無法用 SOS Token**（要能操作手機）→ 數位定位**補強非取代**實體 INSARAG 標記與搜救犬/聲探。
+- **倒塌結構內無訊號** → 需 mesh 中繼（Meshtastic 等，案例生態有 ❓確切部署）或人工中繼；單純依賴 cellular/server 會斷。
+- **COP 完整性放大＝人命**：一個誤標「已清(cleared)」＝**廢墟裡漏救人**（blast radius 是生命，比 COP 情境更致命）→ 標記可信度與**可靠刪除/重連 resync（#161/#173）對本情境是必需非 nice-to-have**：worksite 標記**刪不乾淨或重連漏靜態標記＝共享錯圖、重搜或漏搜 void** → **P2-14 權威 resync 直接服務本情境**。
+- **多隊/多機構**：INSARAG 國際隊 → Groups 分流 + 未來 **Federation（P2-15）** 跨機關交換；peer cert 治理（缺口 #8）。
+- **stale ≠ 確定離線**：搜救員可能在無訊號 void 中而非掉隊 → 變灰是「不確定、主動關注」非「放棄」。
+- **多日作業電力**：行動裝置續航 → 需充電/備援規劃。
+
+---
+
 ## 颱風/水災疏散收容　_待深挖_
 ## 野火延燒應變　_待深挖_
 ## 危險物質（HazMat）洩漏　_待深挖_
