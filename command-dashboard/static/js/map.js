@@ -650,8 +650,8 @@ function _renderTakUnits() {
         iconId: 'mil-' + sidc,
         affiliation: affiliationFromCot(e.type),  // 預留 hover/filter（icon 色已由 SIDC 內建）
         label: e.callsign || e.uid,
-        // TAK parity（#161）：以「最後聽到」(CoT time) 判老化變灰（不信 client stale，繪圖會凍結）——
-        // 對齊「TAK client 看 TAK」：持續聽得到＝亮著；停止重送後 time 老化先灰、窗口外由後端移除。
+        // TAK parity（#161）：archived（<archive/>）持久不灰；非 archived 過 CoT stale → 變灰（見 _isAging）。
+        // feature property 沿用名 `stale`（paint 表達式吃它），語意 = 此 entity 是否該 dim。
         stale: _isAging(e),
       },
     });
@@ -1196,8 +1196,8 @@ function _ensureEntityLayers() {
           'icon-ignore-placement': true,
         },
         paint: {
-          // #160/#161 軟 stale：過 CoT stale → 變灰（0.4），仍在窗口內（未移除）。對齊 zones
-          // 層 stale 視覺。窗口外由 backend + 週期 resync 真正移除。
+          // #161：非 archived 過 CoT stale → 變灰（0.4）的視覺提示（archived 持久不灰，見 _isAging）；
+          // 對齊 zones 層 stale 視覺。實際移除由 backend list_cop_entities 依 stale 過濾（非前端窗口）。
           'icon-opacity': [
             'case',
             ['==', ['coalesce', ['get', 'stale'], false], true], 0.4,

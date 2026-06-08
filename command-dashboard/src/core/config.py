@@ -43,8 +43,8 @@ WARNING_THRESHOLD_SECONDS: int = int(os.getenv("ICS_WARNING_THRESHOLD_SECONDS", 
 # 注意：PinLock（UI 層 idle 鎖定）是獨立機制，與此 server-side timeout 無關
 
 # ── App ───────────────────────────────────
-# PATCH：#161 ——TAK streaming 對齊原生 honor stale + honor <archive/>（退 last-heard time 窗口）
-APP_VERSION = "2.4.1"
+# PATCH：#161 post-merge review —— archived coalesce（不帶 <archive/> 更新幀不打回 0）+ archive 內容容錯
+APP_VERSION = "2.4.2"
 
 # CMD_VERSION：前端 UI 功能版本（不同於後端 SemVer APP_VERSION；規則見 CLAUDE.md 版號規則）
 # 兩軌版本命名，不可混用。由 /api/version 提供給前端，是唯一 source-of-truth；release 時更新此值。
