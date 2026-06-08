@@ -2776,5 +2776,26 @@
     "title": "feat(tak): P2-10 真機 dogfood — TAK 繪圖 ingest + COP 生命週期正解 + iPad 修正",
     "updatedAt": "2026-06-07T14:17:33Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/167"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "## ROADMAP item\n- Closes #163（P2-23 ICS↔TAK 連線狀態燈）\n- 含 **P2-25**（地圖 TAK 篩選器，map-side filter）\n\n## What changed\n- **P2-23（#163）連線狀態燈**：`tak_service` 加連線健康單例（connected / last_cot_at）；`GET /api/tak/status` expose（age 由 server 算）；header TAK 指示燈（灰=未啟用 / 紅=斷線 / 黃=連線無串流 / 綠=連線+近期 CoT），cop.js 每 5s 輪詢。\n- **P2-25 地圖 TAK 篩選器**：圖層面板「TAK 單位」總開關 + affiliation（友/敵/中/不明）+ 含過期子篩選；MapLibre `setFilter` 純前端視圖過濾，不動資料。\n- merge 前清 lint：ruff UP037 + format（d530b1e）。\n\n## DoD checklist\n- [x] Tests（test_tak_status.py）\n- [x] `pytest` green（835 passed / 1 skipped）\n- [x] ruff clean（UP037 修正）\n- [x] **真實 iTAK 端到端驗收**\n\n## §8 Human Verification（已驗）\n真 iTAK 裝置 → Mac TAK :8089 → ICS：\n- TAK 燈 紅（TAK 關）→ 綠（連上+收到 CoT），三態實機驗。\n- iTAK 單位（`曙豐-3QQ-CH1`）+ CoT shape（`CriticalInfra` 多邊形，P2-08 幾何）渲染上圖（2525）。\n- P2-25 篩選器：affiliation/stale 切換即時過濾。\n\n## Out of scope（這次 debug 衍生，獨立處理）\n- `deploy/tak-server/pki/issue-tak-certs.sh` 兩缺口（① server cert SAN 缺裝置位址 ② truststore-root.jks 缺 intermediate）→ 另開 issue 修腳本，不在本 PR。\n",
+    "closedAt": "2026-06-08T02:13:15Z",
+    "comments": [],
+    "createdAt": "2026-06-08T02:12:58Z",
+    "headRefName": "feat/issue-163-tak-status-filter",
+    "labels": [],
+    "mergedAt": "2026-06-08T02:13:15Z",
+    "number": 169,
+    "state": "MERGED",
+    "title": "feat(tak): P2-23 ICS↔TAK 連線狀態燈 + P2-25 地圖 TAK 篩選器（#163）",
+    "updatedAt": "2026-06-08T02:13:17Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/169"
   }
 ]
