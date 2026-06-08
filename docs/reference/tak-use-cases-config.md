@@ -49,7 +49,7 @@
 | **動作/應變** | 颱風/水災疏散收容 | ✅ 本批 |
 | **動作/應變** | 野火延燒應變 (WUI) | ✅ 本批 |
 | **動作/應變** | 都市 / 結構火災 (高樓/延燒，室內 GPS-denied) | ✅ 本批（2026-06-09 自野火拆出）|
-| **動作/應變** | 危險物質 (HazMat) 洩漏 | 待挖 |
+| **動作/應變** | 危險物質 (HazMat / CBRNE) 洩漏 | ✅ 本批 |
 | **動作/應變** | 重大傷亡後送 (MCI/MEDEVAC) | ✅ 本批 |
 | **動作/應變** | 關鍵設施巡邏監控 | 待挖 |
 | **高威脅/多組織/訓練** | RTF 武裝掩護搜救 | 待挖（有對話內容） |
@@ -502,7 +502,53 @@ SDR（軟體定義無線電）感測器——或 **WaveInk**（你的 SDR 多頻
 
 ---
 
-## 危險物質（HazMat）洩漏　_待深挖_
+## 危險物質洩漏（HazMat / CBRNE）
+
+> 與結構火災相反：**HazMat 是 TAK 強配情境**——plume(煙羽)＝地理面、感測器＝位置資料，天生適合 COP。誠實重點不在「TAK 弱」，而在 **ICS 缺三個輸入（天氣 feed / plume 模型 / CBRN 感測器整合）**。**這是第三個撞「天氣/環境 feed 缺口」的情境，且 plume 完全靠風驅動、最依賴它。**
+
+### 實際案例（佐證，非杜撰 — 附來源）
+| # | 案例 | 性質 | 來源 |
+|---|---|---|---|
+| ✅ A | **ATAK 原生 3 個 CBRN 插件**（CBRN Effects / CBRN / Filter Times）：CBRN Effects 提供**即時危害預測 + 載具導航**；ATAK 可接多平台感測器（衛星/無人機/智慧錶）| TAK CBRN **原生能力實證** | [DVIDS: ATAK CBRN](https://www.dvidshub.net/news/367459/atak-field-forging-tactical-edge) |
+| ✅ B | **NRL CT-Analyst**：3D 氣動 plume 模型 ATAK 插件，快速預測空飄化劑/危害威脅，**已部署給軍/聯邦/州/地方 HAZMAT 隊** | TAK **plume 建模整合實證** | [NRL/EurekAlert](https://www.eurekalert.org/news-releases/1127506) |
+| ✅ C | **CBART（Aeris LLC）**：單一 ATAK 插件整合 CB 態勢 + 決策支援，多場軍演展示收 warfighter 回饋；DTRA/JSTO 另資助 ATAK/WinTAK/WebTAK 版 CB 預警/危害預測 | TAK CBRNE **決策支援實證** | [Aeris CBART](https://aerisllc.com/tactical-assault-kit-cbart/)、[CBRNE Central](https://cbrnecentral.com/tactical-assault-kit-plugins-for-decision-support-in-cbrne-environments/19499/) |
+| ✅ D | **三區管制（Hot/Warm/Cold）**：熱區=釋放源汙染最高、暖區=除污（含**兩條除污走廊**進/出）、冷區=指揮支援+入場查核點；**ALOHA**（Gaussian plume）算威脅區（如氯氣）| HazMat **既有作業標準** | [控制區 LegalClarity](https://legalclarity.org/what-are-the-3-control-zones-at-a-hazmat-incident/)、[CHEMM](https://chemm.hhs.gov/onsite.htm) |
+| ✅ E | **CERES / Blackline+Vlahi**：ALOHA 危害模型 + **即時氣象** + **感測器驅動 plume**（瓦斯偵測器的位置資料餵進模型）→ 疊到地圖 | **感測器→plume→地圖**實證（weather + sensor 雙依賴）| [Firehouse: 連網偵測+plume](https://www.firehouse.com/sponsored/article/21265931/blackline-safety-industry-expert-blog-how-combining-connected-gas-detection-and-plume-modeling-change-the-hazmat-response-game) |
+
+> **❗誠實邊界**：HazMat **TAK 實證充足（A/B/C）**、是強配情境，❓ 少。誠實重點＝**ICS 缺三個輸入**：① **天氣 feed**——plume＝風驅動，ALOHA/CT-Analyst/CERES **全要即時氣象**，ICS 無此 feed（**第三個撞此缺口、且最依賴**）；② **plume 模型**——ICS **無 dispersion model**，至多**顯示外部 plume 產品**（如 FIRIS 模式，消費非自算）；③ **CBRN 感測器整合**——瓦斯/輻射偵測器→COP ＝ **SDR/WaveInk sensor source 模式**（架構吻合 `cop_service` normalize，但未建，❓ P3 後）。
+
+### 作業案例（實況）
+化學品/油氣/輻射源洩漏（槽車翻覆、工廠洩漏、管線破裂、輻射事故，或蓄意 CBRNE 攻擊）。應變＝劃**三區管制**（熱/暖/冷）、上風冷區設指揮、**plume 預測**判下風危害範圍、**下風疏散/就地避難**、進入熱區搶救須**全套防護(PPE/SCBA)** + 限時(空氣瓶)、出熱區**除污走廊**。**plume 隨風飄、隨氣象變**——風向一轉危害區整個改向。
+
+沒有數位共享時：plume 靠手算 ALOHA/查表 + 口述「往東北飄」；三區邊界靠錐筒/膠帶實體標，**外隊/指揮所看不到全局**；感測器讀數**留在手持儀器**、不上圖；下風誰要疏散靠目視推估。
+
+### 痛點 → 需求邏輯
+指揮需要：① **plume 預測範圍上圖**（下風危害區，隨風更新）；② **三區邊界 + 除污走廊可視**（誰在熱區、限時提醒）；③ **感測器讀數 geo 上圖**（哪裡濃度爆表，驗證/修正 plume）；④ **下風疏散範圍**（誰要撤/就地避難）；⑤ **氣象疊層**（風向/風速＝plume 命脈）。效率關鍵 = **plume、管制區、感測器、疏散收進同一張會隨氣象更新的 COP**——而這正需要 ICS 目前缺的三個輸入。
+
+### TAK/ICS 怎麼用（四層 + 為什麼）
+| 層 | 怎麼用 | 為什麼 |
+|---|---|---|
+| ① Client (ATAK/iTAK) | 應變員外部 PLI（熱區內穿 PPE/SCBA）；標**釋放源/熱-暖-冷區/除污走廊**；**CBRN 插件即時危害預測 + 載具導航**（✅ 案例 A）；**CT-Analyst plume 插件疊 plume**（✅ 案例 B）；**接瓦斯/輻射感測器**讀數（✅ 案例 A/E）| plume＝地理面、感測器＝位置資料，**天生適合上圖**；CBRN 插件把專業預測搬上同一張圖 |
+| ② 協定/資料 | 應變員/載具＝`a-f-*` track；三區/plume＝`u-d-f`(面)、除污走廊＝`u-d-r`(線)；CBRN 感測讀數＝sensor CoT；標記＝**2525 CBRN 危害符號** | 面忠實表達 plume/管制區；2525 CBRN 符號跨單位一致；sensor CoT 把讀數帶位置 |
+| ③ TAK Server | 用 **Groups** 分流多隊；**三區/plume 圖走 Mission/DataSync** 持久；**plume 模型 + 氣象 + CBRN 感測器＝外部 data feed（`Inputs and Data Feeds`）**——這三條正是 ICS 端缺口；無人機俯視釋放源走 **Video Feed Manager** | plume/管制區是**持久權威**態勢→Mission；外部 plume/氣象/感測器是讓本情境成立的輸入源 |
+| ④ ICS Dashboard | COP 渲染應變員（P2-02~05）+ 熱區人員問責看小隊聚合（P2-06d，限時/誰在熱區）；**三區/plume/疏散區**走 P1-16 zone / P2-08 shape（plume＝polygon entity）；**氣象疊層＝ICS 無 feed**；**plume 模型＝ICS 無，至多顯示外部 plume**（FIRIS 模式）；**CBRN 感測器＝SDR/WaveInk sensor source 模式**（cop_service normalize，❓ P3）；軌跡→AAR（P2-20）| plume 可直接當 polygon entity 進 COP；但**算 plume 與抓氣象/感測器都靠 ICS 沒有的輸入**——這是本情境對 ROADMAP 最大的提醒 |
+
+### 效率提升
+- **plume 疊 COP** → 一眼看誰在危害區、往哪疏散（✅ 案例 B/E）。
+- **三區 + 除污走廊共享** → 應變員知道自己相對汙染的位置、外隊不誤入熱區。
+- **感測器驅動 plume**（✅ 案例 E）→ 真實讀數修正模型，動態而非靜態預測。
+- **熱區人員限時問責**（小隊聚合）→ 空氣瓶/曝露時間管理。
+- **氣象疊層（若補 feed）** → 風向轉變即時重算 plume，搶在危害改向前疏散。
+
+### 注意 / 失效模式
+- **🔴 天氣 feed 缺口（第三個撞、且最依賴）**：plume **完全靠風**，ALOHA/CT-Analyst/CERES 全要即時氣象（案例 E）。ICS 無天氣 feed → **連消費/修正一個 plume 都缺料**。**至此颱風水災/野火/HazMat 三情境全卡同一個天氣 feed 缺口**——這是該缺口最強的累積論據（計劃群已點名）。
+- **🔴 plume 模型缺口**：ICS **無 dispersion model**，不可假裝自算 plume；正解＝**消費外部 plume 產品**（ALOHA/CT-Analyst 算好的 polygon，比照 FIRIS 動態圖層接入）。
+- **🔴 CBRN 感測器整合＝未建**：瓦斯/輻射偵測器→COP 是 **SDR/WaveInk 的 sensor source 模式**（架構吻合 cop_service normalize），但 ICS 未建（❓ P3 後）；且 **untrusted sensor 輸入**須驗（同 TAK/SDR ingest 紀律）。
+- **plume freshness 致命**：風一轉、舊 plume 即錯（同火線）→ 過 stale 的 plume/管制區**會害人吸到毒**。
+- **熱區通訊/裝置汙染**：PPE/SCBA 限制操作、裝置可能受汙染、熱區訊號/續航受限。
+- **中國供應鏈紅線**：CBRN 感測器硬體/函式庫須驗**非中國**（CLAUDE.md，同 SDR 那條，感測器生態尤須注意）。
+
+---
 ## 重大傷亡後送（MCI / MEDEVAC）
 
 > 與 SAR 配成救命鏈：**搜救(找到/接觸) → 檢傷(分類) → 後送(送醫)**。SAR 四層已引 9-line（P2-09），本情境把「檢傷 + 後送」展開。
