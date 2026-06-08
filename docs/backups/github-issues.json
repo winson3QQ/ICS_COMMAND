@@ -2234,6 +2234,20 @@
         "minimizedReason": "",
         "reactionGroups": [],
         "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/176#issuecomment-4647853132"
+      },
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## ⚠️ API 結論可信度 caveat（2026-06-08）—— 官方 ≠ OpenTAKServer\n\n本 issue §2/§3 的 Mission/SA API 結論**部分來自 OpenTAKServer 文件 + cop-subscriber cert 實測**，需加註：\n\n| 結論 | 證據範圍 |\n|---|---|\n| 無 bulk SA 查 / 無 per-entity SA 刪 | **僅「cop-subscriber cert 搆得到的」成立**。官方 server 的 `/Marti/...swagger / openapispec.json` 回 **403（非 404）= 有 admin-gated 端點我們這張訂閱者 cert 看不到** → **不能斷言整個官方 API 沒有**（admin role 可能有 SA 管理/刪除）。 |\n| Mission 端點（`/cot`/`/changes`/`/contents`/subscription） | 讀 OpenTAKServer，**未在官方 5.7 實證**（missions 空 + 建 mission 被擋）。需官方驗。 |\n| server 端資料保留 | ✅ **官方確認**：容器內 `takserver-retention.jar` + `TAK_Server_Configuration_Guide.pdf`。「Deleting Old Data」是官方功能。 |\n\n### 動工前要做（解掉不確定）\n1. 在**官方 server** 實證 Mission API（建測試 `ICS-RC-TEST` mission → 觀察 `/cot`+`/changes` 實際形狀，用完即刪；需 server 寫入授權）。\n2. 查 **docs.tak.gov** 官方 Marti API reference（需 tak.gov 帳號）確認：per-entity CoT/SA 刪除、bulk SA 查、`/changes` feed 欄位、removeMissionContent 形狀、admin role 需求。\n3. 若要 ICS 做更深的 server 管理（per-entity 刪），可能需 **admin cert**（現為 cop-subscriber，無 admin role）。\n\n→ **並行的 P2-13 session 注意**：別把 OpenTAKServer 當官方；mission client 落地前先對官方驗端點/形狀。\n",
+        "createdAt": "2026-06-08T10:23:27Z",
+        "id": "IC_kwDOSnBjpc8AAAABFQll2A",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/176#issuecomment-4647904728"
       }
     ],
     "createdAt": "2026-06-08T10:00:42Z",
@@ -2242,7 +2256,7 @@
     "number": 176,
     "state": "OPEN",
     "title": "P2-14 reality check：Mission/DataSync 同步 — 路徑成立 / #173 範圍修正 / 與 P2-13 共用面協調",
-    "updatedAt": "2026-06-08T10:16:34Z",
+    "updatedAt": "2026-06-08T10:23:27Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/176"
   }
 ]
