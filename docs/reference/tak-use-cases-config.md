@@ -41,8 +41,8 @@
 | **基礎** | 共同作戰圖 (Shared COP) | ✅ |
 | **感知/偵查（收集態勢）** | 人員目標偵查與回報 (Recon) | ✅ 本批 |
 | **感知/偵查** | 無人機 / 空中感知 (UAV ISR) | ✅ 本批 |
-| **感知/偵查** | 多影像情資 (IMINT) | 待挖 |
-| **感知/偵查** | SDR/RF 感測 (→ WaveInk/P3) | 待挖 |
+| **感知/偵查** | 多影像情資 (IMINT) | ✅ 本批 |
+| **感知/偵查** | SDR/RF 感測 (→ WaveInk/P3) | ✅ 本批 |
 | **計劃/決策（規劃與下令）** | 行動方案規劃與下達 (COA Plan & 下達) | 待挖 |
 | **計劃/決策** | 任務派遣與追蹤 (Tasking) | 待挖 |
 | **動作/應變** | 都市地震搜救 (SAR) | 待挖 |
@@ -160,8 +160,60 @@
 - 無人機→TAK 影像管線**平台/編碼相關**（❓ 確切設定）。
 - 活追蹤 stale：遙測中斷則位置老化。
 
-## 多影像情資（IMINT）　_待深挖（下批）_
-## SDR/RF 感測（→ WaveInk/P3）　_待深挖（下批）_
+## 多影像情資（IMINT — 靜態影像產品）
+
+### 作業案例（實況）
+現場人員拍**靜態照片**——災損（倒塌、路況）、敵陣地、跡證、前後對比、傷患記錄、地圖看不出的地形細節。沒整合時，照片**留在手機**、靠口述（「橋斷了」）或另走通訊軟體分享 → **沒 geo-located 到 COP、沒綁事件圖、事後難找、無紀錄鏈**。指揮**看不到實況**，只聽得到。
+
+### 痛點 → 需求邏輯
+指揮/分析需要影像**綁地點（geo-tag）+ 掛在 COP 標記上 + 相關人取得 + 留存**（供評估/AAR/跡證）。效率關鍵 = **視覺實況綁在圖上，不孤島在裝置裡**——看到實際倒塌 vs 聽「很慘」。
+
+### TAK/ICS 怎麼用（四層 + 為什麼）
+- **① Client**：operator 在 iTAK 把照片**附到標記/mission**（geo-tag）。*為什麼*：附在地點 = 影像被放進空間，不漂浮。（iTAK 附件按鈕 ❓）
+- **② 協定**：照片走 **Enterprise Sync / DataSync 檔案附件**（以 hash/URI 引用），連到 CoT 標記/mission；**非把原始 bytes 塞 CoT**（太重）。
+- **③ TAK Server**：**`Data → File Manager`**（Enterprise Sync 檔案庫）+ Mission 附件。*為什麼*：server 存檔、client 按 reference 拉。（✅ 實證見過 File Manager）
+- **④ ICS**：依架構——**照片 = reference-only URI、ICS 永不 follow/fetch（防 SSRF，P2-14）**。ICS 顯標記 + 影像 reference（URI），操作員從來源（TAK server）開，**ICS 不 proxy/下載**。*為什麼*：C2 dashboard 不該變影像代理（頻寬 + SSRF 風險）。
+
+### 效率提升
+- **精確地點的視覺實況**（vs 「那邊很慘」）。
+- 前後對比、災損評估、跡證——geo-tag + 留存 → 餵評估/AAR。
+- 多張現場照**按地點自動組織**在圖上。
+- 與無人機區別：**IMINT = 靜態產品供紀錄/分析；UAV = 即時俯視 overwatch**。
+
+### 注意 / 失效模式
+- **SSRF（P2-14 明訂守則）**：ICS **絕不可 fetch 照片 URI**（惡意 URI→SSRF）→ reference-only。**這是本情境的核心安全約束**。
+- 頻寬：影像大、現場上行可能慢 → 照片會延遲。
+- 留存/PII：影像可能含 PII（人臉/傷患）→ TTL（缺口 #13）+ TAK Data Retention 的 `Files` policy。
+
+## SDR/RF 感測（電磁感知 → WaveInk/P3）
+
+### 作業案例（實況）
+SDR（軟體定義無線電）感測器——或 **WaveInk**（你的 SDR 多頻 PTT + Breeze ASR 專案）——偵測 RF 發射：敵方電台（方位/強度）、干擾、異常 emitter；WaveInk 則把監聽的無線電網**轉錄成事件**。沒整合時，RF 圖**留在獨立 SDR 工具/操作員**手上；指揮看不到「emitter 在哪」；無線電截收**孤立地聽/轉錄**。**電磁態勢孤島化**。
+
+### 痛點 → 需求邏輯
+指揮需要 RF/電磁圖**融進 COP**——emitter 位置/方位上圖、無線電活動與地面/威脅圖**對位**。WaveInk 則：無線電通聯 → COP 上的結構化事件（誰在何處發什麼）。效率關鍵 = **電磁 SA 與實體 SA 融合**：靠發射偵測/定位威脅、把無線電話務與移動對位。
+
+### TAK/ICS 怎麼用（四層 + 為什麼）
+- **① Client/感測源**：SDR 裝置或 WaveInk 產生 RF 資料（emitter 位置/方位，或轉錄的無線電事件）。
+- **② 協定**：RF emitter = sensor-type CoT（位置 + 方位線），或 WaveInk 自有格式 → normalize。（確切 sensor CoT type ❓）
+- **③ TAK Server**：若走 TAK → **`Configuration → Inputs and Data Feeds`**（註冊 SDR/sensor feed）。*為什麼*：外部感測器 = 一個 data feed input。（✅ 實證見過此選單）
+- **④ ICS**：**這就是 WaveInk = COP 第二外部來源（Phase 3）**。WaveInk → `cop_service` normalize（與 TAK **同一個 normalize 層**）→ COP；RF emitter = COP entity（sensor kind）。**目前 P3 全未做**。
+
+### 效率提升
+- 電磁 SA 與實體圖**同一張** → 靠發射**定位隱藏威脅**（有 emitter = 那裡有人）。
+- WaveInk：無線電話務**自動轉錄成結構化事件**上 COP（vs 人工監聽+手記）→ 解放監聽員、全捕捉、geo-tag。
+- 多 SDR 測向 → **三角定位** emitter。
+- 對位：「這裡訊號爆量 + 那裡有移動」→ 融合情報。
+
+### 注意 / 失效模式
+- RF 資料**噪雜/不確定**（方位≠精確位置、誤報）→ COP 應標**低信心情報**（同偵查標記的可信度問題）。
+- WaveInk 是**獨立專案**（Codeberg）→ 整合屬 P3、自有 normalize/邊界（架構：WaveInk → ingress → normalize → COP，同 TAK）。
+- **中國供應鏈紅線**：SDR 硬體/函式庫須驗**非中國**（CLAUDE.md）——SDR 生態多中國廠商，特別注意。
+- untrusted 輸入（同 TAK 的 ingest 驗證紀律）。
+
+---
+
+> **✅ 感知群完整**：四種收集模式皆深挖——**人眼（Recon）/ 空中（UAV）/ 影像（IMINT）/ 電磁（SDR/RF）**。共通模式 = 「感測/觀察 → geo-located 進 COP → 疊成情報圖」，且多為 **untrusted 外部輸入**（→ ingest 驗證 + COP 完整性 + 可信度標註）。
 
 ---
 
