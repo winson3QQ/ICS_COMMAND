@@ -1989,6 +1989,20 @@
         "minimizedReason": "",
         "reactionGroups": [],
         "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/161#issuecomment-4645089928"
+      },
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## Reality check（2026-06-08，真機 iTAK + 活 TAK server dogfood）\n\nWIP commit `0ba8fde` 的「last-heard time 窗口」方向**經實證推翻**。以下為 wire 層 + server 層證據鏈，據此重寫 #161 scope。\n\n### 1. 三種操作的同步行為（實證）\n\n| 操作 | :8089 wire 有信號? | TAK server(Marti) 變化? | 同步? |\n|---|---|---|---|\n| **新增** marker | ✅ 上 wire | ✅ 入庫 | ✅ |\n| **編輯**(改名 0EC70D78→\"unknown\") | ✅ time 推進 | ✅ callsign 改 | ✅ |\n| **刪除**(iTAK 從地圖刪) | ❌ **零刪除幀** | ❌ **11 個一個沒少** | ❌ **不同步** |\n\n→ **iTAK「從地圖刪除」是純本機 declutter，不送 `t-x-d-d`、不上 server。** 對應 P2-10 #167 殘留 / P2-14(A)，今在 server 層再次坐實。\n\n### 2. 「危險」的真相（修正方向）\n\nserver 端用 Marti `GET /Marti/api/cot/xml/{uid}` 逐一比對：被「刪」的 marker 在 server 端原封不動。**ICS 沒跟 server 脫鉤** —— 是 ICS 不認 `<archive/>`、自己把 server 還在的 archived marker 老化移除了。敵對標記(`a-h-G` + `<archive/>`)自滅 = 戰術風險，根因在此。\n\n### 3. TAK 原生持久化語意（CoreConfig + CoT 實測）\n\nrunning CoreConfig：`<repository enable=true>`(PostgreSQL 持久存一切) + `<latestSA enable=true>`(新連線補發最新態勢) + `<repeater>`(僅 4 種 emergency 重播，一般 marker 不重播)。\n\nCoT 層：\n- archived marker（`a-u-G`/`a-h-G`）帶 **`<archive/>`** → client 過 stale 也保留。\n- 繪圖（`u-d-r`）**無 `<archive/>`**、stale 早過 → 原生 client 過 stale 即移除（server repository 仍留，但 client 顯示移除）。\n\n→ **原生 streaming subscriber 顯示規則 = honor `stale` + honor `<archive/>`。** ICS 就是個 subscriber，照辦即可。\n\n### 4. Mission 層（刪除同步的真正所在）\n\n`GET /Marti/api/missions` → **空 `[]`**。這些 marker/繪圖全是裸 streaming CoT、不屬任何 mission → 故無權威刪除。TAK 的「新增/編輯/刪除全同步」在 **Mission/DataSync(Marti :8443)** 層，非 streaming。→ ICS 接 Mission = **P2-14**。\n\n---\n\n## 修正後 #161 scope（取代原 issue body 與 WIP 方向）\n\n**#161 = ICS streaming 行為對齊 TAK 原生 = honor `stale` + honor `<archive/>`：**\n- 後端 `list_cop_entities`：external TAK entity 帶 `<archive/>` → 持久（豁免 stale/last-heard）；無 archive → 依 `stale` 過期移除。**退掉 WIP 的 `COP_STALE_REMOVE_WINDOW_S` time 窗口。**\n- CoT 解析：`parse_cot_xml` 萃取 `<archive/>` → CoPEntity `archived` 旗標（欄位，似 P2-11b planned/simulated，小 migration）。\n- 前端：archived 不變灰；non-archived 過 stale 才灰→移除（前端 live 移除，免 refresh = 原 #161 DoD）。\n- 補測：archived 持久 / non-archived 過 stale 移除 / 復活墓碑（WIP 待補的 2 個單元測試）。\n\n### 明確劃出 #161 之外\n- **可靠刪除傳播 + 權威 resync + mission 來源標記 → P2-14**（接 Mission/DataSync；streaming 給不了）。\n- **過渡期**：操作員端「移出 COP」+ 無界成長安全網 → P2-14(A)。\n- **mission/streaming 圖層 filter（純視圖）→ P2-25**。\n- **繪圖 fade（#172）**：在原生模型下，archived 繪圖持久、non-archived 過 stale 才 fade→移除，與 atom marker 一致；#172 仍為前端 fade 視覺收尾。\n\n### 威脅模型\n「TAK 刪除不同步（streaming 層）」為 COP 完整性的結構性限制 → 補入 `docs/compliance/threat_model.md`（P2-17）。\n",
+        "createdAt": "2026-06-08T07:17:46Z",
+        "id": "IC_kwDOSnBjpc8AAAABFPD20g",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/161#issuecomment-4646303442"
       }
     ],
     "createdAt": "2026-06-07T09:20:54Z",
@@ -1997,7 +2011,7 @@
     "number": 161,
     "state": "OPEN",
     "title": "前端即時同步缺口：TAK 刪除/stale 物件未即時從 dashboard 移除（需 refresh）",
-    "updatedAt": "2026-06-08T03:03:43Z",
+    "updatedAt": "2026-06-08T07:17:46Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/161"
   },
   {
