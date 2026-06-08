@@ -705,7 +705,7 @@ def _m016_chats_table(conn: sqlite3.Connection) -> None:
     b-t-f 不進 cop_entities（作戰圖主表），由 cop_service.ingest_cot_event 分流至此。
     message 寫入前已由 chat_service `html.escape`（XSS 後端防線）。exercise_id 綁 active 場。
     """
-    conn.execute('''
+    conn.execute("""
         CREATE TABLE IF NOT EXISTS chats (
             id           INTEGER PRIMARY KEY AUTOINCREMENT,
             sender_uid   TEXT NOT NULL,
@@ -718,7 +718,7 @@ def _m016_chats_table(conn: sqlite3.Connection) -> None:
             exercise_id  INTEGER REFERENCES exercises(id),
             received_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
         )
-    ''')
+    """)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_chats_exercise ON chats(exercise_id)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_chats_time ON chats(time)")
 
@@ -794,8 +794,7 @@ def _rebuild_cop_entities(conn: sqlite3.Connection, source_values: tuple[str, ..
         idx_sqls = [
             r[0]
             for r in conn.execute(
-                "SELECT sql FROM sqlite_master WHERE type='index' "
-                "AND tbl_name='cop_entities' AND sql IS NOT NULL"
+                "SELECT sql FROM sqlite_master WHERE type='index' AND tbl_name='cop_entities' AND sql IS NOT NULL"
             )
         ]
         conn.execute(f"""
@@ -834,7 +833,8 @@ def _rebuild_cop_entities(conn: sqlite3.Connection, source_values: tuple[str, ..
                 battery        INTEGER,
                 planned        INTEGER NOT NULL DEFAULT 0,
                 simulated      INTEGER NOT NULL DEFAULT 0,
-                deleted        INTEGER NOT NULL DEFAULT 0
+                deleted        INTEGER NOT NULL DEFAULT 0,
+                archived       INTEGER NOT NULL DEFAULT 0
             )
         """)  # nosec B608 — source_csv 為 code 常數 tuple，非外部輸入
         conn.execute(f"INSERT INTO cop_entities_new ({col_csv}) SELECT {col_csv} FROM cop_entities")  # nosec B608
@@ -858,9 +858,7 @@ def _m018_cop_entities_source_command(conn: sqlite3.Connection) -> None:
     table rebuild（CHECK 不可 ALTER）；idempotent：schema 已含 'command' 則 skip。
     詳見 _rebuild_cop_entities（foreign_keys=OFF 避 FK cascade）。
     """
-    existing = conn.execute(
-        "SELECT sql FROM sqlite_master WHERE type='table' AND name='cop_entities'"
-    ).fetchone()
+    existing = conn.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='cop_entities'").fetchone()
     if existing and "'command'" in existing[0]:
         return  # 已含 command（重跑）
     _rebuild_cop_entities(conn, _COP_SOURCES_V2)
@@ -872,9 +870,7 @@ def _m018_cop_entities_source_command_down(conn: sqlite3.Connection) -> None:
     ⚠️ 前提：rollback 前無 source='command' 的資料（否則 4-值 CHECK 在 INSERT 階段擋下、
     rebuild 失敗）。down 為 dev rollback 用途，正式環境不走。
     """
-    existing = conn.execute(
-        "SELECT sql FROM sqlite_master WHERE type='table' AND name='cop_entities'"
-    ).fetchone()
+    existing = conn.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='cop_entities'").fetchone()
     if existing and "'command'" not in existing[0]:
         return  # 已不含 command
     _rebuild_cop_entities(conn, _COP_SOURCES_V1)
@@ -897,6 +893,24 @@ def _m019_cop_entities_deleted_down(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE cop_entities DROP COLUMN deleted")  # nosec B608
 
 
+def _m020_cop_entities_archived(conn: sqlite3.Connection) -> None:
+    """#161：cop_entities 加 archived 旗標（CoT <archive/> 持久標記）。
+
+    對齊 TAK 原生 streaming subscriber：archived=1 的外部 TAK entity（放置標記 a-*）在
+    list 預設**豁免 stale**（過 stale 也保留，只有 deleted 墓碑才移除）＝對齊 TAK server
+    repository + 其他 TAK client；無 archive（如繪圖 u-d-*）仍依 stale 過期。INTEGER 0/1
+    NOT NULL DEFAULT 0，既有 row 自動=0（非持久，依 stale），語意正確不需 backfill。
+    取代 WIP 0ba8fde 的 last-heard time 窗口。見 memory tak-streaming-archive-stale-vs-mission。
+    """
+    _add_column_if_missing(conn, "cop_entities", "archived", "INTEGER NOT NULL DEFAULT 0")
+
+
+def _m020_cop_entities_archived_down(conn: sqlite3.Connection) -> None:
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(cop_entities)")}
+    if "archived" in cols:
+        conn.execute("ALTER TABLE cop_entities DROP COLUMN archived")  # nosec B608
+
+
 _MIGRATIONS: list[tuple[int, str, object]] = [
     (1, "events_columns", _m001_events_columns),
     (2, "decisions_columns", _m002_decisions_columns),
@@ -917,6 +931,7 @@ _MIGRATIONS: list[tuple[int, str, object]] = [
     (17, "cop_entities_planned_simulated", _m017_cop_entities_planned_simulated),
     (18, "cop_entities_source_command", _m018_cop_entities_source_command),
     (19, "cop_entities_deleted", _m019_cop_entities_deleted),
+    (20, "cop_entities_archived", _m020_cop_entities_archived),
 ]
 
 

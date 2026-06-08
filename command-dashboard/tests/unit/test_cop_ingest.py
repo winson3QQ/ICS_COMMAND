@@ -137,8 +137,12 @@ def test_squad_battery_refreshed_on_update(captured_broadcasts):
 def test_squad_coalesce_none_does_not_overwrite(captured_broadcasts):
     """無 <__group>/<status> 的較新位置幀不把已存 team_color/role/battery 打成 NULL
     （coalesce，#126-2）—— 否則 P2-06d GROUP BY 會在空窗期少算該 entity。"""
-    _ingest(_event(time="2026-06-05T04:00:00Z",
-                   detail={"__group": {"name": "Cyan", "role": "Lead"}, "status": {"battery": "78"}}))
+    _ingest(
+        _event(
+            time="2026-06-05T04:00:00Z",
+            detail={"__group": {"name": "Cyan", "role": "Lead"}, "status": {"battery": "78"}},
+        )
+    )
     row = _ingest(_event(time="2026-06-05T04:01:00Z"))  # 無 detail → squad 全 None
     assert row["team_color"] == "Cyan"  # 保留，非倒退成 NULL
     assert row["role"] == "Lead"
@@ -158,9 +162,7 @@ def test_m015_backfill_from_attributes():
             (_json.dumps({"__group": {"name": "Teal", "role": "Medic"}, "status": {"battery": "63"}}),),
         )
         _m015_cop_entities_squad_cols(conn)  # idempotent：column 已存，重跑只 backfill
-        row = conn.execute(
-            "SELECT team_color, role, battery FROM cop_entities WHERE uid='BACKFILL-1'"
-        ).fetchone()
+        row = conn.execute("SELECT team_color, role, battery FROM cop_entities WHERE uid='BACKFILL-1'").fetchone()
     assert (row["team_color"], row["role"], row["battery"]) == ("Teal", "Medic", 63)
 
 
@@ -202,9 +204,7 @@ def test_tak_event_does_not_overwrite_non_tak_entity(captured_broadcasts):
 
     n = len(captured_broadcasts)
     # TAK CoT 帶同 uid + 較新時間 → 一般邏輯會 CAS update 覆寫；來源守門須擋下
-    out = _ingest(
-        _event(uid="manual:victim", time="2026-06-05T05:00:00Z", lat=0.0, lon=0.0, callsign="SPOOF")
-    )
+    out = _ingest(_event(uid="manual:victim", time="2026-06-05T05:00:00Z", lat=0.0, lon=0.0, callsign="SPOOF"))
     assert out is None  # 被守門丟棄
 
     cur = get_cop_entity("manual:victim")
@@ -226,9 +226,10 @@ def test_tak_event_updates_own_tak_entity(captured_broadcasts):
 # ── TAK soft-stale 移除窗口（#160/#161）：外部來源 grace、manual 即時 ──────────
 
 
-def test_soft_stale_window_external_grace_manual_immediate():
-    """stale 治理按 how：tak 活追蹤(how=m)窗口內保留/過窗口移除；tak 人工標記(how=h)持久；
-    manual 明確刪除即時移除。"""
+def test_list_native_stale_archive_external_vs_manual():
+    """新鮮度治理（#161 reality check 2026-06-08）：對齊 TAK 原生 honor stale + honor <archive/>
+    （取代 WIP last-heard 時窗）。外部 TAK：archived=1（CoT <archive/>）持久豁免 stale；無 archive
+    依 stale>now 過期。manual 走嚴格 stale>now（明確刪除即時移除）。"""
     from datetime import UTC, datetime, timedelta
 
     from core.database import get_conn
@@ -241,20 +242,32 @@ def test_soft_stale_window_external_grace_manual_immediate():
 
     with get_conn() as conn:
         base = "INSERT INTO cop_entities (uid,type,time,start,stale,how,lat,lon,source) VALUES (?,?,?,?,?,?,?,?,?)"
-        # tak 活追蹤（how=m-*）: stale 2 分前（窗口 5min 內）→ 保留（變灰）
-        conn.execute(base, ("tak:recent", "a-f-G-U-C", "t", "t", _t(-120), "m-g", 24.0, 120.0, "tak"))
-        # tak 活追蹤: stale 6 分前（過窗口）→ 移除
-        conn.execute(base, ("tak:old", "a-f-G-U-C", "t", "t", _t(-360), "m-g", 24.0, 120.0, "tak"))
-        # tak 人工放置標記（how=h-*）: stale 6 分前也**持久**（靜態標註、無心跳，不該因 stale 消失）
-        conn.execute(base, ("tak:placed", "a-u-G", "t", "t", _t(-360), "h-g-i-g-o", 24.0, 120.0, "tak"))
-        # manual: stale 剛過（操作員明確 DELETE）→ 即時移除（無 grace）
-        conn.execute(base, ("manual:del", "b-m-p", "t", "t", _t(-1), "h-e", 24.0, 120.0, "manual"))
+        arch = (
+            "INSERT INTO cop_entities (uid,type,time,start,stale,how,lat,lon,source,archived) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?)"
+        )
+        # tak track：無 archive，stale 未來 → 保留
+        conn.execute(base, ("tak:fresh", "a-f-G-U-C", _t(-30), _t(-30), _t(90), "m-g", 24.0, 120.0, "tak"))
+        # tak 放置標記：archived=1 + stale 凍在過去（iTAK 行為）→ 保留（<archive/> 豁免 stale）
+        conn.execute(
+            arch, ("tak:archived_persist", "a-h-G", _t(-30), _t(-9999), _t(-9999), "h-g-i-g-o", 24.0, 120.0, "tak", 1)
+        )
+        # tak 繪圖：無 archive + stale 過去 → 移除（原生 deleteStaleAfter；與其他 TAK client 一致）
+        conn.execute(base, ("tak:drawing_expired", "u-d-r", _t(-30), _t(-9999), _t(-9999), "h-e", 24.0, 120.0, "tak"))
+        # tak track：stale 過去 → 移除
+        conn.execute(base, ("tak:gone", "a-f-G-U-C", _t(-400), _t(-400), _t(-9999), "m-g", 24.0, 120.0, "tak"))
+        # tak：stale 明確遠期有效 → 保留（無 archive 也行，stale>now）
+        conn.execute(base, ("tak:valid_future", "a-f-G-U-C", _t(-400), _t(-400), _t(3600), "h-e", 24.0, 120.0, "tak"))
+        # manual: stale 剛過（操作員明確 DELETE）→ 即時移除
+        conn.execute(base, ("manual:del", "b-m-p", _t(-1), _t(-1), _t(-1), "h-e", 24.0, 120.0, "manual"))
 
     uids = {e["uid"] for e in list_cop_entities(exercise_id=None)}
-    assert "tak:recent" in uids       # 活追蹤窗口內：保留
-    assert "tak:old" not in uids      # 活追蹤過窗口：移除
-    assert "tak:placed" in uids       # 人工標記：持久，不因 stale 消失
-    assert "manual:del" not in uids   # manual 明確刪除：即時移除
+    assert "tak:fresh" in uids  # stale 未來：保留
+    assert "tak:archived_persist" in uids  # <archive/> 持久：過 stale 也保留（解敵對標記自滅）
+    assert "tak:drawing_expired" not in uids  # 無 archive + 過 stale：移除（原生）
+    assert "tak:gone" not in uids  # 過期：移除
+    assert "tak:valid_future" in uids  # 明確遠期有效：保留
+    assert "manual:del" not in uids  # manual 明確刪除：即時移除
 
 
 # ── TAK t-x-d-d 刪除命令處理（#161 正解：iTAK 其實有送刪除信號）───────────────
@@ -266,14 +279,20 @@ def test_tak_delete_command_soft_deletes_target(captured_broadcasts):
 
     created = _ingest(_event(uid="TAK-DEL-TGT", time="2026-06-05T04:00:00Z"))
     assert created is not None
-    out = _ingest(_event(uid="del-cmd-1", type="t-x-d-d", time="2026-06-05T04:05:00Z",
-                         detail={"link": {"uid": "TAK-DEL-TGT", "type": "a-f-G-U-C", "relation": "p-p"}}))
-    assert out is not None and out["uid"] == "TAK-DEL-TGT"          # 回傳被刪 entity
+    out = _ingest(
+        _event(
+            uid="del-cmd-1",
+            type="t-x-d-d",
+            time="2026-06-05T04:05:00Z",
+            detail={"link": {"uid": "TAK-DEL-TGT", "type": "a-f-G-U-C", "relation": "p-p"}},
+        )
+    )
+    assert out is not None and out["uid"] == "TAK-DEL-TGT"  # 回傳被刪 entity
     assert "TAK-DEL-TGT" not in {e["uid"] for e in list_cop_entities()}  # 預設 list 移除
     tgt = get_cop_entity("TAK-DEL-TGT")
-    assert tgt is not None and tgt["deleted"] is True               # row 還在（墓碑，可 audit）
-    assert get_cop_entity("del-cmd-1") is None                       # t-x-d-d 本身不存
-    assert captured_broadcasts[-1][0]["op"] == "delete"             # 廣播 op=delete
+    assert tgt is not None and tgt["deleted"] is True  # row 還在（墓碑，可 audit）
+    assert get_cop_entity("del-cmd-1") is None  # t-x-d-d 本身不存
+    assert captured_broadcasts[-1][0]["op"] == "delete"  # 廣播 op=delete
     assert captured_broadcasts[-1][0]["uid"] == "TAK-DEL-TGT"
 
 
@@ -287,8 +306,9 @@ def test_tak_delete_ownership_guard_protects_non_tak(captured_broadcasts):
             "INSERT INTO cop_entities (uid,type,time,start,stale,how,lat,lon,source) "
             "VALUES ('manual:keep','b-m-p','t','t','2099-01-01T00:00:00Z','h-e',24.0,120.0,'manual')"
         )
-    out = _ingest(_event(uid="del-cmd-2", type="t-x-d-d", time="2026-06-05T04:00:00Z",
-                         detail={"link": {"uid": "manual:keep"}}))
+    out = _ingest(
+        _event(uid="del-cmd-2", type="t-x-d-d", time="2026-06-05T04:00:00Z", detail={"link": {"uid": "manual:keep"}})
+    )
     assert out is None
     assert "manual:keep" in {e["uid"] for e in list_cop_entities()}  # 沒被刪
 
@@ -299,3 +319,32 @@ def test_tak_delete_no_link_ignored(captured_broadcasts):
     out = _ingest(_event(uid="del-cmd-3", type="t-x-d-d", time="2026-06-05T04:00:00Z"))
     assert out is None
     assert len(captured_broadcasts) == n
+
+
+# ── 復活墓碑（#161；WIP 0ba8fde 待補測）：deleted=1 收到更新 CoT → 清墓碑 + 廣播 create ──
+
+
+def test_newer_event_resurrects_tombstoned_entity(captured_broadcasts):
+    """場端刪了又重畫 / self-marker 持續回報：墓碑收到**更新**CoT → 清 deleted + 以 create 廣播。"""
+    from repositories.cop_entity_repo import list_cop_entities
+
+    _ingest(_event(uid="RES-1", time="2026-06-05T04:00:00Z"))
+    _ingest(_event(uid="del-r1", type="t-x-d-d", time="2026-06-05T04:01:00Z", detail={"link": {"uid": "RES-1"}}))
+    assert get_cop_entity("RES-1")["deleted"] is True  # 先成墓碑
+
+    out = _ingest(_event(uid="RES-1", time="2026-06-05T04:05:00Z"))  # 更新的同 uid
+    assert out is not None
+    assert get_cop_entity("RES-1")["deleted"] is False  # 復活
+    assert "RES-1" in {e["uid"] for e in list_cop_entities()}  # 回到 list
+    assert captured_broadcasts[-1][0]["op"] == "create"  # 以 create 廣播（前端刪除時已移除，需加回）
+
+
+def test_older_event_does_not_resurrect_tombstone(captured_broadcasts):
+    """墓碑收到**較舊** in-flight 幀 → 不復活（順序守門 _is_newer）。"""
+    _ingest(_event(uid="RES-2", time="2026-06-05T04:05:00Z"))
+    _ingest(_event(uid="del-r2", type="t-x-d-d", time="2026-06-05T04:06:00Z", detail={"link": {"uid": "RES-2"}}))
+    assert get_cop_entity("RES-2")["deleted"] is True
+
+    out = _ingest(_event(uid="RES-2", time="2026-06-05T04:00:00Z"))  # 比 target 舊
+    assert out is None  # 落後幀丟棄
+    assert get_cop_entity("RES-2")["deleted"] is True  # 仍墓碑（未復活）

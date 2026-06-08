@@ -70,6 +70,7 @@ class CoTEventIn(BaseModel):
     remarks: str | None = None
     detail: dict = Field(default_factory=dict)  # 結構化 detail children（P2-04 → attributes）
     geometry: dict | None = None  # CoT <shape>/<link> → GeoJSON（P2-08，geometry_service 填）
+    archived: bool = False  # CoT <archive/>：持久標記，過 stale 也保留（#161，parse 時偵測）
 
     # ── P2-10 內容層白名單（ingest 邊界最後防線）──────────────────────────
     @field_validator("type")

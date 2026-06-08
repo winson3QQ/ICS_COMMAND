@@ -176,6 +176,8 @@ def parse_cot_xml(raw: str | bytes) -> CoTEventIn:
             remarks=remarks,
             detail=detail_dict,
             geometry=geometry,
+            # <archive/>（detail 空元素，_extract_detail 已收進 detail_dict）→ 持久標記（#161）
+            archived="archive" in detail_dict,
         )
     except CoTParseError:
         raise

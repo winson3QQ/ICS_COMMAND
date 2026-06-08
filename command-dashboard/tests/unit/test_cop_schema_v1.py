@@ -309,8 +309,7 @@ class TestMigration018SourceCommand:
             idxs = {
                 r[0]
                 for r in c.execute(
-                    "SELECT name FROM sqlite_master WHERE type='index' "
-                    "AND tbl_name='cop_entities' AND sql IS NOT NULL"
+                    "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='cop_entities' AND sql IS NOT NULL"
                 )
             }
         assert "idx_cop_entities_team_color" in idxs  # m015 的 index 不被 rebuild 漏掉
@@ -379,41 +378,28 @@ class TestCopEntityRepo:
         assert got["attributes"]["channel"] == "NetA"
 
     def test_list_filters_stale_by_default(self, tmp_db):
+        # 新鮮度治理（#161 reality check 2026-06-08，TAK 原生 honor stale + honor <archive/>；取代 WIP
+        # last-heard 時窗）：外部 TAK entity —— archived=1（CoT <archive/>）→ 持久豁免 stale；
+        # 無 archive → 依 stale>now 過期。預設 payload stale=遠過去（除非顯式覆寫）。
+        # 'valid_future'：無 archive，stale 遠未來 → 保留。
+        insert_cop_entity(CoPEntity(**_valid_entity_payload(uid="valid_future", stale="2099-01-01T00:00:00Z")))
+        # 'archived_persist'：archived=1（放置標記）+ stale 過去 → 保留（archive 豁免 stale）。
         insert_cop_entity(
             CoPEntity(
                 **_valid_entity_payload(
-                    uid="alive",
-                    stale="2099-01-01T00:00:00Z",
+                    uid="archived_persist", how="h-g-i-g-o", archived=True, stale="2000-01-01T00:00:00Z"
                 )
             )
         )
-        # 'dead'：**活追蹤**（how=m-*，GPS）過 stale+窗口 → 預設過濾（離線/失聯）。
-        insert_cop_entity(
-            CoPEntity(
-                **_valid_entity_payload(
-                    uid="dead",
-                    how="m-g",
-                    stale="2000-01-01T00:00:00Z",
-                )
-            )
-        )
-        # 'placed'：**人工放置標記**（how=h-*）即使過 stale 也**持久**（靜態標註，無心跳，不該消失）。
-        insert_cop_entity(
-            CoPEntity(
-                **_valid_entity_payload(
-                    uid="placed",
-                    how="h-g-i-g-o",
-                    stale="2000-01-01T00:00:00Z",
-                )
-            )
-        )
+        # 'gone'：無 archive 且 stale 過去 → 移除（原生 deleteStaleAfter）。
+        insert_cop_entity(CoPEntity(**_valid_entity_payload(uid="gone", how="m-g", stale="2000-01-01T00:00:00Z")))
         uids = {e["uid"] for e in list_cop_entities()}
-        assert "alive" in uids
-        assert "dead" not in uids       # 活追蹤過 stale → 移除
-        assert "placed" in uids         # 人工標記 → 持久，不因 stale 消失
+        assert "valid_future" in uids
+        assert "archived_persist" in uids  # <archive/> 持久 → 過 stale 也保留
+        assert "gone" not in uids  # 無 archive + 過期 → 移除
 
         uids_all = {e["uid"] for e in list_cop_entities(include_stale=True)}
-        assert "dead" in uids_all
+        assert "gone" in uids_all  # include_stale（audit/回放）仍撈得到
 
     def test_list_filters_by_source(self, tmp_db):
         insert_cop_entity(CoPEntity(**_valid_entity_payload(uid="t1", source="tak")))
@@ -422,7 +408,8 @@ class TestCopEntityRepo:
         assert tak_uids == {"t1"}
 
     def test_mark_stale(self, tmp_db):
-        # how=m-* 活追蹤：標 stale 後預設 list 過濾（人工標記 how=h-* 會持久、不適用本不變式）。
+        # 標 stale（遠過去，超出移除窗口）後預設 list 過濾。TAK parity 後 h-*/m-* 同規則，
+        # 此處用 m-g 驗 mark_stale → list 過濾的不變式。
         insert_cop_entity(CoPEntity(**_valid_entity_payload(uid="s1", how="m-g")))
         assert mark_stale("s1", "2000-01-01T00:00:00Z") is True
         assert mark_stale("nonexistent", "2000-01-01T00:00:00Z") is False

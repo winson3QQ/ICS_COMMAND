@@ -14,7 +14,6 @@ import json
 import logging
 from datetime import UTC, datetime
 
-from core.config import COP_STALE_REMOVE_WINDOW_S
 from core.database import get_conn
 from schemas.cop import CoPEntity, CoPEntityLink, CoPEntityTrack
 
@@ -88,18 +87,21 @@ def list_cop_entities(
         # 墓碑：明確刪除（t-x-d-d / 操作員 DELETE）預設一律排除，不論 how/stale（#161 正解）。
         # include_stale=True（audit/回放）則連刪除的也撈得到。
         clauses.append("COALESCE(deleted, 0) = 0")
-        # stale（新鮮度）治理只對「活追蹤」，判別用 CoT `how`（機器追蹤 vs 人工放置）：
+        # 新鮮度治理——對齊 TAK 原生 streaming subscriber 行為（#161 reality check 2026-06-08，
+        # 真機 iTAK + 活 server wire/Marti 雙證；取代 WIP 0ba8fde 的 last-heard time 窗口）：
         #  - manual/command（指揮部自建）：維持嚴格 stale>now（既有行為；刪除走 deleted 墓碑）。
-        #  - 外部 how=h-*（人工放置標記 / 繪圖）：靜態標註，無心跳 → **持久化**，豁免 stale。
-        #  - 外部 how=m-*（GPS/感測活追蹤，或 how 缺漏）：過 stale 仍保留到 stale+窗口（變灰），
-        #    窗口外移除（對齊 ATAK deleteStaleAfterMillis）。心跳停 = 失聯 → 該淡出。
+        #  - 外部來源（tak / pi-node / waveink）：honor `<archive/>` + honor `stale`：
+        #      · archived=1（CoT 帶 <archive/>，如放置標記 a-*）→ **持久**，過 stale 也保留，
+        #        只有明確刪除（deleted 墓碑）才移除＝對齊 TAK server repository + 其他 TAK client。
+        #      · 無 archive（如繪圖 u-d-*）→ 依 `stale>now` 過期移除＝原生 client deleteStaleAfterMillis。
+        #    ★ ICS 就是個 TAK subscriber，顯示語意照 TAK 原生（archive/stale 是 CoT 規格定義）。
+        #    可靠刪除傳播 / 權威 resync 走 Mission/DataSync（streaming 給不了）→ P2-14；見 memory
+        #    [[tak-streaming-archive-stale-vs-mission]]。
         clauses.append(
             "((source IN ('manual','command') AND stale > strftime('%Y-%m-%dT%H:%M:%SZ','now')) "
-            "OR (source NOT IN ('manual','command') AND how LIKE 'h%') "
-            "OR (source NOT IN ('manual','command') AND COALESCE(how,'') NOT LIKE 'h%' "
-            "AND stale > strftime('%Y-%m-%dT%H:%M:%SZ','now',?)))"
+            "OR (source NOT IN ('manual','command') AND "
+            "(COALESCE(archived, 0) = 1 OR stale > strftime('%Y-%m-%dT%H:%M:%SZ','now'))))"
         )
-        params.append(f"-{COP_STALE_REMOVE_WINDOW_S} seconds")
     sql = "SELECT * FROM cop_entities"
     if clauses:
         sql += " WHERE " + " AND ".join(clauses)
@@ -474,8 +476,8 @@ def _row_to_entity_dict(row) -> dict:
                 exc_info=e,
             )
             d["attributes"] = {}
-    # P2-11b（#140）：SQLite 無 bool type，planned/simulated/deleted 存 INTEGER 0/1 → 轉回 bool
-    for _flag in ("planned", "simulated", "deleted"):
+    # SQLite 無 bool type，旗標欄位存 INTEGER 0/1 → 轉回 bool（planned/simulated P2-11b、archived #161）
+    for _flag in ("planned", "simulated", "deleted", "archived"):
         if d.get(_flag) is not None:
             d[_flag] = bool(d[_flag])
     return d

@@ -56,6 +56,7 @@ _TAK_UPDATE_FIELDS = (
     "lat", "lon", "hae", "ce", "le",
     "heading_deg", "speed_mps", "access", "callsign", "remarks", "attributes",
     "team_color", "role", "battery",  # P2-06c：小隊欄位隨 update 刷新（battery 會變）
+    "archived",  # #161：archive 狀態隨 update 刷新（重畫可能加/去 <archive/>）
 )  # fmt: skip
 _CAS_MAX_RETRY = 3
 
@@ -240,6 +241,7 @@ def normalize_cot(cot_event: CoTEventIn) -> CoPEntity:
         access=cot_event.access,
         callsign=cot_event.callsign,
         remarks=cot_event.remarks,
+        archived=cot_event.archived,  # CoT <archive/> 持久標記（#161）；list 豁免 stale
         # P2-09：MEDEVAC 事件升 critical（地圖醒目 + P2-12 pulse）；其餘維持 info。
         # severity 不在 _TAK_UPDATE_FIELDS → 後續位置更新不覆寫，critical 維持（#135）。
         severity="critical" if medevac is not None else "info",
@@ -428,9 +430,14 @@ async def ingest_cot_event(event: CoTEventIn) -> dict | None:
     for _ in range(_CAS_MAX_RETRY):
         if not _is_newer(entity, existing):
             return None  # 落後 / 重送 → 丟棄，不倒退位置、不無謂 bump version
-        res = cop_entity_repo.update_cop_entity_cas(entity.uid, existing["version_clock"], patch, actor="tak")
+        # 復活（#161）：既有 entity 是刪除墓碑（deleted=1），又收到**更新的**同 uid CoT →
+        # 代表該物件又出現了（場端刪了又重畫 / self-marker 持續回報）。清墓碑 + 以 create 廣播
+        # （前端刪除時已 _remove，需重新加回）。順序守門（_is_newer）保證舊的 in-flight 幀不誤復活。
+        resurrect = bool(existing.get("deleted"))
+        upd = {**patch, "deleted": 0} if resurrect else patch
+        res = cop_entity_repo.update_cop_entity_cas(entity.uid, existing["version_clock"], upd, actor="tak")
         if res["status"] == "ok":
-            await _broadcast_cop("update", res["entity"])
+            await _broadcast_cop("create" if resurrect else "update", res["entity"])
             _record_track(res["entity"])
             return res["entity"]
         if res["status"] == "conflict":
