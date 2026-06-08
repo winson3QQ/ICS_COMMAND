@@ -2003,6 +2003,20 @@
         "minimizedReason": "",
         "reactionGroups": [],
         "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/161#issuecomment-4646303442"
+      },
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## 實作 + VERIFY-PASS（2026-06-08，真機 iTAK dogfood）\n\n修法已實作並 merge 準備中（`command-v2.4.1` / `cmd-v1.2.2`）。\n\n### Human verify（真機 iTAK，活 server）\n放 2 marker（敵/不明，帶 `<archive/>`）+ 1 區域（u-d-r，無 archive）：\n- ✅ **archived marker：parse 抓到 `archived=1`，撐過完整 2min stale（iTAK stale 窗實測 119s）仍留在地圖** ← 解「敵對標記自滅」核心 bug\n- ✅ **非 archived 區域：過 stale 移除**（與其他 TAK client 一致；iTAK 給的繪圖 stale 甚至是負值＝CoT「drop track」約定）\n- ✅ archived marker 不變灰（持久實心）\n\n### t-x-d-d 刪除實驗（決定性，補足「刪除到底在哪」）\n從 ICS 用 cert 對「敵人」uid 發 `t-x-d-d`，三層結果：\n| 檢查 | 結果 |\n|---|---|\n| **ICS** | ✅ 收到並軟刪（deleted=1，離開地圖） |\n| **TAK server archive**（Marti cot/xml） | ⚠️ **仍保有**（t-x-d-d 沒清 server 持久 store） |\n| **新 subscriber latestSA** | 敵人**沒被送回**（沒復活）— 但連未刪的「不明」也沒收到 |\n\n**關鍵副發現**：此 server 的 streaming **不對重連者重播靜態標記**（latestSA 只推自身位置/PLI）→ **ICS 重啟/斷線重連會漏掉靜態 marker**，與 server 分歧 → 權威 resync 剛性需要 **Marti / Data Sync（P2-14）**。已另開 issue 追蹤。\n\n**「不明」**（使用者 iTAK 本機刪除）→ server + ICS 都還在 = 再次坐實本機刪除不傳播。\n\n### 設計動機（為何 TAK 這樣設計，權威來源）\n讀 MITRE《The Developer's Guide to Cursor on Target》(Mike Butler, 2005，已存 `docs/reference/`)：\n- CoT 為「不可靠通訊下分享即時 W3（what/where/when）」而生 → 刪除送不到每個人，故**設計讓刪除不必要**：萬物自帶 `stale` 過期；保留=重送、移除=停送/讓它過期。\n- **「drop track」**：CoT 允許 `stale` 早於 `start` = sender 想取消的明示信號（= 我們看到繪圖負 stale）。\n- **無權威模型**：每節點平等 publish，**本機刪除只是清自己視圖**，無法刪別人發布的。\n- `<archive/>` 是 TAK 後加（原始 CoT 沒有），為操作員「留住標註」**刻意打破自動過期** → 把「怎麼刪」問題請回來 → 持久 + 可靠 CRUD（含刪除傳播）要靠 **Mission/DataSync** 權威層。\n\n→ #161（ICS 認 archive 持久、刪除走 P2-13 t-x-d-d 下行 / P2-14 Mission）**踩在 TAK 設計者原意上**，非 workaround。\n\n完成後關閉本 issue。\n",
+        "createdAt": "2026-06-08T08:31:59Z",
+        "id": "IC_kwDOSnBjpc8AAAABFPhopg",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/161#issuecomment-4646791334"
       }
     ],
     "createdAt": "2026-06-07T09:20:54Z",
@@ -2011,7 +2025,7 @@
     "number": 161,
     "state": "OPEN",
     "title": "前端即時同步缺口：TAK 刪除/stale 物件未即時從 dashboard 移除（需 refresh）",
-    "updatedAt": "2026-06-08T07:17:46Z",
+    "updatedAt": "2026-06-08T08:31:59Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/161"
   },
   {
@@ -2146,5 +2160,25 @@
     "title": "前端：TAK 繪圖（route/polygon/infra）老化變灰 fade（#161 衍生）",
     "updatedAt": "2026-06-08T05:20:57Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/172"
+  },
+  {
+    "assignees": [],
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "body": "## 來源\n#161 dogfood（2026-06-08，真機 iTAK + 活 TAK server）t-x-d-d 刪除實驗的副發現。\n\n## 事實（wire 實證）\n從 ICS 用 cert 開**新 streaming subscriber** 連 :8089，8 秒內 server 只補發**自身位置（PLI）**，**不補發任何靜態標記**（archived marker `不明` 仍在 server archive、但沒被推送；其他 zone 也沒）。\n\n## 根因 / 影響\n- TAK server `<latestSA>` 對新連線只推 **live SA（contacts/PLI）**，**不重播靜態 archived 標記/繪圖**。\n- ICS 是 streaming-fed → **重啟 / 斷線重連期間，server 上既有的（或別人放的）靜態 marker 不會被重新送達 ICS** → ICS 的 COP 與 server / 其他 TAK client **分歧（少物件）**。\n- 現況 ICS 只有「即時收 broadcast」一條路；缺「主動拉權威全集」的路。\n\n## 修法方向（屬 P2-14 Mission/DataSync）\n- ICS 啟動 / 重連時，透過 **Marti REST（`tak_rest_client`，P2-11 已建）主動拉權威態勢**（Mission contents / SA query），對帳 cop_entities，補回 streaming 漏掉的。\n- 沿用 cert（[memory tak-server-marti-cert-not-oauth]）。\n- 與 P2-14 DataSync client 合併設計（同一條「主動查 Marti」管線）。\n\n## 關聯\nP2-14（DataSync）、P2-11（tak_rest_client）、#161（archive 持久化）、memory tak-streaming-archive-stale-vs-mission。\n",
+    "closedAt": null,
+    "comments": [],
+    "createdAt": "2026-06-08T08:32:01Z",
+    "labels": [],
+    "milestone": null,
+    "number": 173,
+    "state": "OPEN",
+    "title": "ICS 重連/重啟漏靜態 TAK 標記 — streaming 不重播，需 Marti 權威 resync（P2-14）",
+    "updatedAt": "2026-06-08T08:32:01Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/173"
   }
 ]
