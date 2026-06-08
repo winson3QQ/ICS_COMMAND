@@ -2797,5 +2797,26 @@
     "title": "feat(tak): P2-23 ICS↔TAK 連線狀態燈 + P2-25 地圖 TAK 篩選器（#163）",
     "updatedAt": "2026-06-08T02:13:17Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/169"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "## 摘要\nP2-23（#163）真機 iTAK onboarding dogfood 撞兩關，本 PR 把當時在 Mac 手動補的修補**固化進 `pki/issue-tak-certs.sh`**，避免換機器 / 重整備 / 別人部署時再踩同坑（deploy 紅線：手動補的東西沒進版控 = 下次必再踩）。Closes #170。\n\n## 兩缺口\n**缺口 1 — truststore 缺 intermediate**（client leaf-only → `peer not verified`）\n- step-ca 是雙層（root→intermediate→leaf），client（iTAK 等）通常只送 leaf。truststore 只有 root → server 建不出鏈。\n- 修：`truststore-root.jks` 與 `fed-truststore.jks` 同時匯 root + intermediate；`STEP_INT_CA` 路徑上提頂部統一定義，section 5 去重。\n\n**缺口 2 — server cert SAN 缺裝置可達位址**（裸 IP 連線 → `IP address mismatch` → disconnected）\n- 修：新增 `TAK_EXTRA_SANS`（逗號分隔）env 組進 `step ca certificate --san`。\n- doctrine：**prod=FQDN**（cert 綁名、DNS 管 IP，公網 IP 浮動/failover 免重簽）；**IP-SAN 僅限無 DNS 的 dev/LAN**。\n\n## 附帶\n- `.env.example` 補 `TAK_EXTRA_SANS`（註解）+ FQDN doctrine。\n- `README.md` 補裝置 onboarding/SAN doctrine + data package 封裝慣例 + 「**這兩坑是 step-ca 雙層路線特性、非 OS 限定**」說明（官方 `makeCert.sh` 單層 CA 天生沒缺口 1；缺口 2 是連線情境問題，與平台無關 → Windows 接手者勿誤判為 Mac bug）。\n\n## §8 Verification（實跑腳本驗產物，非僅 lint）\n```\nbash -n issue-tak-certs.sh                  → ✓ 語法無誤\nshellcheck issue-tak-certs.sh               → ✓ 零新增警告（剩 SC1090 既有 dynamic-source，已有 disable 註解）\nscripts/doc_sync_check.py                    → ✓ passed\n# 起 step-ca → 設 TAK_EXTRA_SANS=172.20.10.2,192.168.50.10 → 跑腳本：\ntakserver cert SAN                           → ✓ 含 172.20.10.2 + 192.168.50.10（TAK_EXTRA_SANS 生效）\ntruststore-root.jks 條目                      → ✓ step-ca-root + step-ca-intermediate（2）\nfed-truststore.jks 條目                       → ✓ step-ca-root + step-ca-intermediate（2，修前只 root）\nserver cert 公鑰                              → ✓ RSA 2048（#101 jwkSource 要求保住）\n```\n測試環境副作用已復原（憑證還原 pre-test、`.env` 測試行移除、step-ca 停、:8443 釋放）。`release/` 與 `.env` 均 gitignored，不入 commit。\n\n## 影響範圍\n純 deploy 腳本 / 文件，無 runtime code 變更。現役 Mac TAK server 不受影響（憑證已手動補過、本 PR 不動 release/）。\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+    "closedAt": "2026-06-08T02:40:56Z",
+    "comments": [],
+    "createdAt": "2026-06-08T02:40:47Z",
+    "headRefName": "fix/issue-170-tak-cert-sans-truststore",
+    "labels": [],
+    "mergedAt": "2026-06-08T02:40:56Z",
+    "number": 171,
+    "state": "MERGED",
+    "title": "fix(tak): issue-tak-certs.sh 補雙層 CA truststore + 參數化 server SAN (#170)",
+    "updatedAt": "2026-06-08T02:40:56Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/171"
   }
 ]
