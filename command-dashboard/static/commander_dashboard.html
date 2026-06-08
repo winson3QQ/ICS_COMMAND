@@ -1050,6 +1050,8 @@ body{position:fixed;inset:0;}
          合併為單列右側 toolbar，指揮部燈號 inline 在最左 -->
     <div style="display:flex;align-items:center;gap:8px;">
       <div class="conn-item"><span class="conn-dot lkp" id="cd-server"></span><span class="conn-label" id="cl-server">指揮部</span></div>
+      <!-- P2-23（#163）：TAK 連線指示燈（cop.js _refreshTakLight 控色） -->
+      <div class="conn-item"><span class="conn-dot lkp" id="cd-tak" title="TAK：查詢中"></span><span class="conn-label">TAK</span></div>
       <span id="cmd-user-badge"></span>
       <span id="idle-countdown"></span>
       <span data-action="openSettings" style="font-size:14px;cursor:pointer;color:var(--text3);" title="設定">&#9881;</span>

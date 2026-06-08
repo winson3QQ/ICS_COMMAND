@@ -15,7 +15,7 @@ from fastapi import APIRouter
 
 from core import config
 from schemas.tak import CoTEventIn
-from services import cop_service
+from services import cop_service, tak_service
 
 router = APIRouter(prefix="/api/tak", tags=["TAK"])
 
@@ -41,10 +41,28 @@ async def receive_cot_event(body: CoTEventIn):
 
 @router.get("/status")
 def tak_status():
-    """回報 TAK 整合啟用狀態（:8089 訂閱由 lifespan 依 TAK_ENABLED 啟動）。"""
+    """TAK 整合啟用狀態 + **連線健康**（P2-23 #163）。:8089 訂閱由 lifespan 依 TAK_ENABLED 啟動。
+    RBAC = READ_ROLES（role_enum 中央 gate）。前端 header 連線指示燈用：
+      enabled=false → 灰；enabled 但 connected=false → 紅；connected 但 last_cot 太舊 → 黃；
+      connected + 近期有 CoT → 綠。age 由 server 算（避免信任 client 時鐘）。"""
+    health = tak_service.get_tak_status()
+    last = health.get("last_cot_at")
+    age_s = None
+    if last:
+        from datetime import UTC, datetime
+
+        try:
+            dt = datetime.strptime(last, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
+            age_s = int((datetime.now(UTC) - dt).total_seconds())
+        except ValueError:
+            age_s = None
     return {
         "enabled": config.TAK_ENABLED,
         "cot_url": config.TAK_COT_URL if config.TAK_ENABLED else None,
         "protocol": "CoT (Cursor on Target)",
         "standard": "MIL-STD-2525",
+        # P2-23 連線健康
+        "connected": health["connected"],
+        "last_cot_at": last,
+        "last_cot_age_s": age_s,
     }

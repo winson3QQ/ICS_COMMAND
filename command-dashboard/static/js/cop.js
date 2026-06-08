@@ -291,6 +291,32 @@ async function _refreshCommandHealthLight() {
   }
 }
 
+// P2-23（#163）：TAK 連線指示燈。authFetch /api/tak/status（READ_ROLES）→ 推導燈色：
+//   未啟用→灰(lkp)／斷線→紅(crit)／連上但無串流→黃(warn)／連上且近期有 CoT→綠(ok)。
+// 「無串流」門檻 120s（>iTAK 自身位置心跳間隔，活連線不會誤判黃）。
+async function _refreshTakLight() {
+  const dot = document.getElementById('cd-tak');
+  if (!dot) return;
+  try {
+    const resp = await authFetch(API_BASE + '/api/tak/status', { signal: AbortSignal.timeout(3000) });
+    if (!resp.ok) throw new Error(resp.status);
+    const s = await resp.json();
+    const age = s.last_cot_age_s;
+    let level, title;
+    if (!s.enabled) { level = 'lkp'; title = 'TAK：未啟用'; }
+    else if (!s.connected) { level = 'crit'; title = 'TAK：斷線（背景重連中）'; }
+    else if (age == null || age > 120) {
+      level = 'warn';
+      title = 'TAK：連線中 · 無串流' + (age != null ? `（${age}s 前最後 CoT）` : '（尚未收到 CoT）');
+    } else { level = 'ok'; title = `TAK：連線中（${age}s 前收到 CoT）`; }
+    dot.className = 'conn-dot ' + level;
+    dot.title = title;
+  } catch (e) {
+    dot.className = 'conn-dot lkp';
+    dot.title = 'TAK 狀態：查詢失敗\n' + (e.message || e);
+  }
+}
+
 export async function poll() {
   if (!isPollActive()) return;
   try {
@@ -536,6 +562,9 @@ export function initCop() {
   // 與 dashboard poll 解耦，即使 /api/dashboard 失敗也能正確反映後端健康狀態
   _refreshCommandHealthLight();
   setInterval(_refreshCommandHealthLight, 5000);
+  // P2-23：TAK 連線燈（authed，每 5s）。獨立於 command health。
+  _refreshTakLight();
+  setInterval(_refreshTakLight, 5000);
 
   // 監聽 CustomEvent 向上通知
   document.addEventListener('cop:pollNow', () => poll());
