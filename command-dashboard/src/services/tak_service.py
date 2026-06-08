@@ -300,8 +300,8 @@ def _resolve_ingest():
 # 單一背景 subscribe task（app `--workers 1`，cop_hub 同前提）→ 模組級單例即可，
 # 不跨 process。供 GET /api/tak/status 讀，前端 header 連線指示燈用。
 _tak_status: dict = {
-    "connected": False,      # mTLS :8089 socket 是否連著
-    "last_cot_at": None,     # 最後收到真實 CoT（非控制事件）的 UTC ISO，None=從未
+    "connected": False,  # mTLS :8089 socket 是否連著
+    "last_cot_at": None,  # 最後收到真實 CoT（非控制事件）的 UTC ISO，None=從未
     "last_change_at": None,  # connected 狀態最後變動 UTC ISO
 }
 
@@ -334,7 +334,7 @@ def reset_tak_status() -> None:
     _tak_status.update(connected=False, last_cot_at=None, last_change_at=None)
 
 
-async def _consume_cot(raw: bytes, ingest, *, limiter: "_TokenBucket | None" = None) -> object | None:
+async def _consume_cot(raw: bytes, ingest, *, limiter: _TokenBucket | None = None) -> object | None:
     """處理單筆 raw CoT bytes：parse → 濾 TakControl → 速率限制 → ingest。
 
     - 解析失敗：只記 log、回 None，**不 raise**（單筆壞不該斷整條串流）。
@@ -360,9 +360,7 @@ async def _consume_cot(raw: bytes, ingest, *, limiter: "_TokenBucket | None" = N
 
         if not limiter.take(asyncio.get_running_loop().time()):
             if limiter.dropped == 1 or limiter.dropped % 100 == 0:
-                log.warning(
-                    "tak.ingest_rate_limited", dropped=limiter.dropped, rate=limiter.rate, uid=event.uid
-                )
+                log.warning("tak.ingest_rate_limited", dropped=limiter.dropped, rate=limiter.rate, uid=event.uid)
             return None
     try:
         result = ingest(event)
@@ -463,9 +461,7 @@ async def subscribe(
 
         log.info("tak.connected", cot_url=config.get("COT_URL"))
         _set_tak_connected(True)  # P2-23：socket 連上
-        receiver = Receiver(
-            asyncio.Queue(), config, reader, ingest=ingest, stop_event=stop_event, limiter=limiter
-        )
+        receiver = Receiver(asyncio.Queue(), config, reader, ingest=ingest, stop_event=stop_event, limiter=limiter)
         try:
             await receiver.run()
         except asyncio.CancelledError:
