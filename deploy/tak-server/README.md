@@ -80,6 +80,27 @@ curl -sk https://localhost:8443/ -o /dev/null -w "web %{http_code}\n"   # 期望
 nc -zv localhost 8089 2>&1            # 期望 succeeded
 ```
 
+## 裝置 onboarding（iTAK / ATAK）與憑證 SAN doctrine
+
+真機（iTAK/ATAK）連 `:8089` 比 dashboard 嚴格，dogfood（#163/#170）撞過兩關，已固化進 `pki/issue-tak-certs.sh`：
+
+- **server cert SAN 必含裝置實際連的位址**（嚴格 hostname/IP 驗證；缺則 `IP address mismatch` → disconnected）：
+  - **prod**：`TAK_HOSTNAME` 設**真實 FQDN**（cert 綁名、DNS 管 IP；公網 IP 浮動/failover 免重簽）。
+  - **dev/LAN（無 DNS）**：`.env` 設 `TAK_EXTRA_SANS=<LAN IP>[,...]`（逗號分隔）補進 SAN。**勿在 prod 把浮動 IP 寫進 cert。**
+- **truststore（root + intermediate 都要）**：step-ca 雙層，client 通常只送 leaf；truststore 缺 intermediate → `peer not verified`。腳本 section 3/4 已同時匯 root + intermediate。
+
+裝置 data package（iTAK 匯入用 zip）內容慣例：
+
+- `config.pref`：`connectString0=<host|IP>:8089:ssl`、protocol、display name。
+- `<device>.p12`：裝置用 client 憑證（step-ca leaf；密碼慣例 `atakatak`，prod 改）。
+- `truststore-root.p12`：含 step-ca **root + intermediate**（讓裝置信任 server）。
+
+> 公網部署除憑證外另需 DNS A record + 防火牆（只開必要 port）+ CA 策略決策（封閉發證 vs 公開 CA），屬部署題，不在本腳本範圍。
+
+> **這兩坑是「step-ca 路線」特性，不是 Mac/OS 限定**（換 Windows 接手者勿誤判為 Mac bug）：
+> - **缺口 1（truststore 缺 intermediate）是 CA 結構問題**：本 repo 刻意用**內網 step-ca（雙層 root→intermediate→leaf）取代官方自簽 CA**（與 dashboard/federation 共信任鏈，見頂部說明）。雙層才需要 truststore 同時帶 intermediate；官方 `makeCert.sh` 是**單層**（root 直接簽 leaf），truststore 放 root 就夠 → 走官方那套天生沒這坑。
+> - **缺口 2（SAN 缺裝置位址）是連線情境問題**：只在「真實機用 SAN 沒涵蓋的位址（如裸 LAN IP）連、且 client 嚴格驗 hostname」時才爆；只連 dashboard/localhost 或用設定好的 hostname 連則不會觸發。與 OS 無關，任何平台同情境都會撞。
+
 ## ICS_Command 整合接點
 
 - **CoT TLS streaming = `:8089`** ← P2-02 `services/tak_service.py` 用 client cert（step-ca 簽，同 truststore）連此 port 訂閱 CoT。

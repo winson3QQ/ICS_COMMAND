@@ -28,6 +28,9 @@ REPO_ROOT="$(cd "$TAK_DIR/../.." && pwd)"        # repo 根
 ENV_FILE="$TAK_DIR/.env"
 STEP_CA_DIR="$REPO_ROOT/deploy/step-ca"
 ROOT_CA="${STEP_ROOT_CA:-$HOME/.step/certs/root_ca.crt}"
+# step-ca 是雙層 PKI（root→intermediate→leaf）。intermediate 路徑頂部統一定義：
+# truststore（section 3/4）與 client 簽發（section 5）都要用，故上提避免重複/漂移。
+STEP_INT_CA="${STEP_INTERMEDIATE_CA:-$HOME/.step/certs/intermediate_ca.crt}"
 OUT_DIR="$TAK_DIR/release/tak/certs/files"
 
 # ── 0. 前置檢查 ──────────────────────────────────────────────────────────
@@ -52,10 +55,28 @@ OUT_CERT_DIR="$STEP_CA_DIR/certs/$TAK_HOSTNAME"
 mkdir -p "$OUT_CERT_DIR"
 CERT_PEM="$OUT_CERT_DIR/cert.pem"
 KEY_PEM="$OUT_CERT_DIR/key.pem"
+
+# SAN 清單：base = hostname + 容器內慣用名。
+# ★ 裝置（iTAK/ATAK）連線時做**嚴格 hostname/IP 驗證**：連的位址必須在 server cert SAN 內，
+#   否則 `IP address mismatch / not valid for '<addr>'` → disconnected（#170 缺口 2 實證）。
+# ★ doctrine：
+#     prod  → TAK_HOSTNAME 設**真實 FQDN**（cert 綁名、DNS 管 IP；公網 IP 浮動/failover 免重簽）。
+#     dev/LAN（無 DNS）→ 用 TAK_EXTRA_SANS 補裝置可達的 LAN IP / 額外名稱（逗號分隔）。
+#   IP-SAN 僅限 dev；勿在 prod 把浮動 IP 寫進 cert。
+SAN_ARGS=(--san "$TAK_HOSTNAME" --san localhost --san takserver --san 127.0.0.1)
+if [[ -n "${TAK_EXTRA_SANS:-}" ]]; then
+  IFS=',' read -ra _EXTRA_SANS <<< "$TAK_EXTRA_SANS"
+  for _san in "${_EXTRA_SANS[@]}"; do
+    _san="${_san#"${_san%%[![:space:]]*}"}"   # 去前導空白
+    _san="${_san%"${_san##*[![:space:]]}"}"   # 去尾隨空白
+    [[ -n "$_san" ]] && SAN_ARGS+=(--san "$_san")
+  done
+  echo "  額外 SAN（TAK_EXTRA_SANS）：$TAK_EXTRA_SANS"
+fi
 step ca certificate "$TAK_HOSTNAME" "$CERT_PEM" "$KEY_PEM" \
   --provisioner="admin@ics.local" --password-file="$HOME/.step/secrets/password" \
   --kty RSA --size 2048 \
-  --san "$TAK_HOSTNAME" --san localhost --san takserver --san 127.0.0.1 --force
+  "${SAN_ARGS[@]}" --force
 chmod 600 "$KEY_PEM"; chmod 644 "$CERT_PEM"
 [[ -f "$CERT_PEM" && -f "$KEY_PEM" ]] || { echo "✗ step-ca 未產出憑證" >&2; exit 1; }
 
@@ -75,20 +96,31 @@ keytool -importkeystore -noprompt \
   -srckeystore "$TMP_P12" -srcstoretype PKCS12 -srcstorepass "$TAK_KEYSTORE_PASS" \
   -destkeystore "$OUT_DIR/takserver.jks" -deststoretype JKS -deststorepass "$TAK_KEYSTORE_PASS"
 
-# ── 3. truststore-root.jks（信任 step-ca root → 同 CA 簽的 client/peer 都被信任）──
+# ── 3. truststore-root.jks（信任 step-ca → 同 CA 簽的 client/peer 都被信任）──
+# ★ 必須同時匯 root **+ intermediate**（#170 缺口 1）：step-ca 雙層，client（iTAK 等）通常只送
+#   **leaf**（不附 intermediate）。truststore 若只有 root → server 建不出 leaf→intermediate→root 鏈
+#   → `SSLHandshakeException: peer not verified` → client disconnected（dogfood 實證）。
 rm -f "$OUT_DIR/truststore-root.jks"
 keytool -importcert -noprompt -alias step-ca-root \
   -file "$ROOT_CA" \
+  -keystore "$OUT_DIR/truststore-root.jks" -storetype JKS -storepass "$TAK_KEYSTORE_PASS"
+[[ -f "$STEP_INT_CA" ]] || { echo "✗ 找不到 step-ca intermediate：$STEP_INT_CA（缺它 client leaf-only 驗證會失敗）" >&2; exit 1; }
+keytool -importcert -noprompt -alias step-ca-intermediate \
+  -file "$STEP_INT_CA" \
   -keystore "$OUT_DIR/truststore-root.jks" -storetype JKS -storepass "$TAK_KEYSTORE_PASS"
 
 # ── 4. fed-truststore.jks（CoreConfig <federation-server> 引用，messaging 無條件部署需要）──
 # ★ 缺此檔 = #101 根因#2：messaging 部署 distributed-federation-manager Ignite service 時
 #   SSLConfig 載 fed-truststore.jks 失敗 → SSLContext 未初始化 → service 部署失敗 → messaging 掛
 #   → Ignite server node 死 → config/api client 全 disconnect → api 卡 federation bean → :8443 不綁。
-# 內容 = step-ca root（單 CA PoC 下與 truststore-root 同；federation 對端若用不同 CA，P2-07 再加匯入）。
+# 內容 = step-ca root + intermediate（同 section 3 理由：對端 peer 送 leaf-only 時要靠
+#   intermediate 補鏈才驗得過；單 CA PoC 下與 truststore-root 同。對端若用不同 CA，P2-07 再加匯入）。
 rm -f "$OUT_DIR/fed-truststore.jks"
 keytool -importcert -noprompt -alias step-ca-root \
   -file "$ROOT_CA" \
+  -keystore "$OUT_DIR/fed-truststore.jks" -storetype JKS -storepass "$TAK_KEYSTORE_PASS"
+keytool -importcert -noprompt -alias step-ca-intermediate \
+  -file "$STEP_INT_CA" \
   -keystore "$OUT_DIR/fed-truststore.jks" -storetype JKS -storepass "$TAK_KEYSTORE_PASS"
 
 # ── 5. COP subscriber client 憑證（P2-03 #107：tak_service.subscribe 連 :8089 用）──
@@ -98,7 +130,7 @@ keytool -importcert -noprompt -alias step-ca-root \
 #   `peer not verified`（#106 log 實證）；須 leaf+intermediate 補齊鏈才握手過。
 # ★ client cert 可 EC（不像 server 的 jwkSource 寫死 RSA）。:8089 streaming 只需 CA-trusted
 #   fullchain，**不需** UserManager enroll（enroll 是 :8443 web UI admin 才要）。
-STEP_INT_CA="${STEP_INTERMEDIATE_CA:-$HOME/.step/certs/intermediate_ca.crt}"
+# STEP_INT_CA 已在頂部定義（section 3/4 truststore 也用）。
 STEP_INT_KEY="${STEP_INTERMEDIATE_KEY:-$HOME/.step/secrets/intermediate_ca_key}"
 STEP_PASS_FILE="${STEP_CA_PASSWORD_FILE:-$HOME/.step/secrets/password}"
 CLIENT_DIR="$STEP_CA_DIR/certs/cop-subscriber"
