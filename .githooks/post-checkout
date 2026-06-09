@@ -4,7 +4,9 @@
 if [ "$3" = "1" ]; then
   REPO=$(git rev-parse --show-toplevel)
   PY=$(command -v python3 || command -v python)
-  PROJECT_DIR=$("$PY" -c "import re,sys; print(re.sub(r'[^a-zA-Z0-9]','-',sys.argv[1]).lstrip('-'))" "$REPO")
+  # 勿加 .lstrip('-')：系統 prompt 讀 `-Users-...`（有前導 dash）；lstrip 掉會同步到 `Users-...` → memory 到不了。
+  # （與 post-merge 同一修正；rebase/checkout 觸發本 hook，舊版 bug 會把 memory 同步到錯目錄。）
+  PROJECT_DIR=$("$PY" -c "import re,sys; print(re.sub(r'[^a-zA-Z0-9]','-',sys.argv[1]))" "$REPO")
   DEST="$HOME/.claude/projects/$PROJECT_DIR/memory"
   mkdir -p "$DEST"
   cp "$REPO/.claude/memory/"* "$DEST/"
