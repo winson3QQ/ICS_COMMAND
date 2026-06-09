@@ -7,15 +7,24 @@ ingestion 兩條路徑（共用 #105 的 `cop_service.ingest_cot_event` 接縫�
 - **:8089 串流訂閱** → `tak_service.subscribe()`（P2-02 W2，由 main.py lifespan 跑背景 task）
 - **REST/federation push** → 本檔 `POST /api/tak/events`（本 issue 升真）
 
+下行（P2-13 A，issue #176）：
+- **下達指令** → `POST /api/tak/downlink`（COMMAND_ROLES + 強制 audit）→ `tak_downlink.send_cot`
+  寫 CoT 進 :8089 → server 廣播現場 ATAK。live broadcast；持久/可靠刪除是 P2-14 未解問題。
+
 協調契約（#105/#107）：本檔**只呼叫** `ingest_cot_event`，不定義（接縫是 cop_service 的）；
-RBAC 由 `auth/role_enum.py` 中央 gate（POST=WRITE_ROLES）。
+RBAC 由 `auth/role_enum.py` 中央 gate（POST=COMMAND_ROLES，見 #146）。
 """
 
-from fastapi import APIRouter
+import uuid
+
+from fastapi import APIRouter, HTTPException, Request
 
 from core import config
-from schemas.tak import CoTEventIn
-from services import cop_service, tak_service
+from core.input_safety import validate_no_unsafe_strings
+from repositories._helpers import audit
+from schemas.tak import CoTEventIn, DownlinkCommandIn
+from services import cop_service, tak_downlink, tak_service
+from services.exercise_service import current_exercise_id
 
 router = APIRouter(prefix="/api/tak", tags=["TAK"])
 
@@ -37,6 +46,59 @@ async def receive_cot_event(body: CoTEventIn):
         "version_clock": result["version_clock"],
         "status": "ingested",
     }
+
+
+@router.post("/downlink")
+async def push_downlink(body: DownlinkCommandIn, request: Request):
+    """P2-13(A) 下達指令：建 CoT → 寫 :8089 → server 廣播現場 ATAK。
+
+    RBAC = COMMAND_ROLES（role_enum 中央 gate：POST /api/tak/* → COMMAND_ROLES）。
+    機制見 `services/tak_downlink`（issue #176 reality check：streaming-write 廣播，
+    不需 mission/admin）。**live broadcast only** —— 無持久/可靠刪除（P2-14 未解）。
+
+    Audit 紀律（DoD：不得 best-effort）：**audit-first** —— 先寫稽核再送 CoT。
+    audit 失敗 → 例外上拋（指令不送，無未稽核之下達）；送出失敗 → 503（稽核已留下達意圖）。
+    """
+    operator = request.state.session["username"]
+    # 縱深防護：內容白名單已在 schema validator，這裡再過一次 sink 防護（對齊 cop.py #24）。
+    validate_no_unsafe_strings(body.model_dump())
+
+    uid = body.uid or f"ICS-CMD-{uuid.uuid4().hex[:12]}"
+    cot = tak_downlink.build_command_cot(
+        uid=uid,
+        type_=body.type,
+        lat=body.lat,
+        lon=body.lon,
+        hae=body.hae,
+        callsign=body.callsign,
+        remarks=body.remarks,
+        stale_minutes=body.stale_minutes,
+    )
+
+    # audit-first：先落稽核（失敗即拋 → 指令不送），再送 CoT。
+    audit(
+        operator,
+        None,
+        "TAK_DOWNLINK",
+        "tak",
+        uid,
+        {
+            "type": body.type,
+            "lat": body.lat,
+            "lon": body.lon,
+            "callsign": body.callsign,
+            "planned": body.planned,
+            "stale_minutes": body.stale_minutes,
+        },
+        exercise_id=current_exercise_id(),
+    )
+
+    try:
+        await tak_downlink.send_cot(cot)
+    except Exception as e:  # noqa: BLE001 — 連線/配置失敗統一回 503（稽核已記下達意圖）
+        raise HTTPException(503, f"TAK 下行送出失敗：{e}") from e
+
+    return {"ok": True, "uid": uid, "status": "sent", "planned": body.planned}
 
 
 @router.get("/status")
