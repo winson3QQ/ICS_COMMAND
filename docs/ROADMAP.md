@@ -198,7 +198,7 @@
 
 | 代號 | 候選 | 服務哪些情境 | 與既有 ROADMAP 關係 | 依賴 | 狀態（S4 圈定）|
 |---|---|---|---|---|---|
-| **SC1** | **天氣 / 環境 feed**（雨量 / 風 / 風向 / 河川水位）| 颱風水災 · 野火（60% 受困死亡集中 3% 火災天氣日）· HazMat（plume 完全靠風）· 航空 | **全新**——非 TAK，是 COP 第 N 個外部來源，走 `cop_service` normalize（同 TAK/WaveInk 多源架構）| 不依賴 TAK（**降階獨立**）| ✅ **進**（頭號）· 建議自成小 phase / Phase 2 後 · **待開 issue** |
+| **SC1** | **天氣 / 環境 feed**（雨量 / 風 / 風向 / 河川水位）| 颱風水災 · 野火（60% 受困死亡集中 3% 火災天氣日）· HazMat（plume 完全靠風）· 航空 | **全新**——非 TAK；**RC 修正：唯讀疊層（P1-17 facilities 模式），非 cop_service**（areal/raster 參考資料，非 entity）| 不依賴 TAK（**降階獨立**）| ✅ **進**（頭號）· **待開 issue** |
 | **SC2** | **sensor source 模式**（CBRN / SDR / UGS / CCTV → COP）| HazMat（CBRN 偵測器）· 設施巡邏（CCTV/UGS/雷達）· SDR/RF | **半新**——泛化 P3 WaveInk 的 sensor ingest；對應 TAK `/Marti/api/datafeeds` + `/inputs` | `cop_service` normalize（與 WaveInk 共用接縫）| ✅ **進** · 與 P3 共用 normalize 接縫 · **待開 issue** |
 | **SC3** | **主動告警 / 決策觸發**（geofence 後端 + 門檻告警）| 設施巡邏 · 指揮決策（OODA Decide「何時」）· HazMat 門檻 | **全新後端**——ICS 自建（非 TAK）；現多被動視覺（severity pulse / stale 灰）| SC2（感測器進來門檻才有料）| ✅ **進**（排 SC2 後）· **待開 issue** |
 | **SC4** | **連線 / 降階可視化收斂**（來源 chips、退役 P2-23 獨立 `cd-tak` 燈、連線 vs 信心兩軸分離）| 全情境（降階）| **改**——併 P2-12 面板 + 重構 P2-23；修「`cl-server`+`cd-tak` 兩 dot 無 legend」破口 | P2-12 | ✅ **進** · **併 P2-12**（不另開，P2-12 動工時一起）|
@@ -209,18 +209,36 @@
 > **原則**（使用者拍板）：**統一檢視非全做**——但本輪「都進」（使用者 2026-06-09），多數仍**待開 issue 才進工作佇列**。
 > **下一步（S4 收尾）**：SC1/SC2/SC3/SC5 + SC7 的升級項，**開 GitHub issue**（每個帶 SC 代號 + 一句 scope，依 PROCESS.md step 2）→ 才真正可被排程動工。SC4 隨 P2-12，SC6 已落地。
 
-#### 升正式 item（編號 + 目的；**scope/DoD 待 reality check** 補）
+#### 升正式 item（編號 + 目的 + **reality check 後 scope/DoD**，2026-06-09）
 
-> **編號決策**：沿用 **SC 代號為正式 item ID**（同 RT-*/TAK-* 非 Pn 前例）——SC1/SC2 是**非 TAK 的新 COP 來源**，塞 Phase 2(TAK) 會誤導、叫 Phase 4 又暗示排在 WaveInk 後（天氣 feed 可能更早要），故獨立編號、排程獨立。**以下只有「編號 + 目的」**，scope/接縫/DoD/供應鏈/降階待逐項 reality check（下一步）後補。
+> **編號決策**：沿用 **SC 代號為正式 item ID**（同 RT-*/TAK-* 非 Pn 前例）——SC1/SC2 是**非 TAK 的新 COP 來源**，塞 Phase 2(TAK) 會誤導、叫 Phase 4 又暗示排在 WaveInk 後（天氣 feed 可能更早要），故獨立編號、排程獨立。
+> **以下 scope 經 reality check（盤實際 code）**——抓到 SC1 假設錯誤（見各項），動工前仍應對動工當下 code 再驗。
 
-| 代號 | 目的（一句）| 類型 | 待 RC 重點 |
-|---|---|---|---|
-| **SC1** | 給 COP **第三類外部來源（氣象/雨量/風/河川水位）**，讓颱風水災·野火·HazMat 從「事後反應」轉「**預判**」；**降階獨立於 TAK** | 新來源（非 TAK）| 來源 dataset（須驗非中國）、`cop_service` 接法、疊層 vs entity |
-| **SC2** | **泛化感測器 ingest**（CBRN/SDR/UGS/CCTV）→ `cop_service` normalize → COP，**與 P3 WaveInk 共用接縫** | 新來源/架構 | 與 WaveInk normalize 共用邊界、TAK `/datafeeds` 關係、untrusted 驗證 |
-| **SC3** | 把**被動視覺**（severity pulse/stale 灰）升為**主動門檻告警**（geofence/門檻），回答 OODA Decide「**何時**」決策 | ICS 後端能力 | 觸發引擎、與 SC2 感測器門檻依賴、誤報抑制 |
-| **SC5** | 給 cop_entity zone 加 **`threat_state`（熱/暖/冷）+ 武裝掩護已清走廊 + 敵我老化情報**，服務 RTF/多機構（**later**）| 既有擴充（P1-16/P2-08）| 資料模型擴充、即時同步、價值/排程（窄）|
+**SC1 — 天氣 / 環境 feed**
+- **目的**：給 COP **氣象/雨量/風/河川水位**參考層，讓颱風水災·野火·HazMat 從「事後反應」轉「**預判**」。
+- **⚠️ RC 修正**：**不走 cop_service/cop_entities**（原假設錯）——天氣是 areal/raster 參考資料、非 entity、不綁演習、無 auth → **走 P1-17 facilities 唯讀疊層模式**。
+- **Scope**：`services/weather_store.py`（copy `facilities_store.py` mtime-cache 唯讀模式）+ `GET /api/weather`（public、cacheable、非 exercise-scoped）+ `static/weather.seed.json` 或 cron 刷新腳本 + 前端 raster/grid 疊層 + 工具列開關。**零 cop_service/migration/auth 改動。**
+- **供應鏈**：dataset 來源逐一驗**非中國**（台灣 CWA 中央氣象署 / 水利署開放資料，比照 P1-17 NCDR）。
+- **降階**：**完全獨立於 TAK**（TAK 掛照常）。**DoD**：唯讀疊層、不碰 cop_entities/scoping、來源非中國、斷源顯「來源不可達」。
 
-> SC4（連線 chips）併 [P2-12]；SC6（降階 DoD）已入本 Phase DoD；SC7（§8.x 安全升優先）走 threat_model + 開 issue。
+**SC2 — sensor source 模式**
+- **目的**：**泛化感測器 ingest**（CBRN/SDR/UGS/CCTV）→ `cop_service` normalize → COP entity。
+- **⚠️ RC 修正**：「與 WaveInk 共用接縫」是 **aspirational**——seam 目前**只有 TAK 真用**（`ingest_cot_event`），`normalize_waveink`/`normalize_pi_node` 是 stub；manual 繞過、pi-node 不走。SC2 可能是 **TAK 以外第一個真走共用 seam 的 source**。
+- **Scope**：CoPSource enum 加值（`schemas/cop.py:22` + `core/database.py` CHECK rebuild，比照 m018）+ `normalize_sensor`（沿用 `normalize_waveink` 契約模式）+ 新 ingress route + source-ownership gate + **untrusted 內容驗證**（座標/型別白名單，比照 P2-10）。
+- **供應鏈**：感測器硬體/函式庫非中國（CBRN/SDR 生態，CLAUDE.md）。**對接**：與 P3 WaveInk normalize 模式對齊（未來真共用）、TAK `/datafeeds` 概念對應。**DoD**：新 source 經 normalize→cop_entities、內容驗證、ownership gate、斷源降階。
+- **依賴**：SC3 的門檻告警靠它有料。
+
+**SC3 — 主動告警 / 決策觸發**
+- **目的**：把**被動視覺**（severity 色/stale 灰）升為**主動門檻告警**（geofence/門檻），回答 OODA Decide「**何時**」。
+- **RC 確認**：**100% greenfield**——零 active alerting backend，現全前端被動重繪（20s）；框架在（severity/stale 欄位 + WS 廣播）但**無條件評估引擎、cop_stream 只聽不發**。
+- **Scope（高工，從零）**：條件評估引擎（geofence 進出 / 門檻）+ 觸發後端 + WS **主動 push** + 前端告警 UI + **誤報節流**（狼來了，呼應設施巡邏失效模式）。**依賴 SC2**（感測器門檻）。**DoD**：條件越界觸發、可配置門檻、誤報節流、RBAC、與 P2-23/severity pulse 整合不重複。
+
+**SC5 — 威脅圖層**（**later**）
+- **目的**：zone 加 **`threat_state`（熱/暖/冷）+ 武裝掩護已清走廊 + 敵我老化情報**，服務 RTF/多機構。
+- **RC 確認**：`attributes` 是 **free-form JSON blob**（`schemas/cop.py:115` / DB `attributes TEXT DEFAULT '{}'`）→ 加 `threat_state` **無 migration**（後端 +1 key、前端 data-driven 上色 +3 行，~15 分）。
+- **Scope**：(a) zone `attributes.threat_state` + 前端上色（**trivial**，可順手）；(b) 已清走廊＝route/zone 帶 state（中等）；(c) 敵我老化情報＝沿用 `stale` + 可信度標註（同 Recon）。**排程 later**（情境窄；但 (a) 便宜）。**DoD**：zone 可帶 threat_state + 即時同步 + 渲染。
+
+> SC4（連線 chips）併 P2-12；SC6（降階 DoD）已入本 Phase DoD；SC7（§8.x 安全升優先）走 threat_model + 開 issue。
 
 ### Definition of Done
 
