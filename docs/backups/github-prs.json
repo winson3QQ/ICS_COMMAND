@@ -2965,5 +2965,26 @@
     "title": "feat(cop): P2-27 event↔marker junction 關聯 + 砍 events.lat/lon 死欄（後端地基 slice）",
     "updatedAt": "2026-06-09T09:58:17Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/183"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "Closes #184. ROADMAP **P2-31**（P2-27 [#183](https://github.com/winson3QQ/ICS_COMMAND/pull/183) 拆出的後端地基收尾）。\n\n## 變更\n- **m023** `decisions` 三欄補 FK：`primary_event_id → events(id)`、自我參照 `parent_decision_id` / `superseded_by → decisions(id)`，**全 `ON DELETE SET NULL`**（問責鏈不隨上游硬刪消失）。\n- **m024** 修 landmine：`ai_recommendations.related_decision_id` **INTEGER→TEXT** + FK→decisions（`decisions.id` 為 TEXT uuid，原 INTEGER FK 永不匹配、現狀不可用）。\n- 泛化 `_rebuild_with_fk`（自 `_rebuild_cop_entities` 抽出：12-step `foreign_keys=OFF` + 動態欄位複製 + 動態 index 重建 + dangling scrub）。\n- `schemas/ai.py` + `ai_repo.py` 型別 `int→str` 同步。\n\n## reality-check 補正（見 #184）\n- `SET NULL` 為 `delete_exercise` 刪除順序（events→decisions→ai）下的**硬需求**非偏好；非 SET NULL 會炸 FK。\n- ai FK 的 `ON DELETE` 補指定 SET NULL（原 roadmap row 漏指定）。\n- rebuild 後 `foreign_key_check` 驗乾淨；`related_decision_id` 前端無 UI、現存全 NULL → 無資料遷移。\n\n## 測試 / 驗證\n- `tests/integration/test_decision_fk.py`（9：schema FK／FK 強制性／SET NULL ×2／`delete_exercise` 級聯不炸／dangling scrub）。\n- 全後端 suite 綠（~679 passed / 1 skipped）、pyflakes clean、doc-sync check passed。\n- `/code-review`（high）0 confirmed bug；`/security-review` 0 finding。\n\n## 範圍\n純後端（零前端）。前端 cutover 為 P2-33。無版號 bump（對齊 P2-27 同類 schema migration 慣例）。\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n",
+    "closedAt": "2026-06-09T23:48:49Z",
+    "comments": [],
+    "createdAt": "2026-06-09T23:48:16Z",
+    "headRefName": "feat/issue-184-decisions-fk",
+    "labels": [],
+    "mergedAt": "2026-06-09T23:48:49Z",
+    "number": 185,
+    "state": "MERGED",
+    "title": "P2-31: decisions/ai_recommendations FK 規範化（#184）",
+    "updatedAt": "2026-06-09T23:48:52Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/185"
   }
 ]
