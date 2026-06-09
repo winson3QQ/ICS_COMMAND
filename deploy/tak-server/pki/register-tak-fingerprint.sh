@@ -3,10 +3,16 @@
 # 的 UserAuthenticationFile.xml（File backend，hot-reload 免 restart）。
 #
 # 背景（#177 L1 / cert-role 定案 #176）：
-#   ICS 對 TAK 的 role 指派原本靠**手動編** UserAuthenticationFile.xml（P2-14 实测被安全
-#   分類器擋＝高危 RBAC 寫入）。本腳本把它變成**受控、冪等、可重跑**的操作。
-#   server role 一律 ROLE_USER（ICS 不需 ROLE_ADMIN，#176 实测定案）；mission 級角色
-#   （readonly-subscriber / owner）由 mission 訂閱時帶，不在本檔。
+#   ICS 對 TAK 的 server role 指派原本靠**手動編** UserAuthenticationFile.xml（高危 RBAC 寫入）。
+#   本腳本把它變成**受控、冪等、可重跑**的操作。server role 一律 ROLE_USER（ICS 不需 ROLE_ADMIN）。
+#
+# ⚠ 重要（2026-06-09 活 TAK 5.7 實測，見 memory tak-marti-authz-model / #176）：
+#   **本腳本的註冊對 Marti REST 讀／寫 gating 無作用**——
+#     · 讀取：任何 truststore（step-ca CA）信任的 cert 即通，與本檔註冊無關。
+#     · 寫入：由 per-mission role（MISSION_WRITE/owner）把關，非 server role、非 fingerprint。
+#   故本腳本**非** P2-14（讀）/P2-13（寫）的前置；定位為 server-admin 級自動化（L2 admin
+#   console CLI 前身）。簽 cert（issue-tak-certs.sh，truststore 信任）才是讀取關鍵。
+#   另：docker/Mac **不 hot-reload** 本檔，--apply 後**須 restart** TAK 才生效。
 #
 # 用法：
 #   register-tak-fingerprint.sh <cert.pem> <identifier> [group1 group2 ...]
@@ -22,11 +28,11 @@
 # 目標檔：$TAK_AUTH_FILE（預設 deploy/tak-server/release/tak/UserAuthenticationFile.xml；
 #   release/ 是 bind-mount 進容器 /opt/tak 的同一份，改 host 檔即改容器檔，TAK 監看 hot-reload）。
 #
-# ⚠ 待你以 live TAK 的既有 working entry 確認的 3 點（#177 L1 open question）：
-#   (a) fingerprint 正規化：colons? 大小寫?（FP_FORMAT 變數，預設 colon-uppercase = openssl 原樣）
-#   (b) <User> 是否需 identifier 屬性、其值規則
-#   (c) groupList 預設內容（__ANON__ 或專用 group）
-#   存在既有 entry 時本腳本會印出供你比對；格式不符**先別 --apply**。
+# ✅ 格式已對活 TAK 5.7-RELEASE-43 確認（2026-06-09，比對 admin 既有 entry）：
+#   (a) fingerprint = **冒號分隔大寫**（openssl -fingerprint -sha256 原樣）→ FP_FORMAT=raw（預設正確）
+#   (b) <User> 需 identifier 屬性（admin entry 實證）
+#   (c) groupList 預設 __ANON__（admin entry 實證）
+#   註：role="ROLE_USER" 為預設值，TAK 重啟 re-marshal 時會省略——非 bug。
 
 set -euo pipefail
 

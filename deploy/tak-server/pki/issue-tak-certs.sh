@@ -131,11 +131,14 @@ keytool -importcert -noprompt -alias step-ca-intermediate \
 # ★ client cert 可 EC（不像 server 的 jwkSource 寫死 RSA）。streaming 只需 CA-trusted
 #   fullchain，**不需** UserManager enroll（enroll 是 :8443 web UI admin 才要）。
 # ★ 簽三張（#177 L1 / cert-role 定案 #176）：
-#     cop-subscriber    :8089 CoT streaming 被動收（P2-03 #107，無 mission 角色）
-#     ics-mission-read  :8443 Marti 讀（mission readonly-subscriber → P2-14 resync）
-#     ics-mission-write :8443 Marti 寫（mission owner → P2-13 權威增刪）
-#   三張 server role 皆 ROLE_USER，差在 mission 級角色——由 register-tak-fingerprint.sh
-#   把 fingerprint 註冊進 UserAuthenticationFile.xml（本腳本只簽，不碰 auth 檔）。
+#     cop-subscriber    :8089 CoT streaming 被動收（P2-03 #107）
+#     ics-mission-read  :8443 Marti 讀（P2-14 resync）
+#     ics-mission-write :8443 Marti 寫（P2-13 權威增刪）
+#   ⚠ 2026-06-09 活 TAK 5.7 實測（memory tak-marti-authz-model / #176）：
+#     · 讀取：**truststore 信任這張 cert 即通**，毋須 register fingerprint（讀的 gate 在這層）。
+#     · 寫入：由 **mission role（MISSION_WRITE/owner）** 把關，非 cert/非 server role；
+#       ics-mission-write 取得 owner role 的機制 = P2-13 待解（無狀態 REST creator 落到 defaultRole）。
+#   故讀/寫分流靠 mission-role 不靠這三張 cert 的 server role；cert 提供身分/審計分離。
 # STEP_INT_CA 已在頂部定義（section 3/4 truststore 也用）。
 STEP_INT_KEY="${STEP_INTERMEDIATE_KEY:-$HOME/.step/secrets/intermediate_ca_key}"
 STEP_PASS_FILE="${STEP_CA_PASSWORD_FILE:-$HOME/.step/secrets/password}"
