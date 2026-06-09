@@ -1,5 +1,7 @@
 # 演習/實戰歸屬 = server-authoritative（不信 client 宣告）
 
+> **[2026-06-09 收編進 doc]** 本 doctrine 實質已搬進 `docs/roadmap/tak-integration-strategy.md` §1.1「server-authoritative」（與「不硬依賴 TAK」同 invariant 家族，P2-19 對接）。本檔留 recall 指標 + code 級 How-to-apply。
+
 ## Doctrine（核心架構決策）
 CoP entity 的「演習 / 實戰 / 兩者皆非」歸屬,由 **指揮部 server 端決定**,**不信任 client（ATAK 裝置）宣告**:
 - `exercise_id` 由 `current_exercise_id()`（指揮部 UI 當前 active exercise）決定:

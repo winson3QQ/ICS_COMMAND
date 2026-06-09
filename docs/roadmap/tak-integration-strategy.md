@@ -18,6 +18,15 @@
 - **紅線**：**任何 ICS 功能都不得硬依賴 TAK**。雛形已在 —— P2-03「subscribe 啟動失敗永不擋 app 開機」。
 - 推論：「TAK 掛掉」**不是災難復原，是設計好的降階**——一個來源乾掉，COP 照樣從其他來源活著。**這條前提讓第 3 問（降階）從「救火」變「設計」。**
 
+### 1.1 server-authoritative：不信任 client 宣告（doctrine，自 memory 收編）
+
+> 與「不硬依賴 TAK」同一 invariant 家族——**信任邊界一律在 server**。
+
+- **演習 / 實戰歸屬由指揮部 server 端決定**（`current_exercise_id()` = 指揮部 UI 當前 active exercise），**不信任 ATAK 裝置宣告**：有 active → 綁該場；無 → NULL 池（實戰/未分場）。連入的 ATAK 就歸屬指揮部 UI 開的那個模式。
+- **TAK Server 與指揮部後端獨立啟停**：三種組合（只 TAK / 只指揮部 / 都開）**無一需要信 ATAK `opex`** → ATAK 端無從、也不該決定「演習 vs 實戰」（使用者 2026-06-07 確認）。
+- **紅隊 TAK-C 評估後不採**（2026-06-07）：讓 `normalize_cot` 讀 ATAK `opex` 覆寫 server 模式 = 給每裝置「自宣告繞過演習場」開關，違反本 doctrine、反成完整性破口。真正解 = **演習/實戰部署隔離**（不同 instance），非信 client。`simulated` 只由 **P2-19 O/C server 端注入**設，TAK ingest 維持 default False。
+- **適用**：任何「這筆屬哪場 / 是否演習」一律走 server（`resolve_scope` / `current_exercise_id`），不讀 client 的 `opex`/`source`/`exercise_id` 宣告。未來再提「讀 opex 分流」＝已評估不採。對接 ROADMAP **P2-19**。
+
 ---
 
 ## 2. 三階降階模型（第 3 問的骨架）
@@ -94,6 +103,18 @@
 > **注**：以上路徑為官方 5.7 spec 的 `paths` 鍵；**精確 query 參數 / request body schema 動工時再對 spec `components` 與 P2-11 `tak_rest_client` 實作**。本表確立「哪個能力打哪條」，非完整 API 契約。
 
 ---
+
+## 4b. CoT 生命週期 / 刪除語意（archive / stale / Mission，自 memory 收編）
+
+> 真機 iTAK + 活 server dogfood 實證（2026-06-08，#161）。**直接決定 P2-14 可靠刪除 / 權威 resync 的設計**，故收進策略。
+
+- **iTAK「從地圖刪除」是純本機 declutter**：刪 marker/繪圖 → :8089 wire **零 `t-x-d-d`**、TAK server repository 原封不動。**新增/編輯會上 wire，只有刪除不傳播**。
+- **TAK server 持久化一切**：CoreConfig `<repository>`（PostgreSQL）存每 uid 最新 CoT，**不靠 stale 移除**；`<latestSA>` 對新連線補發、`<repeater>` 僅 4 種 emergency 重播（一般 marker 不重播）→ **ICS 重連會漏既有靜態標記**（= #173，須 Marti 權威 resync）。
+- **持久訊號 = CoT `<archive/>`**（不是 `how`）：帶 `<archive/>`（如 `a-u-G` 放置標記）→ 過 stale 仍保留；無 archive（如繪圖 `u-d-r`）→ 過 stale 即移除（server repository 仍留）。**`stale` = client 顯示提示，非 server 刪除條件**。
+- **決策（#161）**：ICS = 一般 streaming subscriber，**對齊原生 = honor `stale` + honor `<archive/>`**（archived 豁免 stale、non-archived 過 stale 移除）；退掉 last-heard 時間窗。
+- **可靠刪除 / 權威 resync 只在 Mission/DataSync 層**（`GET /Marti/api/missions` + mission 內刪除廣播訂閱者）→ **P2-14**；過渡期＝操作員「移出 COP」+ 無界成長安全網（P2-14 (A)）。
+- **威脅模型角度**：「streaming 層刪除不同步」為 **COP 完整性結構性限制** → 文件化 `docs/compliance/threat_model.md` §8（隨 P2-17）。
+- **降階關聯**：archived 標記是 Tier 2「凍結 TAK 最後實體」可保留的依據（archived 不隨 stale 消失）。
 
 ## 5. 沿 TAK 主軸的開發順序（引用 ROADMAP，不重排）
 

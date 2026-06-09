@@ -107,6 +107,17 @@ nc -zv localhost 8089 2>&1            # 期望 succeeded
 - **CoT schema 參考**：包內 `release/tak/CoT_link.xsd` / `CoT_shape.xsd` / `CoreConfig.xsd` 是官方 CoT 格式定義 → P2-04 `normalize_cot` 解析 + XXE-safe 驗證的依據（**勿 commit，按路徑引用**）。
 - TLS 由同一條 step-ca 信任鏈 → ICS_Command（dashboard / tak_service）與 TAK Server 互信，不必另建 CA。
 
+### :8089 streaming 憑證 ≠ :8443 web UI 憑證（關鍵區分，實測定案 2026-06-05）
+
+| | **:8443 web UI**（人類 admin 登入）| **:8089 CoT streaming**（`tak_service.subscribe`）|
+|---|---|---|
+| 需 UserManager enroll？ | **要**（`certmod -A` 綁 `ROLE_ADMIN`，見上「首次 admin 憑證」）| **不要** —— CA 信任的 **fullchain** client cert 即可 authenticate + 收流 |
+| 憑證鏈 | 同 | **必 leaf+intermediate 串鏈**：leaf-only → `peer not verified`；無 cert → `PEER_DID_NOT_RETURN_A_CERTIFICATE` |
+
+- :8089 預設串流 = **v0 明文 CoT XML**（server 開場推 `t-x-takp-v` TakControl 宣告 v1 protobuf 為**選配**升級，不強制）；v0-only subscriber 用 `pytak TAK_PROTO=0`。
+- TLS **fail-closed**：`build_subscribe_config` 無 cafile 須顯式 `allow_insecure_tls=True` 才關 server 驗證（否則 raise），防靜默 MITM 注入偽造 CoT。
+- 意涵：**COP subscriber cert 只需 CA 簽的 fullchain client cert，不必經 :8446 enrollment**（enroll 是 :8443 web/managed-cert 才需）。被擄裝置撤銷限制見 `docs/compliance/threat_model.md` §8.5。
+
 ## 範圍與注意
 
 - **本 task 不含**：實機 boot 驗證（需 release 在手 + 目標機，交付時做）、Federation Hub / federation（P2-07）、commercial plugin（只用 core CoT）、Pi 原生 `.deb` 實裝（僅文件指路）。

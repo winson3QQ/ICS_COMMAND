@@ -1,5 +1,7 @@
 # P2 TAK 部署 + #101（web tier 已解）— 2026-06-05
 
+> **[2026-06-09 部分收編進 doc]** 架構級「:8089 streaming 憑證 ≠ :8443 web 憑證」區分 + #101 兩根因（RSA/fed-truststore）已在 `deploy/tak-server/README.md`（ops SoT）。本檔留 recall 指標 + **本機 dev env scratch**（路徑/重起步驟，非 doc SoT）。
+
 ## 現況（git）
 - **#101 已關閉**（兩根因皆解）。main `eb87878`（三邊同步）。
 - P2-01 merged（PR #100 `35ed3d8`/#99）；#101 根因#1 `14b5373`、根因#2 PR #104 `fa38200`（closes #101）。

@@ -1,5 +1,7 @@
 # TAK streaming = 原生 stale+archive；可靠刪除只在 Mission/DataSync
 
+> **[2026-06-09 收編進 doc]** 本決策實質已搬進 `docs/roadmap/tak-integration-strategy.md` §4b「CoT 生命週期/刪除語意」（ROADMAP 可見、P2-14 對接）。本檔留 recall 指標 + code 級 How-to-apply。
+
 ## 事實（真機 iTAK + 活 server dogfood 實證，2026-06-08，issue #161）
 - **iTAK「從地圖刪除」是純本機 declutter**：刪 marker/繪圖 → :8089 wire 零 `t-x-d-d`、TAK server（Marti `GET /Marti/api/cot/xml/{uid}`）原封不動。
   新增/編輯**會**上 wire + 入 server；**只有刪除不傳播**。
