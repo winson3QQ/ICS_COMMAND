@@ -119,6 +119,18 @@ TAK_MARTI_URL: str = os.getenv("TAK_MARTI_URL", "")  # https://<host>:8443
 TAK_MARTI_MIN_INTERVAL_S: float = float(os.getenv("TAK_MARTI_MIN_INTERVAL_S", "1.0"))
 TAK_MARTI_MAX_RETRIES: int = int(os.getenv("TAK_MARTI_MAX_RETRIES", "3"))
 
+# ── TAK Marti mission-role 服務 cert（#177 L1 / cert-role 定案見 #176）──────────
+# Mission API 的權威讀寫需 **mission 級角色**（server role 一律 ROLE_USER）。拆兩張服務 cert：
+#   讀 cert（mission readonly-subscriber）→ P2-14 DataSync / resync（/cot/sa、/cot、/changes）
+#   寫 cert（mission owner）            → P2-13 下行（DELETE/PUT .../contents 權威增刪）
+# 由 deploy/tak-server/pki/issue-tak-certs.sh 簽 + register-tak-fingerprint.sh 註冊進
+# UserAuthenticationFile.xml。空 → 對應能力停用（P2-14/P2-13 消費方各自判斷）。
+# 與 :8089 streaming 的 TAK_CLIENT_CERT 刻意分離（不同 mission 角色，不可混用）。
+TAK_MARTI_READ_CERT: str = os.getenv("TAK_MARTI_READ_CERT", "")  # 讀 cert PEM（fullchain：leaf+intermediate）
+TAK_MARTI_READ_KEY: str = os.getenv("TAK_MARTI_READ_KEY", "")  # 讀 cert 私鑰 PEM
+TAK_MARTI_WRITE_CERT: str = os.getenv("TAK_MARTI_WRITE_CERT", "")  # 寫 cert PEM（fullchain）
+TAK_MARTI_WRITE_KEY: str = os.getenv("TAK_MARTI_WRITE_KEY", "")  # 寫 cert 私鑰 PEM
+
 # ── COP 軌跡抽樣（P2-06a / #120）──────────────────────────────────────────────
 # cop_entity_tracks per-uid 最短寫入間隔（秒）。ATAK 可 >0.5Hz，不節流則每筆位置更新
 # 都落一筆軌跡 → 表爆量。抽樣基準 = CoT event time（非 wall-clock）。不同演習場景
