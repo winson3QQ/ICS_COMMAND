@@ -2333,6 +2333,20 @@
         "minimizedReason": "",
         "reactionGroups": [],
         "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/176#issuecomment-4655512062"
+      },
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## 🔬 P2-13 寫路徑 reality check（2026-06-09，活 docker TAK 5.7）— 修正前一則 mission-role 結論\n\n承接上一則（讀=truststore / 寫=mission-role）。今天深挖**寫入路徑**，前一則「寫入由 mission-role(MISSION_WRITE/owner)把關、creatorUid 偽造擋得住」**過於樂觀，需修正**。全有 HTTP + api log 證據。\n\n### 🔴 核心發現：MISSION_OWNER/WRITE 角色**不附著到無狀態 Marti REST 請求**\n- 建 mission（creatorUid=X）→ owner 訂閱記錄存在（`subscriptions/roles` 顯示 MISSION_OWNER），**但新 REST 連線 `GET .../role` 回 defaultRole**，非 owner。\n- 連 mission **建立者**自己，在 `defaultRole=MISSION_READONLY_SUBSCRIBER` 的 mission 上 PUT contents 也 **403**（`MissionPermissionEvaluator: currentRole MISSION_READONLY_SUBSCRIBER, requested MISSION_WRITE`）。\n- 訂閱成匹配 uid、`PUT role` 自設 owner（403）、一致 creatorUid——**都無法讓 owner 角色附著**。\n- → owner 是**持久 streaming 訂閱（ATAK 連線）或 admin** 的屬性，stateless REST poll client 取不到。\n\n### 寫入權**完全由 mission `defaultRole` 決定**（非 cert、非 creatorUid）\n| mission defaultRole | PUT/DELETE contents 結果 |\n|---|---|\n| 不設 / 寬鬆（MISSION_SUBSCRIBER） | **任何 truststore-trusted cert 都能寫**（read cert 用隨機 creatorUid、甚至不帶 creatorUid，皆 200） |\n| `MISSION_READONLY_SUBSCRIBER` | **沒有任何 REST client 寫得了，連 creator 都 403** |\n\n→ 修正前一則「creatorUid 偽造擋得住」：在**寬鬆 mission** 上 creatorUid 根本無關（人人可寫）；在 **READONLY mission** 上人人（含 owner）皆不可寫。creatorUid 不是寫入 gate。\n\n### ✅ 但「內容增刪」在寬鬆 mission 上**可行且不需 admin**（P2-13/P2-14 好消息）\n- `PUT contents`（ADD_CONTENT）+ `DELETE contents`（REMOVE_CONTENT）皆 **200**；`GET .../changes` feed 出 `ADD_CONTENT`/`REMOVE_CONTENT` + `contentUid`。\n- → **#173 增量同步 + #161 可靠刪除 = 用寬鬆 mission + poll changes 即可達成，毋須 admin**。\n- **DELETE 整個 mission** 仍需 **ROLE_ADMIN**（所有 ROLE_USER cert 恆 403）。\n\n### 🎯 對 P2-13 設計的意涵（動工抉擇）\nICS 下行寫入的 3 條路，**讀/寫 cert 分流對 REST 寫入不構成安全邊界**（寫權=truststore+defaultRole，與 cert 身分無關）：\n1. **寬鬆 mission**：ICS（與任何受信 cert）可自由增刪內容。封閉信任域可接受；要限制身分→需 mission **password**（未測）或非 `__ANON__` group 分流。\n2. **admin cert**：bypass mission-role，可寫 READONLY mission + 刪 mission。但回到「ICS 需 ROLE_ADMIN」（#176 原想避開）。\n3. **持久 streaming 訂閱持 owner role**：對 REST poll client 複雜，待評估。\n\n→ **P2-13 第一個設計決策 = 選哪條 + 寫入身分控制機制（password? group?）**。memory `tak-marti-authz-model` 已同步修正。\n\n> 實測殘留：5 個測試 mission（ICS-RC-WTEST / RC-PROBE2-4 / RC-SECURE，皆需 admin 刪）。\n\nRefs #173, #177, P2-13, P2-14",
+        "createdAt": "2026-06-09T05:32:26Z",
+        "id": "IC_kwDOSnBjpc8AAAABFYu5BQ",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/176#issuecomment-4656445701"
       }
     ],
     "createdAt": "2026-06-08T10:00:42Z",
@@ -2341,7 +2355,7 @@
     "number": 176,
     "state": "OPEN",
     "title": "P2-14 reality check：Mission/DataSync 同步 — 路徑成立 / #173 範圍修正 / 與 P2-13 共用面協調",
-    "updatedAt": "2026-06-09T02:41:25Z",
+    "updatedAt": "2026-06-09T05:32:26Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/176"
   },
   {
