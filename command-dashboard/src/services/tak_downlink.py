@@ -120,6 +120,48 @@ def build_geometry_cot(
     )
 
 
+def entity_to_cot(entity: dict, *, stale_minutes: int = 60, now: datetime | None = None) -> str:
+    """**cop_entity（既有感知標記）→ CoT**（P2-30 part 2 / #180）：分享既有標記到 TAK 用。
+
+    點 vs 幾何分流（key 在 `attributes.kind`，與 P2-08 入向一致；不依賴 P2-27 的 event↔marker 重構）：
+      - `kind ∈ {route, polygon}` → 幾何（`attributes.vertices`）→ `build_geometry_cot`
+        （polygon → closed=True；route → closed=False）
+      - 否則 → 點 → `build_command_cot`（用 entity 的 lat/lon）
+    沿用 entity 的 uid/type/callsign/remarks；time/start/stale 由 server 重產（不信舊時鐘），含 `<archive/>`。
+    唯讀 entity dict，不改 cop_entities（與 P2-27 並行不衝突）。
+    """
+    attrs = entity.get("attributes") or {}
+    kind = attrs.get("kind")
+    uid = entity["uid"]
+    type_ = entity["type"]
+    callsign = entity.get("callsign")
+    remarks = entity.get("remarks")
+
+    if kind in ("route", "polygon"):
+        vertices = attrs.get("vertices") or []
+        return build_geometry_cot(
+            uid=uid,
+            type_=type_,
+            vertices=vertices,
+            closed=(kind == "polygon"),
+            callsign=callsign,
+            remarks=remarks,
+            stale_minutes=stale_minutes,
+            now=now,
+        )
+    return build_command_cot(
+        uid=uid,
+        type_=type_,
+        lat=float(entity["lat"]),
+        lon=float(entity["lon"]),
+        hae=float(entity.get("hae") or 0.0),
+        callsign=callsign,
+        remarks=remarks,
+        stale_minutes=stale_minutes,
+        now=now,
+    )
+
+
 def _build_config():
     """從 core.config 組 :8089 連線設定（複用訂閱那套 cert，fail-closed）。"""
     if not config.TAK_COT_URL or not config.TAK_CLIENT_CERT or not config.TAK_CLIENT_KEY:
