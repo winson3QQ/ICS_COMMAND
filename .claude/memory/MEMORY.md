@@ -5,6 +5,8 @@ ICS_DMAS 的 memory（行為規則、架構決策、HTTPS 決策、Remote SoT、
 
 ## 本 repo 特有
 
+- [precommit-ruff-config-cwd](precommit-ruff-config-cwd.md) — pre-commit cd 進 command-dashboard/，root-level 腳本須 line-length=120（ruff 0.11.7）否則 commit 中止（stash 衝突回滾）
+- [P2 TAK 部署 / #101](p2-tak-deploy-issue101.md) — P2-01 官方 TAK Server 部署 merged；#101 已關（RSA 憑證 + fed-truststore 兩根因皆解）；本機 dev env（docker + ~/.ics/dev cert）保留可快速重起
 - [Boris 路線工作流](process-workflow-boris-route.md) — Claude Code 內建 skill + 兩個自寫 quality gate；3 角色不形式化 handoff
 - [事件符號 / 分類體系決策](event-symbology-classification.md) — NAPSG/CoT/台灣 四軸對照、視覺 affiliation-aware（敵我=2525框/類型=NAPSG象形/severity=halo）、type-first 建立流程、字典擴充模型；#66 編輯器(剩 C2) / #64 硬化(剩 #3→P1-10h) 狀態 + 環境 quirk
 - [TAK Server = 官方 5.7 / Marti REST 走 cert 非 OAuth2](tak-server-marti-cert-not-oauth.md) — 部署官方 tak.gov 5.7-RELEASE-43；Marti :8443 認證 = client cert(mTLS) 非 OAuth2；ROADMAP P2-11 OAuth2 規格錯誤已改正(#138)；TAK REST 一律 aiohttp+cert 沿用 TAK_CLIENT_CERT/KEY

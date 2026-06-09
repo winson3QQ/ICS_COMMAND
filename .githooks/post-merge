@@ -2,7 +2,9 @@
 # git pull 後自動同步 Claude memory（Mac + Windows Git Bash 通用）
 REPO=$(git rev-parse --show-toplevel)
 PY=$(command -v python3 || command -v python)
-PROJECT_DIR=$("$PY" -c "import re,sys; print(re.sub(r'[^a-zA-Z0-9]','-',sys.argv[1]).lstrip('-'))" "$REPO")
+# Claude Code 專案目錄編碼 = 絕對路徑非英數字元全換 '-'，**保留開頭的 '-'**（來自路徑開頭的 '/'）。
+# 舊版誤加 .lstrip('-') → 同步到 `Users-...`（無 dash），但系統 prompt 讀 `-Users-...`（有 dash）→ memory 到不了。
+PROJECT_DIR=$("$PY" -c "import re,sys; print(re.sub(r'[^a-zA-Z0-9]','-',sys.argv[1]))" "$REPO")
 DEST="$HOME/.claude/projects/$PROJECT_DIR/memory"
 mkdir -p "$DEST"
 cp "$REPO/.claude/memory/"* "$DEST/"
