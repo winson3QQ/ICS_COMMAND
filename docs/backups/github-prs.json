@@ -2860,5 +2860,26 @@
     "title": "fix(tak): #161 post-merge review — archived coalesce + 容錯 + 註解 drift",
     "updatedAt": "2026-06-08T09:17:01Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/175"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "## 內容（#177 L1）\n\nICS TAK admin console（#177）的 L1 切片：cert/role provisioning 腳本層。原議題拆 L1（簽 cert + register fingerprint，P2-14/P2-13 前置）/ L2（admin GUI，follow-on）。\n\n### 改動\n- **`issue-tak-certs.sh` §5**：抽 `sign_client_cert()`，從簽 1 張擴為 3 張（cop-subscriber + ics-mission-read + ics-mission-write，皆 fullchain）\n- **`register-tak-fingerprint.sh`（新）**：算 cert SHA-256 fingerprint upsert 進 `UserAuthenticationFile.xml`；預設 dry-run，`--apply` 才落地\n- **`config.py`**：加 `TAK_MARTI_READ/WRITE_CERT/KEY` env（與 :8089 streaming cert 分離）\n- **memory `tak-marti-authz-model`**：收編授權模型實測\n\n### 🔬 端到端實測（活 docker TAK 5.7-RELEASE-43）— 推翻 #176 數前提\n詳 [#176 留言](https://github.com/winson3QQ/ICS_COMMAND/issues/176#issuecomment-4655512062)：\n- **讀取**對任何 truststore（step-ca CA）信任的 cert 開放，**register fingerprint 無作用**（對照組鐵證）\n- **寫入**由 mission-role（`MISSION_WRITE`/owner）把關（api log 鐵證），偽造 `creatorUid` 擋得住\n- `/cot/sa?start=&end=&bbox` 回真 CoT → **#173 resync 路徑端到端證實**\n- docker **不 hot-reload** UserAuthenticationFile，須 restart\n\n### Review\n- **security-review**：零高/中信度漏洞\n- **code-review**：2 項（stale hot-reload 文案 footgun + 死碼 fallback）已修（commit c5396b1）\n\n### 範圍 / 版號\n僅 L1 腳本層；不接進 running app（env 預設空、無消費方）。**無版號變更**（additive scaffolding）。\n\n### 待續（非本 PR）\n- 測試 mission `ICS-RC-WTEST`（實測殘留，需 admin 刪）\n- P2-13：ICS 寫 cert 如何取得 mission owner role\n- #177 L2：admin console GUI\n\nCloses #177 partial（L1）。Refs #176, #173",
+    "closedAt": "2026-06-09T04:18:14Z",
+    "comments": [],
+    "createdAt": "2026-06-09T04:18:00Z",
+    "headRefName": "feat/issue-177-l1-tak-cert-provisioning",
+    "labels": [],
+    "mergedAt": "2026-06-09T04:18:14Z",
+    "number": 178,
+    "state": "MERGED",
+    "title": "feat(tak-pki): #177 L1 — Marti mission-role 服務 cert 簽發 + fingerprint 註冊腳本",
+    "updatedAt": "2026-06-09T04:18:15Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/178"
   }
 ]

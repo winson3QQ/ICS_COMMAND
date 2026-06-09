@@ -2353,7 +2353,7 @@
       "name": ""
     },
     "body": "## 來源\nP2-14 reality check（#176）衍生。討論「ICS+TAK 是同一交付產品 → ICS 應為管理台」時浮現的缺口。\n\n## 缺口\nICS 對 TAK 的 client cert / role **完全沒有管理能力**：\n- cert 靠 `deploy/tak-server/pki/issue-tak-certs.sh` **手動簽**。\n- role 靠**手動編** TAK server 的 `UserAuthenticationFile.xml`（fingerprint→role）。\n- 無簽發/輪替/撤銷/角色指派的 ICS 功能。\n\nP2-14 實測時，連 agent 要改 `UserAuthenticationFile` 都被安全分類器擋（高危 RBAC 寫入）——**正說明這該是個受控的管理功能，而非手動改 XML**。\n\n## 方向（ICS TAK admin console 主題）\nICS 作為交付產品的管理台，應能管理 TAK 端：\n1. **cert 生命週期**：簽發 / 輪替 / 撤銷 TAK client 服務 cert（讀 cert / 寫 cert，見 #176 cert-role 定案）。\n2. **role 指派**：把 cert fingerprint 註冊進 `UserAuthenticationFile.xml` + 指定 role（ROLE_USER + mission role），hot-reload。\n3.（未來）mission 管理、retention 設定 等 server 管理面，與本項同屬「ICS TAK admin console」。\n\n## 關聯 / 邊界\n- **≠ P1-12**（P1-12 = ICS 自身金鑰 FIDO2/HKDF/at-rest；本項 = 管 TAK 的 client cert/role）。\n- **安全敏感**（最高權限）：sysadmin-only + 強制 audit；憑證私鑰存放對齊 P1-12 at-rest 加密邊界。\n- 依賴 P2-14 cert-role 定案（#176）。建議在 P2-14 真正動工、確定兩張服務 cert 需求後接續。\n\n## DoD（初擬）\n- [ ] ICS 能簽發/註冊「讀 cert（ROLE_USER+readonly-subscriber）」「寫 cert（ROLE_USER+owner）」並寫入 TAK auth\n- [ ] role 指派 sysadmin-only + audit\n- [ ] 撤銷/輪替流程 + 私鑰 at-rest 保護\n",
-    "closedAt": null,
+    "closedAt": "2026-06-09T04:18:16Z",
     "comments": [
       {
         "author": {
@@ -2388,9 +2388,9 @@
     "labels": [],
     "milestone": null,
     "number": 177,
-    "state": "OPEN",
+    "state": "CLOSED",
     "title": "ICS TAK cert/role 管理（ICS 作為交付產品的 TAK admin console）",
-    "updatedAt": "2026-06-09T02:41:59Z",
+    "updatedAt": "2026-06-09T04:18:16Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/177"
   }
 ]
