@@ -2881,5 +2881,26 @@
     "title": "feat(tak-pki): #177 L1 — Marti mission-role 服務 cert 簽發 + fingerprint 註冊腳本",
     "updatedAt": "2026-06-09T04:20:09Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/178"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "## 內容（P2-13 A slice）\n\nICS「下達指令」即時下行：`POST /api/tak/downlink` → 建 CoT → 寫 :8089 → server 廣播現場 ATAK。\n\n### 機制（issue #176 reality check 定案）\n官方 Marti **無 REST 廣播端點** → 下行最簡且實測可行路 = **寫 CoT 進 :8089**（與訂閱同一條雙向連線）→ server 廣播給同 group 所有現場端。**不需 mission/owner-role/admin**，只要 truststore-trusted cert。**端到端對活 iTAK 驗過**（production code path：build_command_cot + send_cot + pytak → 現場訂閱端實收）。\n\n### 改動\n- `schemas/tak.py`：`DownlinkCommandIn`（2525 type + callsign + uid 白名單）\n- `services/tak_downlink.py`（新）：`build_command_cot`（XML escape + `<archive/>`）+ `send_cot`（:8089 mTLS 短連線，fail-closed）\n- `routers/tak.py`：endpoint — COMMAND_ROLES（中央 gate）+ **audit-first**（DoD：先稽核再送，送出失敗 503 但稽核已留）+ sink 防護\n\n### 測試 / Review\n- unit 6 + api 7（RBAC 403 ×2 / audit 落地 / audit-first 送出失敗仍稽核 / 422 / send_cot happy+fail-closed）\n- `/security-review` 0 finding；`/code-review` 抓到 stdlib-logger-kwargs bug（INFO 時 TypeError → 成功送出誤報 503）→ 改 structlog + 補回歸測試\n\n### 範圍 / 版號\nA slice = **即時 live broadcast only**。持久/可靠刪除明確標為 P2-14 未解，不假裝做到。前端「下達指令」UI + planned 空心框 = 下個 slice。**無版號變更**（feature 未完整）。\n\nRefs #176, P2-13",
+    "closedAt": "2026-06-09T06:35:14Z",
+    "comments": [],
+    "createdAt": "2026-06-09T06:34:43Z",
+    "headRefName": "feat/issue-176-p2-13a-downlink",
+    "labels": [],
+    "mergedAt": "2026-06-09T06:35:14Z",
+    "number": 179,
+    "state": "MERGED",
+    "title": "feat(tak): P2-13(A) streaming-write 下行指令 — POST /api/tak/downlink",
+    "updatedAt": "2026-06-09T06:35:54Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/179"
   }
 ]
