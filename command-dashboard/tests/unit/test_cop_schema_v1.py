@@ -178,11 +178,13 @@ class TestMigration013Landed:
             }
         assert tables == {"cop_entities", "cop_entity_tracks", "cop_entity_links"}
 
-    def test_events_lat_lon_added(self, tmp_db):
+    def test_events_lat_lon_dropped_by_m022(self, tmp_db):
+        # m013 曾加 events.lat/lon（scenario 5 預埋），但**從未被寫/讀** → P2-27 的 m022
+        # 砍除（事件位置唯一 SoT = cop_entities.lat/lon 事件圖釘）。最終 schema 應無此兩欄。
         with get_conn() as c:
             cols = {r[1] for r in c.execute("PRAGMA table_info(events)")}
-        assert "lat" in cols
-        assert "lon" in cols
+        assert "lat" not in cols
+        assert "lon" not in cols
 
     def test_migration_recorded(self, tmp_db):
         with get_conn() as c:
