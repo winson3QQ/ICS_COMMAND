@@ -73,6 +73,53 @@ def build_command_cot(
     )
 
 
+def build_geometry_cot(
+    *,
+    uid: str,
+    type_: str,
+    vertices: list[list[float]],
+    closed: bool,
+    callsign: str | None = None,
+    remarks: str | None = None,
+    stale_minutes: int = 60,
+    now: datetime | None = None,
+) -> str:
+    """組一個帶 `<shape>` 幾何的 CoT XML 指令（線/區下行，P2-30 / #180）。
+
+    幾何序列化委派 `geometry_service.vertices_to_cot_shape`（對稱 P2-08 入向，round-trippable）。
+    event `<point>` 取頂點形心（ATAK 標籤錨點）。含 `<archive/>`；callsign/remarks 走 XML escape。
+    type_ 慣例：closed polygon → `u-d-f`、line/route → `b-m-r` 或 `u-d-f`（呼叫端定，schema 已驗白名單）。
+    """
+    from services import geometry_service
+
+    # 同一組 cleaned 點供 shape 與形心用（避免 shape 過濾、形心沒過濾的分歧，review #180）。
+    pts = geometry_service.clean_vertices(vertices, closed=closed)
+    shape = geometry_service.vertices_to_cot_shape(vertices, closed=closed)
+    now = now or datetime.now(UTC)
+    t = now.strftime("%Y-%m-%dT%H:%M:%S.000Z")
+    stale = (now + timedelta(minutes=stale_minutes)).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+    # 形心（點落在頂點集中心；純為 event <point> 錨點，不影響 shape 幾何）
+    lat_c = sum(la for la, _ in pts) / len(pts)
+    lon_c = sum(lo for _, lo in pts) / len(pts)
+
+    detail_parts: list[str] = [shape]
+    if callsign:
+        detail_parts.append(f"<contact callsign={quoteattr(callsign)}/>")
+    if remarks:
+        detail_parts.append(f"<remarks>{escape(remarks)}</remarks>")
+    detail_parts.append("<archive/>")
+    detail = "".join(detail_parts)
+
+    return (
+        "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>"
+        f"<event version='2.0' uid={quoteattr(uid)} type={quoteattr(type_)} "
+        f"how='h-g-i-g-o' time='{t}' start='{t}' stale='{stale}'>"
+        f"<point lat='{lat_c}' lon='{lon_c}' hae='0.0' ce='9999999' le='9999999'/>"
+        f"<detail>{detail}</detail>"
+        "</event>"
+    )
+
+
 def _build_config():
     """從 core.config 組 :8089 連線設定（複用訂閱那套 cert，fail-closed）。"""
     if not config.TAK_COT_URL or not config.TAK_CLIENT_CERT or not config.TAK_CLIENT_KEY:
