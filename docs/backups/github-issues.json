@@ -2368,6 +2368,20 @@
         "minimizedReason": "",
         "reactionGroups": [],
         "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/177#issuecomment-4655308581"
+      },
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## L1 端到端實測結果（2026-06-09）— 重新定位 register-fingerprint 的價值\n\nL1 腳本（簽 mission cert + `register-tak-fingerprint.sh`）已對活 TAK 5.7 跑完整實測，詳見 [#176 端到端實測](https://github.com/winson3QQ/ICS_COMMAND/issues/176#issuecomment-4655512062)。對本單的直接意涵：\n\n- ✅ **cert 簽發**（issue-tak-certs.sh 三張 client cert）：確實需要、確實 work。truststore 信任即得 Marti **讀取**權。\n- ❌ **`register-tak-fingerprint.sh`（fingerprint→ROLE_USER）對讀寫 gating 無作用**：\n  - 讀取：任何 CA-trusted cert 都通，註冊與否無差（對照組鐵證）。\n  - 寫入：由 **mission-role（MISSION_WRITE/owner）** 把關，非 server ROLE_USER，非 fingerprint。\n  - server `ROLE_USER`/`ROLE_ADMIN` 只在 server-admin 級操作才有意義。\n- ⚠ fingerprint 格式已對活檔確認 = **冒號分隔大寫**（腳本 `FP_FORMAT=raw` 預設正確）；但 TAK 5.7 docker **不 hot-reload**，須 restart。\n\n### 待你裁示（影響 L1 收尾）\n`register-tak-fingerprint.sh` 三種去向：\n1. **保留**：未來 server-admin 自動化（ROLE_ADMIN cert 簽發/輪替）仍會用到 → 重定位為「L2 admin console 的 CLI 前身」。\n2. **降級存查**：標註「非 Marti 讀寫 gate」，暫不接線。\n3. **移除**：若確定 ICS 不做 server-role 管理。\n\nP2-13 真正要解的是「ICS 寫 cert 如何可靠取得 mission `MISSION_WRITE`/owner 角色」（本次無狀態 REST creator 落到 defaultRole=READONLY，沒拿到 owner）。",
+        "createdAt": "2026-06-09T02:41:59Z",
+        "id": "IC_kwDOSnBjpc8AAAABFX2Czw",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/177#issuecomment-4655514319"
       }
     ],
     "createdAt": "2026-06-09T01:21:28Z",
@@ -2376,7 +2390,7 @@
     "number": 177,
     "state": "OPEN",
     "title": "ICS TAK cert/role 管理（ICS 作為交付產品的 TAK admin console）",
-    "updatedAt": "2026-06-09T01:58:50Z",
+    "updatedAt": "2026-06-09T02:41:59Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/177"
   }
 ]
