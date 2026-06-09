@@ -87,7 +87,9 @@
 
 **目標**：部署官方 TAK Server，完整接通 TAK 雙向介面——上行（CoT 位置/事件 + GeoChat + MEDEVAC + shape 幾何）流入 COP，下行（Mission API 指令下達）推送現場 ATAK；充分利用 Marti REST API（在線人員、Mission、DataSync、EXCHECK、影像串流）；地圖渲染採 MIL-STD-2525 符號（含 planned/actual 指令圖層）。
 
-> **開發策略（主軸 + 降階）**：TAK 整合怎麼沿 TAK 軸開發、能力↔API↔ICS 對應矩陣、**TAK Server 掛掉時的三階降階模型**、連線/信心兩軸狀態表示（來源 chips）→ [`docs/roadmap/tak-integration-strategy.md`](roadmap/tak-integration-strategy.md)。情境面「為何要這功能」見 [`docs/reference/tak-use-cases-config.md`](reference/tak-use-cases-config.md)（19 情境深挖）。
+> **開發策略（主軸 + 降階）**：TAK 整合怎麼沿 TAK 軸開發、能力↔API↔ICS 對應矩陣、**TAK Server 掛掉時的三階降階模型**、連線/信心兩軸狀態表示（來源 chips）→ [`docs/roadmap/tak-integration-strategy.md`](roadmap/tak-integration-strategy.md)。情境面「為何要這功能」見 [`docs/reference/tak-use-cases-config.md`](reference/tak-use-cases-config.md)（19 情境深挖，按 OODA 循環組織）。
+
+> **[2026-06-09 漸進重構]** 本 Phase 自此依上述兩份（19 情境 use-cases + TAK 整合策略）**漸進重構**——注入既有 ROADMAP 缺的維度，**不拆 P2-01~25 層結構（歷史留痕）**：① 操作面 grounding ＝上方連結；② 情境檢討衍生候選 → 見〈[情境檢討衍生候選（2026-06-09）](#情境檢討衍生候選2026-06-09)〉節；③ 降階紀律 → 入 Definition of Done；④ 活躍 code（#173/#176/#177）→ P2-14 / P2-26 連結。**檢討花的力氣一律留痕，不蒸發**（即使 later/不做也記）。
 
 > **[Reality check 2026-06-04 — [#98](https://github.com/winson3QQ/ICS_COMMAND/issues/98)]**：盤 main `0db382f` 實際 code。**TAK 上行鏈路（P2-01 部署 / P2-02 `tak_service.py` CoT XML 解析 + 8089/9000 訂閱 / P2-08 XXE 測試）全 greenfield、零實作、XML lib 未選**；但 **P2-04 的下游落地層已被 P1 完整建好且刻意對齊 CoT**——`CoPEntity` v1 凍結（CoT 欄位對齊 + `source="tak"` 預留，P1-03/#15）、`cop_entity_repo`（version_clock CAS + stale 過濾 + TAK 風 soft-delete，P1-15/#29）；`routers/tak.py` schema + RBAC 已掛但 handler 是 stub、`cop_service.normalize_cot` 是 `NotImplementedError`。**關鍵路徑＝ P2-01+P2-02（重活、無 C0 繼承）→ P2-03 wire + P2-04 normalize（輕，下游全建）**。P2-05 可並行（設計 crosswalk §6/§8 已 LOCKED、管線預建；milsymbol 未 vendored / 2525 框零 / `POLY-ROUTE_TYPES` 仍寫死 hex；**疊加非全換**；MGRS #56 完全獨立可先做）。**動工前 3 個 drift（詳 #98）**：① **P2-06 指向錯層** — `snapshot_repo` 是 unit-KPI 聚合非 per-entity COP 時間軸，回放路徑（`cop_entity_tracks`／新表）須先重新確認；② **step-ca 憑證現 24h 且 federation 缺 peer cert** — 90 天 patch 與 client/peer cert profile + TAK Java keystore 信任 SOP 須提早於 C3-B；③ **CSP wasm** — milsymbol 若走 wasm fallback 需補 `wasm-unsafe-eval`（P1-10h 刻意未預放）。供應鏈現況乾淨；三相依 license 已圈定，lock 前逐一驗來源。
 
@@ -160,6 +162,22 @@
 5. **多媒體原體邊界**：照片/串流只保留 URI reference，ICS Command **不 proxy 原體**。
 6. **DataSync URI 不 follow**：`datasync_service` URI 為純 string，**永不 HTTP fetch**（防 SSRF，OWASP A10）。
 7. **合成實體清除**：演習 archive 時所有 `simulated=True` 的 cop_entities 整批清除，**不污染下一場或實戰模式**。
+
+### 情境檢討衍生候選（2026-06-09）
+
+> 來源：19 情境深挖（[`tak-use-cases-config.md`](reference/tak-use-cases-config.md)）+ TAK 整合策略（[`tak-integration-strategy.md`](roadmap/tak-integration-strategy.md) §6）累積出的跨情境候選。**此為留痕 backlog**——花大力氣檢討的東西，即使最終 later/不做也記在此，不蒸發。**狀態待使用者圈定**（進＝升 numbered item / later / 不做）；圈定後本表標結果 + 連結對應 item。狀態 marker 沿用本文件全域約定（無 marker = 待圈定）。
+
+| 代號 | 候選 | 服務哪些情境 | 與既有 ROADMAP 關係 | 依賴 | 狀態 |
+|---|---|---|---|---|---|
+| **SC1** | **天氣 / 環境 feed**（雨量 / 風 / 風向 / 河川水位）| 颱風水災 · 野火（60% 受困死亡集中 3% 火災天氣日）· HazMat（plume 完全靠風）· 航空 | **全新**——非 TAK，是 COP 第 N 個外部來源，走 `cop_service` normalize（同 TAK/WaveInk 多源架構）| 不依賴 TAK（**降階獨立**）| 待圈定（檢討頭號候選）|
+| **SC2** | **sensor source 模式**（CBRN / SDR / UGS / CCTV → COP）| HazMat（CBRN 偵測器）· 設施巡邏（CCTV/UGS/雷達）· SDR/RF | **半新**——泛化 P3 WaveInk 的 sensor ingest；對應 TAK `/Marti/api/datafeeds` + `/inputs` | `cop_service` normalize（與 WaveInk 共用接縫）| 待圈定 |
+| **SC3** | **主動告警 / 決策觸發**（geofence 後端 + 門檻告警）| 設施巡邏 · 指揮決策（OODA Decide「何時」）· HazMat 門檻 | **全新後端**——ICS 自建（非 TAK）；現多被動視覺（severity pulse / stale 灰）| SC2（感測器進來門檻才有料）| 待圈定（排 SC2 後）|
+| **SC4** | **連線 / 降階可視化收斂**（來源 chips、退役 P2-23 獨立 `cd-tak` 燈、連線 vs 信心兩軸分離）| 全情境（降階）| **改**——併 P2-12 面板 + 重構 P2-23；修「`cl-server`+`cd-tak` 兩 dot 無 legend」破口 | P2-12 | 待圈定（低風險、修既有破口）|
+| **SC5** | **威脅圖層**（`threat_state` 動態區 / 武裝掩護已清走廊 / 敵我 + 老化威脅情報）| RTF · 多機構 | **新**——擴 P1-16 zone（加 threat_state 屬性）+ P2-08 | P1-16 / P2-08 | 待圈定（單一高威脅情境、價值較窄 → 傾向 later）|
+| **SC6** | **降階 DoD 紀律**（每 TAK item 宣告 Tier + fallback + `TAK_ENABLED=false`/斷線負向測試）| 全 TAK 能力 | **改**——加進 Phase 2 DoD（本批 S3 已落地，見下方 DoD「降階」段）| — | ✅ 本批入 DoD |
+| **SC7** | **安全 backlog 重排優先級**（RTF/多機構給「人命級」論據：§8.3 COP poisoning / 可靠刪除 #161 / 權威 resync #173·P2-14 / federation 治理 #8 / 跨機構分級 TAK-D）| RTF · 多機構 · 共享 COP | **改**——既有 RT-*/TAK-* 重新排序，非新項 | 既有 backlog | 待檢視（#161/P2-14 已因 dogfood 提前解鎖） |
+
+> **原則**（使用者拍板）：**統一檢視非全做**——多數候選不一定要做（計劃群誠實結論同調：多數計劃分析本不在 COP 工具範疇）。圈定時逐一評估「服務情境廣度 × 是否撞既有缺口 × 降階獨立性」。
 
 ### Definition of Done
 
