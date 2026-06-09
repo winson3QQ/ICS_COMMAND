@@ -21,7 +21,10 @@ metadata:
 
 ## How to apply
 - **P2-14 resync（讀）**：只需一張 step-ca 簽的 CA-trusted cert，`/cot/sa` 即可用。**毋須** register fingerprint。
-- **P2-13 downlink（寫）**：owner role 對 stateless REST 取不到 → 3 條路（讀/寫 cert 分流對 REST 寫入**不構成安全邊界**，寫權=truststore+defaultRole 與 cert 身分無關）：(1) **寬鬆 mission**——ICS（與任何受信 cert）可自由增刪，封閉信任域可接受，限身分需 mission `password`(未測)/非 `__ANON__` group；(2) **admin cert**——bypass mission-role，但回到「ICS 需 ROLE_ADMIN」；(3) 持久 streaming 訂閱持 owner（REST poll 複雜）。**P2-13 動工第一決策＝選路 + 寫入身分控制機制**。
+- **P2-13 downlink（下達指令）— 機制實測定案**：官方 Marti **無 REST 廣播端點**（`injectors/cot/uid` 是注入 detail 非廣播）。兩條路：
+  - **(A) :8089 雙向 streaming 廣播** ✅ 實測：ICS 寫 CoT 到 :8089（`tak_service` 現有連線）→ server 廣播給同 group(__ANON__) 所有現場端（活 iTAK 實收）；`t-x-d-d` 刪除亦廣播。**不需 mission/owner-role/admin，只要 truststore-trusted cert**。= 最簡下行路（同 ATAK 送 CoT）。限制：live、無持久/可靠刪除（reconnect 不重播）。現有 :8089 連線唯讀，P2-13=加寫能力（pytak `writer` 重用待驗，socket 層已證雙向）。
+  - **(B) Mission contents**（持久/權威指令）：survives reconnect + `changes` 可靠刪除，但 owner-role REST 取不到 → 需寬鬆 mission（任何受信 cert 可寫，無身分邊界）或 admin。
+  - → **即時指令走 (A)，持久/權威指令走 (B)**。指令=標準 CoT + COP `source='command'`/`planned=true`。**open：planned→actual ack 回流機制未定**。讀/寫 cert 分流對寫入**無安全價值**（寫權=truststore，與 cert 身分無關）。
 - `register-tak-fingerprint.sh`（server ROLE_USER/ADMIN）**非** Marti 讀寫 gate，只在 server-admin 級操作有意義；保留為 L2 admin console CLI 前身，勿當讀寫前置。
 - 改 `UserAuthenticationFile` 後**務必 restart** TAK（docker），別等 hot-reload。
 - 相關：[[tak-server-marti-cert-not-oauth]]、[[tak-streaming-archive-stale-vs-mission]]、[[exercise-scope-server-authoritative]]。
