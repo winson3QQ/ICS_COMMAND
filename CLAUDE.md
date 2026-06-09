@@ -13,7 +13,7 @@
 
 然後依序看（自動載入的不再點名）：
 1. **工作流**：[`docs/PROCESS.md`](docs/PROCESS.md) — 一個 task 怎麼走（10 步 lifecycle、要打哪個 slash command）
-2. **路線圖**：[`docs/ROADMAP.md`](docs/ROADMAP.md) — 做什麼（38 items，✅/⏳/🚧 marker）
+2. **路線圖**：[`docs/ROADMAP.md`](docs/ROADMAP.md) — 做什麼（✅/⏳/🚧 marker）。**開頭〈🧭 整體概念導覽 + 文件地圖〉先讀**：拿到全局架構 + OODA 循環對照 + 每件事 SoT 在哪 + **TAK 工作必讀**路由（strategy / threat_model §8 / use-cases）。**動 TAK 工作別漏這段。**
 3. **架構決策**：[`.claude/memory/`](.claude/memory/)（已自動載入 index）— 為何這樣做
 
 本檔（CLAUDE.md）是 **policy SoT**（紅線、語言、git 規則、版號規則）。`docs/PROCESS.md` 是 **process SoT**（怎麼做）。`docs/ROADMAP.md` 是 **work SoT**（做什麼）。三者各司其職。
