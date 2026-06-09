@@ -52,7 +52,7 @@
 | **動作/應變** | 危險物質 (HazMat / CBRNE) 洩漏 | ✅ 本批 |
 | **動作/應變** | 關鍵設施巡邏監控（預防性應變）| ✅ 本批 |
 | **動作/應變** | 重大傷亡後送 (MCI/MEDEVAC，跨災害共通下游·壓軸) | ✅ 本批 |
-| **高威脅/多組織/訓練** | RTF 武裝掩護搜救 | 待挖（有對話內容） |
+| **高威脅/多組織/訓練** | RTF 武裝掩護搜救（暖區/敵我/OPSEC）| ✅ 本批 |
 | **高威脅/多組織/訓練** | 多機構聯合災害指揮 | 待挖 |
 
 > 註：**無人機/空中感知**為本輪新增的獨立感知情境（原先誤併入野火/巡邏）。
@@ -645,7 +645,69 @@ SDR（軟體定義無線電）感測器——或 **WaveInk**（你的 SDR 多頻
 ---
 
 # 群：高威脅 / 多組織 / 訓練　（待深挖）
-## RTF 武裝掩護搜救　_待深挖（已有對話內容：integrity=人命、敵我/IED/暖冷區、拉高 §8.3/#161/P2-14 優先級）_
+## RTF 武裝掩護搜救（Rescue Task Force / CSAR）
+
+> **重構框架（使用者 2026-06-09）**：RTF 對 ICS_Command 最貼切的視角＝**民間協助軍警勤務**——民間能量（消防/EMS/民間救難隊/民防）在軍警武力掩護下，做**搜索**＋**傷患後送**。
+> **所以本情境不從零推導**：搜索＝**繼承 [都市地震搜救 SAR] 節**、後送＝**繼承 [重大傷亡後送 MCI/MEDEVAC] 節**；RTF＝**在 SAR＋MCI 之上疊一層「威脅因素」**。重點全在**威脅因素新增了什麼**（見下方專節）——這層讓「COP 完整性＝人命」推到極致，也**正是 TAK 設計初衷**（AFRL 為特種部隊防友軍誤擊而生），並直接拉高 threat_model §8.3 / 可靠刪除(#161) / 權威 resync(P2-14) 優先級。
+
+### 實際案例（佐證，非杜撰 — 附來源）
+| # | 案例 | 性質 | 來源 |
+|---|---|---|---|
+| ✅ A | **RTF（Rescue Task Force）**：fire/EMS 在**暖區**於執法**武力掩護(force protection)** 下快速處置/後送傷患到 CCP；**Arlington County 消防局(維州)2009 首創**；把軍用 **TCCC** 改編為民用 **TECC** | RTF **既有實務（實案：Arlington 2009）** | [Domestic Preparedness RTF](https://www.domesticpreparedness.com/articles/active-shooter-incidents-the-rescue-task-force-concept/)、[EMRA Warm Zone](https://www.emra.org/emresident/article/rescue-task-force) |
+| ✅ B | **EMS 三區(Hot/Warm/Cold) + Hartford Consensus(THREAT) + NFPA 3000(ASHER, 2018)**：熱區=活躍威脅、暖區=執法已清/隔離威脅·風險可控、冷區=安全；標準化 LE/fire/EMS 整合為傷患回應隊 | 暖冷區/多單位整合**既有標準** | [EMS Zones StatPearls](https://www.ncbi.nlm.nih.gov/books/NBK436017/)、[Hartford Consensus NAR](https://www.narescue.com/nar-blog/what-was-the-hartford-consensus.html) |
+| ✅ C | **CSAR / 人員救援(PR)**：5 個 PR 任務(report/locate/support/recover/reintegrate)於**敵對/競爭(A2-AD)環境**；MQ-9 Reaper 27h 持久 ISR 在救援點上空盤旋中繼即時資料；用 **BFT** | 軍用武裝救援**既有 doctrine + 技術** | [CSAR Wikipedia](https://en.wikipedia.org/wiki/Combat_search_and_rescue)、[CSAR 技術 Defense Advancement](https://www.defenseadvancement.com/feature/combat-search-and-rescue-csar/) |
+| ✅ D | **TAK 起源**＝AFRL 為**特種部隊在戰區**設計（BFT 防友軍誤擊、force protection 是其存在原因）| TAK **本就為敵對環境而生**（設計意圖） | [Wikipedia: ATAK](https://en.wikipedia.org/wiki/Android_Team_Awareness_Kit) |
+
+> **❗誠實邊界（紅線）**：**TAK 在「民間 RTF 主動射手事件」或「CSAR 任務」的具體公開部署案例，我未查到**（active shooter 搜尋明確無 ATAK 文件）。但 **TAK 本就是為敵對/競爭環境設計（BFT 防誤擊、force protection ＝其存在原因，案例 D）**，故下文四層用法是**從設計意圖 + RTF/CSAR 既有流程（A/B/C）推論**，標 ❓——**不冒充已有 TAK RTF/CSAR 實戰文件**。RTF/CSAR **流程本身是實務**。
+
+### 作業案例（實況）
+**民間協助軍警勤務**：傷患/失蹤者在**有威脅**的環境（主動射手、武裝衝突、grey-zone、敵後）——民間救援能量**不能像平時 SAR 直接進**，須**先有軍警武力掩護**。民用 RTF：執法清/隔離威脅形成**暖區** → fire/EMS 在掩護下進暖區做**威脅導向處置(TECC)** + 後送 CCP（案例 A/B）。軍用 CSAR：敵對/denied 環境**回收孤立人員**，武裝護航 + ISR（案例 C）。台灣脈絡（推論）：民防/後備/民間救難協會在軍警掩護下協助搜索與後送。
+
+**底子＝前面兩節，不重複**：
+- **搜索** → 作業邏輯同 **[都市地震搜救（SAR）]**（散開搜、PLI、就地標記、累積成圖）。
+- **傷患後送** → 同 **[重大傷亡後送（MCI/MEDEVAC）]**（檢傷、9-line、CCP→後送）。
+- **本節只展開：威脅因素疊上去後，多了什麼**（下一專節）。
+
+### 痛點 → 需求邏輯
+SAR/MCI 的痛點照舊；**威脅因素額外要求**：① **敵我識別**（防友軍誤擊）；② **熱/暖/冷區邊界即時且權威**（走錯區＝死）；③ **威脅(射手/IED)位置上圖**；④ **與武裝掩護單位的動作同步**（民間跟著「已清走廊」走）；⑤ **OPSEC**：位置/標記不可被敵截收或污染。效率關鍵 = **在 SAR＋MCI 基礎上，疊一張敵我分明、區域狀態權威、加密防截收的威脅圖**。
+
+### 🆕 威脅因素新增了什麼（對 ICS 的新需求 — 本節重點）
+> 這是「一定有新東西進來」的清單：相對 SAR/MCI（假設環境友善、全員友軍），威脅因素帶來 ICS **前面情境沒處理過**的東西。
+
+| 新東西 | 為什麼是新的（SAR/MCI 沒有）| ICS 現況 / 對接 |
+|---|---|---|
+| **① 敵我/不明實體進 COP** | SAR/MCI 假設**全員友軍**；RTF 要顯示**敵/威脅/不明**實體（含**會老化的威脅情報**，同 Recon 節）| P2-05 2525 affiliation 渲染 ✅、P2-25 敵我篩選 ✅；但「威脅標記＝低信心會老化情報」的可信度標註仍待（同 Recon）|
+| **② 帶「威脅狀態」的動態區（熱/暖/冷）** | SAR/MCI 的 zone 是**靜態幾何**（淹水/分區）；RTF 的區有**可變威脅狀態**（熱→暖隨執法清空），且**權威+freshness 是生死** | **新需求**：cop_entity zone 加「threat_state」屬性 + 權威更新 + 過時告警；P1-16 zone 現無此語意 → 候選新項 |
+| **③ 武裝掩護的「已清走廊/同步」** | SAR/MCI 民間自由行動；RTF 民間移動**受軍警清空進度節制**（gated）| **新需求**：cleared-corridor / 護航位置連動；現無 |
+| **④ OPSEC / 反 COP 污染** | 災害無敵手；RTF **有敵**會截收位置、注入假態勢 | mTLS ✅；**§8.3 威脅模型 + 來源信任 + 異常偵測**升優先（COP poisoning）|
+| **⑤ 民─軍/警 COP 互通（含分級）** | SAR/MCI 多為單一民間體系；RTF 要與軍警 TAK **federation + 分級可見** | P2-15 Federation、**TAK-D visible_to/access 分級**（缺口）|
+| **⑥ 完整性/刪除/resync 升為「保命」** | SAR/MCI 是效率問題；RTF 是**性命**問題 | #161 可靠刪除 / P2-14 權威 resync **從 nice-to-have 升保命** |
+
+### TAK/ICS 怎麼用（四層 + 為什麼）
+| 層 | 怎麼用 | 為什麼 |
+|---|---|---|
+| ① Client (ATAK/iTAK) | RTF/LE/軍**自動廣播 PLI** + **敵我屬性**；標**熱/暖/冷區**、**威脅(射手/IED)**、傷患、CCP；CSAR 標孤立人員位置 + 護航/ISR track（設計意圖契合，具體 RTF 按鈕 ❓）| 自動 PLI + 敵我框＝**防友軍誤擊**（TAK 第一存在理由，案例 D）；就地標暖區邊界比口述精確（走錯＝死）|
+| ② 協定/資料 | 友軍＝`a-f-*`、敵/威脅＝`a-h-*`；熱/暖/冷區＝`u-d-f`(面)；**2525 敵我色(藍友/紅敵)**＝防誤擊核心；後送＝9-line | 2525 敵我色讓指揮**一眼分自己人**（RTF/CSAR 是生死，呼應 BFT 節）；面表達區域威脅狀態 |
+| ③ TAK Server | 多單位(LE/fire/EMS/軍)用 **Groups** 分流 + **Federation** 跨機關；**熱/暖/冷區走 Mission/DataSync** 持久權威；**mTLS 加密＝OPSEC 命脈**（敵會截收）；ISR 影像走 Video Feed Manager | Groups/Federation 解多單位整合(Hartford Consensus 痛點)；mTLS 防敵截收；區域狀態是**持久權威**→Mission |
+| ④ ICS Dashboard | COP 渲染 + **2525 敵我**（P2-05）；**熱/暖/冷區**走 P1-16/P2-08；威脅/傷患/CCP 標記；**敵我篩選器(P2-25)** 聚焦；MEDEVAC(P2-09)；**🔴 完整性/OPSEC 把 §8.3 / 可靠刪除#161 / 權威 resync P2-14 推到最高優先**；軌跡→AAR | P2-25 敵我篩選直接服務本情境；**敵對環境下「過時/污染/刪不掉的標記」不是低效是致命**→ #161/P2-14 在此非 nice-to-have 是保命 |
+
+### 效率提升
+- **BFT 敵我識別防友軍誤擊**（TAK 第一存在理由，案例 D）——RTF/CSAR 最大價值。
+- **熱/暖/冷區權威共享** → RTF 知道哪裡安全進、LE/fire/EMS/軍同圖（解 Hartford Consensus 整合痛點）。
+- **威脅 + 傷患標記** → 掩護下協調處置與後送（9-line）。
+- **多單位同 COP**（Groups/Federation）→ 解 RTF 核心的跨單位整合難題。
+- **加密 COP** → 敵對環境維持態勢而不洩位置。
+
+### 注意 / 失效模式（**本情境把完整性/安全推到極致**）
+- **🔴 COP 完整性＝人命，blast radius 最大**：誤標暖區（實為熱區）＝ RTF 走進槍線；敵我標錯＝**友軍誤擊**。**過 stale 的「已清」標記在此致命**——這就是**可靠刪除(#161) + freshness 對本情境是保命非便利**。
+- **🔴 OPSEC / 敵截收 + COP 污染**：敵對環境位置廣播會被截收 → **mTLS 必須**；敵可注入假威脅/假位置(**COP poisoning**) 誤導 → 直接拉高 **threat_model §8.3**。
+- **🔴 拉高 #161 / P2-14 優先級**：敵對環境下「刪不掉的標記」或「重連漏掉更新後的威脅圖(漏 resync)」＝致命，非低效 → **P2-14 權威 resync + 可靠刪除在本情境從 nice-to-have 升為保命**。
+- **多單位互通難**：LE/fire/EMS/軍可能不同系統/群組 → Federation + 共同圖是難點（Hartford Consensus 本就是解人為整合）。
+- **通訊干擾/denied**：軍用 A2/AD 干擾、都市遮蔽 → 需抗干擾/mesh/SATCOM。
+- **TAK ❓ 未驗**：民間 RTF/CSAR 的 TAK 具體部署本文未查到（設計意圖強、實戰文件缺）→ 動工前對 TECC/CSAR SOP 與實機驗證。
+- **節奏**：主動射手是分鐘級，COP 不可拖慢戰術節奏。
+
+---
 ## 多機構聯合災害指揮　_待深挖（federation/groups 為核心 server 設定）_
 
 > 註：**桌上演習（TTX）+ AAR** 已上移至「計劃驗證」群（循環順序：計劃 → TTX 驗證 → 行動）。
