@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # register-tak-fingerprint.sh — 把 client cert 的 SHA-256 fingerprint 註冊進 TAK Server
-# 的 UserAuthenticationFile.xml（File backend，hot-reload 免 restart）。
+# 的 UserAuthenticationFile.xml（File backend；docker/Mac 不 hot-reload，寫後須 restart TAK，見下 ⚠）。
 #
 # 背景（#177 L1 / cert-role 定案 #176）：
 #   ICS 對 TAK 的 server role 指派原本靠**手動編** UserAuthenticationFile.xml（高危 RBAC 寫入）。
@@ -26,7 +26,7 @@
 #   register-tak-fingerprint.sh ../../step-ca/certs/ics-mission-write/client.crt ics-mission-write __ANON__
 #
 # 目標檔：$TAK_AUTH_FILE（預設 deploy/tak-server/release/tak/UserAuthenticationFile.xml；
-#   release/ 是 bind-mount 進容器 /opt/tak 的同一份，改 host 檔即改容器檔，TAK 監看 hot-reload）。
+#   release/ 是 bind-mount 進容器 /opt/tak 的同一份，改 host 檔即改容器檔（套用須 restart TAK）。
 #
 # ✅ 格式已對活 TAK 5.7-RELEASE-43 確認（2026-06-09，比對 admin 既有 entry）：
 #   (a) fingerprint = **冒號分隔大寫**（openssl -fingerprint -sha256 原樣）→ FP_FORMAT=raw（預設正確）
@@ -82,7 +82,10 @@ echo ""
 # ── 既有檔比對（給你對格式）──────────────────────────────────────────────────
 if [[ -f "$TAK_AUTH_FILE" ]]; then
   echo "── 既有 <User …fingerprint…> entry（供格式比對）──"
-  grep -o '<User[^>]*fingerprint="[^"]*"[^>]*>' "$TAK_AUTH_FILE" | head -5 || echo "  （無既有 fingerprint entry）"
+  # 用變數承接 + `|| true`：set -e + pipefail 下，grep 無匹配(exit 1)會經 pipefail 殺掉腳本；
+  # `|| true` 吸收後 existing_users 為空，下方 else 分支才印得出「無既有」(原 `grep|head||echo` 是死碼)。
+  existing_users="$(grep -o '<User[^>]*fingerprint="[^"]*"[^>]*>' "$TAK_AUTH_FILE" | head -5 || true)"
+  if [[ -n "$existing_users" ]]; then echo "$existing_users"; else echo "  （無既有 fingerprint entry）"; fi
   echo ""
   if grep -q "fingerprint=\"${FP}\"" "$TAK_AUTH_FILE"; then
     echo "✓ 此 fingerprint 已存在於檔內，無需重複註冊（冪等）。"; exit 0
@@ -102,12 +105,12 @@ fi
 [[ -f "$TAK_AUTH_FILE" ]] || { echo "✗ 目標檔不存在，無法 --apply：$TAK_AUTH_FILE" >&2; exit 1; }
 BAK="$TAK_AUTH_FILE.bak.$(openssl rand -hex 4)"
 cp "$TAK_AUTH_FILE" "$BAK"
-# 在閉合 tag 前插入新 <User>（保留縮排）。TAK File backend 監看此檔，存檔即 hot-reload。
+# 在閉合 tag 前插入新 <User>（保留縮排）。docker/Mac 不 hot-reload → 寫完務必 restart TAK。
 if grep -q '</UserAuthenticationFile>' "$TAK_AUTH_FILE"; then
   awk -v ins="  $USER_XML" '/<\/UserAuthenticationFile>/{print ins} {print}' "$BAK" > "$TAK_AUTH_FILE"
 else
   echo "✗ 目標檔無 </UserAuthenticationFile> 閉合 tag，結構非預期，中止（已備份 $BAK）" >&2
   exit 1
 fi
-echo "✓ 已註冊（備份：$BAK）。TAK File backend 應於數秒內 hot-reload。"
-echo "  驗證：grep '$IDENTIFIER' '$TAK_AUTH_FILE'"
+echo "✓ 已註冊（備份：$BAK）。⚠ docker/Mac 不 hot-reload → 須重啟 TAK 才生效：docker restart takserver"
+echo "  驗證：grep '$IDENTIFIER' '$TAK_AUTH_FILE'（重啟後）"
