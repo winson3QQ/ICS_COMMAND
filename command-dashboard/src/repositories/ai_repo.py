@@ -21,7 +21,7 @@ def create_recommendation(exercise_id: int | None, recommendation_type: str,
 
 
 def update_outcome(recommendation_id: int, accepted: bool,
-                   related_decision_id: int | None = None,
+                   related_decision_id: str | None = None,  # P2-31：decisions.id 為 TEXT(uuid)
                    outcome_notes: str | None = None) -> bool:
     with get_conn() as conn:
         cur = conn.execute(

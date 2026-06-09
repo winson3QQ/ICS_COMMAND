@@ -974,6 +974,190 @@ def _m022_events_drop_dead_lat_lon_down(conn: sqlite3.Connection) -> None:
     _add_column_if_missing(conn, "events", "lon", "REAL")
 
 
+def _rebuild_with_fk(
+    conn: sqlite3.Connection,
+    table: str,
+    new_table_ddl: str,
+    scrub_sql: tuple[str, ...] = (),
+) -> None:
+    """通用 12-step FK rebuild（`foreign_keys=OFF`），泛化自 `_rebuild_cop_entities`。
+
+    SQLite **FK / CHECK 不可 ALTER**，要對既有表加/改 FK 只能整表重建。`get_conn` 設
+    `PRAGMA foreign_keys=ON`，naive `DROP TABLE` 會觸發 cascade / dangling 檢查，故走官方
+    12-step 的 `foreign_keys=OFF` 版（與 `_rebuild_cop_entities` 同套，後者因獨有 source CHECK
+    + child cascade 註記留為專用函式、不動）。
+
+    參數：
+      - `new_table_ddl`：建 `{table}_new` 的完整 CREATE（含**新 FK**，self-ref 與 child→parent
+        一律寫**最終表名**，DROP 舊表後 RENAME `_new`→最終名即對上，對齊 `_rebuild_cop_entities`）。
+      - `scrub_sql`：INSERT 後、DROP 舊表前在 `{table}_new` 上跑的 dangling 清洗（把指向已不存在
+        parent 的 FK 欄位 null 化，使 `foreign_keys=ON` 後不留 orphan；P2-31 DoD）。
+
+    複製用**動態舊欄位清單**（漏欄即 SQL 報錯、不靜默丟資料）、動態重建所有 user index。
+    `foreign_keys` PRAGMA 只能在無 transaction 時設 → 先 commit 結束 init_db 大 transaction、
+    切 autocommit、自包 BEGIN/COMMIT 保原子性（失敗 ROLLBACK），結束切回原 isolation。
+    """
+    conn.commit()  # 結束 init_db 大 transaction，讓 PRAGMA foreign_keys 可設
+    prev_isolation = conn.isolation_level
+    conn.isolation_level = None  # autocommit：PRAGMA foreign_keys 才生效
+    began = False
+    try:
+        conn.execute("PRAGMA foreign_keys=OFF")
+        conn.execute("BEGIN")
+        began = True
+        old_cols = [r[1] for r in conn.execute(f"PRAGMA table_info({table})")]  # nosec B608 — table 為常數
+        col_csv = ", ".join(old_cols)
+        idx_sqls = [
+            r[0]
+            for r in conn.execute(
+                "SELECT sql FROM sqlite_master WHERE type='index' AND tbl_name=? AND sql IS NOT NULL",
+                (table,),
+            )
+        ]
+        conn.execute(new_table_ddl)  # CREATE {table}_new（含新 FK）
+        conn.execute(f"INSERT INTO {table}_new ({col_csv}) SELECT {col_csv} FROM {table}")  # nosec B608
+        for sql in scrub_sql:  # dangling FK 欄位 null 化（FK on 後不留 orphan）
+            conn.execute(sql)
+        conn.execute(f"DROP TABLE {table}")  # nosec B608 — foreign_keys=OFF → 不 cascade
+        conn.execute(f"ALTER TABLE {table}_new RENAME TO {table}")  # nosec B608 — FK 對上最終名
+        for idx_sql in idx_sqls:  # 動態重建所有原 index，免手列漏建
+            conn.execute(idx_sql)
+        conn.execute("COMMIT")
+    except Exception:
+        if began:  # BEGIN 前出錯時無 active transaction，ROLLBACK 會反拋蓋掉原因
+            conn.execute("ROLLBACK")
+        raise
+    finally:
+        conn.execute("PRAGMA foreign_keys=ON")
+        conn.isolation_level = prev_isolation
+
+
+# decisions 活表欄位 superset = base CREATE（_create_tables）+ _m002 補的 made_by / outcome_notes。
+# rebuild 動態複製舊欄位，_new 須為 superset；漏列任一欄則複製時報錯（不靜默丟）。
+_DECISIONS_NEW_DDL = """
+    CREATE TABLE decisions_new (
+        id                 TEXT PRIMARY KEY,
+        primary_event_id   TEXT REFERENCES events(id) ON DELETE SET NULL,
+        decision_seq       INTEGER DEFAULT 1,
+        parent_decision_id TEXT REFERENCES decisions(id) ON DELETE SET NULL,
+        superseded_by      TEXT REFERENCES decisions(id) ON DELETE SET NULL,
+        decision_type      TEXT NOT NULL,
+        severity           TEXT NOT NULL,
+        decision_title     TEXT NOT NULL,
+        impact_description TEXT NOT NULL,
+        suggested_action_a TEXT NOT NULL,
+        suggested_action_b TEXT,
+        status             TEXT DEFAULT 'pending',
+        decided_by         TEXT,
+        decided_at         TEXT,
+        execution_note     TEXT,
+        created_by         TEXT NOT NULL,
+        created_at         TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+        exercise_id        INTEGER REFERENCES exercises(id),
+        decision_type_v2   TEXT,
+        rationale          TEXT,
+        affected_units     TEXT,
+        outcome_at         TEXT,
+        outcome_notes_ext  TEXT,
+        made_by            TEXT,
+        outcome_notes      TEXT
+    )
+"""
+
+
+def _m023_decisions_fk(conn: sqlite3.Connection) -> None:
+    """P2-31（[#184](https://github.com/winson3QQ/ICS_COMMAND/issues/184)）：decisions 三欄補 FK。
+
+    `primary_event_id → events(id)`、自我參照 `parent_decision_id` / `superseded_by →
+    decisions(id)`，**全 `ON DELETE SET NULL`**：問責鏈不隨 event / 上游決策硬刪而消失；且
+    `delete_exercise` 白名單刪除順序為 events→…→decisions（[exercise_repo.py]），events 先於
+    decisions 刪 → 非 SET NULL 會炸 FK，故 SET NULL 是此順序下的**硬需求**而非偏好。
+
+    rebuild 前 scrub dangling（指向已不存在 event / decision，含空字串）→ 先 null 化，
+    `foreign_keys=ON` 後不留 orphan。idempotent：表已含 events FK 則 skip（含 fresh DB 重建後）。
+    """
+    existing = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='decisions'"
+    ).fetchone()
+    if existing and "REFERENCES events" in existing[0]:
+        return  # 已加過 FK（重跑 / fresh DB rebuild 後）
+    _rebuild_with_fk(
+        conn,
+        "decisions",
+        _DECISIONS_NEW_DDL,
+        scrub_sql=(
+            "UPDATE decisions_new SET primary_event_id=NULL "
+            "WHERE primary_event_id IS NOT NULL "
+            "AND primary_event_id NOT IN (SELECT id FROM events)",
+            "UPDATE decisions_new SET parent_decision_id=NULL "
+            "WHERE parent_decision_id IS NOT NULL "
+            "AND parent_decision_id NOT IN (SELECT id FROM decisions_new)",
+            "UPDATE decisions_new SET superseded_by=NULL "
+            "WHERE superseded_by IS NOT NULL "
+            "AND superseded_by NOT IN (SELECT id FROM decisions_new)",
+        ),
+    )
+
+
+def _m023_decisions_fk_down(conn: sqlite3.Connection) -> None:
+    """rollback：rebuild 回無 FK 的 decisions（保留全欄與資料）。"""
+    ddl = _DECISIONS_NEW_DDL.replace(" REFERENCES events(id) ON DELETE SET NULL", "")
+    ddl = ddl.replace(" REFERENCES decisions(id) ON DELETE SET NULL", "")
+    _rebuild_with_fk(conn, "decisions", ddl)
+
+
+_AI_REC_NEW_DDL = """
+    CREATE TABLE ai_recommendations_new (
+        id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+        exercise_id         INTEGER REFERENCES exercises(id),
+        made_at             TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+        recommendation_type TEXT NOT NULL,
+        content             TEXT NOT NULL,
+        confidence          REAL,
+        accepted            INTEGER,
+        related_decision_id TEXT REFERENCES decisions(id) ON DELETE SET NULL,
+        outcome_notes       TEXT
+    )
+"""
+
+
+def _m024_ai_rec_decision_fk(conn: sqlite3.Connection) -> None:
+    """P2-31 landmine（[#184](https://github.com/winson3QQ/ICS_COMMAND/issues/184)）：修
+    `ai_recommendations.related_decision_id` 型別不符 FK。
+
+    原 schema 為 **INTEGER REFERENCES decisions(id)**，但 `decisions.id` 是 TEXT(uuid) → 整數
+    永遠配不到 → 該連結現狀**不可用**（FK on 時非 NULL 寫入會被擋）。改 **TEXT + ON DELETE
+    SET NULL**：`delete_exercise` 刪除順序 decisions 先於 ai_recommendations，SET NULL 才不炸
+    FK（與 m023 同理）。實測該欄前端無 UI、現存全 NULL → 無資料遷移；scrub 仍防禦性 null 化
+    任何指向不存在 decision 的值。idempotent：欄型已 TEXT 則 skip（須在 m023 後跑，FK 對上重建後的 decisions）。
+    """
+    col_type = next(
+        (r[2] for r in conn.execute("PRAGMA table_info(ai_recommendations)") if r[1] == "related_decision_id"),
+        None,
+    )
+    if col_type is None or col_type.upper() == "TEXT":
+        return  # 欄不存在（容錯）或已 TEXT（重跑 / fresh DB rebuild 後）
+    _rebuild_with_fk(
+        conn,
+        "ai_recommendations",
+        _AI_REC_NEW_DDL,
+        scrub_sql=(
+            "UPDATE ai_recommendations_new SET related_decision_id=NULL "
+            "WHERE related_decision_id IS NOT NULL "
+            "AND related_decision_id NOT IN (SELECT id FROM decisions)",
+        ),
+    )
+
+
+def _m024_ai_rec_decision_fk_down(conn: sqlite3.Connection) -> None:
+    """rollback：related_decision_id 回 INTEGER（去 FK）。"""
+    ddl = _AI_REC_NEW_DDL.replace(
+        "related_decision_id TEXT REFERENCES decisions(id) ON DELETE SET NULL",
+        "related_decision_id INTEGER",
+    )
+    _rebuild_with_fk(conn, "ai_recommendations", ddl)
+
+
 _MIGRATIONS: list[tuple[int, str, object]] = [
     (1, "events_columns", _m001_events_columns),
     (2, "decisions_columns", _m002_decisions_columns),
@@ -997,6 +1181,8 @@ _MIGRATIONS: list[tuple[int, str, object]] = [
     (20, "cop_entities_archived", _m020_cop_entities_archived),
     (21, "event_markers", _m021_event_markers),
     (22, "events_drop_dead_lat_lon", _m022_events_drop_dead_lat_lon),
+    (23, "decisions_fk", _m023_decisions_fk),
+    (24, "ai_rec_decision_fk", _m024_ai_rec_decision_fk),
 ]
 
 
