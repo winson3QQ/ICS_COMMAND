@@ -2291,6 +2291,20 @@
         "minimizedReason": "",
         "reactionGroups": [],
         "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/176#issuecomment-4650341807"
+      },
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## ✅ 官方 OpenAPI spec 定案（2026-06-08）—— 取代前述 OpenTAKServer 推測 + caveat\n\n使用者提供官方 `openapispec.json`（TAK Server 5.7，**OpenAPI 3.1，301 paths**）。**前述「無 bulk SA / 無 per-entity 管理」結論是 cop-subscriber cert 權限所限，非官方 API 缺**——官方大得多。\n\n### 🔴 重大修正\n| 前述（錯/不全） | 官方實情 |\n|---|---|\n| 「無 bulk SA 查」 | ❌ 錯。**`GET /Marti/api/cot/sa?start=&end=&{left,bottom,right,top}&isFiltered`** 存在 → 時間窗 + bbox 拉 CoT（回 XML string）。**#173 reconnect resync 可行**（拉 last-seen→now 的 SA 對帳）。 |\n| CoT 查詢能力 | 另有 `/cot`、`/cot/search/date`、`/cot/matchUid`、`/cot/xml/{uid}/all`、`/database/cotCount`。 |\n\n### ✅ Mission API（官方確認，GUID-based 為現代路徑）\n- **`GET /missions/guid/{guid}/changes?secago=N&start=&end=&squashed`** → `MissionChange[]`：\n  `type ∈ {CREATE_MISSION, DELETE_MISSION, **ADD_CONTENT**, **REMOVE_CONTENT**, CREATE_DATA_FEED, DELETE_DATA_FEED}` + **`contentUid`** + `timestamp`/`serverTime`/`creatorUid`。\n  → **`REMOVE_CONTENT`+`contentUid` = 可靠刪除**；`secago=N` 完美配 poll 增量同步。\n- **`GET /missions/guid/{guid}/cot`** → 全 CoT dump（reconnect 全集對帳）。\n- **`PUT/DELETE /missions/guid/{guid}/contents?uid=|hash=&creatorUid=`** → 權威增/刪 mission 內容（**ICS「管理頁→源頭刪」vision 成立**，by uid）。\n- **`GET,PUT,POST,DELETE /missions/guid/{guid}/subscription`**、**`PUT /missions/guid/{guid}/expiration`**（mission 級到期）。\n\n### 仍無 / 待確認\n- **非-mission per-entity SA 刪除**：仍無乾淨端點（`injectors/cot/uid` 是 detail 注入非刪除）。裸 streaming 清理 → bulk `/cot/sa` 查 + **Data Retention Tool**（server 端，wiki：`Data+Retention+Tool`）。\n- **🔑 AUTH/ROLE caveat**：`/cot/sa` 用我們 cop-subscriber cert 實測回 \"resource unavailable or not allowed\" → **這些端點需特定 role/admin cert**。P2-14 動工前須確認所需 role（可能要簽一張帶 mission/admin role 的 client cert，非現有 subscriber cert）。\n\n### → P2-14 設計定案\n1. **reconnect resync（#173）**：`GET /cot/sa?start=<last_seen>&end=now` → reconcile cop_entities。\n2. **可靠刪除 + 增量**：poll `/missions/guid/{guid}/changes?secago=N` → REMOVE_CONTENT 軟刪 / ADD_CONTENT ingest。\n3. **ICS 權威刪除（管理頁）**：`DELETE /missions/guid/{guid}/contents?uid=`。\n4. **共用 mission client**（與 P2-13）：GUID-based 端點集中在 `tak_rest_client`。\n\nSource：官方 TAK Server 5.7 `openapispec.json`（OpenAPI 3.1）。\n",
+        "createdAt": "2026-06-09T00:44:52Z",
+        "id": "IC_kwDOSnBjpc8AAAABFXRB5g",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/176#issuecomment-4654907878"
       }
     ],
     "createdAt": "2026-06-08T10:00:42Z",
@@ -2299,7 +2313,7 @@
     "number": 176,
     "state": "OPEN",
     "title": "P2-14 reality check：Mission/DataSync 同步 — 路徑成立 / #173 範圍修正 / 與 P2-13 共用面協調",
-    "updatedAt": "2026-06-08T15:03:54Z",
+    "updatedAt": "2026-06-09T00:44:52Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/176"
   }
 ]
