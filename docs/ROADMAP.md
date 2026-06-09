@@ -209,6 +209,19 @@
 > **原則**（使用者拍板）：**統一檢視非全做**——但本輪「都進」（使用者 2026-06-09），多數仍**待開 issue 才進工作佇列**。
 > **下一步（S4 收尾）**：SC1/SC2/SC3/SC5 + SC7 的升級項，**開 GitHub issue**（每個帶 SC 代號 + 一句 scope，依 PROCESS.md step 2）→ 才真正可被排程動工。SC4 隨 P2-12，SC6 已落地。
 
+#### 升正式 item（編號 + 目的；**scope/DoD 待 reality check** 補）
+
+> **編號決策**：沿用 **SC 代號為正式 item ID**（同 RT-*/TAK-* 非 Pn 前例）——SC1/SC2 是**非 TAK 的新 COP 來源**，塞 Phase 2(TAK) 會誤導、叫 Phase 4 又暗示排在 WaveInk 後（天氣 feed 可能更早要），故獨立編號、排程獨立。**以下只有「編號 + 目的」**，scope/接縫/DoD/供應鏈/降階待逐項 reality check（下一步）後補。
+
+| 代號 | 目的（一句）| 類型 | 待 RC 重點 |
+|---|---|---|---|
+| **SC1** | 給 COP **第三類外部來源（氣象/雨量/風/河川水位）**，讓颱風水災·野火·HazMat 從「事後反應」轉「**預判**」；**降階獨立於 TAK** | 新來源（非 TAK）| 來源 dataset（須驗非中國）、`cop_service` 接法、疊層 vs entity |
+| **SC2** | **泛化感測器 ingest**（CBRN/SDR/UGS/CCTV）→ `cop_service` normalize → COP，**與 P3 WaveInk 共用接縫** | 新來源/架構 | 與 WaveInk normalize 共用邊界、TAK `/datafeeds` 關係、untrusted 驗證 |
+| **SC3** | 把**被動視覺**（severity pulse/stale 灰）升為**主動門檻告警**（geofence/門檻），回答 OODA Decide「**何時**」決策 | ICS 後端能力 | 觸發引擎、與 SC2 感測器門檻依賴、誤報抑制 |
+| **SC5** | 給 cop_entity zone 加 **`threat_state`（熱/暖/冷）+ 武裝掩護已清走廊 + 敵我老化情報**，服務 RTF/多機構（**later**）| 既有擴充（P1-16/P2-08）| 資料模型擴充、即時同步、價值/排程（窄）|
+
+> SC4（連線 chips）併 [P2-12]；SC6（降階 DoD）已入本 Phase DoD；SC7（§8.x 安全升優先）走 threat_model + 開 issue。
+
 ### Definition of Done
 
 **降階紀律（跨層，2026-06-09 SC6）** — 每個碰 TAK 的 item 完成時必驗
