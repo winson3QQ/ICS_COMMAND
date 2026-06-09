@@ -39,6 +39,7 @@
 |---|---|---|
 | **基礎** | 友軍即時定位 (BFT) | ✅ |
 | **基礎** | 共同作戰圖 (Shared COP) | ✅ |
+| **基礎** | 多機構聯合指揮（federation/groups·橫切所有情境）| ✅ 本批（2026-06-09 自高威脅群移入基礎）|
 | **感知/偵查（收集態勢）** | 人員目標偵查與回報 (Recon) | ✅ 本批 |
 | **感知/偵查** | 無人機 / 空中感知 (UAV ISR) | ✅ 本批 |
 | **感知/偵查** | 多影像情資 (IMINT) | ✅ 本批 |
@@ -52,8 +53,7 @@
 | **動作/應變** | 危險物質 (HazMat / CBRNE) 洩漏 | ✅ 本批 |
 | **動作/應變** | 關鍵設施巡邏監控（預防性應變）| ✅ 本批 |
 | **動作/應變** | 重大傷亡後送 (MCI/MEDEVAC，跨災害共通下游·壓軸) | ✅ 本批 |
-| **高威脅/多組織/訓練** | RTF 武裝掩護搜救（暖區/敵我/OPSEC）| ✅ 本批 |
-| **高威脅/多組織/訓練** | 多機構聯合災害指揮 | 待挖 |
+| **高威脅/敵對環境** | RTF 武裝掩護搜救（暖區/敵我/OPSEC）| ✅ 本批 |
 
 > 註：**無人機/空中感知**為本輪新增的獨立感知情境（原先誤併入野火/巡邏）。
 
@@ -106,6 +106,52 @@
 ### 注意 / 失效模式（**本情境暴露核心 backlog**）
 - **COP 完整性放大**：一個錯標**誤導所有人**（blast radius 比個人圖大）。
 - **可靠刪除/resync 缺口（#161/#173）直接侵蝕本情境效率**：刪不乾淨、重連漏靜態標記 → 共享的是錯/舊圖，**比沒有更糟** → **這就是 P2-14 對本情境為何是必需，非 nice-to-have**。
+
+---
+
+## 多機構聯合指揮（Multi-Agency / Interagency — 橫切基礎）
+
+> **歸屬（使用者 2026-06-09）**：多機構**不是並列情境，是橫切所有情境的基礎能力**——**任何夠大的事件都可能多機構**（SAR 多隊、MCI 多院、颱風 官方+志工、HazMat 多單位、RTF 警消醫軍）。故與 BFT、COP 並列為**基礎**（federation/groups 本就是底層 server 設定），非單一場景。
+
+### 實際案例（佐證，非杜撰 — 附來源）
+| # | 案例 | 性質 | 來源 |
+|---|---|---|---|
+| ✅ A | **DHS S&T ATAK 於 Hurricane Harvey(2017)** 支援**多轄區（聯邦/州/地方）**應變 → 成功後 Irma 續用 | TAK **多機構應變實證** | [DHS TAK](https://www.dhs.gov/sites/default/files/publications/tactical_awareness_kit_508.pdf) |
+| ✅ B | **🔑 德州 DPS TAK server 託管約 50 個機構**、且與**德州國民兵 + FBI + CBP** federation | TAK **federation 多機構最強實證** | [Autonomy Global: TAK is the Way](https://www.autonomyglobal.co/tak-is-the-way/)、[TAK.gov 執法](https://tak.gov/solutions/law-enforcement) |
+| ✅ C | **NIMS / ICS Unified Command**：單一 IC 或**聯合指揮**、單一 **IAP**、**共同術語**破組織穀倉；MAC 多機構協調系統 + **mutual aid / MOU** 約定資料更新頻率與格式 | 多機構指揮**既有 doctrine** | [NIMS/NRT Unified Command](https://nrt.org/sites/2/files/UC%20TAD%201-26-07%20FINAL.pdf) |
+| ✅ D | **2005 巴基斯坦地震**：政府 + 國際 NGO 跨組織協作案例 | 真實多機構災害案例 | [跨機構協作 PMC](https://pmc.ncbi.nlm.nih.gov/articles/PMC8832005/) |
+
+> **❗誠實邊界**：TAK **federation 多機構強實證（B 德州 50 機構尤其）**。對 ICS：**P2-15 Federation 是對應項**——現況 **DISABLED、scaffold 齊（:9000 TLS、fed-truststore.jks 路徑在）、但無 peer**；瓶頸＝**需第二台 TAK server + peer cert 治理（缺口 #8）**。本能力**橫切所有情境**，不是新場景。
+
+### 作業案例（實況）
+**任何夠大的事件都是多機構**：消防/警察/EMS/軍/NGO/公用事業/鄰近轄區/中央地方。NIMS/ICS 用**聯合指揮 + 單一 IAP + 共同術語**把各家整合（案例 C）。但**各機構有自己的系統/server/資料** → 要跨組織邊界共享**同一張 COP**。沒共享時：各機構各看各的圖、靠無線電橋接、不知**誰有什麼資源/誰最近**、組織穀倉化（案例 D 巴基斯坦地震即此痛）。
+
+### 痛點 → 需求邏輯
+指揮需要：① **跨機構共享一張 COP**（破穀倉，NIMS 核心目標）；② **各機構保有自己 server/資料主權，又能交換**（不被迫統一系統）；③ **按機構分流可見**（不是全資料給全機構）；④ **跨機構資源可視**（mutual aid：誰有什麼、誰最近）；⑤ **可信交換**（peer 授權、信任邊界）。效率關鍵 = **federation 讓多機構各保主權又共享一張權威 COP，用 CoT 當共同語言免逼統一系統**。
+
+### TAK/ICS 怎麼用（四層 + 為什麼）
+| 層 | 怎麼用 | 為什麼 |
+|---|---|---|
+| ① Client (ATAK/iTAK) | 各機構人員在**自己機構的 group** 操作；跨機構看**共享 COP** | 各家照常用自己的，跨機構自動匯流 |
+| ② 協定/資料 | **CoT ＝跨機構共同語言**（互通標準，類比 NIMS 共同術語）；2525 共同符號 | CoT/2525 標準化讓不同系統/單位**互通免翻譯**（破穀倉的技術基礎）|
+| ③ TAK Server（**核心**）| **Federation**（server↔server CoT 交換 :9000/:8444）、**Groups**（Manage Users 按機構 scope）、**Mission/DataSync**（共享持久 COP）、**peer cert 治理**；德州模式＝一台 federate 多台（案例 B）| **本能力幾乎全在 server 層**＝P2-15；federation 是多機構的技術載體 |
+| ④ ICS Dashboard | ICS_Command 作為 **federation 一個節點**——收 federated 機構 CoT、顯**統一 COP**；**groups / visible_to 分級**（TAK-D）；**federation 治理缺口 #8**（peer 審批+audit）| ICS 是聯合 COP 的一個端點；跨機構分級與 peer 治理是 ICS 要補的 |
+
+### 效率提升
+- **一張 COP 跨機構** → 破組織穀倉（NIMS 目標）、單一 IAP 對齊（案例 C）。
+- **資源共享可視**（mutual aid）→ 誰有什麼、誰最近，跨機構就近調度。
+- **Federation ＝各機構保有自己 server 又共享** → 資料主權 + 共享兼得（德州模式，案例 B）。
+- **CoT 共同語言** → 不同系統/單位互通，免逼大家換同一套。
+- **橫切加值**：SAR/MCI/颱風/HazMat/RTF 一旦多機構，全靠這層 → 投資 federation = 一次惠及所有情境。
+
+### 注意 / 失效模式（基礎層治理）
+- **🔴 Federation 治理＝peer cert 授權（缺口 #8）**：加一個 peer ＝信任擴張 → 需 **sysadmin 審批 + audit + change management**；**流氓/被擄 peer 可跨 federation 注入假態勢或讀取全局**。
+- **🔴 跨機構分級（TAK-D visible_to）**：非全資料給全機構 → 需 **access→visible_to 映射**；ICS 現 `visible_to=["all"]`（缺口）。
+- **Federated delete（P2-15 預設 `false`）**：跨域刪除危險（一機構刪掉另一機構資料）→ 配 **可靠刪除 #161 + 治理**；預設關是對的。
+- **資料主權 / MOU**：誰擁有/保留什麼、更新頻率、格式（NIMS MOU，案例 C）→ 治理 + retention policy。
+- **信任邊界擴張（缺口 #7）**：每個 federated 機構的 CoT 都流入 → **裝置准入信任假設跨機構放大**（一家管理鬆，全 federation 受影響）。
+- **需第二台 server（P2-15 瓶頸）**：Federation 要 ≥2 TAK server + peer cert 治理；即時價值需有第二個機構才顯現 → 現階段 gated、先備 PKI 地基。
+- **中國供應鏈紅線**：跨機構互通若含不可信來源/中國設備（尤其外部單位的 server/裝置）→ federation 信任邊界須驗（CLAUDE.md）。
 
 ---
 
@@ -644,7 +690,10 @@ SDR（軟體定義無線電）感測器——或 **WaveInk**（你的 SDR 多頻
 
 ---
 
-# 群：高威脅 / 多組織 / 訓練　（待深挖）
+# 群：高威脅 / 敵對環境
+
+> 註：原群名「高威脅/多組織/訓練」中——**訓練(TTX)** 已移至〈計劃驗證〉群、**多組織(多機構聯合指揮)** 已移至〈階 0：基礎〉（因多機構橫切所有情境、屬基礎而非單一情境，使用者 2026-06-09）。本群現專指**敵對/高威脅環境**。
+
 ## RTF 武裝掩護搜救（Rescue Task Force / CSAR）
 
 > **重構框架（使用者 2026-06-09）**：RTF 對 ICS_Command 最貼切的視角＝**民間協助軍警勤務**——民間能量（消防/EMS/民間救難隊/民防）在軍警武力掩護下，做**搜索**＋**傷患後送**。
@@ -708,6 +757,5 @@ SAR/MCI 的痛點照舊；**威脅因素額外要求**：① **敵我識別**（
 - **節奏**：主動射手是分鐘級，COP 不可拖慢戰術節奏。
 
 ---
-## 多機構聯合災害指揮　_待深挖（federation/groups 為核心 server 設定）_
 
-> 註：**桌上演習（TTX）+ AAR** 已上移至「計劃驗證」群（循環順序：計劃 → TTX 驗證 → 行動）。
+> 註（情境歸屬調整史）：**桌上演習（TTX）+ AAR** 已上移至〈計劃驗證〉群（循環順序：計劃 → TTX 驗證 → 行動）；**多機構聯合指揮** 已移至〈階 0：基礎〉（橫切所有情境、屬基礎能力，2026-06-09）。
