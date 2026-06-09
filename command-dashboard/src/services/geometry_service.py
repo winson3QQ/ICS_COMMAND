@@ -68,8 +68,8 @@ def _ellipse_to_polygon(center, major_m, minor_m, angle_deg) -> dict | None:
     ring = []
     for i in range(_ELLIPSE_SEGMENTS):
         t = 2.0 * math.pi * i / _ELLIPSE_SEGMENTS
-        x = major_m * math.cos(t)   # 局部半長軸方向（公尺）
-        y = minor_m * math.sin(t)   # 局部半短軸方向
+        x = major_m * math.cos(t)  # 局部半長軸方向（公尺）
+        y = minor_m * math.sin(t)  # 局部半短軸方向
         east = x * cos_p - y * sin_p
         north = x * sin_p + y * cos_p
         ring.append([lon + east / m_per_deg_lon, lat + north / m_per_deg_lat])
@@ -121,11 +121,7 @@ def extract_geometry(detail_el, center=None) -> dict | None:
         if geom:
             return geom
     # 多筆 <link point=..>（ATAK/iTAK route 或封閉繪圖）；非幾何 link（無 point 屬性）自動略過
-    coords = [
-        [ll[1], ll[0]]
-        for c in detail_el
-        if _localname(c.tag) == "link" and (ll := _latlon(c.get("point")))
-    ]
+    coords = [[ll[1], ll[0]] for c in detail_el if _localname(c.tag) == "link" and (ll := _latlon(c.get("point")))]
     if len(coords) >= 2:
         # 是否封閉面（→ Polygon）判斷，兩種 iTAK 真機訊號（P2-10 dogfood）：
         #   (a) #159：封閉繪圖（freehand area）以**首尾相同**的 <link> 序列送（含閉合點 ≥4 coords）。
@@ -171,3 +167,40 @@ def geojson_to_vertices(geom: dict | None) -> list[list[float]]:
     else:
         return []
     return [[v[1], v[0]] for c in coords if (v := _valid_lonlat(c))]  # lon-lat → lat-lng，garbage 跳過
+
+
+def clean_vertices(vertices: list[list[float]], *, closed: bool) -> list[tuple[float, float]]:
+    """過濾出有效頂點 `[(lat,lon),...]`：限 [-90,90]×[-180,180]（與入向 `_valid_lonlat` 一致，
+    擋 garbage / 畸形短項）；< 2 有效點 → ValueError；closed 須 ≥3（對齊 `_from_shape` Polygon 門檻）。
+
+    出向（P2-30 / #180）的**單一驗證點** —— shape 與 event 形心都用這同一組 cleaned 點，
+    避免「shape 過濾、形心沒過濾」的分歧（review #180）。
+    """
+    pts: list[tuple[float, float]] = []
+    for v in vertices:
+        if not isinstance(v, list | tuple) or len(v) < 2:
+            continue
+        try:
+            la, lo = float(v[0]), float(v[1])
+        except (TypeError, ValueError):
+            continue
+        if -90.0 <= la <= 90.0 and -180.0 <= lo <= 180.0:
+            pts.append((la, lo))
+    if len(pts) < 2:
+        raise ValueError("clean_vertices：至少需 2 個有效頂點")
+    if closed and len(pts) < 3:
+        raise ValueError("clean_vertices：closed polygon 至少需 3 個有效頂點")
+    return pts
+
+
+def vertices_to_cot_shape(vertices: list[list[float]], *, closed: bool) -> str:
+    """**出向**（P2-30 / #180）：前端 vertices `[[lat,lng],...]` → CoT `<shape><polyline>`。
+
+    對稱 `_from_shape` 入向（round-trip：本函式產 XML → `extract_geometry` 還原同型同點）：
+      `<shape><polyline closed="true|false"><vertex point="lat,lon"/>...</polyline></shape>`
+    驗證走 `clean_vertices`（座標範圍 + 點數門檻）。不含 color/event 包裝——那是
+    `tak_downlink.build_geometry_cot` 的事（純函式、可獨立測）。
+    """
+    pts = clean_vertices(vertices, closed=closed)
+    verts = "".join(f'<vertex point="{la},{lo}"/>' for la, lo in pts)
+    return f'<shape><polyline closed="{"true" if closed else "false"}">{verts}</polyline></shape>'
