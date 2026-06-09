@@ -87,3 +87,49 @@ class CoTEventIn(BaseModel):
         if v and not _CALLSIGN_RE.match(v):
             raise ValueError("callsign 含內容層白名單不允許的字元")
         return v
+
+
+# ── 下行指令（P2-13 A：streaming-write downlink，issue #176 reality check 定案）─────────
+# 指揮部「下達指令」= 建一個 CoT 寫進 :8089 → server 廣播給同 group 所有現場 ATAK。
+# 入向 CoTEventIn 是「收外部 CoT」；本模型是「指揮部主動發 CoT」的輸入（欄位精簡、server 補齊
+# time/start/stale）。沿用同一套 type / callsign 內容白名單（縱深防護；XML escape 在 builder）。
+class DownlinkCommandIn(BaseModel):
+    """指揮部下達指令的輸入 → `services/tak_downlink.build_command_cot` 建 CoT。
+
+    與 CoTEventIn 的差異：指揮部是發送端，故 uid 可省（server 生）、time/start/stale 由
+    server 依 `stale_minutes` 算（不信 client 時鐘，對齊 P2-23 doctrine）。
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    type: str = Field(..., min_length=1)  # 指令的 CoT type（2525 grammar，如 a-f-G / b-m-r）
+    lat: float = Field(..., ge=-90.0, le=90.0)
+    lon: float = Field(..., ge=-180.0, le=180.0)
+    hae: float = 0.0
+    callsign: str | None = None  # 指令標籤（現場端顯示名）
+    remarks: str | None = None  # 指令內容文字
+    uid: str | None = None  # 省略則 server 生 ICS-CMD-<uuid>
+    stale_minutes: int = Field(default=60, ge=1, le=10080)  # 指令存活（1 分鐘 ~ 7 天）
+    planned: bool = True  # 計畫中指令（ICS COP 端 2525 空心框；現場端視為一般標記）
+
+    @field_validator("type")
+    @classmethod
+    def _validate_type(cls, v: str) -> str:
+        if not _COT_TYPE_RE.match(v):
+            raise ValueError(f"CoT type 不符 2525 grammar 白名單：{v!r}")
+        return v
+
+    @field_validator("callsign")
+    @classmethod
+    def _validate_callsign(cls, v: str | None) -> str | None:
+        if v and not _CALLSIGN_RE.match(v):
+            raise ValueError("callsign 含內容層白名單不允許的字元")
+        return v
+
+    @field_validator("uid")
+    @classmethod
+    def _validate_uid(cls, v: str | None) -> str | None:
+        # uid 進 CoT attr，限保守字元集（字母數字 . _ -），擋注入/空白。
+        if v and not re.match(r"^[A-Za-z0-9._-]{1,128}$", v):
+            raise ValueError("uid 只允許 [A-Za-z0-9._-]")
+        return v
