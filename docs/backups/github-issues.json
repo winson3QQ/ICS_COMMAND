@@ -2319,6 +2319,20 @@
         "minimizedReason": "",
         "reactionGroups": [],
         "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/176#issuecomment-4655095473"
+      },
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## 🔬 端到端實測（2026-06-09，活 docker TAK 5.7-RELEASE-43）— 修正 cert-role 定案的核心前提\n\n#177 L1（簽 mission cert + register fingerprint）落地後，在本機活 TAK 跑完整 before/after + 對照組實測。**數個前提被證據推翻**，記錄如下（皆有 log / HTTP 證據，非推測）。\n\n### 1. ❌ 「必須註冊 fingerprint→ROLE_USER 才授權」對 Marti **讀取**不成立\n對照實驗：**已註冊**的 read cert vs **未註冊**的 write cert（同 step-ca CA 簽），打同一批端點：\n\n| 端點 | READ（已註冊 ROLE_USER） | WRITE（未註冊） |\n|---|---|---|\n| `/cot/sa?start=&end=&bbox` | 200 + 真 CoT | **200 + 真 CoT** |\n| `/missions` | 200 | **200** |\n| `/clientEndPoints` | 200 | **200** |\n| `/groups/all` | 200 | **200** |\n\n→ **行為完全相同**。TAK 把**任何 truststore（step-ca CA）信任的 cert** 視為已認證、給 `__ANON__` REST 讀取權，**不需** UserAuthenticationFile 條目。實證：未註冊的 write cert 連過後，名冊裡**沒有**被自動加入（仍只有 admin + 我手動加的 read）。\n\n### 2. ✅ `/cot/sa` resync 路徑（#173）端到端證實可用\n`GET /Marti/api/cot/sa?start=<T-1h>&end=<now>&left/bottom/right/top&isFiltered=false` → **200 + `<events><event uid=… type='a-f-G-U-C'>`**（活 iTAK 的友軍單位）。**#173 reconnect resync 核心查詢成立**。\n⚠ 坑：少了 `start/end` 或用 `secago` → 回 generic「TAK Server resource unavailable **or** not allowed」頁（**參數錯與授權拒共用此頁**，極易誤判成 auth 問題——我一開始就誤判了）。\n\n### 3. ✅ 讀/寫分流是真的，但 gating 在 **mission-role 層**，非 cert / 非 fingerprint\n寫入測試（PUT contents / DELETE mission），api log 鐵證：\n```\nc.b.m.s.s.MissionPermissionEvaluator - hasPermission denied access!\ncurrentRole: MISSION_READONLY_SUBSCRIBER, requested permission: MISSION_WRITE  → 403\n```\n- 我的 cert 在 mission 解析成 `MISSION_READONLY_SUBSCRIBER` → 寫入 403。\n- **偽造 `creatorUid=ics-mission-write`（query 參數）無法繞過** → gating 綁的是 mission-role 不是可偽造的 query param（安全）。\n- 即使用**建立該 mission 的 write cert**（creatorUid=自己）仍 403 → 無狀態 REST 連線解析成 mission 的 `defaultRole`，**creator≠自動取得 MISSION_WRITE**。\n\n### 4. ⚠ TAK 5.7 docker **不 hot-reload** UserAuthenticationFile\n改檔後（含容器內 touch 觸發 inotify）零 reload；`FileAuthenticator - adding new file-based user` 僅啟動時出現。**需 restart**。#176 前述「File backend hot-reload 不需 restart」（Windows 觀察）**不適用本 docker/Mac 環境**（macOS bind-mount inotify 不跨界）。重啟後 TAK 自行 re-marshal 名冊（`role=\"ROLE_USER\"` 被當預設省略）。\n\n### 🎯 對 P2-14 / P2-13 / #177 的設計修正\n1. **讀取（P2-14 resync）**：只需一張 step-ca 簽的 CA-trusted cert，`/cot/sa` 即可用。**`register-tak-fingerprint.sh`（server ROLE_USER）對讀取無作用**。\n2. **寫入（P2-13 downlink）**：必須取得 **mission `MISSION_WRITE`/owner 角色**。**怎麼讓 ICS 的寫 cert 可靠取得 owner role 仍待解**——本次無狀態 REST creator 沒拿到（落到 defaultRole）。P2-13 動工要先解這條（可能要持久 subscription、或 mission 建立時的身分綁定、或 admin 指派 role）。\n3. **#177 L1 重新定位**：cert 簽發（truststore 信任）才是讀取關鍵；fingerprint 註冊（ROLE_USER）只在 server-admin 級操作才有意義，**非** Marti mission 讀/寫的 gate。register 腳本的價值待 P2-13 owner-role 機制釐清後再定。\n\n> 現場已還原（auth 檔回 admin-only、測試 cert 移除）；唯一殘留：測試 mission `ICS-RC-WTEST`（空、`__ANON__`），需 admin 刪（service cert 無 owner role 刪不掉）。\n\nRefs #173, #177, P2-14, P2-13",
+        "createdAt": "2026-06-09T02:41:25Z",
+        "id": "IC_kwDOSnBjpc8AAAABFX15_g",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/176#issuecomment-4655512062"
       }
     ],
     "createdAt": "2026-06-08T10:00:42Z",
@@ -2327,7 +2341,7 @@
     "number": 176,
     "state": "OPEN",
     "title": "P2-14 reality check：Mission/DataSync 同步 — 路徑成立 / #173 範圍修正 / 與 P2-13 共用面協調",
-    "updatedAt": "2026-06-09T01:21:27Z",
+    "updatedAt": "2026-06-09T02:41:25Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/176"
   },
   {
