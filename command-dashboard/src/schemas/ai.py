@@ -11,5 +11,5 @@ class AIRecommendIn(BaseModel):
 class AIOutcomeIn(BaseModel):
     """指揮官對 AI 建議的採納/否決"""
     accepted:           bool
-    related_decision_id: int | None = None
+    related_decision_id: str | None = None  # P2-31：decisions.id 為 TEXT(uuid)，非 INTEGER
     outcome_notes:      str | None  = None
