@@ -273,15 +273,20 @@ async def create_entity(request: Request, response: Response):
     else:
         # P2-27：event 圖釘 → 建 event↔marker junction 關聯（權威關聯改走 FK，不再只靠
         # attributes.event_id JSON glue）。前端先建 event 再建本圖釘 → event_id 此時應存在。
-        # best-effort：關聯失敗（FK：event 不存在）只記 warning，不擋圖釘建立（圖照樣上 COP）。
+        # best-effort：entity 已 insert+broadcast 完成，關聯失敗只記 warning、不擋圖釘（圖照樣上 COP）。
+        # 攔 sqlite3.Error（含 IntegrityError=event 不存在 + OperationalError=DB locked）——若只攔
+        # IntegrityError，高併發下 link 撞 locked 會在 entity 已建後噴 500，client 重試又撞 409。
         _attrs = created.get("attributes") or {}
         _ev_id = _attrs.get("event_id")
         if _ev_id:
             try:
                 event_marker_repo.link_marker(_ev_id, created["uid"], "primary")
-            except sqlite3.IntegrityError as e:
+            except sqlite3.Error as e:
                 log.warning(
-                    "[cop] event↔marker 關聯失敗（event 不存在?）event_id=%s uid=%s：%s", _ev_id, created["uid"], e
+                    "[cop] event↔marker 關聯失敗（FK/DB 錯，best-effort 不擋圖釘）event_id=%s uid=%s：%s",
+                    _ev_id,
+                    created["uid"],
+                    e,
                 )
     response.headers["ETag"] = _etag(created["version_clock"])
     return created

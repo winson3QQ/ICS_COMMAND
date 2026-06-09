@@ -14,6 +14,7 @@ import structlog
 from core.database import get_conn
 
 from ._helpers import row_to_dict
+from .cop_entity_repo import _row_to_entity_dict  # JSON/bool 解碼，與全站 COP 端點同 shape
 
 _log = structlog.get_logger()
 
@@ -56,7 +57,10 @@ def get_markers_for_event(event_id: str) -> list[dict]:
                 ORDER BY em.created_at""",
             (event_id,),
         ).fetchall()
-    return [row_to_dict(r) for r in rows]
+    # 用 cop_entity_repo 的 canonical decoder（JSON-decode attributes/visible_to + flags 轉 bool），
+    # 否則 /chain 回的 marker shape 與其他 COP 端點不一致（attributes 變原始字串、flags 變 0/1）。
+    # JOIN 多帶的 link_role 欄 _row_to_entity_dict 原樣保留。
+    return [_row_to_entity_dict(r) for r in rows]
 
 
 def get_events_for_marker(cop_entity_uid: str) -> list[dict]:
