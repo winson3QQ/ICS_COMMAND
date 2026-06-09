@@ -18,6 +18,55 @@ ICS 是**多源 COP 的匯流 + 指揮中樞**：各路「感知標記」匯成�
 5. 事件**產生後續行動**（下行指令 / 派任）。
 6. 指揮部**持續追蹤至結案（resolved）**。
 
+## 全棧分層（心智圖：層次 ↔ 實作）
+
+> 上面「全景」是敘事；本節是**結構視圖**——把資料流從邊緣到指揮拆成六層 + 三條橫切，每層標 code 落點。
+> 下節「兩層」是本模型的 doctrine 核心，**即下圖的 L3（感知層）/ L4（事故層）**；其餘四層是它的上下文。
+> **狀態以〈缺口〉表（P2-27~30）為唯一 SoT**，本圖不另立進度標註，只標「TAK 也做 / ICS 獨有」的能力歸屬。
+
+```
+                              OODA       能力歸屬
+┌──────────────────────────────────────────────────────────┐
+│ L0 節點/邊緣  感測+顯示+執行(三合一)     Observe   外部      │ ← TAK client / 無線電(人) /
+│    單一視角、無權威、server 不信其宣告    +Act              │    WaveInk / Pi-node / 指揮部下達
+├──────────────────────────────────────────────────────────┤
+│ L1 傳輸/接入  把節點資料送進來           —        TAK+ICS   │ ← :8089/:8443/:9000 ↘
+│                                                           │   routers/tak·ingress·manual·cop
+├──────────────────────────────────────────────────────────┤
+│ L2 正規化接縫 多源→單一 CoPEntity        —        ICS       │ ← services/cop_service.py
+│    蓋章(scope/severity/防偽)+扇出(WS+軌跡)                  │   ingest_cot_event = 共用接縫
+├══════════════════════════════════════════════════════════┤
+│ L3 感知層COP  位置性、即時、**雙向可共享** Observe  TAK 也做  │ ← cop_entities(單一SoT)
+│    「來源無感」、進得來該出得去          (共享)             │   realtime_hub / cop_entity_tracks
+├──────────────────────────────────────────────────────────┤
+│ L4 事故層    流程性、生命週期、問責       Orient/  **ICS 獨有**│ ← events/decisions/chats
+│    event→決策→行→結案、**不外流**        Decide  (TAK 無此模型)│  (四表割裂，待 P2-27 梳理)
+├──────────────────────────────────────────────────────────┤
+│ L5 指揮/決策  整理成支持決策的資訊        Decide   ICS       │ ← dashboard / filter / DCI / 告警
+│    角色分層視圖、告警「何時決策」(支持≠替代)                 │   (主動告警後端為缺口)
+└──────────────────────────────────────────────────────────┘
+   ║ L2↔L3 那條雙線 = cop_service 接縫，也是「感知層入口」（來源無感在此執行）
+   ║ L3↔L4 = 感知標記 N:1 聚合成事件；doctrine 已分、code 還以 attributes JSON 黏定（P2-27 拆）
+
+  橫切（貫穿全棧，不屬單層）：
+  ├─ 治理/信任邊界 ── server-authoritative(scope 蓋章) · source 防偽 · PII TTL · SSRF URI-only · 供應鏈紅線
+  ├─ 降階(3-tier) ── Tier0 全通 / Tier1 部分 / Tier2 退原生(manual 地板)；不硬依賴 TAK
+  └─ 驗證/複盤 ──── TTX(借 TAK injector) → AAR(cop_entity_tracks 回放) → 指標（P2-19~22）
+```
+
+| 層 | 是什麼 | 能力歸屬 | code 落點 |
+|---|---|---|---|
+| **L0 節點** | 感測+顯示+執行，單一視角無權威 | 外部 | TAK client / WaveInk / 無線電(人) / Pi-node |
+| **L1 傳輸** | 把節點送進來的管道 | TAK+ICS | TAK `:8089/:8443/:9000`；ICS `routers/tak·ingress·manual·cop.py`、`tak_service.parse_cot_xml` |
+| **L2 正規化接縫** | 多源→單一 `CoPEntity`、蓋 scope/severity/防偽、扇出 WS+軌跡 | ICS | `services/cop_service.py`：`normalize_cot` + `ingest_cot_event`（共用接縫，#105） |
+| **L3 感知層** | 位置性共享圖、來源無感、**雙向** | **TAK 也做** | `cop_entities`（SoT）、`cop_entity_repo`、`realtime_hub`、`routers/cop.py`、`cop_entity_tracks` |
+| **L4 事故層** | event(severity/狀態/結案)+decision+tasking、問責、**不外流** | **ICS 獨有**（TAK 無此模型）| `events` · `decisions` · `chats` 三表 + 下行 tasking |
+| **L5 指揮層** | 整理成支持決策的資訊、角色視圖、告警 | ICS | dashboard chrome、map filter、DCI、status-lamp；主動告警後端 |
+
+> **三個層界要記住**：① **L2（cop_service）= 接縫**，transport 與語意在此分離、所有 doctrine 在此蓋章；
+> ② **L3↔L4 = 感知層/事故層分水嶺，也是 TAK 能力天花板**——L3 以下（含軌跡、變更稽核）TAK 都會，L4 起（severity/狀態/結案/跨源聚合）TAK 結構上沒有，是「Incident **Command**」的字面本體；
+> ③ **L4「不外流」= 安全邊界**，出向只有 L3 感知標記（雙向）與 L4 衍生的下行 tasking（P2-13）兩個閘。
+
 ## 兩層 + 「來源無感」原則
 
 | | **感知層（COP 標記）** | **事故層（事件 / 決策 / 行動）** |
