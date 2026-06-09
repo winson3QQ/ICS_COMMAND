@@ -119,6 +119,19 @@ TAK_MARTI_URL: str = os.getenv("TAK_MARTI_URL", "")  # https://<host>:8443
 TAK_MARTI_MIN_INTERVAL_S: float = float(os.getenv("TAK_MARTI_MIN_INTERVAL_S", "1.0"))
 TAK_MARTI_MAX_RETRIES: int = int(os.getenv("TAK_MARTI_MAX_RETRIES", "3"))
 
+# ── TAK Marti 服務 cert：讀/寫身分分離（#177 L1；cert-role 見 #176）──────────────
+# 兩張 step-ca 簽的 Marti REST cert，由 deploy/tak-server/pki/issue-tak-certs.sh 產出。
+#   讀 cert → P2-14 DataSync / resync（/cot/sa、/cot、/changes）
+#   寫 cert → P2-13 下行（DELETE/PUT .../contents 權威增刪）
+# ⚠ 2026-06-09 活 TAK 5.7 實測（memory tak-marti-authz-model）修正前述「mission-role 靠註冊」：
+#   · 讀取：truststore 信任即通，兩張都能讀；register fingerprint 對讀寫 gating 無作用。
+#   · 寫入：由 mission role（MISSION_WRITE/owner）把關；寫 cert 怎麼取得 owner role = P2-13 待解。
+# 兩張分離主要為**身分/審計分離**，非能力 gate。空 → 對應功能停用（消費方各自判斷）。
+TAK_MARTI_READ_CERT: str = os.getenv("TAK_MARTI_READ_CERT", "")  # 讀 cert PEM（fullchain：leaf+intermediate）
+TAK_MARTI_READ_KEY: str = os.getenv("TAK_MARTI_READ_KEY", "")  # 讀 cert 私鑰 PEM
+TAK_MARTI_WRITE_CERT: str = os.getenv("TAK_MARTI_WRITE_CERT", "")  # 寫 cert PEM（fullchain）
+TAK_MARTI_WRITE_KEY: str = os.getenv("TAK_MARTI_WRITE_KEY", "")  # 寫 cert 私鑰 PEM
+
 # ── COP 軌跡抽樣（P2-06a / #120）──────────────────────────────────────────────
 # cop_entity_tracks per-uid 最短寫入間隔（秒）。ATAK 可 >0.5Hz，不節流則每筆位置更新
 # 都落一筆軌跡 → 表爆量。抽樣基準 = CoT event time（非 wall-clock）。不同演習場景
