@@ -21,6 +21,7 @@ from fastapi import APIRouter, HTTPException, Request
 
 from core import config
 from core.input_safety import validate_no_unsafe_strings
+from repositories import cop_entity_repo
 from repositories._helpers import audit
 from schemas.tak import CoTEventIn, DownlinkCommandIn
 from services import cop_service, tak_downlink, tak_service
@@ -99,6 +100,48 @@ async def push_downlink(body: DownlinkCommandIn, request: Request):
         raise HTTPException(503, f"TAK 下行送出失敗：{e}") from e
 
     return {"ok": True, "uid": uid, "status": "sent", "planned": body.planned}
+
+
+@router.post("/share/{uid}")
+async def share_entity_to_tak(uid: str, request: Request):
+    """P2-30 part 2（#180）：把**既有 COP 感知標記**推到 TAK（共享閘）。
+
+    「共享閘」= 指揮層顯式、受 audit 的分享動作（非自動轟全網）。RBAC = COMMAND_ROLES
+    （role_enum 中央 gate：POST /api/tak/* → COMMAND_ROLES）。放 tak.py 不放 cop.py：與
+    P2-27（另一 session 改 cop.py/events）零檔案重疊。對 cop_entities **唯讀**（get），不改 schema。
+
+    流程：查 entity → `entity_to_cot`（點/幾何分流）→ **audit-first** → send_cot。
+    """
+    operator = request.state.session["username"]
+    entity = cop_entity_repo.get_cop_entity(uid)
+    if entity is None:
+        raise HTTPException(404, f"COP entity 不存在：{uid}")
+
+    # entity → CoT 失敗（畸形幾何：kind=polygon/route 但 vertices 不足/越界）→ 乾淨 422，
+    # 不讓 ValueError 變未審計的 500（cop POST 不驗 kind↔vertices 一致性，此 entity 可能存在）。
+    try:
+        cot = tak_downlink.entity_to_cot(entity)
+    except ValueError as e:
+        raise HTTPException(422, f"entity 無法序列化為 CoT（幾何無效）：{e}") from e
+    # audit-first（DoD 不得 best-effort）：先稽核再送；送出失敗 → 503，稽核已留分享意圖。
+    audit(
+        operator,
+        None,
+        "COP_SHARE_TAK",
+        "cop_entities",
+        uid,
+        {
+            "source": entity.get("source"),
+            "type": entity.get("type"),
+            "kind": (entity.get("attributes") or {}).get("kind"),
+        },
+        exercise_id=current_exercise_id(),
+    )
+    try:
+        await tak_downlink.send_cot(cot)
+    except Exception as e:  # noqa: BLE001 — 連線/配置失敗統一 503（稽核已記分享意圖）
+        raise HTTPException(503, f"分享到 TAK 失敗：{e}") from e
+    return {"ok": True, "uid": uid, "status": "shared"}
 
 
 @router.get("/status")

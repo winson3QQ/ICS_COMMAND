@@ -94,6 +94,69 @@ def test_downlink_invalid_type_422(client, auth, captured_cot):
     assert captured_cot == []
 
 
+# ── P2-30 part 2（#180）：POST /api/tak/share/{uid} 分享既有 COP 標記到 TAK ──
+def _create_entity(client, auth, **over):
+    body = {"type": "a-h-G", "lat": 25.03, "lon": 121.56, "callsign": "敵情A"}
+    body.update(over)
+    r = client.post("/api/cop/entities", json=body, headers=auth)
+    assert r.status_code == 201, r.text
+    return r.json()["uid"]
+
+
+def test_share_entity_sends_and_audits(client, auth, captured_cot):
+    uid = _create_entity(client, auth)
+    r = client.post(f"/api/tak/share/{uid}", headers=auth)
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "shared"
+    assert len(captured_cot) == 1 and uid in captured_cot[0]  # entity_to_cot → send_cot
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT operator FROM audit_log WHERE action_type='COP_SHARE_TAK' AND target_id=?", (uid,)
+        ).fetchall()
+    assert len(rows) == 1 and rows[0][0] == "admin"
+
+
+def test_share_geometry_entity(client, auth, captured_cot):
+    uid = _create_entity(
+        client,
+        auth,
+        type="u-d-f",
+        attributes={"kind": "polygon", "vertices": [[25.0, 121.0], [25.1, 121.0], [25.1, 121.1]]},
+    )
+    r = client.post(f"/api/tak/share/{uid}", headers=auth)
+    assert r.status_code == 200
+    assert '<polyline closed="true"' in captured_cot[0]  # 幾何分流
+
+
+def test_share_unknown_uid_404(client, auth, captured_cot):
+    r = client.post("/api/tak/share/NOPE-404", headers=auth)
+    assert r.status_code == 404
+    assert captured_cot == []
+
+
+def test_share_malformed_geometry_422_not_500(client, auth, captured_cot):
+    """review #180：畸形幾何 entity（polygon 但 <3 點）分享 → 乾淨 422，非未審計的 500。"""
+    uid = _create_entity(
+        client, auth, type="u-d-f", attributes={"kind": "polygon", "vertices": [[25.0, 121.0]]}
+    )  # 僅 1 點
+    r = client.post(f"/api/tak/share/{uid}", headers=auth)
+    assert r.status_code == 422
+    assert captured_cot == []  # 未送
+    with get_conn() as conn:  # 序列化失敗 → 不應留 share 稽核
+        n = conn.execute(
+            "SELECT COUNT(*) FROM audit_log WHERE action_type='COP_SHARE_TAK' AND target_id=?", (uid,)
+        ).fetchone()[0]
+    assert n == 0
+
+
+def test_observer_cannot_share(client, auth, captured_cot):
+    uid = _create_entity(client, auth)
+    create_account("obs_share", "1234", ROLE_OBSERVER_ZH, "Obs Share", "observer")
+    r = client.post(f"/api/tak/share/{uid}", headers=_login(client, "obs_share"))
+    assert r.status_code == 403
+    assert captured_cot == []
+
+
 def test_send_failure_503_but_still_audited(client, auth, monkeypatch):
     """audit-first 紀律：送出失敗 → 503，但稽核已記下達意圖（無未稽核之下達；失敗有跡可循）。"""
 

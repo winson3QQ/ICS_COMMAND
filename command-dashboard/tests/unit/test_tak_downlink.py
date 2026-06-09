@@ -121,3 +121,44 @@ def test_send_cot_fail_closed_when_unconfigured(monkeypatch):
     monkeypatch.setattr(config, "TAK_COT_URL", "")
     with pytest.raises(RuntimeError):
         asyncio.run(tak_downlink.send_cot("<event/>"))
+
+
+# ── entity_to_cot adapter（P2-30 part 2 / #180）：cop_entity → CoT，點/幾何分流 ──
+def _parse_event(cot):
+    return ET.fromstring(cot[cot.index("<event") :])
+
+
+def test_entity_to_cot_point():
+    ent = {"uid": "M-1", "type": "a-h-G", "lat": 25.0, "lon": 121.0, "callsign": "敵情", "attributes": {}}
+    e = _parse_event(tak_downlink.entity_to_cot(ent, now=_NOW))
+    assert e.get("uid") == "M-1" and e.get("type") == "a-h-G"
+    assert e.find("detail/shape") is None  # 點，無 shape
+    pt = e.find("point")
+    assert float(pt.get("lat")) == 25.0 and float(pt.get("lon")) == 121.0
+    assert e.find("detail/contact").get("callsign") == "敵情"
+
+
+def test_entity_to_cot_route_geometry():
+    ent = {
+        "uid": "R-1",
+        "type": "b-m-r",
+        "lat": 0,
+        "lon": 0,
+        "attributes": {"kind": "route", "vertices": [[25.0, 121.0], [25.1, 121.1]]},
+    }
+    e = _parse_event(tak_downlink.entity_to_cot(ent, now=_NOW))
+    pl = e.find("detail/shape/polyline")
+    assert pl is not None and pl.get("closed") == "false"
+    assert len(pl.findall("vertex")) == 2
+
+
+def test_entity_to_cot_polygon_closed():
+    ent = {
+        "uid": "Z-1",
+        "type": "u-d-f",
+        "lat": 0,
+        "lon": 0,
+        "attributes": {"kind": "polygon", "vertices": [[25.0, 121.0], [25.1, 121.0], [25.1, 121.1]]},
+    }
+    e = _parse_event(tak_downlink.entity_to_cot(ent, now=_NOW))
+    assert e.find("detail/shape/polyline").get("closed") == "true"
