@@ -146,6 +146,7 @@ def check_roadmap_code_refs():
                 "scenario_service.py",  # P2-19
                 "datasync_service.py",  # P2-14
                 "waveink_service.py",  # P3-03
+                "weather_store.py",  # SC1（天氣/環境 feed，唯讀疊層，仿 facilities_store）
             }
             if full.name in future_files:
                 continue
