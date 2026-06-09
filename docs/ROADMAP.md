@@ -87,6 +87,8 @@
 
 **目標**：部署官方 TAK Server，完整接通 TAK 雙向介面——上行（CoT 位置/事件 + GeoChat + MEDEVAC + shape 幾何）流入 COP，下行（Mission API 指令下達）推送現場 ATAK；充分利用 Marti REST API（在線人員、Mission、DataSync、EXCHECK、影像串流）；地圖渲染採 MIL-STD-2525 符號（含 planned/actual 指令圖層）。
 
+> **開發策略（主軸 + 降階）**：TAK 整合怎麼沿 TAK 軸開發、能力↔API↔ICS 對應矩陣、**TAK Server 掛掉時的三階降階模型**、連線/信心兩軸狀態表示（來源 chips）→ [`docs/roadmap/tak-integration-strategy.md`](roadmap/tak-integration-strategy.md)。情境面「為何要這功能」見 [`docs/reference/tak-use-cases-config.md`](reference/tak-use-cases-config.md)（19 情境深挖）。
+
 > **[Reality check 2026-06-04 — [#98](https://github.com/winson3QQ/ICS_COMMAND/issues/98)]**：盤 main `0db382f` 實際 code。**TAK 上行鏈路（P2-01 部署 / P2-02 `tak_service.py` CoT XML 解析 + 8089/9000 訂閱 / P2-08 XXE 測試）全 greenfield、零實作、XML lib 未選**；但 **P2-04 的下游落地層已被 P1 完整建好且刻意對齊 CoT**——`CoPEntity` v1 凍結（CoT 欄位對齊 + `source="tak"` 預留，P1-03/#15）、`cop_entity_repo`（version_clock CAS + stale 過濾 + TAK 風 soft-delete，P1-15/#29）；`routers/tak.py` schema + RBAC 已掛但 handler 是 stub、`cop_service.normalize_cot` 是 `NotImplementedError`。**關鍵路徑＝ P2-01+P2-02（重活、無 C0 繼承）→ P2-03 wire + P2-04 normalize（輕，下游全建）**。P2-05 可並行（設計 crosswalk §6/§8 已 LOCKED、管線預建；milsymbol 未 vendored / 2525 框零 / `POLY-ROUTE_TYPES` 仍寫死 hex；**疊加非全換**；MGRS #56 完全獨立可先做）。**動工前 3 個 drift（詳 #98）**：① **P2-06 指向錯層** — `snapshot_repo` 是 unit-KPI 聚合非 per-entity COP 時間軸，回放路徑（`cop_entity_tracks`／新表）須先重新確認；② **step-ca 憑證現 24h 且 federation 缺 peer cert** — 90 天 patch 與 client/peer cert profile + TAK Java keystore 信任 SOP 須提早於 C3-B；③ **CSP wasm** — milsymbol 若走 wasm fallback 需補 `wasm-unsafe-eval`（P1-10h 刻意未預放）。供應鏈現況乾淨；三相依 license 已圈定，lock 前逐一驗來源。
 
 ### Scope
