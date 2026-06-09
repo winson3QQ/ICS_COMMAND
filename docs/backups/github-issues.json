@@ -2347,6 +2347,20 @@
         "minimizedReason": "",
         "reactionGroups": [],
         "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/176#issuecomment-4656445701"
+      },
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## 🔬 P2-13 完整 reality check（2026-06-09，活 docker TAK 5.7）— 下行機制定案\n\n承前兩則（讀=truststore / 寫=defaultRole+mission-role）。本則補齊 P2-13 三缺口：**code 盤點 / 下行交付實證 / 指令 CoT 路徑**。策略文件原寫「下行機制設計待定」，**現以實證定案**。\n\n### 1. Code 盤點（建 vs greenfield）\n| 組件 | 狀態 |\n|---|---|\n| `services/tak_rest_client.py`（P2-11） | ✅ 綠燈（泛用 HTTP+mTLS，**無** mission 方法，P2-13 直接呼路徑即可） |\n| CoPEntity `source='command'`（#144）+ `planned`（#143） | ✅ 綠燈，欄位已預留 |\n| COMMAND_ROLES RBAC + audit 基礎 | ✅ 就位 |\n| mil_symbol 2525 base（P2-05） | ✅ 在，但 `planned→空心框` 映射未做 |\n| mission/downlink service・router・「下達指令」UI・planned/actual 視覺・push audit 配線 | ❌ **全 greenfield** |\n\n### 2. 🎯 下行機制實證定案——**兩條路，皆實測**\n官方 Marti **無 REST 廣播端點**（只有 `injectors/cot/uid` 注入 detail 非廣播）。下行只能：\n\n**(A) :8089 雙向 streaming 廣播** ✅ **實測成功**：ICS 寫一個 CoT 到 :8089（即 `tak_service` 現有連線），**server 廣播給同 group(__ANON__) 所有現場端**（活 iTAK 實收）。`t-x-d-d` 刪除亦廣播（即時移除）。\n- **不需 mission、不需 owner-role、不需 admin** —— 只要 truststore-trusted cert（與訂閱同一張）。**這是最簡下行路**，等同 ATAK 送 CoT 的方式。\n- 限制：live broadcast，無持久性/可靠刪除保證（reconnect 不重播，同 #173）。\n\n**(B) Mission contents**（持久/權威指令）：survives reconnect + `changes` feed 可靠刪除（見前則）。但 owner-role 無狀態 REST 取不到 → 需**寬鬆 mission 或 admin**。屬 P2-14 重疊面。\n\n→ **定案**：P2-13「下達即時指令」(planned marker / route `b-m-r` / task) = **走 (A) :8089 streaming write**（在現有連線加寫能力，最低成本、無新 auth）；「持久/權威指令」= 走 (B) Mission（受 defaultRole/owner 約束）。\n\n### 3. 指令 CoT = 標準 CoT event + COP `source='command'`/`planned=true`\n下達 = 送一個 CoT（type 視指令種類）；ICS COP 端標 `source='command'`、`planned=true`（2525 空心框）。**planned→actual 翻轉的 ack 流程仍未定**（ATAK 收到/接受後如何回流翻 `planned=false`）——P2-13 設計待解項。\n\n### 4. 安全\nstreaming-write 下行 = 任何 truststore-trusted cert 可向全現場端廣播 CoT（與讀同一信任邊界，封閉信任域假設）。現有 `tak_service` :8089 連線目前唯讀，P2-13 = 加寫能力。\n\n### 5. P2-13 動工最小路徑\n- 後端：`tak_service`/新 `downlink_service` 加「建 CoT + 寫 :8089」；downlink router endpoint（COMMAND_ROLES + 強制 audit）；CoT 指令模板（planned marker/route/task）。\n- 前端：「下達指令」UI（選 entity→推）；`planned→空心框` 2525 視覺。\n- pytak 整合待驗：現有 `writer` 只用於關閉；需確認可重用於送 CoT（socket 層已證雙向可行）。\n- ⚠ open：planned→actual ack 回流機制。\n\n> 實測殘留已清：測試 mission（5 個，admin 刪）+ streaming 測試標記（t-x-d-d 清）。memory `tak-marti-authz-model` 已補下行定案。\n\nRefs P2-13, P2-14, #173, #177",
+        "createdAt": "2026-06-09T05:51:51Z",
+        "id": "IC_kwDOSnBjpc8AAAABFY1H9A",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/176#issuecomment-4656547828"
       }
     ],
     "createdAt": "2026-06-08T10:00:42Z",
@@ -2355,7 +2369,7 @@
     "number": 176,
     "state": "OPEN",
     "title": "P2-14 reality check：Mission/DataSync 同步 — 路徑成立 / #173 範圍修正 / 與 P2-13 共用面協調",
-    "updatedAt": "2026-06-09T05:32:26Z",
+    "updatedAt": "2026-06-09T05:51:51Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/176"
   },
   {
