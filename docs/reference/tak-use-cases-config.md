@@ -50,8 +50,8 @@
 | **動作/應變** | 野火延燒應變 (WUI) | ✅ 本批 |
 | **動作/應變** | 都市 / 結構火災 (高樓/延燒，室內 GPS-denied) | ✅ 本批（2026-06-09 自野火拆出）|
 | **動作/應變** | 危險物質 (HazMat / CBRNE) 洩漏 | ✅ 本批 |
-| **動作/應變** | 重大傷亡後送 (MCI/MEDEVAC) | ✅ 本批 |
-| **動作/應變** | 關鍵設施巡邏監控 | 待挖 |
+| **動作/應變** | 關鍵設施巡邏監控（預防性應變）| ✅ 本批 |
+| **動作/應變** | 重大傷亡後送 (MCI/MEDEVAC，跨災害共通下游·壓軸) | ✅ 本批 |
 | **高威脅/多組織/訓練** | RTF 武裝掩護搜救 | 待挖（有對話內容） |
 | **高威脅/多組織/訓練** | 多機構聯合災害指揮 | 待挖 |
 
@@ -549,9 +549,57 @@ SDR（軟體定義無線電）感測器——或 **WaveInk**（你的 SDR 多頻
 - **中國供應鏈紅線**：CBRN 感測器硬體/函式庫須驗**非中國**（CLAUDE.md，同 SDR 那條，感測器生態尤須注意）。
 
 ---
+## 關鍵設施巡邏監控（Critical Facility Patrol / Force Protection）
+
+> **歸屬說明（使用者 2026-06-09）**：巡邏看似常態安全監控、不像「應變」，但**換個角度——巡邏＝主動偵知異常、在突發演變成事件前先應變**，本質是**預防性應變**；且一旦偵到（入侵/異常）即無縫轉 SAR/MCI/HazMat 等回應。故留在動作群。
+
+### 實際案例（佐證，非杜撰 — 附來源）
+| # | 案例 | 性質 | 來源 |
+|---|---|---|---|
+| ✅ A | **USAF 安全部隊（Eglin AFB 2018、第 96 安全部隊中隊）**：ATAK 用於 force protection，**巡邏車與派遣電子連線**；連**核武安全部隊**都配發 ATAK | TAK 設施安全/巡邏**實證** | [CivTAK Security Forces](https://www.civtak.org/tag/security-forces/)、[Wikipedia: ATAK](https://en.wikipedia.org/wiki/Android_Team_Awareness_Kit) |
+| ✅ B | **關鍵基礎設施隊**：**單一 ATAK 即時圖整合無人機 + CCTV 感測器 + 安全資料**；周界入侵以**相機影像 + 無人機掃描 + GPS 軌跡**留痕成案 | TAK 關鍵設施 **sensor fusion 實證** | [Medium: TAK in Security Ops](https://carolinagal14.medium.com/the-team-awareness-kit-tak-the-tactical-situational-awareness-revolution-transforming-emergency-c28b67e53463) |
+| ✅ C | **ATAK 地理圍欄(geofence)**：對標記設半徑圍欄、**區內偵測即告警** | TAK 地理圍欄**告警能力** | [ATAK CIV repo](https://github.com/deptofdefense/AndroidTacticalAssaultKit-CIV/issues/200) |
+| ✅ D | **周界感測融合**：**UGS(無人地面感測器)自動記 GPS + 觸發 PTZ 相機**、地面雷達追入侵者、整合為單一功能；ATAK 手機可當行動感測器 | sensor fusion 周界安全**實務** | [ARA 周界安全最佳實務](https://www.ara.com/pathfinder/perimeter-security-systems-best-practices/) |
+| ✅ E | **關鍵設施 COP / 鐵路安全**：SACIN（JDL data fusion）框架提供關鍵設施 COP；鐵路安全用 Bayesian fusion **提升偵測準度、降誤報** | 關鍵設施監控 COP **學術實證** | [SACIN ScienceDirect](https://www.sciencedirect.com/science/article/pii/S1874548215300305)、[鐵路融合 PMC](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC11244095/) |
+
+> **❗誠實邊界**：TAK 設施安全**實證充足（A/B 含 sensor fusion）**。誠實重點＝ICS 缺：① **感測器整合**（CCTV/UGS/雷達→COP ＝ **SDR/CBRN sensor source 模式**，❓ 未建）；② **geofence 告警後端**（ICS 無，❓）；③ **🔴 中國供應鏈紅線在「監控感測器」最尖銳**——CCTV/感測器生態中國廠商主導（NDAA 889 明文禁該類），CLAUDE.md 紅線此處**最該嚴守**（選 camera/UGS/雷達硬體逐一驗非中國）。
+
+### 作業案例（實況）
+保護**關鍵設施**（電廠/變電所/水廠/油氣管線/港口/基地/通訊樞紐）或**活動安全**（大型集會）。常態＝**巡邏隊定時巡查周界/要點** + **固定感測器**（CCTV/UGS/雷達/紅外）守望；目標＝**在入侵/破壞/異常演變成事件前先偵知處置**。偵到異常（翻牆/無人機闖入/設備異常）即**派最近巡邏前往查證**→ 視情況**升級為回應**（救援/疏散/HazMat…）。
+
+沒有數位共享時：巡邏**覆蓋無紀錄**（誰巡了哪、何時，事後說不清）；CCTV/感測器**各看各的螢幕**、不在同一張圖；告警靠值班員盯牆面監視器（盲點/疲勞/誤報）；偵到異常**口述位置**派人，慢且易錯。
+
+### 痛點 → 需求邏輯
+指揮需要：① **巡邏隊位置 + 覆蓋軌跡**（誰巡了哪、留痕問責）；② **固定感測器 + CCTV 融進同一張圖**（消盲點、減誤報）；③ **geofence 自動告警**（闖入禁區即跳警，免人盯牆）；④ **偵到即就近派遣 + 留證**（影像+軌跡成案）；⑤ **無縫升級回應**（偵到→轉 SAR/MCI/HazMat）。效率關鍵 = **巡邏覆蓋、固定感測、自動告警收進同一張 COP，異常早偵知並能直接接回應鏈**。
+
+### TAK/ICS 怎麼用（四層 + 為什麼）
+| 層 | 怎麼用 | 為什麼 |
+|---|---|---|
+| ① Client (ATAK/iTAK) | 巡邏隊**自動廣播 PLI**（✅ 案例 A：巡邏車連派遣）；標**禁區/巡查要點/感測器位置**；**geofence 區內告警**（✅ 案例 C）；接無人機/CCTV（✅ 案例 B）；**偵到即拍照+軌跡留證**（✅ 案例 B）| 自動 PLI＝巡邏覆蓋問責；geofence 把「盯牆」變主動告警；就地留證成案 |
+| ② 協定/資料 | 巡邏隊/車＝`a-f-*` track；禁區/巡查區＝`u-d-f`(面)、巡邏路線＝`u-d-r`(線)；UGS/雷達/相機讀數＝sensor CoT；入侵＝CoT 告警事件；2525/NAPSG 符號 | 面/線表達禁區與巡邏覆蓋；sensor CoT 把感測讀數帶位置進 COP |
+| ③ TAK Server | **Groups** 分巡邏區；**設施/禁區圖走 Mission/DataSync** 持久；**CCTV/無人機走 Video Feed Manager**；**UGS/雷達/感測器＝外部 data feed（`Inputs and Data Feeds`，sensor fusion）**；geofence 告警 | 設施/禁區是持久權威態勢→Mission；sensor fusion 靠 data feed 把固定感測收進來 |
+| ④ ICS Dashboard | COP 渲染巡邏隊（P2-02~05）+ **覆蓋軌跡看 P2-06 tracks**（誰巡了哪/留痕）；**設施＝P1-17 圖層**（被保護對象）+ **禁區/巡邏區走 P1-16 zone**；CCTV/無人機 **reference-only URI 不 proxy**（P2-16）；**感測器整合(CCTV/UGS/雷達→COP)＝SDR/CBRN sensor source 模式（❓ 未建）**；**geofence 告警後端＝ICS 無（❓）**；偵到→升級回應；AAR/audit 留覆蓋與成案證據 | P1-17 設施＝被保護對象現成；P2-06 軌跡＝巡邏覆蓋問責；**感測器整合與 geofence 告警是 ICS 兩個未建後端** |
+
+### 效率提升
+- **巡邏 BFT + 覆蓋軌跡** → 誰巡了哪/何時留痕問責（事後說得清）、就近派遣（案例 A）。
+- **geofence 自動告警** → 闖入即跳警，**免人盯牆**（盲點/疲勞解方）——這是「早偵知」的核心預防價值。
+- **sensor fusion 同圖**（✅ 案例 B/D/E）→ 消盲點、**降誤報**（案例 E 鐵路 Bayesian fusion 實證）。
+- **偵到即留證**（影像+軌跡，案例 B）→ 證據鏈成案。
+- **無縫升級回應** → 偵到入侵/災害即轉 SAR/MCI/HazMat（呼應歸屬：預防→應變一條龍）。
+
+### 注意 / 失效模式
+- **🔴 中國供應鏈紅線在此最尖銳**：CCTV/UGS/雷達等**監控感測器生態中國廠商主導**（NDAA 889 明文禁該類產品）→ CLAUDE.md「禁中國軟硬體」紅線在設施安全採購**最該嚴守**，每個 camera/sensor/雷達硬體逐一驗非中國。
+- **🔴 感測器整合 + geofence 告警＝ICS 兩個未建後端**：CCTV/UGS/雷達→COP 是 **SDR/CBRN sensor source 模式**（架構吻合 cop_service normalize，❓ 未建）；geofence 自動告警 ICS 後端無（❓）。
+- **誤報**：sensor fusion 降誤報但不歸零（案例 E）→ 告警仍需人工查證，**狼來了**會鈍化反應。
+- **常態 vs 事件**：純例行巡邏 COP 負擔可能 > 效益；**價值集中在大型設施/多隊/活動安全/告警時刻 + 覆蓋問責**，非每次例行巡查。
+- **OPSEC**：巡邏模式/感測器位置敏感（被偵察則周界破口外洩）→ 限閱（Groups/visible_to），不可全網廣播。
+- **untrusted sensor 輸入**：感測讀數進 COP 須驗（同 TAK/SDR ingest 紀律）；被假告警灌爆＝ DoS/分散注意。
+
+---
+
 ## 重大傷亡後送（MCI / MEDEVAC）
 
-> 與 SAR 配成救命鏈：**搜救(找到/接觸) → 檢傷(分類) → 後送(送醫)**。SAR 四層已引 9-line（P2-09），本情境把「檢傷 + 後送」展開。
+> **壓軸＝跨災害的共通下游**：前面 SAR / 颱風水災 / 火災 / HazMat 各事件類型，傷患最終都匯入「**檢傷(分類) → 後送(送醫)**」這條共通能力鏈，故置動作群末作收尾（非並列的災害類型）。SAR 四層已引 9-line（P2-09），本情境把「檢傷 + 後送」展開。
 
 ### 實際案例（佐證，非杜撰 — 附來源）
 | # | 案例 | 性質 | 來源 |
@@ -595,8 +643,6 @@ SDR（軟體定義無線電）感測器——或 **WaveInk**（你的 SDR 多頻
 - **民間多機構**：醫院端患者追蹤（RFID/HIS）**超出 TAK 範疇**，TAK 管到「現場→後送」，院內交接是另一系統（案例 C/RFID 研究屬此銜接區，整合 ❓）。
 
 ---
-
-## 關鍵設施巡邏監控　_待深挖_
 
 # 群：高威脅 / 多組織 / 訓練　（待深挖）
 ## RTF 武裝掩護搜救　_待深挖（已有對話內容：integrity=人命、敵我/IED/暖冷區、拉高 §8.3/#161/P2-14 優先級）_
