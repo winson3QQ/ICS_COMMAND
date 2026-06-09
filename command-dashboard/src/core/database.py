@@ -911,6 +911,69 @@ def _m020_cop_entities_archived_down(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE cop_entities DROP COLUMN archived")  # nosec B608
 
 
+def _m021_event_markers(conn: sqlite3.Connection) -> None:
+    """P2-27：event↔marker 關聯 junction 表，取代 `attributes.kind='event'` JSON glue。
+
+    分層解耦（見 docs/design/cop-event-layering.md）：感知標記（cop_entity）是一等公民
+    （感知層、可共享）；事件（event）reference 一或多個標記（事故層、留 ICS）。**關係載
+    junction 表、不污染 cop_entities schema** —— P2-30 share adapter 只唯讀標記欄、不讀本表，
+    故標記外流時不帶事故層耦合（不外流邊界）。
+
+    建模＝N:1（一事件聚多標記）且 **N:M-ready**（同一標記未來可關聯多事件，如一棟樓同屬
+    火災+搜救）：PK(event_id, cop_entity_uid) 允許多 event 共享同 uid。雙向 ON DELETE
+    CASCADE：event 硬刪→關聯消；marker 硬刪→關聯消（標記本體生命週期獨立、soft-delete
+    墓碑不觸發）。role 預留（primary/related）。
+
+    backfill：既有 `attributes.kind='event'` 的 cop_entity 從 `attributes.event_id` 一次性
+    回填，**僅當該 event 仍存在**（EXISTS 守門滿足 events FK，避免孤兒關聯炸 FK）。
+    cop_entity_uid 取自 cop_entities 自身、必滿足該側 FK。INSERT OR IGNORE 容重跑。
+    """
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS event_markers (
+            event_id        TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+            cop_entity_uid  TEXT NOT NULL REFERENCES cop_entities(uid) ON DELETE CASCADE,
+            role            TEXT,
+            created_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+            PRIMARY KEY (event_id, cop_entity_uid)
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_event_markers_event ON event_markers(event_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_event_markers_uid   ON event_markers(cop_entity_uid)")
+    conn.execute("""
+        INSERT OR IGNORE INTO event_markers (event_id, cop_entity_uid, role)
+        SELECT json_extract(c.attributes, '$.event_id'), c.uid, 'primary'
+          FROM cop_entities c
+         WHERE json_valid(c.attributes)
+           AND json_extract(c.attributes, '$.kind') = 'event'
+           AND json_extract(c.attributes, '$.event_id') IS NOT NULL
+           AND EXISTS (SELECT 1 FROM events e WHERE e.id = json_extract(c.attributes, '$.event_id'))
+    """)
+
+
+def _m021_event_markers_down(conn: sqlite3.Connection) -> None:
+    conn.execute("DROP TABLE IF EXISTS event_markers")
+
+
+def _m022_events_drop_dead_lat_lon(conn: sqlite3.Connection) -> None:
+    """P2-27 位置 SoT 清理：刪 events.lat/lon 死欄。
+
+    m013（line 636-637）為 scenario 5 預埋 events.lat/lon，但 create/patch **從未寫、查詢
+    從未讀**（實證 event_repo）—— PR-G1b cutover 後事件位置由 `cop_entities.lat/lon`（事件
+    圖釘）承載，**那才是唯一位置 SoT**。保留死欄會造成「events 也有位置」的假象 → 刪除。
+    SQLite 3.35+ DROP COLUMN（本檔 down-migration 已用，見 _m014_down）。idempotent。
+    """
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(events)")}
+    for col in ("lat", "lon"):
+        if col in cols:
+            conn.execute(f"ALTER TABLE events DROP COLUMN {col}")  # nosec B608 — 欄名為常數
+
+
+def _m022_events_drop_dead_lat_lon_down(conn: sqlite3.Connection) -> None:
+    """rollback：把 lat/lon 加回（nullable，對齊 m013 的形狀）。"""
+    _add_column_if_missing(conn, "events", "lat", "REAL")
+    _add_column_if_missing(conn, "events", "lon", "REAL")
+
+
 _MIGRATIONS: list[tuple[int, str, object]] = [
     (1, "events_columns", _m001_events_columns),
     (2, "decisions_columns", _m002_decisions_columns),
@@ -932,6 +995,8 @@ _MIGRATIONS: list[tuple[int, str, object]] = [
     (18, "cop_entities_source_command", _m018_cop_entities_source_command),
     (19, "cop_entities_deleted", _m019_cop_entities_deleted),
     (20, "cop_entities_archived", _m020_cop_entities_archived),
+    (21, "event_markers", _m021_event_markers),
+    (22, "events_drop_dead_lat_lon", _m022_events_drop_dead_lat_lon),
 ]
 
 

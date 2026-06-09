@@ -39,7 +39,7 @@ from starlette.websockets import WebSocketDisconnect
 from auth.role_enum import COMMAND_ROLES, READ_ROLES, is_role_allowed
 from auth.service import check_session
 from core.input_safety import validate_no_unsafe_strings
-from repositories import cop_entity_repo, exercise_repo
+from repositories import cop_entity_repo, event_marker_repo, exercise_repo
 from repositories._helpers import NULL_SCOPE, audit
 from schemas.cop import CoPEntity
 from services.exercise_service import current_exercise_id, resolve_scope
@@ -78,6 +78,7 @@ def _require_editable_source(existing: dict) -> None:
         403,
         f"實戰模式下 {src} 來源物件唯讀（外部現場鏡像，禁手動覆寫/刪除；下令請建指揮部物件）",
     )
+
 
 # P1-16（security review HIGH-1）：節點(zone)/設施(infra)的「建立 / 刪除」限指揮層。
 # 前端 canUseRealModeControls() 只是 UI 遮罩，非安全邊界；此處為後端真實授權。
@@ -269,6 +270,24 @@ async def create_entity(request: Request, response: Response):
     # zone/route/polygon/infra 等才是真正未被 audit 的地圖物件。
     if (created.get("attributes") or {}).get("kind") != "event":
         _audit_cop("cop_entity_created", _actor(request), created)
+    else:
+        # P2-27：event 圖釘 → 建 event↔marker junction 關聯（權威關聯改走 FK，不再只靠
+        # attributes.event_id JSON glue）。前端先建 event 再建本圖釘 → event_id 此時應存在。
+        # best-effort：entity 已 insert+broadcast 完成，關聯失敗只記 warning、不擋圖釘（圖照樣上 COP）。
+        # 攔 sqlite3.Error（含 IntegrityError=event 不存在 + OperationalError=DB locked）——若只攔
+        # IntegrityError，高併發下 link 撞 locked 會在 entity 已建後噴 500，client 重試又撞 409。
+        _attrs = created.get("attributes") or {}
+        _ev_id = _attrs.get("event_id")
+        if _ev_id:
+            try:
+                event_marker_repo.link_marker(_ev_id, created["uid"], "primary")
+            except sqlite3.Error as e:
+                log.warning(
+                    "[cop] event↔marker 關聯失敗（FK/DB 錯，best-effort 不擋圖釘）event_id=%s uid=%s：%s",
+                    _ev_id,
+                    created["uid"],
+                    e,
+                )
     response.headers["ETag"] = _etag(created["version_clock"])
     return created
 
