@@ -2340,14 +2340,29 @@
     },
     "body": "## 來源\nP2-14 reality check（#176）衍生。討論「ICS+TAK 是同一交付產品 → ICS 應為管理台」時浮現的缺口。\n\n## 缺口\nICS 對 TAK 的 client cert / role **完全沒有管理能力**：\n- cert 靠 `deploy/tak-server/pki/issue-tak-certs.sh` **手動簽**。\n- role 靠**手動編** TAK server 的 `UserAuthenticationFile.xml`（fingerprint→role）。\n- 無簽發/輪替/撤銷/角色指派的 ICS 功能。\n\nP2-14 實測時，連 agent 要改 `UserAuthenticationFile` 都被安全分類器擋（高危 RBAC 寫入）——**正說明這該是個受控的管理功能，而非手動改 XML**。\n\n## 方向（ICS TAK admin console 主題）\nICS 作為交付產品的管理台，應能管理 TAK 端：\n1. **cert 生命週期**：簽發 / 輪替 / 撤銷 TAK client 服務 cert（讀 cert / 寫 cert，見 #176 cert-role 定案）。\n2. **role 指派**：把 cert fingerprint 註冊進 `UserAuthenticationFile.xml` + 指定 role（ROLE_USER + mission role），hot-reload。\n3.（未來）mission 管理、retention 設定 等 server 管理面，與本項同屬「ICS TAK admin console」。\n\n## 關聯 / 邊界\n- **≠ P1-12**（P1-12 = ICS 自身金鑰 FIDO2/HKDF/at-rest；本項 = 管 TAK 的 client cert/role）。\n- **安全敏感**（最高權限）：sysadmin-only + 強制 audit；憑證私鑰存放對齊 P1-12 at-rest 加密邊界。\n- 依賴 P2-14 cert-role 定案（#176）。建議在 P2-14 真正動工、確定兩張服務 cert 需求後接續。\n\n## DoD（初擬）\n- [ ] ICS 能簽發/註冊「讀 cert（ROLE_USER+readonly-subscriber）」「寫 cert（ROLE_USER+owner）」並寫入 TAK auth\n- [ ] role 指派 sysadmin-only + audit\n- [ ] 撤銷/輪替流程 + 私鑰 at-rest 保護\n",
     "closedAt": null,
-    "comments": [],
+    "comments": [
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## L1/L2 邊界切分（2026-06-09，P2-14 動工排序衍生）\n\n盤現有 code 後，本單實為兩層，混在一單會過度 front-load。明確切開：\n\n### L1 — cert/role provisioning 機制（**真前置**，P2-14 動工第一步）\n即 #176「cert-role 定案」逐字寫的「動工要點」：\n- 擴 `deploy/tak-server/pki/issue-tak-certs.sh` 簽**兩張服務 cert**（都 `ROLE_USER`，差 mission 級角色）：\n  - **讀 cert**（mission readonly-subscriber）→ 餵 P2-14 DataSync / resync（`/cot/sa`、`/cot`、`/changes`）\n  - **寫 cert**（mission owner）→ 餵 P2-13 下行（`DELETE/PUT .../contents`）\n- 新增 fingerprint 註冊機制（腳本）：把 cert SHA-256 fingerprint 寫進 `UserAuthenticationFile.xml`（File backend，hot-reload 免 restart）。\n\n**現況缺口（實查）**：\n- `issue-tak-certs.sh` §5 目前只簽 **1 張** cop-subscriber cert、**無 role**。\n- 全 repo **零行** code 碰 `UserAuthenticationFile.xml` → role 指派 100% 手動編 XML（P2-14 实测被安全分類器擋即此症狀）。\n\n→ **L1 是 P2-14（讀 cert）與 P2-13（寫 cert）的共用地基，沒有對的 role cert 就連不進 mission 端點。** 排為 P2-14 動工第一個 sub-task。dogfood 階段一次性簽+註冊即可。\n\n### L2 — ICS TAK admin console GUI（**後續產品化**）\n簽發/輪替/撤銷 UI、role 指派 UI、sysadmin-only + audit、私鑰 at-rest（對齊 P1-12 邊界）。即本單原 DoD。\n\n→ 屬「ICS 作為交付產品的管理台」vision，對當前 dogfood 無解鎖價值。**待 P2-14/P2-13 落地後再做。** 本單主體保留為 L2。\n\n### 排序定案\n1. **L1 先做**（P2-14 動工第一步，腳本層，非 GUI）。\n2. **L2（本單主體）= follow-on**，P2-14/13 落地後啟動。",
+        "createdAt": "2026-06-09T01:58:50Z",
+        "id": "IC_kwDOSnBjpc8AAAABFXpfJQ",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/177#issuecomment-4655308581"
+      }
+    ],
     "createdAt": "2026-06-09T01:21:28Z",
     "labels": [],
     "milestone": null,
     "number": 177,
     "state": "OPEN",
     "title": "ICS TAK cert/role 管理（ICS 作為交付產品的 TAK admin console）",
-    "updatedAt": "2026-06-09T01:21:28Z",
+    "updatedAt": "2026-06-09T01:58:50Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/177"
   }
 ]
