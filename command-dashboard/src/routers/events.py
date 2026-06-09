@@ -59,14 +59,18 @@ def get_ev(request: Request, status: str | None = None, limit: int = 50, exercis
 
 
 @router.get("/{event_id}/chain")
-def get_chain(event_id: str):
+def get_chain(event_id: str, request: Request, exercise_id: int | None = None):
     """P2-27 導航鏈：一處看「事 → 標記（via event_markers junction）→ 決策」完整脈絡。
 
-    取代「event↔cop 靠 attributes JSON glue、四表割裂無導航」的現狀。event 不存在 → 404。
+    取代「event↔cop 靠 attributes JSON glue、四表割裂無導航」的現狀。
     報(chats)/行(下行) 兩段尚無 FK，留 P2-28 / P2-13 B（見 event_marker_repo.get_event_chain）。
-    by-id 操作不再額外 re-scope（對齊既有 patch_ev / patch_status 慣例；event_id 取自已 scoped 列表）。
+
+    **P1-14 PII 守門**：本端點回傳 event（含 related_person_name 等 PII）+ 決策，故與 `get_ev`
+    同走 `resolve_scope`——預設限當前 active 場 / 實戰池；指揮層可顯式帶 `exercise_id` 看歷史。
+    event 不在範圍（含不存在）→ 404，不洩漏跨場 event 的存在性。多場資料於同一 DB 並存
+    （exercises archived 保留 + AAR 回放需要），故此閘為實質邊界、非裝飾。
     """
-    chain = get_event_chain(event_id)
+    chain = get_event_chain(event_id, resolve_scope(request.state.session, exercise_id))
     if chain is None:
         raise HTTPException(404, "event not found")
     return chain

@@ -13,7 +13,7 @@ import structlog
 
 from core.database import get_conn
 
-from ._helpers import row_to_dict
+from ._helpers import NULL_SCOPE, row_to_dict
 from .cop_entity_repo import _row_to_entity_dict  # JSON/bool 解碼，與全站 COP 端點同 shape
 
 _log = structlog.get_logger()
@@ -77,10 +77,15 @@ def get_events_for_marker(cop_entity_uid: str) -> list[dict]:
     return [row_to_dict(r) for r in rows]
 
 
-def get_event_chain(event_id: str) -> dict | None:
+def get_event_chain(event_id: str, scope) -> dict | None:
     """P2-27 sub-goal 2 導航鏈：一處看「事 → 標記 → 決策」完整脈絡。
 
     回傳 `{event, markers, decisions}`；event 不存在 → None。
+
+    **`scope` = P1-14 exercise scope 守門（必填）**：由 router 的 `resolve_scope()` 解出
+    （int=該場 / `NULL_SCOPE`=實戰/未分場池），與 `get_events(…, exercise_id)` 同模式。
+    event 不在 caller 可見範圍 → **回 None（router 映 404，不洩漏跨場 event 的存在性）**。
+    本函式只服務 PII 讀取，故 scope 不給預設值——強制每個 caller 顯式決定範圍，杜絕漏 scope。
 
     誠實邊界（尚缺 FK 的兩段，留後續 item）：
     - **報(chats)↔事**：chats 按 sender/group 收，無事件綁定 FK → P2-28 入向升級補。
@@ -91,6 +96,12 @@ def get_event_chain(event_id: str) -> dict | None:
     with get_conn() as conn:
         ev = conn.execute("SELECT * FROM events WHERE id=?", (event_id,)).fetchone()
         if ev is None:
+            return None
+        # P1-14 scope 守門：NULL_SCOPE → 只准看實戰/未分場（exercise_id IS NULL）；int → 限該場。
+        # 不符 → 視同不存在（與 router 的 missing 同走 404，不洩漏其他場 event 存在性）。
+        ev_ex = ev["exercise_id"]
+        out_of_scope = (ev_ex is not None) if scope is NULL_SCOPE else (ev_ex != scope)
+        if out_of_scope:
             return None
         decisions = conn.execute(
             "SELECT * FROM decisions WHERE primary_event_id=? ORDER BY decision_seq, created_at",

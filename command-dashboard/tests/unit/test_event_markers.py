@@ -14,9 +14,11 @@ import pytest
 
 from core.database import _m021_event_markers, get_conn
 from repositories import event_marker_repo
+from repositories._helpers import NULL_SCOPE
 from repositories.cop_entity_repo import insert_cop_entity
 from repositories.decision_repo import create_decision
 from repositories.event_repo import create_event
+from repositories.exercise_repo import create_exercise
 from schemas.cop import CoPEntity
 
 pytestmark = pytest.mark.unit
@@ -30,7 +32,7 @@ def _db(tmp_db):
 _FUTURE = "2099-01-01T00:00:00Z"
 
 
-def _mk_event(desc="倒塌回報"):
+def _mk_event(desc="倒塌回報", exercise_id=None):
     return create_event(
         {
             "reported_by_unit": "forward",
@@ -38,7 +40,8 @@ def _mk_event(desc="倒塌回報"):
             "description": desc,
             "operator_name": "tester",
             "severity": "warning",
-        }
+        },
+        exercise_id,
     )["id"]
 
 
@@ -119,7 +122,7 @@ def test_get_event_chain_aggregates_markers_and_decisions():
             "created_by": "cmd",
         }
     )
-    chain = event_marker_repo.get_event_chain(ev)
+    chain = event_marker_repo.get_event_chain(ev, NULL_SCOPE)
     assert chain["event"]["id"] == ev
     assert {m["uid"] for m in chain["markers"]} == {"manual:cm1", "manual:cm2"}
     assert len(chain["decisions"]) == 1
@@ -127,7 +130,26 @@ def test_get_event_chain_aggregates_markers_and_decisions():
 
 
 def test_get_event_chain_missing_event_returns_none():
-    assert event_marker_repo.get_event_chain("nope") is None
+    assert event_marker_repo.get_event_chain("nope", NULL_SCOPE) is None
+
+
+# ── P1-14 exercise scope 守門（PII 不跨場洩漏）────────────────────────────────
+
+
+def test_chain_scope_blocks_cross_exercise():
+    """演習場 event，caller scope=實戰池(NULL_SCOPE) → 視同不存在（None），不洩 PII。"""
+    ex = create_exercise({"name": "EX-A", "type": "ttx"})["id"]
+    ev = _mk_event("演習傷患", exercise_id=ex)
+    assert event_marker_repo.get_event_chain(ev, NULL_SCOPE) is None  # 跨場 → 擋
+    assert event_marker_repo.get_event_chain(ev, ex)["event"]["id"] == ev  # 同場 → 放行
+
+
+def test_chain_scope_blocks_realworld_from_exercise_scope():
+    """實戰 event(exercise_id=NULL)，caller scope=某演習 int → 擋（None）。"""
+    ex = create_exercise({"name": "EX-B", "type": "ttx"})["id"]
+    ev = _mk_event("實戰傷患", exercise_id=None)  # 實戰池
+    assert event_marker_repo.get_event_chain(ev, ex) is None  # 拿演習 scope 看實戰 → 擋
+    assert event_marker_repo.get_event_chain(ev, NULL_SCOPE)["event"]["id"] == ev  # 實戰 scope → 放行
 
 
 # ── 雙向 cascade ─────────────────────────────────────────────────────────────
