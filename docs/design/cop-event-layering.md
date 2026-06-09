@@ -138,3 +138,30 @@ chats(報/通聯)  →  events(事)  →  decisions(決)  →  下行 tasking(�
 | **P2-30** | **感知標記共享閘 + 手動感知標記（無線電上車口）+ 線/區出向幾何序列化** | 無 per-entity「推 TAK」flag；手動感知標記非命名能力；`geometry_service` 只有入向 `extract_geometry`，無出向 `geometry_to_cot` |
 
 > 位置 SoT 三份（events.lat/lon 死 + cop_entity.lat/lon 活 + location_zone_id）併入 P2-27 一起清。
+
+## 19 情境 × 五層 壓力測試（模型驗證，2026-06-09）
+
+> 把 [`tak-use-cases-config.md`](../reference/tak-use-cases-config.md) 的 19 情境逐一跑過五個概念層（L0 節點 / L2 接縫 / L3 感知 / L4 事故 / L5 指揮；L1 傳輸為純管路）後的**結構結論**。逐情境追蹤見 use-cases doc；本節只收「模型撐不撐得住」的發現。
+
+**1. L4 觸發 = 分水嶺**（情境分兩類，判定權在幕僚收斂或 P2-28 入向升級）：
+- **停 L3（純感知，不升事故）**：BFT、COP 標繪、UAV/IMINT 位置、RF emitter、`planned` 計劃標繪。
+- **升 L4（事故）**：SAR 受困點、火場、HazMat 洩漏、MCI、geofence 闖入、Recon 疑敵。
+- **唯一全鏈落地的 L4 範例 = MEDEVAC**（L2 `_extract_medevac` 蓋 critical → L4 incident → L5 pulse）；其餘 L4 路徑多卡 P2-27/28。
+
+**2. 反覆撞到的結構缺角**（非單情境，跨多情境重現）：
+
+| 缺角 | 哪些情境逼出 | 在不在上面缺口表 |
+|---|---|---|
+| **天氣/環境 feed**（風/雨/能見度，影響火勢·擴散·航空·淹水）| 軍用計劃·野火·HazMat | ❌ 不在（屬外部 data-feed 缺口，strategy 候選）|
+| **L5 主動告警後端**（geofence/門檻 → 提示「何時決策」）| OODA Decide·設施巡邏 | ❌ 不在（L5 主動性整片空白，strategy 候選）|
+| **N:1 聚合（標記→事件）** | SAR 多隊標同點·AAR 時間軸對齊 | ✅ = P2-27 |
+| **接縫 L2 source stub** | SDR/WaveInk·收容 PWA·HazMat 感測器 | ✅ = `normalize_*` stub（L2 來源無感未兌現）|
+
+**3. 模型「結構不足」的唯一一條 → 多機構（需補）**：
+- 五層是**縱向、單指揮部**棧。聯合指揮（Unified Command）= 多個對等 L4 事故層。
+- **缺口**：模型沒有「**L4 跨指揮部水平通道**」（事故層在對等指揮部間共享 ≠ 推給 TAK client）。
+- 19 情境裡**唯一逼出「模型結構不足」的**（其餘都是「某層實作未做」）→ 對應〈不外流邊界〉需補「單指揮部 vs 對等多指揮部」界定。
+
+**4. 橫切壓過縱向（不屬任何單層，但決定整棧能不能用）**：
+- **RTF**：治理/信任邊界橫切（OPSEC 加密 L0 → 敵標可信度 L4）壓過縱向流。
+- **室內結構火災**：L0 GPS-denied → **L0 感測品質是全棧下限**；L0 崩，上面四層再完整也無基底。
