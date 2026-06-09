@@ -166,19 +166,21 @@
 
 ### 情境檢討衍生候選（2026-06-09）
 
-> 來源：19 情境深挖（[`tak-use-cases-config.md`](reference/tak-use-cases-config.md)）+ TAK 整合策略（[`tak-integration-strategy.md`](roadmap/tak-integration-strategy.md) §6）累積出的跨情境候選。**此為留痕 backlog**——花大力氣檢討的東西，即使最終 later/不做也記在此，不蒸發。**狀態待使用者圈定**（進＝升 numbered item / later / 不做）；圈定後本表標結果 + 連結對應 item。狀態 marker 沿用本文件全域約定（無 marker = 待圈定）。
+> 來源：19 情境深挖（[`tak-use-cases-config.md`](reference/tak-use-cases-config.md)）+ TAK 整合策略（[`tak-integration-strategy.md`](roadmap/tak-integration-strategy.md) §6）累積出的跨情境候選。**SC1–SC7 為 ROADMAP 級 backlog ID**（同 RT-*/TAK-* 用法）。
+> **✅ 2026-06-09 S4 圈定（使用者「都進」）**：SC1–SC5 全進、SC6 已入 DoD、SC7 進。**⚠️ 真正啟動＝開 GitHub issue**（PROCESS.md step 2，ROADMAP item ↔ issue）——**doc-only 不算數、沒人會去看**（使用者 2026-06-09 點明）；下方每項標「待開 issue」者即尚未進工作佇列。
 
-| 代號 | 候選 | 服務哪些情境 | 與既有 ROADMAP 關係 | 依賴 | 狀態 |
+| 代號 | 候選 | 服務哪些情境 | 與既有 ROADMAP 關係 | 依賴 | 狀態（S4 圈定）|
 |---|---|---|---|---|---|
-| **SC1** | **天氣 / 環境 feed**（雨量 / 風 / 風向 / 河川水位）| 颱風水災 · 野火（60% 受困死亡集中 3% 火災天氣日）· HazMat（plume 完全靠風）· 航空 | **全新**——非 TAK，是 COP 第 N 個外部來源，走 `cop_service` normalize（同 TAK/WaveInk 多源架構）| 不依賴 TAK（**降階獨立**）| 待圈定（檢討頭號候選）|
-| **SC2** | **sensor source 模式**（CBRN / SDR / UGS / CCTV → COP）| HazMat（CBRN 偵測器）· 設施巡邏（CCTV/UGS/雷達）· SDR/RF | **半新**——泛化 P3 WaveInk 的 sensor ingest；對應 TAK `/Marti/api/datafeeds` + `/inputs` | `cop_service` normalize（與 WaveInk 共用接縫）| 待圈定 |
-| **SC3** | **主動告警 / 決策觸發**（geofence 後端 + 門檻告警）| 設施巡邏 · 指揮決策（OODA Decide「何時」）· HazMat 門檻 | **全新後端**——ICS 自建（非 TAK）；現多被動視覺（severity pulse / stale 灰）| SC2（感測器進來門檻才有料）| 待圈定（排 SC2 後）|
-| **SC4** | **連線 / 降階可視化收斂**（來源 chips、退役 P2-23 獨立 `cd-tak` 燈、連線 vs 信心兩軸分離）| 全情境（降階）| **改**——併 P2-12 面板 + 重構 P2-23；修「`cl-server`+`cd-tak` 兩 dot 無 legend」破口 | P2-12 | 待圈定（低風險、修既有破口）|
-| **SC5** | **威脅圖層**（`threat_state` 動態區 / 武裝掩護已清走廊 / 敵我 + 老化威脅情報）| RTF · 多機構 | **新**——擴 P1-16 zone（加 threat_state 屬性）+ P2-08 | P1-16 / P2-08 | 待圈定（單一高威脅情境、價值較窄 → 傾向 later）|
-| **SC6** | **降階 DoD 紀律**（每 TAK item 宣告 Tier + fallback + `TAK_ENABLED=false`/斷線負向測試）| 全 TAK 能力 | **改**——加進 Phase 2 DoD（本批 S3 已落地，見下方 DoD「降階」段）| — | ✅ 本批入 DoD |
-| **SC7** | **安全 backlog 重排優先級**（RTF/多機構給「人命級」論據：§8.3 COP poisoning / 可靠刪除 #161 / 權威 resync #173·P2-14 / federation 治理 #8 / 跨機構分級 TAK-D）| RTF · 多機構 · 共享 COP | **改**——既有 RT-*/TAK-* 重新排序，非新項 | 既有 backlog | 待檢視（#161/P2-14 已因 dogfood 提前解鎖） |
+| **SC1** | **天氣 / 環境 feed**（雨量 / 風 / 風向 / 河川水位）| 颱風水災 · 野火（60% 受困死亡集中 3% 火災天氣日）· HazMat（plume 完全靠風）· 航空 | **全新**——非 TAK，是 COP 第 N 個外部來源，走 `cop_service` normalize（同 TAK/WaveInk 多源架構）| 不依賴 TAK（**降階獨立**）| ✅ **進**（頭號）· 建議自成小 phase / Phase 2 後 · **待開 issue** |
+| **SC2** | **sensor source 模式**（CBRN / SDR / UGS / CCTV → COP）| HazMat（CBRN 偵測器）· 設施巡邏（CCTV/UGS/雷達）· SDR/RF | **半新**——泛化 P3 WaveInk 的 sensor ingest；對應 TAK `/Marti/api/datafeeds` + `/inputs` | `cop_service` normalize（與 WaveInk 共用接縫）| ✅ **進** · 與 P3 共用 normalize 接縫 · **待開 issue** |
+| **SC3** | **主動告警 / 決策觸發**（geofence 後端 + 門檻告警）| 設施巡邏 · 指揮決策（OODA Decide「何時」）· HazMat 門檻 | **全新後端**——ICS 自建（非 TAK）；現多被動視覺（severity pulse / stale 灰）| SC2（感測器進來門檻才有料）| ✅ **進**（排 SC2 後）· **待開 issue** |
+| **SC4** | **連線 / 降階可視化收斂**（來源 chips、退役 P2-23 獨立 `cd-tak` 燈、連線 vs 信心兩軸分離）| 全情境（降階）| **改**——併 P2-12 面板 + 重構 P2-23；修「`cl-server`+`cd-tak` 兩 dot 無 legend」破口 | P2-12 | ✅ **進** · **併 P2-12**（不另開，P2-12 動工時一起）|
+| **SC5** | **威脅圖層**（`threat_state` 動態區 / 武裝掩護已清走廊 / 敵我 + 老化威脅情報）| RTF · 多機構 | **新**——擴 P1-16 zone（加 threat_state 屬性）+ P2-08 | P1-16 / P2-08 | ✅ **進（later 排程）** · 依 P1-16/P2-08 · **待開 issue** |
+| **SC6** | **降階 DoD 紀律**（每 TAK item 宣告 Tier + fallback + `TAK_ENABLED=false`/斷線負向測試）| 全 TAK 能力 | **改**——加進 Phase 2 DoD（S3 已落地，見下方 DoD「降階紀律」段）| — | ✅ **已入 DoD** |
+| **SC7** | **安全 backlog 重排優先級**（RTF/多機構給「人命級」論據：§8.3 COP poisoning / 可靠刪除 #161 / 權威 resync #173·P2-14 / federation 治理 #8 / 跨機構分級 TAK-D）| RTF · 多機構 · 共享 COP | **改**——**不是 threat_model 埋字**（沒人看）；改為**既有 backlog 各項升優先級 + 開 issue** | 既有 RT-*/TAK-* | ✅ **進＝升優先 + 開 issue**（#161/P2-14 已 dogfood 提前解鎖；剩 §8.3/#8/TAK-D 升級並開 issue）|
 
-> **原則**（使用者拍板）：**統一檢視非全做**——多數候選不一定要做（計劃群誠實結論同調：多數計劃分析本不在 COP 工具範疇）。圈定時逐一評估「服務情境廣度 × 是否撞既有缺口 × 降階獨立性」。
+> **原則**（使用者拍板）：**統一檢視非全做**——但本輪「都進」（使用者 2026-06-09），多數仍**待開 issue 才進工作佇列**。
+> **下一步（S4 收尾）**：SC1/SC2/SC3/SC5 + SC7 的升級項，**開 GitHub issue**（每個帶 SC 代號 + 一句 scope，依 PROCESS.md step 2）→ 才真正可被排程動工。SC4 隨 P2-12，SC6 已落地。
 
 ### Definition of Done
 
