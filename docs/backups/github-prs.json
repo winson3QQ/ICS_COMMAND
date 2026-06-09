@@ -2902,5 +2902,68 @@
     "title": "feat(tak): P2-13(A) streaming-write 下行指令 — POST /api/tak/downlink",
     "updatedAt": "2026-06-09T06:35:54Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/179"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "## 內容（#180 part 1）\n\nP2-13/P2-30 **共用下行基建**：把線/區幾何序列化成 CoT，推 :8089 廣播現場端。對稱 P2-08 入向 `extract_geometry`（round-trip 可還原），**解鎖 P2-13 下「線/區指令」**。\n\n- `geometry_service.vertices_to_cot_shape`：`[[lat,lng]]` → `<shape><polyline closed>`；抽 `clean_vertices` 為單一驗證點（範圍 + 點數門檻）\n- `tak_downlink.build_geometry_cot`：包裝完整 CoT event（形心 point + `<archive/>` + escape）\n- 測試 7：round-trip（build→extract 還原同型同點）線/區 + 邊界 + escape + garbage-centroid 回歸 + 端到端\n\n## 驗證 / Review\n- 全套 pytest 綠、ruff 清、**端到端對活 TAK 推線+區成功**（訂閱端實收）\n- `/security-review` 0；`/code-review` 抓到「形心 vs shape 點集分歧（畸形項崩/超界拉歪）」→ 抽 `clean_vertices` 單一驗證點 + 回歸測試\n\n## 範圍\n#180 part 1（幾何序列化）。part 2 共享閘 / part 3 手動感知標記 = 後續 slice。無版號變更。Refs #180, P2-30, P2-13",
+    "closedAt": "2026-06-09T08:22:25Z",
+    "comments": [],
+    "createdAt": "2026-06-09T08:21:50Z",
+    "headRefName": "feat/issue-180-geometry-downlink",
+    "labels": [],
+    "mergedAt": "2026-06-09T08:22:25Z",
+    "number": 181,
+    "state": "MERGED",
+    "title": "feat(tak): P2-30 第一刀 — 線/區出向幾何序列化（下行共用基建）",
+    "updatedAt": "2026-06-09T08:24:22Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/181"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "## 內容（#180 part 2）\n\n把既有 COP 感知標記（manual 無線電上車口 / command / 任何 source）推到 TAK 共享。**共享閘 = 指揮層顯式、受 audit 的分享動作**（非自動轟全網）。\n\n- `tak_downlink.entity_to_cot`：cop_entity dict → CoT，點/幾何（key=`attributes.kind`）分流；唯讀\n- `POST /api/tak/share/{uid}`：查 entity → adapter → **audit-first(`COP_SHARE_TAK`)** → send_cot；COMMAND_ROLES 中央 gate\n- 測試：unit 3 + api 5（分享/幾何/404/observer 403/422 畸形幾何）\n\n## 跨 session 協調（與 P2-27 並行）\n**零碰 P2-27 領地**：只動 `tak_downlink.py` + `routers/tak.py`（**不碰 cop.py/cop_service/events/schema**）；對 cop_entities 唯讀。詳 ROADMAP P2-27 協調註記。\n\n## 驗證 / Review\n- 全套 pytest 綠、ruff 清、**端到端對活 TAK 分享敵情點+區**（訂閱端實收）\n- `/security-review` 0；`/code-review` 抓「entity_to_cot ValueError 未捕捉→未審計 500」→ try 回乾淨 422 + 回歸測試\n\n範圍：#180 part 2。part 3（前端敵情標記 picker）= 後續。無版號變更。Refs #180, P2-30",
+    "closedAt": "2026-06-09T08:51:35Z",
+    "comments": [],
+    "createdAt": "2026-06-09T08:51:24Z",
+    "headRefName": "feat/issue-180-share-tak",
+    "labels": [],
+    "mergedAt": "2026-06-09T08:51:35Z",
+    "number": 182,
+    "state": "MERGED",
+    "title": "feat(tak): P2-30 part 2 — 分享既有 COP 標記到 TAK（共享閘）",
+    "updatedAt": "2026-06-09T08:52:20Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/182"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "## P2-27（後端地基 slice）\n\n把「感知標記(cop_entity)」與「事件(event)」**分層解耦**，取代 `attributes.kind='event'` 的 JSON glue。對應 [`cop-event-layering.md`](../blob/main/docs/design/cop-event-layering.md) 兩層模型 + ROADMAP P2-27。\n\n### 交付\n- **`event_markers` junction 表**（m021）：N:1、**N:M-ready**、雙向 `ON DELETE CASCADE`；PK(event_id, cop_entity_uid)。關係載 junction、**不污染 cop_entities schema**（P2-30 share adapter 唯讀標記、不讀本表 → 不外流邊界）。\n- **backfill + 孤兒守門**：既有 `attributes.event_id` glue 回填，**僅當 event 存在**（EXISTS 守門避免 FK 炸）。\n- **導航鏈** `GET /api/events/{id}/chain` → `{event, markers(via junction), decisions(via primary_event_id)}`（P2-27 sub-goal 2）。\n- **server 端建關聯**：`routers/cop.py` event 圖釘建立時建 junction（best-effort，不擋圖釘）。\n- **位置 SoT 清理**：砍 `events.lat/lon` 死欄（m022；m013 預埋但全程未寫未讀，事件位置唯一 SoT = cop_entity 圖釘）。\n\n### 範圍邊界（誠實）\n- **純後端 additive**：JSON glue 暫保留（前端仍用）、junction 與 `/chain` **尚無前端消費者** → 前端 cutover 留後續 slice。**無使用者可見變化**（故 `/verify` 瀏覽器驗收不適用；驗收 = 測試 + API 契約）。\n- **拆出獨立 PR**：\n  - **decisions FK** — 子表 `ai_recommendations.related_decision_id` 是 **INTEGER FK 指向 TEXT(uuid) PK** 且活用，rebuild 要連型別 bug 一起處理，不混入本 PR。\n  - **location_zone_id 砍** — 前端 `map.js` 在寫它，非純後端，與前端 cutover 一起。\n\n### 與 P2-30 part 2 並行（協調註記，已驗）\nP2-30 part 2 只動 `tak_downlink.py`/`routers/tak.py`、對 cop_entities 唯讀、零 schema 改動 → **本 PR 與其零重疊**。唯一共享詞彙 `attributes.kind`（P2-30 讀 route/polygon、本項處理 event）互不衝突。\n\n### 測試\n- `pytest 883 passed / 1 skipped`；`ruff` clean。\n- 新測試 10（`test_event_markers.py`）：link/idempotent、N:M、導航鏈、雙向 cascade、backfill+孤兒守門、lat/lon 已砍。\n- 更新 1 舊測試（`test_cop_schema_v1`：m013 lat/lon → m022 已砍）。\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+    "closedAt": "2026-06-09T09:58:15Z",
+    "comments": [],
+    "createdAt": "2026-06-09T09:23:38Z",
+    "headRefName": "feat/p2-27-event-marker-layering",
+    "labels": [],
+    "mergedAt": "2026-06-09T09:58:15Z",
+    "number": 183,
+    "state": "MERGED",
+    "title": "feat(cop): P2-27 event↔marker junction 關聯 + 砍 events.lat/lon 死欄（後端地基 slice）",
+    "updatedAt": "2026-06-09T09:58:17Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/183"
   }
 ]
