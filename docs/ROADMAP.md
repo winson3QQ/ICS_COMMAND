@@ -219,10 +219,12 @@
 > **原則**（使用者拍板）：**統一檢視非全做**——但本輪「都進」（使用者 2026-06-09），多數仍**待開 issue 才進工作佇列**。
 > **下一步（S4 收尾）**：SC1/SC2/SC3/SC5 + SC7 的升級項，**開 GitHub issue**（每個帶 SC 代號 + 一句 scope，依 PROCESS.md step 2）→ 才真正可被排程動工。SC4 隨 P2-12，SC6 已落地。
 
-#### 升正式 item（編號 + 目的 + **reality check 後 scope/DoD**，2026-06-09）
+#### 升正式 item — 按 feature 群（編號 + 目的 + **reality check 後 scope/DoD**，2026-06-09）
 
 > **編號決策**：沿用 **SC 代號為正式 item ID**（同 RT-*/TAK-* 非 Pn 前例）——SC1/SC2 是**非 TAK 的新 COP 來源**，塞 Phase 2(TAK) 會誤導、叫 Phase 4 又暗示排在 WaveInk 後（天氣 feed 可能更早要），故獨立編號、排程獨立。
 > **以下 scope 經 reality check（盤實際 code）**——抓到 SC1 假設錯誤（見各項），動工前仍應對動工當下 code 再驗。
+
+**——— 【新增來源 feature：非 TAK，與 TAK / WaveInk 並列為 COP 來源】———**
 
 **SC1 — 天氣 / 環境 feed**
 - **目的**：給 COP **氣象/雨量/風/河川水位**參考層，讓颱風水災·野火·HazMat 從「事後反應」轉「**預判**」。
@@ -238,6 +240,8 @@
 - **供應鏈**：感測器硬體/函式庫非中國（CBRN/SDR 生態，CLAUDE.md）。**對接**：與 P3 WaveInk normalize 模式對齊（未來真共用）、TAK `/datafeeds` 概念對應。**DoD**：新 source 經 normalize→cop_entities、內容驗證、ownership gate、斷源降階。
 - **依賴**：SC3 的門檻告警靠它有料。
 
+**——— 【新增能力 feature】———**
+
 **SC3 — 主動告警 / 決策觸發**
 - **目的**：把**被動視覺**（severity 色/stale 灰）升為**主動門檻告警**（geofence/門檻），回答 OODA Decide「**何時**」。
 - **RC 確認**：**100% greenfield**——零 active alerting backend，現全前端被動重繪（20s）；框架在（severity/stale 欄位 + WS 廣播）但**無條件評估引擎、cop_stream 只聽不發**。
@@ -248,7 +252,10 @@
 - **RC 確認**：`attributes` 是 **free-form JSON blob**（`schemas/cop.py:115` / DB `attributes TEXT DEFAULT '{}'`）→ 加 `threat_state` **無 migration**（後端 +1 key、前端 data-driven 上色 +3 行，~15 分）。
 - **Scope**：(a) zone `attributes.threat_state` + 前端上色（**trivial**，可順手）；(b) 已清走廊＝route/zone 帶 state（中等）；(c) 敵我老化情報＝沿用 `stale` + 可信度標註（同 Recon）。**排程 later**（情境窄；但 (a) 便宜）。**DoD**：zone 可帶 threat_state + 即時同步 + 渲染。
 
-> SC4（連線 chips）併 P2-12；SC6（降階 DoD）已入本 Phase DoD；SC7（§8.x 安全升優先）走 threat_model + 開 issue。
+**——— 【併入既有 feature 群（不另列 item）】———**
+- **SC4** 連線 / 降階 chips → Phase 2 應用群 **⑤ 前端面板 + 連線 UX**（隨 P2-12；退役 cd-tak 獨立燈）
+- **SC6** 降階 DoD → 已入 **Phase 2 DoD**「降階紀律」段
+- **SC7** 安全升優先 → **安全 feature**（[`threat_model.md`](compliance/threat_model.md) §8.2 分級 / §8.4 LUKS→Phase 1 安全群 ⑦ P1-12 / §8.5 cert 撤銷·治理 #8）
 
 ### Definition of Done
 
