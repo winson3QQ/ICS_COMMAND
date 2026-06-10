@@ -157,6 +157,79 @@ def test_observer_cannot_share(client, auth, captured_cot):
     assert captured_cot == []
 
 
+def test_operator_can_share(client, auth, captured_cot):
+    """P2-30 part 3（#180）：分享放寬 WRITE_ROLES —— operator（一線回報敵情）可直推 TAK。
+    與 #146 收緊的 POST /api/tak/events 區隔：share 只推既有 cop_entity、仍 audit-first。"""
+    uid = _create_entity(client, auth)
+    create_account("op_share", "1234", ROLE_OPERATOR_ZH, "Op Share", "operator")
+    r = client.post(f"/api/tak/share/{uid}", headers=_login(client, "op_share"))
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "shared"
+    assert len(captured_cot) == 1 and uid in captured_cot[0]
+    with get_conn() as conn:  # 放寬後仍強制稽核（含 operator 身分）
+        rows = conn.execute(
+            "SELECT operator FROM audit_log WHERE action_type='COP_SHARE_TAK' AND target_id=?", (uid,)
+        ).fetchall()
+    assert len(rows) == 1 and rows[0][0] == "op_share"
+
+
+def test_operator_cannot_inject_via_tak_events(client, auth):
+    """窄洞回歸守門：share 放寬 WRITE_ROLES 不得波及 #146 收緊的 POST /api/tak/events
+    （operator 經 events 注入仍須 403，否則繞過 cop 來源守門）。"""
+    create_account("op_inject", "1234", ROLE_OPERATOR_ZH, "Op Inject", "operator")
+    r = client.post("/api/tak/events", json=_cmd(), headers=_login(client, "op_inject"))
+    assert r.status_code == 403
+
+
+# ── P2-30 part 3（#180）：廣播後即時同步（move 重推；delete 不推 = P2-14 deferred）──
+@pytest.fixture
+def tak_on(monkeypatch):
+    """_resync_tak_if_shared 受 config.TAK_ENABLED gate；測同步行為時打開。"""
+    monkeypatch.setattr("core.config.TAK_ENABLED", True)
+
+
+def test_share_marks_shared_tak(client, auth, captured_cot):
+    """廣播成功 → entity 標記 attributes.shared_tak（不 bump version_clock，前端樂觀鎖不失效）。"""
+    uid = _create_entity(client, auth)
+    assert client.post(f"/api/tak/share/{uid}", headers=auth).status_code == 200
+    r = client.get(f"/api/cop/entities/{uid}", headers=auth)
+    assert r.json()["attributes"]["shared_tak"] is True
+    assert r.json()["version_clock"] == 1  # mark_shared_tak 非-CAS、不 bump
+
+
+def test_move_shared_entity_resyncs_to_tak(client, auth, captured_cot, tak_on):
+    """已廣播 entity 移動（PUT lat/lon）→ 即時重推 CoT（新座標），不需再手動廣播（issue 3）。"""
+    uid = _create_entity(client, auth)
+    client.post(f"/api/tak/share/{uid}", headers=auth)  # captured_cot[0]
+    r = client.put(
+        f"/api/cop/entities/{uid}",
+        json={"lat": 24.5, "lon": 120.9},
+        headers={**auth, "If-Match": "1"},
+    )
+    assert r.status_code == 200
+    assert len(captured_cot) == 2  # 廣播 + move 重推
+    assert "24.5" in captured_cot[1] and uid in captured_cot[1]
+
+
+def test_delete_shared_entity_does_not_push_tak(client, auth, captured_cot, tak_on):
+    """已廣播 entity 刪除 → **不推 TAK**（issue 4 = P2-14 deferred）。實證：streaming（t-x-d-d/stale）
+    對 server 持久層無效、Marti 無單顆 CoT DELETE → 可靠刪除只在 Mission/DataSync。故刪除僅 ICS 端
+    生效，不送無效 CoT 污染 server。captured 只有廣播那一發。"""
+    uid = _create_entity(client, auth)
+    client.post(f"/api/tak/share/{uid}", headers=auth)  # captured_cot[0]（廣播）
+    r = client.delete(f"/api/cop/entities/{uid}", headers={**auth, "If-Match": "1"})
+    assert r.status_code == 200
+    assert len(captured_cot) == 1  # 刪除未再送任何 CoT
+
+
+def test_unshared_move_delete_no_tak_push(client, auth, captured_cot, tak_on):
+    """未廣播 entity（無 shared_tak）move/delete → 不推 TAK（顯式廣播閘門：放置≠上 TAK）。"""
+    uid = _create_entity(client, auth)
+    client.put(f"/api/cop/entities/{uid}", json={"lat": 24.5, "lon": 120.9}, headers={**auth, "If-Match": "1"})
+    client.delete(f"/api/cop/entities/{uid}", headers={**auth, "If-Match": "2"})
+    assert captured_cot == []
+
+
 def test_send_failure_503_but_still_audited(client, auth, monkeypatch):
     """audit-first 紀律：送出失敗 → 503，但稽核已記下達意圖（無未稽核之下達；失敗有跡可循）。"""
 

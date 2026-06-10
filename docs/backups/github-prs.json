@@ -3097,7 +3097,28 @@
     "number": 190,
     "state": "MERGED",
     "title": "fix(cop): P2-32 前端尾 — 停送/停讀 events.location_zone_id 死欄（#186 收尾）",
-    "updatedAt": "2026-06-10T08:01:34Z",
+    "updatedAt": "2026-06-10T08:13:58Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/190"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "## 摘要\nP2-30 part 3 完成手動感知/敵情標記的渲染、互動與 TAK 雙向同步。接續 part 1（幾何序列化 #181）、part 2（共享閘 #182）。\n\n## 改了什麼\n**渲染**：contact 改走 MIL-STD-2525 milsymbol 框（取代 circle+abbr，milsymbol 未就緒退 fallback）+ callsign 下方標籤。\n**互動**：右鍵單鍵「廣播」menu（`EventDragManager` 加 `onContextMenu`）+ 左鍵拖曳移動（`_contactDragMgr` handleSize 44）+ detail modal。\n**廣播權限放寬 operator+**：後端 role_enum 窄洞 `/api/tak/share/` → WRITE_ROLES（其餘 `/api/tak/*` POST 維持 COMMAND_ROLES、#146 防注入不破 + 回歸守門測試）；前端 4 處 gate。\n**廣播後即時同步**：share 標 `attributes.shared_tak`（`json_set` 原子單語句、不 bump version）→ move/note 編輯即時重推 CoT；CoT remarks 標 `source: ICS`。\n**版號**：backend 2.5.0 / frontend v1.3.0（兩軌 MINOR）。\n\n## item 4 可靠刪除 → deferred P2-14\n真機 + 活 server（Marti）**實證**：streaming（t-x-d-d / 墓碑 / stale）刪不掉 archived 標記、Marti REST 無單顆 CoT DELETE → 可靠刪除只在 Mission/DataSync（見 tak-integration-strategy §4b）。刪除目前僅 ICS 端生效，不送無效 CoT。\n\n## 衍生（另開 issue）\n- ICS↔iTAK 標記詳情對齊\n- Marti 權威 resync（顯示漏掉的 iTAK 標記）\n\n## §8 驗證\n- 後端 906 passed / 1 skipped、JS 253 passed、eslint 0、doc_sync pass\n- `/code-review` 2 finding 已修（`mark_shared_tak` 原子 json_set 防並發覆寫、stale 註解）\n- `/security-review` 0 HIGH/MEDIUM（RBAC 窄洞正確 scoped、operator 僅能重廣播既有 contact）\n- 真機 dogfood（iTAK）：2525 渲染 / callsign 標籤 / 右鍵廣播 / 拖曳移動 / 廣播後移動即時同步 — 使用者確認 OK\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCloses #180",
+    "closedAt": "2026-06-10T08:42:54Z",
+    "comments": [],
+    "createdAt": "2026-06-10T08:41:52Z",
+    "headRefName": "feat/issue-180-part3-contact",
+    "labels": [],
+    "mergedAt": "2026-06-10T08:42:54Z",
+    "number": 192,
+    "state": "MERGED",
+    "title": "P2-30 part 3：手動感知/敵情標記 UI + 廣播雙向同步 (#180)",
+    "updatedAt": "2026-06-10T08:43:16Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/192"
   }
 ]

@@ -138,6 +138,17 @@ def test_entity_to_cot_point():
     assert e.find("detail/contact").get("callsign") == "敵情"
 
 
+def test_entity_to_cot_tags_source_ics():
+    """P2-30 part 3：ICS→TAK 外送標記 remarks 前綴 `source: ICS`（現場端區分指揮部送出的標記）。
+    使用者原註記接在 tag 之後；無註記時 remarks=純 `source: ICS`。entity.remarks 本身不被汙染。"""
+    with_note = {"uid": "M-2", "type": "a-h-G", "lat": 25.0, "lon": 121.0, "remarks": "兩名可疑人士", "attributes": {}}
+    r = _parse_event(tak_downlink.entity_to_cot(with_note, now=_NOW)).find("detail/remarks").text
+    assert r == "source: ICS\n兩名可疑人士"
+    no_note = {"uid": "M-3", "type": "a-h-G", "lat": 25.0, "lon": 121.0, "attributes": {}}
+    assert _parse_event(tak_downlink.entity_to_cot(no_note, now=_NOW)).find("detail/remarks").text == "source: ICS"
+    assert with_note.get("remarks") == "兩名可疑人士"  # 原 entity 未被改
+
+
 def test_entity_to_cot_route_geometry():
     ent = {
         "uid": "R-1",

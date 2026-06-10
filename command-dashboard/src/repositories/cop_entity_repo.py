@@ -201,6 +201,28 @@ def mark_stale(uid: str, stale_at: str) -> bool:
         return cur.rowcount > 0
 
 
+def mark_shared_tak(uid: str, value: bool = True) -> bool:
+    """標記 entity 已廣播到 TAK（attributes.shared_tak）。P2-30 part 3（#180）：供「廣播後即時同步」
+    判斷 move 是否需推 TAK。**非-CAS、不 bump version_clock**——避免前端快取版本失效（廣播是
+    side-channel，不該讓使用者下次編輯撞 409）。
+
+    用**單語句 `json_set`/`json_remove`**（不 read-modify-write）：只動 `$.shared_tak` 一個 key、保留
+    attributes 其餘欄，避免與並發 `update_cop_entity_cas` 的 attributes 改動互相覆寫（review #180）。
+    """
+    with get_conn() as conn:
+        if value:
+            sql = (
+                "UPDATE cop_entities SET attributes = "
+                "json_set(COALESCE(attributes,'{}'), '$.shared_tak', json('true')) WHERE uid = ?"
+            )
+        else:
+            sql = (
+                "UPDATE cop_entities SET attributes = "
+                "json_remove(COALESCE(attributes,'{}'), '$.shared_tak') WHERE uid = ?"
+            )
+        return conn.execute(sql, (uid,)).rowcount > 0
+
+
 # ── per-entity 樂觀鎖（issue #29 PR-A）─────────────────────────────────────────
 
 # patch 不可直接覆寫的欄位：由 CAS 邏輯 / DB 管理，caller 改不得

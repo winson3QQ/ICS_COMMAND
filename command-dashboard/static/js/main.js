@@ -58,6 +58,7 @@ import {
   _savePolygon, _saveRoute,
   _openPolyForm, _openInfraForm, _openRouteForm,
   _deletePolygon, _deleteRoute, _deleteInfra, _deleteEventZone,
+  _deleteContact, _shareContactTak, _saveContactNote,
   _resetPolyLabelAnchor, _resetRouteLabelAnchor,
   _panToCoordTarget, _mgrsSearch, _toggleCoordMode,
   _populateNapsgCsel,
@@ -68,6 +69,7 @@ import {
   openMapConfigPanel, closeMapConfigPanel, admUploadMapImage,
   admRemoveMapImage, _cancelNodePlace, _cancelInfraPlace, _cancelEventPin,
   _openNodePlacePicker, _startNodePlace, _deleteNode,
+  _openContactPlacePicker, _startContactPlace,
   applyMapRoleUiGuards,
   _toggleLayer, _closeLayerPanel, toggleTakFilter,
   setCopStream,
@@ -322,6 +324,21 @@ document.addEventListener('click', function (e) {
       _deleteInfra(id);
       break;
     }
+    case 'deleteContact': {
+      if (!canAccessMapObjects()) break;
+      _deleteContact(btn.dataset.id);
+      break;
+    }
+    case 'saveContactNote': {
+      if (!canAccessMapObjects()) break;
+      _saveContactNote(btn.dataset.id);
+      break;
+    }
+    case 'shareContactTak': {
+      if (!canAccessMapObjects()) break;  // P2-30 part 3：廣播放寬 operator+（後端 WRITE_ROLES）
+      _shareContactTak(btn.dataset.id);
+      break;
+    }
     case 'startRouteDraw': {
       if (!canAccessMapObjects()) break;
       _startRouteDraw();
@@ -358,6 +375,17 @@ document.addEventListener('click', function (e) {
       if (!canAccessMapObjects()) break;
       closeModal?.();
       _startNodePlace(btn.dataset.nodeType);
+      break;
+    }
+    case 'openContactPlace': {
+      if (!canAccessMapObjects()) break;
+      _openContactPlacePicker();
+      break;
+    }
+    case 'startContactPlace': {
+      if (!canAccessMapObjects()) break;
+      closeModal?.();
+      _startContactPlace(btn.dataset.affiliation);
       break;
     }
     case 'deleteNode': {

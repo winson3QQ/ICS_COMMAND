@@ -135,7 +135,11 @@ def entity_to_cot(entity: dict, *, stale_minutes: int = 60, now: datetime | None
     uid = entity["uid"]
     type_ = entity["type"]
     callsign = entity.get("callsign")
-    remarks = entity.get("remarks")
+    # P2-30 part 3：所有 ICS→TAK 外送標記在 remarks 標 `source: ICS` —— 現場端（iTAK）點開即知此標
+    # 由指揮部送出（解「iTAK 送的 vs ICS 送的同款 2525 框肉眼難分」）。tag 只在出口加，不存進
+    # cop_entities（entity.remarks 保持使用者原註記乾淨）。
+    _user_remarks = entity.get("remarks")
+    remarks = f"source: ICS\n{_user_remarks}" if _user_remarks else "source: ICS"
 
     if kind in ("route", "polygon"):
         vertices = attrs.get("vertices") or []
@@ -160,6 +164,12 @@ def entity_to_cot(entity: dict, *, stale_minutes: int = 60, now: datetime | None
         stale_minutes=stale_minutes,
         now=now,
     )
+
+
+# 註：刪除已廣播標記到 TAK（t-x-d-d / 墓碑）經真機 + 活 server 實證**無效**（server `<repository>`
+# 持久層不靠 stale 移除、不認 streaming t-x-d-d；Marti REST 亦無單顆 CoT DELETE）→ 可靠刪除只在
+# Mission/DataSync 層 = **P2-14**。見 docs/roadmap/tak-integration-strategy.md §4b、memory
+# tak-streaming-archive-stale-vs-mission。故不在此提供 build_delete/tombstone（避免無效死碼污染 server）。
 
 
 def _build_config():
