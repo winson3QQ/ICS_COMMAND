@@ -63,6 +63,22 @@ ICS 是**多源 COP 的匯流 + 指揮中樞**：各路「感知標記」匯成�
 | **L4 事故層** | event(severity/狀態/結案)+decision+tasking、問責、**不外流** | **ICS 獨有**（TAK 無此模型）| `events` · `decisions` · `chats` 三表 + 下行 tasking |
 | **L5 指揮層** | 整理成支持決策的資訊、角色視圖、告警 | ICS | dashboard chrome、map filter、DCI、status-lamp；主動告警後端 |
 
+### 每層實體網路對應（port / protocol）
+
+> 把上表每層落到**實體網路**：跑哪個 port、走哪個 protocol（值以 code 為準，2026-06-10 核）。
+> 三點先記：① **TAK 三埠是對接外部 TAK Server**，非 ICS 自身監聽；ICS 自己只開 FastAPI 一埠 + Node relay。
+> ② **L2 無網路埠**——同進程 Python 呼叫，是 transport↔語意的分離面，不過 socket。
+> ③ **Prod 由 nginx 反代終結 TLS**（對外 `:443` + HSTS），`:8000` 是 dev 直跑埠；憑證體系 = step-ca（mTLS）。
+
+| 層 | port | protocol | 通道 / 備註 |
+|---|---|---|---|
+| **L0 節點** | —（節點側，非本機監聽） | CoT · 語音RF · WS | TAK client→CoT；無線電(人)→**RF 語音、無 IP**（頻外，靠幕僚手動上車 `manual`）；WaveInk→RF 足跡(未來)；Pi-node/PWA→WS |
+| **L1 傳輸** | 外部 TAK `:8089` · `:8443` · `:9000`(/`:8444`)；ICS FastAPI `:8000`；Node relay `:8765`(prod `8775`) + admin `:8766`(prod `8776`) | `:8089` **TLS/TCP**(TAK Protocol v0 CoT-XML / v1 protobuf，mTLS) · `:8443` **HTTPS**(Marti REST `/Marti/api`，mTLS) · `:9000` **TLS**(federation transport) · `:8000` **HTTP**(dev；prod→nginx TLS) · relay **WS/WSS**(HMAC 簽章) | pytak `readuntil(b"</event>")` 處理 TCP 分幀、`use_protobuf` 自動 v0/v1；憑證 step-ca |
+| **L2 接縫** | **— in-process** | —（同進程函式呼叫，無 socket） | `cop_service.normalize_cot` + `ingest_cot_event`；所有 doctrine 在此蓋章 |
+| **L3 感知層** | REST `/api/cop/*`、WS `/api/cop/ws/updates`（同 `:8000`／prod `:443`）；出向 → TAK `:8089` | **HTTP(S)** · **WS/WSS**(token 走 `Sec-WebSocket-Protocol`，不進 URL) · 出向 **CoT/TLS**(`send_cot`) | 雙向：入＝串流/REST POST，出＝per-entity 閘 send_cot（P2-13/30） |
+| **L4 事故層** | REST `/api/events`·`/api/decisions`·`/api/chats`（同 `:8000`／prod `:443`） | **HTTP(S)** | **對外無獨立 port**；不外流，出向只借 L3 兩閘（感知標記 + 衍生 tasking） |
+| **L5 指揮層** | 瀏覽器 ↔ FastAPI `:443`(nginx；dev `:8000`) | **HTTPS** · **WS/WSS**(同源) | dashboard 靜態 + 即時推皆復用 L3 的 WS；無自有對外埠 |
+
 > **三個層界要記住**：① **L2（cop_service）= 接縫**，transport 與語意在此分離、所有 doctrine 在此蓋章；
 > ② **L3↔L4 = 感知層/事故層分水嶺，也是 TAK 能力天花板**——L3 以下（含軌跡、變更稽核）TAK 都會，L4 起（severity/狀態/結案/跨源聚合）TAK 結構上沒有，是「Incident **Command**」的字面本體；
 > ③ **L4「不外流」= 安全邊界**，出向只有 L3 感知標記（雙向）與 L4 衍生的下行 tasking（P2-13）兩個閘。
