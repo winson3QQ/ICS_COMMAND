@@ -14,6 +14,7 @@ from repositories.exercise_repo import delete_exercise, update_exercise_status
 from schemas.exercise import AAREntryIn, ExerciseCreateIn, ExerciseStatusIn
 from services.exercise_service import archive, create, get, list_all, set_active
 from services.realtime_hub import cop_hub
+from services.timeline_service import build_timeline
 
 router = APIRouter(prefix="/api/exercises", tags=["演練"])
 
@@ -144,4 +145,31 @@ def get_tracks(
         # 服務端上限（防單次撈爆）。clamp 散落各 list endpoint（admin/cop 尚未套），統一化留 follow-up
         limit=min(max(limit, 1), 5000),
         offset=max(offset, 0),
+    )
+
+
+# ── AAR 統一時間軸（P2-20(A) / issue #199）────────────────────────────────────
+
+
+@router.get("/{exercise_id}/timeline")
+def get_timeline(
+    exercise_id: int,
+    from_: str | None = Query(None, alias="from"),
+    to: str | None = None,
+    limit: int = 5000,
+):
+    """某場的統一時間軸：tracks + events + chats + 決策/指令 audit 合併、按 t 排序（AAR 回放資料源）。
+
+    RBAC：COMMAND_ROLES（中央 gate `/api/exercises/*` 非 DELETE；含軌跡/通聯 PII，同 /tracks）。
+    回 {meta: {count, t_start, t_end, truncated}, items: [{type, t, actor, payload}]}；
+    truncated=true → 呼叫端縮 from/to 時間窗重查（不靜默截斷）。
+    設計（事件流、不落盤快照）+ 業界調查見 #199。
+    """
+    if not get(exercise_id):
+        raise HTTPException(404, "演練不存在")
+    return build_timeline(
+        exercise_id,
+        since=_range_bound(from_, end=False),
+        until=_range_bound(to, end=True),
+        limit=min(max(limit, 1), 5000),
     )
