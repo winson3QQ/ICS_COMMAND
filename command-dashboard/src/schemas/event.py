@@ -9,7 +9,6 @@ class EventIn(BaseModel):
     description:              str
     operator_name:            str
     location_desc:            str | None = None
-    location_zone_id:         str | None = None
     response_type:            str | None = None
     needs_commander_decision: bool = False
     related_person_name:      str | None = None
@@ -22,7 +21,6 @@ class EventIn(BaseModel):
 class EventPatch(BaseModel):
     assigned_unit:   str | None = None
     location_desc:   str | None = None
-    location_zone_id: str | None = None
 
 
 class DeadlinePatch(BaseModel):

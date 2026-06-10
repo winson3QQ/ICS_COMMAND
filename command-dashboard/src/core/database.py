@@ -85,7 +85,6 @@ def _create_tables(conn: sqlite3.Connection) -> None:
         event_code               TEXT UNIQUE,
         reported_by_unit         TEXT NOT NULL,
         location_desc            TEXT,
-        location_zone_id         TEXT,
         event_type               TEXT NOT NULL,
         severity                 TEXT DEFAULT 'info',
         status                   TEXT DEFAULT 'open',
@@ -1158,6 +1157,24 @@ def _m024_ai_rec_decision_fk_down(conn: sqlite3.Connection) -> None:
     _rebuild_with_fk(conn, "ai_recommendations", ddl)
 
 
+def _m025_events_drop_location_zone_id(conn: sqlite3.Connection) -> None:
+    """P2-32（[#186](https://github.com/winson3QQ/ICS_COMMAND/issues/186)）：刪 events.location_zone_id 死欄。
+
+    實測存的是 client 端 `'evt_'+Date.now()` 字串、無 `location_zone` 表、非位置來源——事件位置
+    唯一 SoT 為 `cop_entities.lat/lon`（事件圖釘），event↔marker 權威連結為 `attributes.event_id`
+    + P2-27 `event_markers` junction。誤命名欄退役（位置 SoT 清理另一半，承 m022 砍 lat/lon）。
+    無 index / 無 FK → 直接 DROP COLUMN（SQLite 3.35+，比照 _m022）。idempotent。
+    """
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(events)")}
+    if "location_zone_id" in cols:
+        conn.execute("ALTER TABLE events DROP COLUMN location_zone_id")  # nosec B608 — 欄名為常數
+
+
+def _m025_events_drop_location_zone_id_down(conn: sqlite3.Connection) -> None:
+    """rollback：把 location_zone_id 加回（nullable，對齊 base CREATE 的形狀）。"""
+    _add_column_if_missing(conn, "events", "location_zone_id", "TEXT")
+
+
 _MIGRATIONS: list[tuple[int, str, object]] = [
     (1, "events_columns", _m001_events_columns),
     (2, "decisions_columns", _m002_decisions_columns),
@@ -1183,6 +1200,7 @@ _MIGRATIONS: list[tuple[int, str, object]] = [
     (22, "events_drop_dead_lat_lon", _m022_events_drop_dead_lat_lon),
     (23, "decisions_fk", _m023_decisions_fk),
     (24, "ai_rec_decision_fk", _m024_ai_rec_decision_fk),
+    (25, "events_drop_location_zone_id", _m025_events_drop_location_zone_id),
 ]
 
 

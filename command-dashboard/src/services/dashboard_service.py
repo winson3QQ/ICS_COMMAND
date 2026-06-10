@@ -174,7 +174,6 @@ def build_dashboard(exercise_id: int | None = None) -> dict:
     return {
         "calc":   calc,
         "events": events,
-        "open_events_on_map": [e for e in events if e.get("location_zone_id")],
         "decisions": {
             "pending": pending,
             "decided": sorted(approved + completed,

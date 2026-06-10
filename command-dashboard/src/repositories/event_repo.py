@@ -25,7 +25,7 @@ def create_event(data: dict, exercise_id: int | None = None) -> dict:
 
     sql = """
         INSERT INTO events
-            (id, event_code, reported_by_unit, location_desc, location_zone_id,
+            (id, event_code, reported_by_unit, location_desc,
              event_type, severity, status, response_type, response_deadline,
              needs_commander_decision, description,
              related_person_name, assigned_unit, occurred_at, operator_name,
@@ -34,7 +34,7 @@ def create_event(data: dict, exercise_id: int | None = None) -> dict:
             (SELECT ? || printf('%03d',
                 COALESCE(MAX(CAST(SUBSTR(event_code,-3) AS INTEGER)), 0) + 1)
              FROM events WHERE event_code LIKE ?),
-            ?,?,?, ?,?,?,?, ?,?, ?,?,?, ?,?,?,?)
+            ?,?, ?,?,?,?, ?,?, ?,?,?, ?,?,?,?)
     """
 
     for attempt in range(10):
@@ -45,7 +45,6 @@ def create_event(data: dict, exercise_id: int | None = None) -> dict:
                     prefix, prefix + "%",
                     data["reported_by_unit"],
                     data.get("location_desc"),
-                    data.get("location_zone_id"),
                     data["event_type"],
                     severity,
                     "open",
@@ -102,7 +101,7 @@ def get_events(status: str | None = None, limit: int = 50,
 
 
 def patch_event(event_id: str, updates: dict):
-    allowed = {"assigned_unit", "response_deadline", "location_desc", "location_zone_id"}
+    allowed = {"assigned_unit", "response_deadline", "location_desc"}
     safe    = {k: v for k, v in updates.items() if k in allowed}
     if not safe:
         return

@@ -83,8 +83,6 @@ def patch_ev(event_id: str, body: EventPatch):
         updates["assigned_unit"] = body.assigned_unit or None
     if body.location_desc is not None:
         updates["location_desc"] = body.location_desc
-    if body.location_zone_id is not None:
-        updates["location_zone_id"] = body.location_zone_id
     if updates:
         patch_event(event_id, updates)
         log.info("event_updated", msg="事件更新", detail={"event_id": event_id, "fields": list(updates.keys())})

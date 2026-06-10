@@ -90,7 +90,6 @@ def push_inject(exercise_id: int, inject_id: str, request: Request, live: bool =
             "description":              payload.get("description", inject["title"]),
             "operator_name":            payload.get("operator_name", sess["username"]),
             "location_desc":            payload.get("location_desc"),
-            "location_zone_id":         payload.get("location_zone_id"),
             "needs_commander_decision": payload.get("needs_commander_decision", 0),
         }
         r = create_event(ev_data, exercise_id)
