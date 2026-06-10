@@ -3074,6 +3074,20 @@
         "minimizedReason": "",
         "reactionGroups": [],
         "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/190#issuecomment-4667058608"
+      },
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## VERIFY-PASS（human dogfood, 8001 worktree throwaway DB）\n\n| 驗證項 | 結果 |\n|---|---|\n| 建事件 → `POST /api/events` Request Payload **不含 `location_zone_id`** | ✅ |\n| 點事件圖釘 → 事件處置 modal 正常彈出（EV-005 happy-path 完整渲染）| ✅ |\n| Console 無 `Maximum call stack size exceeded` | ✅ |\n\n> 殘留 Console 訊息為良性且 pre-existing：`favicon.ico` 404、MapLibre `generic_shield-Nchar` `styleimagemissing` 警告 —— 與本 PR 無關。\n\n## 順修：pre-existing 事件處置 modal 無限遞迴（`13dd5a7`）\n\ndogfood Step 4 時發現「點任何事件圖釘 → 爆 stack」。**根因與 location_zone_id 正交**：\n- `cop.js initCop` 把 `_showEventProcessModalWrapper` **同時注入 initEvents 與 initMap**。\n- `events.js initEvents` 的同名參數遮蔽 module 自身的 `export function showEventProcessModal`。\n- `events:showProcessModal` listener（closure）因此呼叫 wrapper，wrapper 又 dispatch 同事件 → 無限遞迴。\n\n**佐證為 pre-existing**：本 branch 未改 cop.js 接線/listener；`main` 上 `cop.js:547` + `events.js` listener 逐字相同。修法＝initEvents 不再注入該 wrapper（保留 initMap 的正解單跳路徑），移除死變數 `_showEventProcessModal_ext`，兩處加 ⚠️ 不變式註解防回歸。\n\n## Reviews\n\n- **`/code-review`**（medium）：clean，兩 finder angle（line-by-line + removed-behavior、cross-file tracer）皆回 `[]`。\n- **`/security-review`**：**No findings** —— diff 僅刪死欄 + 修遞迴接線，淨減攻擊面。\n- **7.5 quality gate** `doc_sync_check.py`：exit 0。\n- eslint(events/cop/map/main) 0、vitest 249 passed、pytest(events) 5 passed。\n\n## Commits\n- \\`10bd863\\` P2-32 前端尾（停送/停讀 location_zone_id）\n- \\`13dd5a7\\` 修 pre-existing 事件處置 modal 無限遞迴\n- \\`6cd6e57\\` ROADMAP P2-32 ✅ 結案 + 校正「前端半 = P2-33」drift",
+        "createdAt": "2026-06-10T07:54:54Z",
+        "id": "IC_kwDOSnBjpc8AAAABFjpCHg",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/190#issuecomment-4667884062"
       }
     ],
     "createdAt": "2026-06-10T06:02:05Z",
@@ -3083,7 +3097,7 @@
     "number": 190,
     "state": "OPEN",
     "title": "fix(cop): P2-32 前端尾 — 停送/停讀 events.location_zone_id 死欄（#186 收尾）",
-    "updatedAt": "2026-06-10T06:02:23Z",
+    "updatedAt": "2026-06-10T07:54:54Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/190"
   }
 ]
