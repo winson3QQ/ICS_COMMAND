@@ -1,13 +1,20 @@
 ---
 name: p2-30-part3-handoff
-description: P2-30 part 3（手動感知/敵情標記 UI）交接狀態——WIP 未 merge，驗到哪/剩什麼/怎麼跑
+description: P2-30 part 3（手動感知/敵情標記 UI）狀態——commit 650a07b 完成待 PR；item4 刪除=P2-14
 metadata:
   type: project
 ---
 
 # P2-30 part 3 交接（手動感知/敵情標記 UI，#180）
 
-**狀態（2026-06-10）**：功能基本完成、**WIP commit 在 branch `feat/issue-180-part3-contact`**（未 review、未 merge）。承前：[[tak-marti-authz-model]]（下行機制）、[`cop-event-layering.md`](../../docs/design/cop-event-layering.md)。
+**狀態（2026-06-10 更新）**：**完成、commit `650a07b` 在 branch `feat/issue-180-part3-contact`**（`/code-review` 2 修 + `/security-review` 0 已過、後端 906/JS 253 綠、**PR 待開**）。延伸自下方原 WIP 交接，實際交付遠超之——**以 ROADMAP P2-30 part 3 row 與 commit 650a07b 為準**：2525 渲染 + callsign 標籤、右鍵單鍵廣播 menu、左鍵拖曳移動（`_contactDragMgr`）、廣播放寬 operator+（role_enum 窄洞 `/api/tak/share/`→WRITE_ROLES）、廣播後移動即時同步（`shared_tak` json_set + `_resync_tak_if_shared`）、CoT remarks 標 `source: ICS`。
+
+**item 4 可靠刪除 = 真機+活 server（Marti）實證 streaming 做不到 → deferred P2-14**（t-x-d-d/墓碑/stale 皆無效、Marti 無 CoT DELETE；見 [[tak-streaming-archive-stale-vs-mission]] + strategy §4b）。**衍生另開**：ICS↔iTAK 詳情對齊、Marti 權威 resync（顯示漏掉的 iTAK 標記）。
+
+承前：[[tak-marti-authz-model]]（下行機制）、[[tak-streaming-archive-stale-vs-mission]]（刪除/archive）、[`cop-event-layering.md`](../../docs/design/cop-event-layering.md)。
+
+---
+_以下為原 WIP 交接（2026-06-10 較早，部分已被上方取代）：_
 
 ## 做了什麼（前端為主，後端沿用既有）
 - **放置**：圖層面板「📍 敵情/感知標記」→ picker 選敵我（敵/不明/中立/友）→ 點地圖建 `cop_entity`（`source=manual`、`attributes.kind='contact'`、`type=a-{h/u/n/f}-G`）。RBAC=operator+（`canAccessMapObjects`，非指揮層——無線電回報是一線職責）。
