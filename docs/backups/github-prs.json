@@ -3059,7 +3059,7 @@
     },
     "baseRefName": "main",
     "body": "## ROADMAP item\n- Closes #186（P2-32 前端尾；後端半已於 #187 落地）\n\n## What changed\n純刪 `events.location_zone_id` 死欄的前端殘留。#187 後端已 `DROP COLUMN` + 停存/停讀並刻意留前端半；本 PR 收尾，#186 完整關閉。後端 **0 改動**。\n\n**停送**\n- `map.js` `_evPopupSubmit` 移除 `location_zone_id`（連帶死掉的 `const id='evt_'+Date.now()` 一併砍）\n- `events.js` `submitEvent` body + 樂觀更新物件\n\n**表單 plumbing**\n- 移除 hidden input `#ev-zone-id`（`commander_dashboard.html`）\n- `openEventForm` 拔 `zoneId` 參數 + set/reset；`_zoneEventsTab` 鈕拔 `data-zone`；`main.js` dispatch 拔取值\n\n**停讀**\n- `events.js` `showEventDetail` fakeZone.id → `ev.id`\n- `showEventProcessModal` 移除恆 false 的 `location_zone_id` 反查 fallback（#187 後該欄回傳恆 `undefined`，此路徑已死）\n\n## DoD checklist\n- [x] Tests added / updated（僅更新 `test_events_drop_location_zone.py` stale 註解；後端防禦測試保留）\n- [x] `pytest` green（events scope 5 passed）\n- [x] `npm test` green（vitest 249 passed）\n- [ ] 規格書更新 — 不需（無介面/資料格式/行為變更，純死碼刪除）\n- [x] ROADMAP item — merge 後同輪勾 ✅ P2-32\n\n## §8 Human Verification Script\n\\`\\`\\`bash\n# 前置：在主 repo（非 worktree，避免空 DB first-run 423 gate）起 server\ncd <主 repo> && ./start_mac.sh\n# 瀏覽器登入 dashboard\n\n# Step 1: 建立事件圖釘（地圖長按 → 選類型 → 送出）\n# 預期：事件正常建立、地圖圖釘出現、即時同步（cop_entity）正常；DevTools Network 看 POST /api/events body 不含 location_zone_id\n\n# Step 2: 事件表單面板新增事件（右側面板「新增事件」）\n# 預期：表單送出成功、清單樂觀更新；body 不含 location_zone_id\n\n# Step 3: 節點 detail modal「📝 新增事件」鈕\n# 預期：開表單、送出成功（鈕已無 data-zone，行為不受影響）\n\n# Step 4: 點事件圖釘 → 開處置 modal\n# 預期：正常開啟處置流程（靠 attributes.event_id 連結，不依賴 location_zone_id）；Console 無 JS error\n\\`\\`\\`\n\n## Out of scope / known limitations\n- **不含** P2-33（event↔marker junction 前端 cutover / `attributes.event_id` glue 退役 / `/chain` 導航 UI）—— 那是 #183 的價值兌現，獨立 PR。\n- 後端 `EventIn extra=ignore` 容忍**刻意保留**為對舊 / 快取 client 的防禦，非遺漏。\n- 無版號 bump（對齊 #187 schema migration 慣例）。\n\n## Notes for reviewer\n- 行為應與改前**完全一致**：#187 後端已 strip 此欄，前端讀取本就是 no-op（`ev.location_zone_id` 恆 `undefined`）。\n- 重點看 `showEventProcessModal` 的 fallback 移除是否影響「無 event_id 的 zone 點擊」——應落 `_showZoneDetailDirect`（節點/設施詳情），與改前一致。",
-    "closedAt": null,
+    "closedAt": "2026-06-10T08:01:34Z",
     "comments": [
       {
         "author": {
@@ -3093,11 +3093,11 @@
     "createdAt": "2026-06-10T06:02:05Z",
     "headRefName": "fix/issue-186-frontend-location-zone-id",
     "labels": [],
-    "mergedAt": null,
+    "mergedAt": "2026-06-10T08:01:34Z",
     "number": 190,
-    "state": "OPEN",
+    "state": "MERGED",
     "title": "fix(cop): P2-32 前端尾 — 停送/停讀 events.location_zone_id 死欄（#186 收尾）",
-    "updatedAt": "2026-06-10T07:54:54Z",
+    "updatedAt": "2026-06-10T08:01:34Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/190"
   }
 ]
