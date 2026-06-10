@@ -625,6 +625,9 @@ export function showEventProcessModal(zone) {
   }
   html += `</div>`;
 
+  // P2-33a：事件導航鏈「關聯標記 / 決策」區塊（async 填入，見 _loadEventChain）。
+  html += `<div id="ev-chain-section"></div>`;
+
   // 操作區（未結案）
   if (isOpen) {
     html += `<div style="border-top:1px solid var(--border);padding-top:8px;">`;
@@ -641,6 +644,65 @@ export function showEventProcessModal(zone) {
 
   el('modal-body').innerHTML = html;
   el('overlay').className = 'show';
+  _loadEventChain(ev.id);  // P2-33a：非阻塞填入導航鏈
+}
+
+// P2-33a（#191）：消費 `GET /api/events/{id}/chain`（#183 建的 event_markers junction +
+// 導航端點）→ 在事件處置 modal 渲染「關聯標記 / 決策」區塊。
+// 標記＝純資訊清單（現 1:1，逐標記定位 / 長按關聯網留 P2-33c N:1）；決策可點開既有 modal。
+// 唯讀、純加；**不碰** `attributes.event_id` glue（退役留 P2-33b）。
+// scope 守門由後端做（跨場 → 404）；前端 404/錯誤一律靜默不顯示，不打斷 modal。
+async function _loadEventChain(eventId) {
+  const host = document.getElementById('ev-chain-section');
+  if (!host) return;
+  host.innerHTML = `<div style="font-size:10px;color:var(--text3);padding:6px 0;">載入關聯…</div>`;
+  let chain;
+  try {
+    const resp = await authFetch(API_BASE + '/api/events/' + encodeURIComponent(eventId) + '/chain');
+    if (!resp.ok) { host.innerHTML = ''; return; }  // 404（跨場/不存在）或其他錯 → 靜默
+    chain = await resp.json();
+  } catch (e) { host.innerHTML = ''; return; }
+  // modal 期間可能被關閉或切到別的事件 → host 已非同一節點就放棄寫入（避免覆寫新 modal）。
+  if (document.getElementById('ev-chain-section') !== host) return;
+
+  const markers = chain.markers || [];
+  const decisions = chain.decisions || [];
+  if (markers.length === 0 && decisions.length === 0) { host.innerHTML = ''; return; }
+
+  const _sectionHdr = t => `<div style="font-size:10px;font-weight:600;color:var(--text3);margin:8px 0 4px;">${t}</div>`;
+  let html = `<div style="border-top:1px solid var(--border);padding-top:8px;margin-bottom:8px;">`;
+
+  if (markers.length > 0) {
+    html += _sectionHdr(`關聯標記 (${markers.length})`);
+    // 純資訊行（不可點）：現 1:1 下「定位自己的圖釘」多餘且易卡聚光燈；逐標記導航 → P2-33c N:1。
+    markers.forEach(m => {
+      const role = m.link_role === 'primary' ? '主' : (m.link_role || '');
+      const roleBadge = role ? `<span style="font-size:9px;padding:0 5px;border-radius:8px;background:var(--surface2);color:var(--text3);">${_esc(role)}</span>` : '';
+      html += `<div style="display:flex;align-items:center;gap:6px;padding:5px 8px;margin-bottom:4px;background:var(--surface2);border-radius:5px;">`;
+      html += `<span style="font-size:12px;">📍</span>`;
+      html += `<span style="font-size:11px;font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${_esc(m.callsign || String(m.uid))}</span>`;
+      html += roleBadge;
+      html += `</div>`;
+    });
+  }
+
+  if (decisions.length > 0) {
+    html += _sectionHdr(`關聯決策 (${decisions.length})`);
+    decisions.forEach(dec => {
+      const sevC = dec.severity === 'critical' ? 'var(--severity-critical)' : 'var(--severity-warning)';
+      const statusLabel = dec.status === 'pending' ? '待裁示' : '已裁示：' + dec.status;
+      // 重用既有全域 data-action="showDecisionModal"（不新增 main.js case）。
+      html += `<div data-action="showDecisionModal" data-id="${_esc(String(dec.id))}" style="padding:6px 8px;margin-bottom:4px;background:var(--surface2);border-radius:5px;border-left:3px solid ${sevC};cursor:pointer;">`;
+      html += `<div style="display:flex;justify-content:space-between;gap:6px;">`;
+      html += `<span style="font-size:11px;font-weight:700;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${_esc(_truncate(dec.decision_title, 30))}</span>`;
+      html += `<span style="font-size:9px;color:var(--text3);white-space:nowrap;">${_esc(statusLabel)}</span>`;
+      html += `</div></div>`;
+    });
+  }
+
+  html += `</div>`;
+  host.innerHTML = html;
+  // 決策列用既有全域 data-action="showDecisionModal"（main.js 全域 click 處理），標記純資訊不需 listener。
 }
 
 export async function updateEventStatus(eventId, status) {
