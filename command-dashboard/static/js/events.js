@@ -393,7 +393,7 @@ function _truncate(s, n) { return s && s.length > n ? s.slice(0, n) + '…' : (s
 // 事件表單
 // ══════════════════════════════════════════════════════════════
 
-export function openEventForm(prefilledUnit, prefilledLocation, zoneId) {
+export function openEventForm(prefilledUnit, prefilledLocation) {
   if (!canCreateEvents()) return;
   const el = id => document.getElementById(id);
   if (prefilledUnit) el('ev-unit').value = prefilledUnit;
@@ -405,7 +405,6 @@ export function openEventForm(prefilledUnit, prefilledLocation, zoneId) {
   } else if (typeof prefilledLocation === 'string') {
     el('ev-location').value = '';
   }
-  if (zoneId) el('ev-zone-id').value = zoneId;
   if (!el('ev-operator').value) el('ev-operator').value = _getCurrentOperator?.() || '';
   _updateEvTypeFromCategories();
   _syncEvSeverity();
@@ -418,7 +417,6 @@ export function closeEventForm() {
   el('ev-desc').value = '';
   el('ev-location').value = '';
   if (el('ev-decision')) el('ev-decision').checked = false;
-  el('ev-zone-id').value = '';
 }
 
 export function _syncEvSeverity() {
@@ -464,7 +462,6 @@ export async function submitEvent() {
     operator_name:             el('ev-operator').value || _getCurrentOperator?.() || '',
     location_desc:             el('ev-location').value || null,
     needs_commander_decision:  el('ev-decision').checked,
-    location_zone_id:          el('ev-zone-id').value || null,
   };
   if (!body.description) { el('ev-desc').focus(); return; }
   try {
@@ -488,7 +485,6 @@ export async function submitEvent() {
           description:      body.description,
           operator_name:    body.operator_name,
           location_desc:    body.location_desc || null,
-          location_zone_id: body.location_zone_id || null,
           assigned_unit:    body.assigned_unit || null,
           status:           'open',
           occurred_at:      now,
@@ -536,7 +532,7 @@ export async function submitEvent() {
 
 export function showEventDetail(ev) {
   const fakeZone = {
-    id:         ev.location_zone_id || ev.id,
+    id:         ev.id,
     event_id:   ev.id,
     event_code: ev.event_code,
     label:      _evTypeLabel(ev),
@@ -550,9 +546,11 @@ export function showEventProcessModal(zone) {
   if (zone.event_id) sessionStorage.setItem('_openEventId', zone.event_id);
   const _data = _getData?.();
   const allEvts = _data?.events || [];
+  // location_zone_id 死欄已砍（P2-32/#186）→ 無 event_id 的 zone 不再有事件反查路徑，
+  // 直接落 _showZoneDetailDirect（節點/設施詳情）。
   const ev = zone.event_id
     ? allEvts.find(e => e.id === zone.event_id)
-    : allEvts.find(e => e.location_zone_id === zone.id);
+    : null;
   if (!ev) {
     _showZoneDetailDirect(zone);
     return;
@@ -971,7 +969,7 @@ function _zoneEventsTab(zone) {
   const latStr = zone.lat != null ? zone.lat : '';
   const lngStr = zone.lng != null ? zone.lng : '';
   let html = `<div style="margin-bottom:8px;display:flex;align-items:center;gap:6px;">`;
-  html += `<button data-action="openEventForm" data-unit="${unit}" data-lat="${latStr}" data-lng="${lngStr}" data-zone="${zone.id}" style="padding:4px 12px;background:var(--green);color:#fff;border:none;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;font-family:var(--mono);">📝 新增事件</button>`;
+  html += `<button data-action="openEventForm" data-unit="${unit}" data-lat="${latStr}" data-lng="${lngStr}" style="padding:4px 12px;background:var(--green);color:#fff;border:none;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;font-family:var(--mono);">📝 新增事件</button>`;
   if (events.length > 0) {
     html += `<span style="font-size:10px;color:var(--text3);">${openEvs.length} 筆進行中`;
     if (closedEvs.length > 0) html += `・${closedEvs.length} 筆已結案`;

@@ -913,7 +913,6 @@ async function _evPopupSubmit(typeKey, ctx) {
   const reportedBy = ctx.reporter || el('place-report-unit')?.value || 'command';
   const { lat, lng } = ctx;
 
-  const id = 'evt_' + Date.now();
   const mgrs = _latlngToMGRS(lat, lng, 5);
   const operator = _deps.getCurrentOperator?.() || '';
   // P1-14 PR-2：session_type 退役（後端自動依 active exercise scope，建立事件不再送）。
@@ -936,7 +935,6 @@ async function _evPopupSubmit(typeKey, ctx) {
         description: evDef.label,
         assigned_unit: evDef.defaultAssigned || null,  // #66：新事件預填 taxonomy 預設處理組
         operator_name: operator,
-        location_zone_id: id,   // 記錄用 client id；consumer 主要靠 event_id 連結
         location_desc: mgrs,
       }),
     });
