@@ -2986,5 +2986,26 @@
     "title": "P2-31: decisions/ai_recommendations FK 規範化（#184）",
     "updatedAt": "2026-06-09T23:48:52Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/185"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "ROADMAP **P2-32** 後端半。Refs #186（**不 Closes** — 前端停送/停讀留 P2-33 cutover）。承 P2-27 [#183](https://github.com/winson3QQ/ICS_COMMAND/pull/183) 位置 SoT 清理（m022 砍 lat/lon 的另一半）。\n\n## 變更（後端 only）\n- **m025** `ALTER TABLE events DROP COLUMN location_zone_id`（比照 [m022](https://github.com/winson3QQ/ICS_COMMAND/blob/main/command-dashboard/src/core/database.py)，idempotent guard）+ base CREATE 同步移除。\n- 後端停存/停讀全清：`event_repo` create INSERT + `patch_event` allowed set、`schemas/event.py`（EventIn/EventPatch）、`routers/events.py` PATCH、`ttx.py` inject、`dashboard_service.open_events_on_map`（零 consumer 的死 output field 一併砍）。\n\n## 為何安全砍\n實測 `location_zone_id` 存 client `'evt_'+Date.now()` 字串、無 `location_zone` 表、非位置來源——事件位置唯一 SoT 為 `cop_entities.lat/lon`、event↔marker 權威連結為 `attributes.event_id` + P2-27 `event_markers` junction（詳見 #186 reality check）。\n\n## 前端為何能不動（優雅退化）\n- POST /api/events：map.js 仍送 `location_zone_id`，但 `EventIn` 預設 `extra=ignore` → 被忽略、**不 422**。\n- events.js 讀 `ev.location_zone_id`：API 不再回該欄 → undefined → 既有 `|| ev.id` fallback 兜底；反查分支因事件圖釘恆帶 `event_id` 而不觸發。\n- `open_events_on_map`：全 repo 零 consumer。\n\n## 測試 / 驗證\n- `tests/integration/test_events_drop_location_zone.py`（6：欄已砍／idempotent／create+patch 忽略殘留欄／EventIn extra 容忍）。\n- 全後端 suite 綠（~684 passed / 1 skipped）、pyflakes clean、doc-sync passed。\n- `/code-review`（high）0 confirmed bug；`/security-review` 0 finding。\n\n## 範圍 / 後續\n無版號 bump（對齊 P2-27/P2-31 慣例）。**前端 cutover（map.js 停送 + events.js 停讀）= P2-33**，屆時 #186 才完整收尾。\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n",
+    "closedAt": "2026-06-10T00:08:00Z",
+    "comments": [],
+    "createdAt": "2026-06-10T00:07:13Z",
+    "headRefName": "feat/issue-186-drop-location-zone-id",
+    "labels": [],
+    "mergedAt": "2026-06-10T00:08:00Z",
+    "number": 187,
+    "state": "MERGED",
+    "title": "P2-32（後端半）: 砍 events.location_zone_id 死欄（#186）",
+    "updatedAt": "2026-06-10T00:08:04Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/187"
   }
 ]
