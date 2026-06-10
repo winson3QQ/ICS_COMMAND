@@ -3120,5 +3120,26 @@
     "title": "P2-30 part 3：手動感知/敵情標記 UI + 廣播雙向同步 (#180)",
     "updatedAt": "2026-06-10T08:43:16Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/192"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "## ROADMAP item\n- Closes #191（P2-33a — P2-33 拆出的低風險前半）\n\n## What changed\n**兩個 commit**：\n- `b66aad8` **docs(design)**：新增 `docs/design/cop-marker-event-decoupling.md`（marker/event 解耦設計 SoT：founding-why + 三分模型 + triage + 降級 + N:1 操作/呈現 + 兩 type 軸）+ ROADMAP P2-27..33 對齊（6 項 reality-check）+ memory。\n- `3a88d52` **feat(cop) P2-33a**：事件處置 modal 新增「關聯標記 / 決策」唯讀區塊，消費 `GET /api/events/{id}/chain`（#183 junction/端點的**前端首個消費者** → #183 至此產生使用者可見價值）。\n\n設計上 a/b/c 三刀：**本 PR = a**（唯讀清單）；b（降級）/c（N:1 即時聚合＝脊椎）後續。\n\n## DoD checklist\n- [x] Tests：vitest 249 passed（無新增 spec；UI 唯讀加項）\n- [x] `npm test` green\n- [x] `pytest` green（後端 0 改動，`/chain` 端點 #183 已有）\n- [x] 規格/設計 doc：新增 cop-marker-event-decoupling.md + ROADMAP 對齊\n- [x] ROADMAP P2-33a — merge 後同輪標 ✅\n\n## §8 Human Verification Script\n\\`\\`\\`bash\n# 前置：主 repo 起 server（worktree 空 DB 會 423）\ncd <主 repo> && ./start_mac.sh   # 瀏覽器登入\n\n# Step 1: 建一個事件（地圖長按 → 選類型 → 送出）\n# Step 2: 點該事件圖釘 → 開處置 modal\n# 預期：「處置紀錄」下方出現「關聯標記 (1)」→ 📍 callsign + 「主」badge\n#       （= /chain 消費生效，event_markers junction 端到端通）\n# Step 3: 標記列為純資訊、不可點（無 cursor/hover 定位、點了無反應、Console 無紅字）\n# Step 4: 若該事件有裁示 → 「關聯決策」可點開既有決策 modal\n# 預期：Network GET /api/events/{id}/chain → 200 + {markers:[1], decisions:[...]}\n\\`\\`\\`\n\n## Out of scope / known limitations\n- **不含** P2-33b（降級：`kind='event'`→純標記、停 glue）、P2-33c（N:1 聚合 + 長按關聯網 + 即時全貌視圖）。\n- 標記**刻意不可點**：現 1:1 下「定位自己的圖釘」多餘、且會卡既有 `_highlightEvent` 聚光燈（dogfood 實見）；逐標記導航留 P2-33c N:1。\n- 無版號 bump。\n\n## Notes for reviewer\n- P2-33a code **只動 `events.js`** → 與 live `feat/issue-180-part3-contact`（P2-30 part-3，零碰 events.js）無重疊。\n- 決策列重用既有全域 `data-action=\"showDecisionModal\"`，未新增 main.js case。\n- 設計全貌 SoT → `docs/design/cop-marker-event-decoupling.md`。",
+    "closedAt": "2026-06-10T09:43:10Z",
+    "comments": [],
+    "createdAt": "2026-06-10T09:35:41Z",
+    "headRefName": "feat/issue-191-p2-33a-chain-ui",
+    "labels": [],
+    "mergedAt": "2026-06-10T09:43:10Z",
+    "number": 195,
+    "state": "MERGED",
+    "title": "feat(cop): P2-33a 事件導航鏈唯讀 UI（消費 /events/{id}/chain，#191）",
+    "updatedAt": "2026-06-10T09:43:10Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/195"
   }
 ]

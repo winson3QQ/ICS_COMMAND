@@ -2505,15 +2505,15 @@
       "name": ""
     },
     "body": "**P2-33 拆出的低風險前半**（reality check 2026-06-10，見 ROADMAP P2-33 row）。\n\n## 背景\n#183 已建 `event_markers` junction（權威關聯）+ `GET /api/events/{id}/chain`（事→標記→決策，已掛 P1-14 scope 守門），但**前端零消費者**，故 #183 無使用者可見變化。本 item 把 `/chain` 接到事件處置 modal，**先出價值、不碰 glue**。\n\n## Scope（P2-33a）\n- 事件處置 modal（`events.js showEventProcessModal`）新增「關聯標記 / 決策」可導航區塊，消費 `GET /api/events/{event_id}/chain`。\n- chain 回傳 `{event, markers, decisions}`；markers 為 cop_entity shape（含 `link_role`）、decisions 為 decision rows。\n- 點 marker → 地圖定位/高亮（沿用既有定位機制）；點 decision → 既有決策檢視。\n- 唯讀、純加，**不動** `attributes.event_id` glue、不動 `map.js`/`cop.py`/序列化。\n\n## 明確不做（留 P2-33b）\n- glue 退役（停寫 `attributes.event_id`）、junction first-class 化、序列化改帶 junction event_id、reverse 端點。\n- N:1 多標記聚合 UX。\n\n## 不衝突確認\n與 live `feat/issue-180-part3-contact`（P2-30 part-3）零重疊：part-3 動 `map.js`/`main.js`/`mil_symbol.js`，**零碰 `events.js`**（本 item 主戰場）。chain 點擊用 `events.js` 內 scoped 處理、不加 `main.js` case 以避開 action-switch 接觸點。\n\n## 依賴\nP2-27（#183，done）。\n\n## DoD\n- chain 區塊在事件處置 modal 正常渲染（有/無 marker、有/無 decision 皆可）\n- scope 守門：跨場 event 的 chain → 404（後端已有，前端優雅處理）\n- vitest 綠 + `/verify`（建 event→開 modal→看 chain 區塊）",
-    "closedAt": null,
+    "closedAt": "2026-06-10T09:43:12Z",
     "comments": [],
     "createdAt": "2026-06-10T08:27:11Z",
     "labels": [],
     "milestone": null,
     "number": 191,
-    "state": "OPEN",
+    "state": "CLOSED",
     "title": "P2-33a: 事件導航鏈唯讀 UI（消費 GET /events/{id}/chain，#183 價值兌現）",
-    "updatedAt": "2026-06-10T08:27:11Z",
+    "updatedAt": "2026-06-10T09:43:12Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/191"
   },
   {
