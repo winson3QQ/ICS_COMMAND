@@ -2621,14 +2621,29 @@
     },
     "body": "ROADMAP **P2-20(B)**（AAR 回放——前端頁面）。(A) 後端時間軸 API 已完成（#199 / [#200](https://github.com/winson3QQ/ICS_COMMAND/pull/200)）。本 issue 記 **2026-06-11 reality check + 分刀計畫**。\n\n## Reality check（推翻一個關鍵假設）\n\n**「(B) 一定要動 map.js」不成立——衝突可歸零**：\n- Row 規格本就是**獨立頁面** `/aar/{exercise_id}`（非 ops dashboard toggle）；repo 已有 6 個獨立 HTML 頁先例（`admin_backups.html`、`scenario_designer.html`…）。\n- 地圖已模組化：`map/maplibre_core.js`（`initMaplibre()` 建獨立實例）+ `entity_layer.js`（`EntityLayer`、SDF baking 全 export）**可直接 import、不經 map.js**。\n- → AAR 頁自帶 map 實例 + 自帶回放渲染 = **新增檔為主，map.js / events.js / main.js 全不碰**，與 P2-33b/c、part-3 零衝突。\n\n**資料地基全到位**：`/timeline`（#200）、`/tracks`（P2-06b）、`/api/cop/entities`（exercise_id override）、`aar_entries` + `POST /{id}/aar`（未來 P2-21(1) bookmark 落點）、P1-18 觸控紀律（≥44px）。\n\n**三個真雷（設計已繞）**：\n1. **sessionStorage per-tab**：token 存 sessionStorage（auth.js）→ 新分頁開 AAR 頁拿不到登入態 → **同分頁導航**進出（頁內「← 返回指揮台」）；不做新開分頁。\n2. **CSP enforce `script-src 'self'`**：不能 inline script → AAR 頁 JS 一律外部模組檔（admin_backups 的 inline 寫法不能抄）。\n3. **事件無自身座標**（P2-27 砍位置欄，SoT 在 cop_entity）→ 回放 v1 地圖上「動」的是**有軌跡的單位**（fold tracks）+ chats 點位；**事件以側欄時間軸列表呈現**。事件上圖需經 event_markers junction 解標記位置 → **留 v2**（避免與 P2-33b junction cutover 撞語意）。\n\n**入口取捨**：dashboard 加按鈕會動 main.js（part-3 領地）→ **v1 不加連結**，URL 直進（`/static/aar.html?exercise_id=N`）；row 的 `/aar/{exercise_id}` 漂亮路徑屬可選 polish。\n\n## 權限模型（既定，非本項新決策）\n\n- 資料 API（`/timeline`、`/tracks`）= 中央 gate **COMMAND_ROLES**（commander + sysadmin）；operator/observer → 403、未登入 → 401 引導回 dashboard。門在 server side，頁面外殼不另設權限。\n- 回放本身**純唯讀**；唯一未來寫操作 = P2-21(1) bookmark（同 gate）。\n- 📌 **開放問題（不擋本項）**：TTX 的 O/C（裁判）該不該看 AAR？現行無獨立 O/C 角色（P2-19 才建 O/C 控制台），屆時若放行屬另一個 RBAC 決策。\n\n## 分刀\n\n**B1 — 骨架 + Step mode（先出價值）**\n- 新檔：`static/aar.html` + `static/js/aar/`（`aar_main.js` / `replay_engine.js` / `aar_map.js`）\n- exercise 選擇（query param / `/api/exercises`）→ 拉 `/timeline`（truncated → 提示縮時間窗）\n- **Step mode**：側欄事件流列表（40%），點任一筆 / 上下鍵 → T 跳該筆 → 地圖（60%）fold tracks 到 ≤T 畫單位位置\n- 403/401 → 引導回 dashboard\n- vitest：`replay_engine` fold 純函式（items + T → uid→位置）\n\n**B2 — Play mode + 尾跡**\n- 虛擬時鐘 1x/2x/4x（rAF + 速率係數）、播放/暫停、slider scrub（seek = 記憶體折疊；量大才加 keyframe 快取，#199 定案）\n- 軌跡尾跡：過去 N 分鐘路徑線（GeoJSON line 隨 T 滑動）\n\n**B3 — 觸控 + 收尾**\n- iPad：slider swipe、目標 ≥44px（沿 P1-18）；`/verify` + **Human verify（必要，純前端 UI）**\n- ROADMAP 註記。**(B) 完成後 P2-20 仍不全勾**：尚餘軌跡 PII retention policy 文件化（threat_model，連動 P2-17）。\n\n## DoD（B1）\n- [ ] 新檔 4＋測試；**既有檔零修改**\n- [ ] Step mode 可用：選場 → 時間軸列表 → 點選跳 T → 地圖單位位置正確\n- [ ] 403/401 路徑、truncated 提示\n- [ ] vitest（fold 邏輯）+ eslint 0\n- [ ] `/code-review` + `/security-review`\n- [ ] Human verify（瀏覽器實走）\n",
     "closedAt": null,
-    "comments": [],
+    "comments": [
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "**[2026-06-11 B2 reality check（動工前）]**\n\n① **效能假設驗證（#199「先量測」成立）**：timeline 上限 5000 筆、B1 實測單步全折疊無感。Play mode 前進用**增量游標**（O(Δ新事件)），倒退/scrub 才 reset 全折疊；**不需 keyframe 快取**。\n② **尾跡資料結構缺口（唯一動 engine 的點）**：`trackIdx` 為全 uid 混排 → `buildReplayIndex` 加 **`tracksByUid: Map<uid, points[]>`**（一次建、天然 t 序），每 tick 窗口切片 → LineString。純函式可測。\n③ **地圖層**：新 `aar-trails` line layer，掛 `_ensureLayers` 同一 retry 機制（沿用 B1 修過的 pmtiles load 雷）。\n④ **虛擬時鐘**：rAF＋**wall-clock delta×速率**（非固定步長；背景分頁節流回前景自動跳補）；推進邏輯抽純函式 `advanceClock()` → vitest 直測。到 t_end 自停。\n⑤ **UI**：底部 bar＝▶/⏸＋1x/2x/4x＋原生 range slider（domain=t_start~t_end ms）＋T 顯示。互動決策：**scrub 自動暫停**；播放中側欄高亮跟最近 step（`stepIndexAtOrBefore`），僅 step 變化時 scrollIntoView。\n⑥ **邊界**：truncated 視窗照舊；slider 觸控尺寸/swipe 歸 B3；**Play 中打 bookmark 將順帶解鎖**（#204 「卡 B2」項）。\n⑦ **足跡**：aar.html＋aar/ 三 JS＋vitest，**後端零改動、零碰活躍 session 領地**。\n",
+        "createdAt": "2026-06-10T23:48:09Z",
+        "id": "IC_kwDOSnBjpc8AAAABFrLIJA",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/201#issuecomment-4675782692"
+      }
+    ],
     "createdAt": "2026-06-10T22:24:05Z",
     "labels": [],
     "milestone": null,
     "number": 201,
     "state": "OPEN",
     "title": "P2-20(B): AAR 回放前端頁（獨立頁 /static/aar.html）— reality check + 分刀 B1/B2/B3",
-    "updatedAt": "2026-06-10T22:24:05Z",
+    "updatedAt": "2026-06-10T23:48:09Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/201"
   },
   {

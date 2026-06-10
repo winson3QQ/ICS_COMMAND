@@ -3246,5 +3246,26 @@
     "title": "P2-20(B) B1: AAR 回放獨立頁骨架 + Step mode（#201）",
     "updatedAt": "2026-06-10T23:02:36Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/203"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "Refs #204（**不 Closes**——MEDEVAC「承接」動作（決策 C）/ EXCHECK（卡 P2-18）/ Play mode 中打標記（卡 B2）仍 pending）。上游：P2-20(A) #200、(B) B1 #203。\n\n## 變更\n- **`GET /api/exercises/{id}/kpis`**（新 `services/kpi_service.py`）：事件處置時長 / 通聯量 by 組 / 決策裁示時長 / 軌跡量 / AAR 條目數（= P2-22 gate 對帳數字）。**誠實邊界**：medevac/excheck 量不出 → `null+reason` 不假裝。不寫沉睡 `exercise_kpis` 表（即時算）。RBAC = 中央 gate COMMAND_ROLES。\n- **bookmark**：m026 `aar_entries.ref_t`（回放時間點；`created_at` 是牆鐘載不了 T——#204 發現 1）+ category `'bookmark'` + AAR 頁「標記此刻」鈕（B1 Step mode 解鎖——#204 發現 2）+ 書籤 chips 跳轉。\n- **AAR_EXPORT audit**：`/api/ai/report`、`/api/ai/export` audit-first 強制留痕。\n\n## review\n- `/code-review` 1 真 bug：`_group_count` NULL/`''` 同 key 覆蓋計數 → 改累加＋回歸測試。\n- `/security-review` 0 finding＋1 informational 收緊：垃圾 `ref_t` 入庫前 `iso_to_dt` 驗格式 → 422＋回歸測試。其餘：SQL 全 bind、chips 零 innerHTML（無 stored XSS）、audit 無 silent bypass、KPI 只回聚合無 row-level PII。\n\n## 測試 / 驗證\n- `test_exercise_kpis` ×9 + vitest ×9（含 `stepIndexAtOrBefore`）；fresh-DB 全 suite 綠（CI 鏡像）、pyflakes/eslint 0。\n- preview 實彈：選步→鈕啟用→標記→chip 渲染→點擊跳回時點→`/kpis` 真數字。\n\n## 範圍\n後端＋AAR 頁自有領地（`static/js/aar/`），**map.js/events.js/main.js/tak 全不碰**。無版號 bump。\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n",
+    "closedAt": "2026-06-10T23:42:35Z",
+    "comments": [],
+    "createdAt": "2026-06-10T23:41:37Z",
+    "headRefName": "feat/issue-204-exercise-kpis",
+    "labels": [],
+    "mergedAt": "2026-06-10T23:42:35Z",
+    "number": 205,
+    "state": "MERGED",
+    "title": "P2-21 子集: 演習 KPI API + 回放課程標記 + AAR_EXPORT audit（#204）",
+    "updatedAt": "2026-06-10T23:42:52Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/205"
   }
 ]
