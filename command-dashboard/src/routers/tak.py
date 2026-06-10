@@ -141,6 +141,10 @@ async def share_entity_to_tak(uid: str, request: Request):
         await tak_downlink.send_cot(cot)
     except Exception as e:  # noqa: BLE001 — 連線/配置失敗統一 503（稽核已記分享意圖）
         raise HTTPException(503, f"分享到 TAK 失敗：{e}") from e
+    # P2-30 part 3：標記已廣播 → 之後 move/note 編輯（cop PUT）即時重推（不需再手動廣播）。
+    # 刪除不推 TAK（streaming 做不到 → P2-14，見 cop.delete_entity / tak_downlink 註）。
+    # 非-CAS 單語句更新不 bump version（不影響前端樂觀鎖）。
+    cop_entity_repo.mark_shared_tak(uid, True)
     return {"ok": True, "uid": uid, "status": "shared"}
 
 

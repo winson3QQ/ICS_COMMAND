@@ -53,7 +53,7 @@ import {
   pickForeground,
 } from './map/entity_layer.js';
 import { NAPSG_GLYPH_SVG, hasNapsgGlyph } from './map/napsg_glyphs.js';
-import { cotToSidc, affiliationFromCot } from './map/mil_symbol.js';
+import { cotToSidc, affiliationFromCot, affiliationToCotType } from './map/mil_symbol.js';
 import { DrawPreview } from './map/draw_tools.js';
 import { LabelMarkerManager } from './map/label_markers.js';
 import { EventPopup } from './map/event_popup.js';
@@ -112,6 +112,7 @@ let _routeLayer = null;     // EntityLayer (LineString)
 let _zoneLayer = null;      // EntityLayer (Point circle) — step 7 階段 1
 let _facilitiesLayer = null;   // P1-17：永久設施唯讀基準層（獨立 facilities source）
 let _takLayer = null;       // P2-05(c)：TAK 單位 MIL-STD-2525 符號層（milsymbol frame icon）
+let _contactLayer = null;   // P2-30 part 3：手動感知/敵情標記（circle + abbr，affiliation 色；同步即時，仿 infra）
 let _facilitiesData = null;    // /api/facilities 快取（lazy：首次開圖層才抓）
 let _facilitiesPopup = null;   // P1-17：hover tooltip（maplibregl.Popup）
 let _facilitiesHoverWired = false;
@@ -119,6 +120,7 @@ let _drawPreview = null;       // DrawPreview — step 8（polygon / route 繪�
 let _polyLabelMgr = null;      // LabelMarkerManager (polygons)
 let _routeLabelMgr = null;     // LabelMarkerManager (routes)
 let _eventPopup = null;        // EventPopup — step 9（長按 → 兩階段事件選單）
+let _contactDragMgr = null;    // P2-30 part 3：感知/敵情標記專屬拖曳 manager（左拖移動、右鍵廣播）
 let _eventDragMgr = null;      // EventDragManager — 補 step 7 symbol layer 化後事件
                                //   zone 失去的拖曳行為；只服務事件 zone（節點不在 scope）
 let _entityLayersInstalled = false;
@@ -139,7 +141,14 @@ let _mgrsGridVisible = sessionStorage.getItem('_mgrsGridVisible') !== '0';
 // 由 _layerVis.zones（節點）/ _layerVis.events（事件）控制，feature-level 過濾（取消勾「節點」
 // 不再連帶把事件藏掉）。
 // P1-17：facilities（永久設施基準層）預設**關**——唯讀參考層，需要才從面板開，避免雜訊。
-const _layerVis = { zones: true, events: true, polygons: true, infra: true, routes: true, facilities: false, tak: true, mgrs: _mgrsGridVisible };
+const _layerVis = { zones: true, events: true, polygons: true, infra: true, routes: true, facilities: false, tak: true, contact: true, mgrs: _mgrsGridVisible };
+// P2-30 part 3：手動感知/敵情標記 affiliation → 色 + abbr（circle + 字，仿 infra；即時、無 async bake）。
+const _CONTACT_AFF = {
+  hostile: { color: '#d9342b', abbr: '敵' },
+  unknown: { color: '#caa800', abbr: '?' },
+  neutral: { color: '#2e8b57', abbr: '中' },
+  friendly: { color: '#2b6cd9', abbr: '友' },
+};
 // P2-25（#163 系列）：TAK 單位（2525 markers）的地圖篩選器——純前端 view filter（不刪資料）。
 // affiliation 對映 affiliationFromCot 的四態；showStale=false 隱藏過 stale 的活追蹤單位。
 const _takFilter = { friendly: true, hostile: true, neutral: true, unknown: true, showStale: true };
@@ -583,6 +592,7 @@ function _scheduleCopRender() {
     _renderZones(); // PR-G1b：事件位置圖釘也在 cop_entities，即時重繪
     _renderInfra(); // P1-16 PR-2：設施（kind='infra'）cutover 進 cop_entities，即時重繪
     _renderTakUnits(); // P2-05(c)：TAK 單位 2525 符號（source='tak' atom），即時重繪
+    _renderContacts(); // P2-30 part 3：手動感知/敵情標記（kind='contact'），即時重繪
   };
   if (typeof requestAnimationFrame !== 'undefined') requestAnimationFrame(run);
   else setTimeout(run, 0);
@@ -600,6 +610,7 @@ export function refreshLeafletMarkers() {
   _renderZones();
   _renderFacilities();  // P1-17：永久設施基準層（lazy + 預設關）
   _renderTakUnits();    // P2-05(c)：TAK 單位 MIL-STD-2525 符號
+  _renderContacts();    // P2-30 part 3：手動感知/敵情標記
 }
 
 /**
@@ -871,6 +882,11 @@ function _rebuildLayerPanel() {
   if (canUseRealModeControls()) {
     html += `<div class="layer-row" data-action="openNodePlace">
       <span style="font-size:11px;color:var(--text2);">⊙ 放置節點</span></div>`;
+  }
+  // P2-30 part 3：敵情/感知標記入口（operator+——無線電回報敵情是一線職責，比節點放置開放）
+  if (canAccessMapObjects()) {
+    html += `<div class="layer-row" data-action="openContactPlace">
+      <span style="font-size:11px;color:var(--text2);">📍 敵情/感知標記</span></div>`;
   }
   panel.innerHTML = html;
 }
@@ -1331,6 +1347,52 @@ function _ensureEntityLayers() {
     ],
   });
 
+  // P2-30 part 3：手動感知/敵情標記層。主視覺 = MIL-STD-2525 框（仿 _takLayer，傳到 TAK client
+  // 才看得懂同一套符號語意）；milsymbol 未 bake/未載時退回 circle+abbr fallback（feature
+  // property `hasMil` 切換：bake 成功→2525、否則→circle，operator 親放的標記不致消失）。
+  // callsign 下方標籤兩種視覺都顯（issue 4a：圖下方說明，對齊 iTAK 放置標記）。
+  _contactLayer = new EntityLayer(map, 'contact', {
+    layers: [
+      // fallback：milsymbol 未就緒時的 circle（hasMil=false 才顯）
+      {
+        id: 'contact-circle', type: 'circle',
+        filter: ['!', ['coalesce', ['get', 'hasMil'], false]],
+        paint: {
+          'circle-radius': 11, 'circle-color': ['get', 'color'],
+          'circle-stroke-width': 2, 'circle-stroke-color': '#ffffff', 'circle-opacity': 0.95,
+        },
+      },
+      {
+        id: 'contact-abbr', type: 'symbol',
+        filter: ['!', ['coalesce', ['get', 'hasMil'], false]],
+        layout: {
+          'text-field': ['get', 'abbr'], 'text-font': ['Noto Sans Regular'], 'text-size': 12,
+          'text-anchor': 'center', 'text-allow-overlap': true, 'text-ignore-placement': true,
+        },
+        paint: { 'text-color': '#ffffff', 'text-halo-color': '#000000', 'text-halo-width': 0.5 },
+      },
+      // 主視覺：MIL-STD-2525 框（hasMil=true 才顯；色彩/框形由 SIDC 內建，不套 icon-color）
+      {
+        id: 'contact-2525-icon', type: 'symbol',
+        filter: ['coalesce', ['get', 'hasMil'], false],
+        layout: {
+          'icon-image': ['get', 'iconId'],
+          'icon-allow-overlap': true, 'icon-ignore-placement': true,
+        },
+      },
+      // 下方文字標籤（callsign）—— 有命名才顯，兩種視覺共用（issue 4a）
+      {
+        id: 'contact-callsign-label', type: 'symbol',
+        filter: ['!=', ['coalesce', ['get', 'label'], ''], ''],
+        layout: {
+          'text-field': ['get', 'label'], 'text-font': ['Noto Sans Regular'], 'text-size': 11,
+          'text-anchor': 'top', 'text-offset': [0, 1.4], 'text-allow-overlap': false, 'text-optional': true,
+        },
+        paint: { 'text-color': '#ffffff', 'text-halo-color': '#000000', 'text-halo-width': 1.2 },
+      },
+    ],
+  });
+
   // P1-10b 步驟 7 階段 2/3a：bake SDF icons（zone abbr 字 + arrow 三角形）
   // 必須在新 EntityLayer 建 symbol layer 之前 addImage，否則 layer 找不到 icon-image。
   // 不重複 bake — bakeTextSdf/bakeArrowSdf 內部 hasImage 判斷。
@@ -1659,6 +1721,12 @@ function _ensureEntityLayers() {
   // routes/polygons-stroke 拆兩 layer（solid/dash），各自掛
   map.on('click', 'polygons-fill', (e) => _onPolygonClick(e));
   map.on('click', 'infra-circle', (e) => _onInfraClick(e));
+  // P2-30 part 3：點感知標記 → detail（刪除 + 分享 TAK）。circle(fallback) 與 2525 框兩種視覺
+  // 同 source、互斥顯示（hasMil filter）→ 兩 layer 都綁 click，bake 前後都點得開。
+  // P2-30 part 3：contact 左點 → detail（退路；主互動走拖曳 handle 的 onClick）。右鍵廣播 menu
+  // 與左拖移動由 _syncContactDragHandles 的 handle 接（handle 蓋住 GPU 符號，layer 事件接不到）。
+  map.on('click', 'contact-circle', (e) => _onContactClick(e));
+  map.on('click', 'contact-2525-icon', (e) => _onContactClick(e));
   map.on('click', 'routes-line-solid', (e) => _onRouteClick(e));
   map.on('click', 'routes-line-dash', (e) => _onRouteClick(e));
   map.on('click', 'routes-line-dotted', (e) => _onRouteClick(e));
@@ -1735,6 +1803,7 @@ function _ensureEntityLayers() {
   // 失去的拖曳行為。沿用 step 8 hybrid B（透明 HTML handle 蓋 SDF circle）；
   // 只服務事件 zone，handle click 轉派 _onZoneClick 開事件 modal。
   _eventDragMgr = new EventDragManager(map, window.maplibregl);
+  _contactDragMgr = new EventDragManager(map, window.maplibregl, { handleSize: 44 });  // 2525 框 ~48px
 
   // Step 10：MGRS grid — 透過 MgrsGrid 抽象走 MapLibre GeoJSON source + line/symbol
   // layer。Toggle 走 setVisible()，redraw() 在 moveend 自動 trigger。
@@ -2028,6 +2097,98 @@ function _onInfraClick(e) {
   _deps.openModal?.(`${def.abbr} ${item.label || def.label}`, body);
 }
 
+// P2-30 part 3：左鍵點感知/敵情標記 → detail modal（註記編輯 + 移動 + 刪除 + 分享）。
+// 右鍵走 _openContactBroadcastMenu（單鍵廣播）；左拖移動。三者並存。
+function _onContactClick(e) {
+  if (!canAccessMapObjects()) return;
+  _openContactDetail(e.features?.[0]?.properties?.id);
+}
+// 開 detail modal（給左鍵 click 與右鍵 menu「編輯註記」共用）。
+export function _openContactDetail(id) {
+  if (!id || !canAccessMapObjects()) return;
+  const ent = _copStream?.getEntity(id);
+  if (!ent) return;
+  const affZh = { friendly: '友軍', hostile: '敵性', neutral: '中立', unknown: '不明' }[affiliationFromCot(ent.type)] || '不明';
+  const desc = `${affZh}接觸　${ent.lat != null ? _coordValueHTML(ent.lat, ent.lon) : ''}`;
+  const FLD = 'width:100%;padding:6px 8px;margin-bottom:8px;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:6px;font-family:var(--mono);font-size:12px;box-sizing:border-box;';
+  const BTN = 'width:100%;padding:8px;margin-bottom:8px;color:#fff;border:none;border-radius:6px;font-weight:700;cursor:pointer;font-family:var(--mono);font-size:12px;';
+  let body = `<div style="font-size:12px;line-height:1.7;color:var(--text2);margin-bottom:12px;">${desc}</div>`;
+  // 注記（標籤 + 備註）—— operator+ 可編輯（無線電回報內容）。callsign/remarks 經 PUT 落地。
+  if (canAccessMapObjects()) {
+    body += `<input id="contact-callsign-${_escapeHtml(String(id))}" placeholder="標籤/呼號" value="${_escapeHtml(ent.callsign || '')}" style="${FLD}"/>`;
+    body += `<textarea id="contact-remarks-${_escapeHtml(String(id))}" placeholder="備註（回報內容）" rows="2" style="${FLD}resize:vertical;">${_escapeHtml(ent.remarks || '')}</textarea>`;
+    body += `<button data-action="saveContactNote" data-id="${_escapeHtml(String(id))}" style="${BTN}background:var(--accent,#2b6cd9);">💾 儲存注記</button>`;
+  }
+  // 廣播到 TAK：P2-30 part 3 放寬 operator+（後端 /api/tak/share = WRITE_ROLES）。
+  // （移動改走左鍵拖曳，不再需要按鈕。）
+  if (canAccessMapObjects()) {
+    body += `<button data-action="shareContactTak" data-id="${_escapeHtml(String(id))}" style="${BTN}background:var(--green,#2e8b57);">📡 廣播</button>`;
+  }
+  body += `<button data-action="deleteContact" data-id="${_escapeHtml(String(id))}" style="${BTN}background:var(--red);">🗑 刪除標記</button>`;
+  _deps.openModal?.(`${affZh}接觸 ${ent.callsign || ''}　·　左鍵拖曳可移動`, body);
+}
+
+// P2-30 part 3：右鍵 → 廣播 menu（issue 5 可發現性，單一動作）。move 改走左鍵拖曳、編輯/刪除走
+// 左鍵 modal，故右鍵精簡為一鍵「廣播」。menu 由 contact 拖曳 handle 的 contextmenu 觸發（handle 蓋住
+// GPU 符號），e = DOM contextmenu event（用 clientX/Y 相對 map container 定位）。
+let _contactMenuEl = null;
+function _closeContactMenu() {
+  if (_contactMenuEl) { _contactMenuEl.remove(); _contactMenuEl = null; }
+  document.removeEventListener('click', _closeContactMenu);
+}
+function _openContactBroadcastMenu(id, e) {
+  if (!canAccessMapObjects() || !_copStream?.getEntity(id)) return;
+  _closeContactMenu();
+  const map = _getMap();
+  const rect = map.getContainer().getBoundingClientRect();
+  const x = (e?.clientX ?? rect.left) - rect.left;
+  const y = (e?.clientY ?? rect.top) - rect.top;
+  const menu = document.createElement('div');
+  menu.style.cssText = `position:absolute;z-index:1200;left:${x}px;top:${y}px;background:var(--surface,#161b22);border:1px solid var(--border,#30363d);border-radius:6px;padding:4px 0;box-shadow:0 6px 20px rgba(0,0,0,.5);min-width:120px;`;
+  menu.innerHTML = `<button data-action="shareContactTak" data-id="${_escapeHtml(String(id))}" style="display:block;width:100%;text-align:left;padding:9px 16px;background:none;border:none;color:var(--green,#2e8b57);font-family:var(--mono);font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;">📡 廣播</button>`;
+  map.getContainer().appendChild(menu);
+  _contactMenuEl = menu;
+  // 點任一處關閉。main.js 全域 click 委派（module load 先註冊）會先派發 data-action、後此關閉。
+  document.addEventListener('click', _closeContactMenu);
+}
+
+export async function _deleteContact(id) {
+  if (!canAccessMapObjects() || !_copStream) return;
+  const ok = await _copStream.deleteEntity(id);
+  _deps.closeModal?.();
+  _flashMapMsg(ok ? '✓ 已刪除標記' : '✗ 刪除失敗');
+}
+
+// modal 內的 callsign/remarks input 若存在 → 落地（PUT + If-Match）。回傳 updateEntity 結果；
+// 非 modal 情境（右鍵直接分享，DOM 無此 input）→ 回 null 不動。供存註記與「分享前自動存」共用。
+async function _persistContactInputs(id) {
+  if (!_copStream) return null;
+  const cs = el(`contact-callsign-${id}`);
+  const rm = el(`contact-remarks-${id}`);
+  if (!cs && !rm) return null;
+  const patch = {};
+  if (cs) patch.callsign = cs.value.trim();
+  if (rm) patch.remarks = rm.value.trim();
+  return await _copStream.updateEntity(id, patch);
+}
+
+export async function _saveContactNote(id) {
+  if (!canAccessMapObjects() || !_copStream) return;
+  const ok = await _persistContactInputs(id);
+  _deps.closeModal?.();
+  _flashMapMsg(ok ? '✓ 注記已儲存' : '✗ 儲存失敗（可能版本衝突，請重開）');
+}
+
+export async function _shareContactTak(id) {
+  if (!canAccessMapObjects()) return;  // P2-30 part 3：分享放寬 operator+（一線回報敵情可直推 TAK）
+  // issue 4b：CoT 在 share 當下才生成（讀 DB 現值）→ 先把 modal 內未存的 callsign/remarks 落地，
+  // 否則剛輸入的註記不會進 CoT、iTAK 下方無說明（best-effort：存失敗仍照分享 DB 現值）。
+  await _persistContactInputs(id);
+  const r = await authFetch(`/api/tak/share/${encodeURIComponent(id)}`, { method: 'POST' });
+  _deps.closeModal?.();
+  _flashMapMsg(r && r.ok ? '✓ 已廣播到 TAK（現場端可見；之後移動/刪除即時同步）' : '✗ 廣播到 TAK 失敗');
+}
+
 function _onRouteClick(e) {
   if (!canAccessMapObjects()) return;
   const id = e.features?.[0]?.properties?.id;
@@ -2161,6 +2322,77 @@ function _renderInfra() {
     })
     .filter(Boolean);
   _infraLayer.update(features);
+}
+
+// P2-30 part 3：渲染手動感知/敵情標記（kind='contact'）。主視覺走 MIL-STD-2525 框（仿
+// _renderTakUnits：cotToSidc → bakeMilSymbol；色彩/框形由 SIDC 內建）。已 bake 的 SIDC 同步直接
+// 顯 2525；未 bake 的先用 circle+abbr fallback 頂著，bake 完非同步翻 hasMil 換成 2525。
+// _contactRenderSeq guard 防舊輪 async .then 用過時 features 蓋掉新位置（同 _takRenderSeq）。
+let _contactRenderSeq = 0;
+function _renderContacts(opts = {}) {
+  if (!_contactLayer) return;
+  _contactLayer.setVisible(_layerVis.contact);
+  if (!_layerVis.contact) { _contactLayer.clear(); _syncContactDragHandles(); return; }
+  const seq = ++_contactRenderSeq;
+  const map = _getMap();
+  const features = [];
+  const pending = new Set();   // 尚未 bake 的 SIDC（只 bake 這些；已 bake 的同步即顯）
+  for (const e of (_copStream?.getEntitiesByKind('contact') || [])) {
+    const lat = Number(e.lat);
+    const lon = Number(e.lon);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+    const aff = _CONTACT_AFF[affiliationFromCot(e.type)] || _CONTACT_AFF.unknown;
+    const sidc = cotToSidc(e.type);                 // a-h-G → SHGP…（非 atom→null，退 fallback）
+    const iconId = sidc ? 'mil-' + sidc : '';
+    const baked = !!(iconId && map?.hasImage?.(iconId));  // 已 bake → 直接 2525，免 circle 閃一下
+    if (sidc && !baked) pending.add(sidc);
+    features.push({
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: [lon, lat] },
+      properties: {
+        id: e.uid, color: aff.color, abbr: aff.abbr,
+        iconId, hasMil: baked, label: e.callsign || '',
+      },
+    });
+  }
+  _contactLayer.update(features);
+  // 非同步 bake 未就緒的 SIDC；完成後若本輪仍最新 → 重新標 hasMil（依實際 hasImage）再 update。
+  if (map && pending.size) {
+    Promise.all([...pending].map((s) => bakeMilSymbol(map, s)))
+      .then(() => {
+        if (!_contactLayer || seq !== _contactRenderSeq) return;
+        for (const f of features) {
+          f.properties.hasMil = !!(f.properties.iconId && map.hasImage?.(f.properties.iconId));
+        }
+        _contactLayer.update(features);
+      });
+  }
+  // 拖曳 handle 同步（skipHandleSync：onDrag 每幀重繪時跳過，避免 setLngLat 干擾正在拖的 handle）。
+  if (!opts.skipHandleSync) _syncContactDragHandles();
+}
+
+// P2-30 part 3：sync contact 拖曳 handle（仿 _syncEventDragHandles）。左拖移動（即時跟手）、
+// 左點開 detail modal、右鍵出廣播 menu。handle 蓋住 GPU 符號 → 互動全走 handle（layer click 為退路）。
+function _syncContactDragHandles() {
+  if (!_contactDragMgr) return;
+  const zones = _layerVis.contact
+    ? (_copStream?.getEntitiesByKind('contact') || [])
+        .map((e) => ({ id: e.uid, lat: Number(e.lat), lng: Number(e.lon) }))
+        .filter((z) => Number.isFinite(z.lat) && Number.isFinite(z.lng))
+    : [];
+  _contactDragMgr.sync(
+    zones,
+    async (id, latlng) => {  // dragend：落地新座標（PUT + If-Match）。已廣播者後端會即時重推 TAK。
+      const ok = await _copStream?.updateEntity(id, { lat: latlng.lat, lon: latlng.lng });
+      if (!ok) _flashMapMsg('✗ 標記位置儲存失敗（可能被他人同時修改），請重試');
+    },
+    (id) => _openContactDetail(id),  // 左點（非拖）→ detail modal
+    (id, latlng) => {  // drag 每幀：本地樂觀位移 + 重繪（skipHandleSync 不動正在拖的 handle）
+      _copStream?.dragLocal(id, latlng.lat, latlng.lng);
+      _renderContacts({ skipHandleSync: true });
+    },
+    (id, e) => _openContactBroadcastMenu(id, e),  // 右鍵 → 廣播 menu
+  );
 }
 
 function _bearing(lat1, lng1, lat2, lng2) {
@@ -2735,6 +2967,37 @@ export function _openNodePlacePicker() {
 export function _startNodePlace(nodeType) { _startPlace('zone', nodeType || 'command'); }
 export function _cancelNodePlace() { _cancelPlace(); }
 
+// ── P2-30 part 3（#180）：手動感知/敵情標記（無線電回報 → 可共享 COP 標記）──
+// RBAC：建立開給 operator+（canAccessMapObjects）——無線電回報敵情是一線/幕僚職責，非指揮層專屬
+//（與 zone/infra 的 canUseRealModeControls 刻意不同；後端 kind='contact' 非 _COMMAND_ONLY_KINDS = WRITE_ROLES）。
+// 廣播到 TAK 亦放寬 operator+（P2-30 part 3：一線回報敵情可直推；後端 /api/tak/share = WRITE_ROLES）。
+const _CONTACT_AFFILIATIONS = [
+  { aff: 'hostile', label: '敵性', color: '#d9342b' },
+  { aff: 'unknown', label: '不明', color: '#caa800' },
+  { aff: 'neutral', label: '中立', color: '#2e8b57' },
+  { aff: 'friendly', label: '友軍', color: '#2b6cd9' },
+];
+export function _openContactPlacePicker() {
+  if (!canAccessMapObjects()) return;  // operator+
+  const BTN = 'display:block;width:100%;padding:10px;margin-bottom:8px;background:var(--surface);border:1px solid var(--border);border-radius:6px;cursor:pointer;font-family:var(--mono);font-size:13px;text-align:left;';
+  let html = '<div style="font-size:11px;color:var(--text3);margin-bottom:12px;">選擇敵我屬性，接著點地圖標記（無線電回報接觸）：</div>';
+  for (const a of _CONTACT_AFFILIATIONS) {
+    html += `<button data-action="startContactPlace" data-affiliation="${a.aff}" style="${BTN}border-left:4px solid ${a.color};color:var(--text);">${a.label}接觸</button>`;
+  }
+  _deps.openModal?.('📍 敵情/感知標記', html);
+}
+export function _startContactPlace(affiliation) {
+  if (!canAccessMapObjects()) return;  // operator+（與 _startPlace 的指揮層 gate 不同，故不複用）
+  if (_routeDrawState) _cancelRouteDraw();
+  if (_polyDrawState) _cancelPolyDraw();
+  if (_currentMap !== 'outdoor') switchMap('outdoor');
+  _placeState = { kind: 'contact', type: affiliationToCotType(affiliation) };
+  const banner = el('node-place-banner');
+  if (banner) banner.style.display = 'flex';
+  if (el('map-coord-panel')) el('map-coord-panel').style.display = 'none';
+  if (_leafletMap) _leafletMap.getCanvas().style.cursor = 'crosshair';
+}
+
 // P1-16 follow-up：節點/設施放置共用實作（取代原 _startNodePlace/_startInfraPlace、
 // _cancelNodePlace/_cancelInfraPlace、_placeNodeAt/_placeInfraAt 的近重複）。單一 `_placeState`
 // 同時根除「兩個 state 殘留互斥」隱患（原 MED-1）。kind='zone'→_PERM_NODES/node_type；
@@ -2762,23 +3025,29 @@ function _cancelPlace() {
 async function _placeAt(lat, lng) {
   if (!_placeState || !_copStream) return;
   const { kind, type } = _placeState;
-  let label, attributes;
+  let label, attributes, cotType = 'a-f-G-I';  // zone/infra：友軍設施型 atom（既有行為）
   if (kind === 'zone') {
     label = _PERM_NODES.find((n) => n.node_type === type)?.label || '';
     attributes = { kind: 'zone', node_type: type };
+  } else if (kind === 'contact') {
+    // P2-30 part 3：手動感知/敵情標記。type 已是 affiliation 推導的 CoT type（a-h-G 等）。
+    cotType = type;
+    const aff = affiliationFromCot(type);
+    label = { friendly: '友軍接觸', hostile: '敵情', neutral: '中立接觸', unknown: '不明接觸' }[aff] || '不明接觸';
+    attributes = { kind: 'contact', affiliation: aff };
   } else {
     label = (INFRA_TYPES[type] || INFRA_TYPES.utility).label;
     attributes = { kind: 'infra', infra_type: type };
   }
   const created = await _copStream.createEntity({
-    type: 'a-f-G-I',
+    type: cotType,
     lat: +(+lat).toFixed(6),
     lon: +(+lng).toFixed(6),
     callsign: label,
     attributes,
   });
   if (!created) {
-    _flashMapMsg('✗ ' + (kind === 'zone' ? '節點' : '設施') + '放置失敗，請重試');
+    _flashMapMsg('✗ ' + ({ zone: '節點', contact: '感知標記' }[kind] || '設施') + '放置失敗，請重試');
     return;
   }
   // createEntity 內部 upsert + onChange 自動重繪（_scheduleCopRender），不必手動 render。

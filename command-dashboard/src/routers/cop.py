@@ -38,10 +38,12 @@ from starlette.websockets import WebSocketDisconnect
 
 from auth.role_enum import COMMAND_ROLES, READ_ROLES, is_role_allowed
 from auth.service import check_session
+from core import config
 from core.input_safety import validate_no_unsafe_strings
 from repositories import cop_entity_repo, event_marker_repo, exercise_repo
 from repositories._helpers import NULL_SCOPE, audit
 from schemas.cop import CoPEntity
+from services import tak_downlink
 from services.exercise_service import current_exercise_id, resolve_scope
 from services.realtime_hub import cop_hub
 
@@ -150,6 +152,23 @@ async def _broadcast(op: str, entity: dict) -> None:
         },
         exercise_id=entity.get("exercise_id"),
     )
+
+
+async def _resync_tak_if_shared(entity: dict) -> None:
+    """P2-30 part 3（#180）：廣播後即時同步 —— 已 `attributes.shared_tak` 的 entity 被 move/note
+    編輯（cop PUT）→ 重推 entity CoT（現場端位置/說明即時更新，不需再手動廣播）。
+    best-effort：TAK 未啟用 / 送出失敗只記 warning，**不擋 cop 操作**（ICS 編輯不該因 TAK 斷線而失敗）。
+    ICS 端 audit 已記 move（cop_entity_updated）；TAK 推送為其傳輸 side-effect，不另稽核。
+    **刪除不在此**：刪除已廣播標記到 TAK 經實證 streaming 做不到（server 持久層不認 t-x-d-d/stale）→
+    可靠刪除 = Mission/DataSync = P2-14（見 tak_downlink 註 + strategy §4b）。"""
+    if not config.TAK_ENABLED:
+        return
+    if not (entity.get("attributes") or {}).get("shared_tak"):
+        return
+    try:
+        await tak_downlink.send_cot(tak_downlink.entity_to_cot(entity))
+    except Exception as e:  # noqa: BLE001 — 同步 best-effort，不擋 cop 操作
+        log.warning("[cop] 廣播後即時同步 TAK 更新失敗（best-effort）uid=%s：%s", entity.get("uid"), e)
 
 
 def _audit_cop(action: str, actor: str, entity: dict, extra: dict | None = None) -> None:
@@ -323,6 +342,8 @@ async def update_entity(uid: str, request: Request, response: Response):
     if result["status"] == "conflict":
         return _conflict_response(result["entity"])
     await _broadcast("update", result["entity"])
+    # P2-30 part 3：已廣播的 entity 被 move/note 編輯 → 即時重推 TAK（不需再手動廣播）。
+    await _resync_tak_if_shared(result["entity"])
     # #93：COP 更新 audit（**全 kind 含 event**）—— 捕捉 QRF/事件等「移動」軌跡（位置變更只走
     # 此路徑，events 表不 audit location）。fields 記本次改了哪些欄；移動路徑＝updated 列序列。
     _audit_cop("cop_entity_updated", _actor(request), result["entity"], {"fields": sorted(body)})
@@ -347,6 +368,8 @@ async def delete_entity(uid: str, request: Request, response: Response):
         return _conflict_response(result["entity"])
     # delete 也廣播（op=delete）：訂閱端據此把 entity 從畫面移除（TAK 語意）
     await _broadcast("delete", result["entity"])
+    # P2-30 part 3：**刪除不推 TAK** —— 已廣播標記的可靠刪除 streaming 做不到（server 持久層不認
+    # t-x-d-d/stale，真機+活 server 實證）→ Mission/DataSync = P2-14。刪除目前僅 ICS 端生效。
     # #93：COP 刪除 audit（全 kind 含 event；事件圖釘移除/結案也留痕）。
     _audit_cop("cop_entity_deleted", _actor(request), result["entity"])
     # 與 PUT-ok / 409 一致：成功也回 ETag（soft-delete 後的新 version_clock）

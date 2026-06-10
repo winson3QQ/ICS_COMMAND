@@ -30,13 +30,16 @@ export class EventDragManager {
   /**
    * @param {maplibregl.Map} map
    * @param {object} maplibreglNs - window.maplibregl global
+   * @param {object} [opts] - { handleSize } —— P2-30 part 3：contact 2525 框 ~48px，預設 28 只蓋
+   *        中心、抓邊緣會變平移地圖；故可調大 handle 完整覆蓋符號 hitbox。
    */
-  constructor(map, maplibreglNs) {
+  constructor(map, maplibreglNs, opts = {}) {
     if (!map) throw new Error('EventDragManager: map required');
     if (!maplibreglNs?.Marker) throw new Error('EventDragManager: maplibregl.Marker required');
     this.map = map;
     this.maplibregl = maplibreglNs;
     this.markers = new Map();   // featureId → maplibregl.Marker
+    this.handleSize = opts.handleSize || HANDLE_SIZE;
   }
 
   /**
@@ -51,7 +54,7 @@ export class EventDragManager {
    *        caller 用來即時更新 zones source 讓 GPU circle 跟手（不持久化）。
    *        undefined → drag 中 GPU 不跟手，等 dragend 才跳新位置。
    */
-  sync(eventZones, onDragEnd, onClick, onDrag) {
+  sync(eventZones, onDragEnd, onClick, onDrag, onContextMenu) {
     const seenIds = new Set();
     for (const z of eventZones) {
       if (!z?.id) continue;
@@ -59,7 +62,7 @@ export class EventDragManager {
       const lng = Number(z.lng);
       if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
       seenIds.add(z.id);
-      this._upsert(z, [lng, lat], onDragEnd, onClick, onDrag);
+      this._upsert(z, [lng, lat], onDragEnd, onClick, onDrag, onContextMenu);
     }
     for (const [id, m] of this.markers) {
       if (!seenIds.has(id)) {
@@ -69,7 +72,7 @@ export class EventDragManager {
     }
   }
 
-  _upsert(zone, lnglat, onDragEnd, onClick, onDrag) {
+  _upsert(zone, lnglat, onDragEnd, onClick, onDrag, onContextMenu) {
     const existing = this.markers.get(zone.id);
     if (existing) {
       existing.setLngLat(lnglat);
@@ -82,8 +85,8 @@ export class EventDragManager {
     // 寫在 inline style 上控制螢幕位置，覆寫整包 cssText 會擦掉 transform，導致
     // 下個 frame 才補回，視覺上 marker 會閃一下又歸位（regression 留痕）。
     // 改用個別 property 設定，不碰其他 inline style。
-    el.style.width = `${HANDLE_SIZE}px`;
-    el.style.height = `${HANDLE_SIZE}px`;
+    el.style.width = `${this.handleSize}px`;
+    el.style.height = `${this.handleSize}px`;
     el.style.boxSizing = 'border-box';
     el.style.borderRadius = '50%';        // 圓形 — 配合 border 才能跟事件 circle 貼合
     el.style.background = 'transparent';
@@ -112,6 +115,16 @@ export class EventDragManager {
       if (didDrag) { didDrag = false; return; }
       if (typeof onClick === 'function') onClick(zone.id);
     });
+    // P2-30 part 3：handle 蓋住 GPU layer → 右鍵也被 handle 吃掉，故 contextmenu 在 handle 上轉派。
+    // 只有提供 onContextMenu 的 caller（contact 拖曳）會 preventDefault 並出 menu；其餘（事件/節點/
+    // 設施）不提供 → 維持原生右鍵行為不變。
+    if (typeof onContextMenu === 'function') {
+      el.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onContextMenu(zone.id, e);
+      });
+    }
 
     const marker = new this.maplibregl.Marker({
       element: el,

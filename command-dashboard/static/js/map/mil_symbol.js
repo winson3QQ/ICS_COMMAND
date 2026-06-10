@@ -57,3 +57,17 @@ export function cotToSidc(cotType) {
   // 位：1=S(warfighting) 2=affiliation 3=dimension 4=P(present) 5-10=function 11-15=modifier
   return `S${aff}${dim}P` + '------' + '-----';
 }
+
+// P2-30 part 3（#180）：affiliation → generic 地面 CoT type（建手動感知/敵情標記用）。
+// affiliationFromCot 的逆——選「敵/不明/中立/友」→ a-{h/u/n/f}-G（generic ground）。
+// **實測 iTAK 顯示 a-h-G 正常**（#180，ICS share → 現場端可見）；用 generic 而非 -U-C 因「接觸/
+// 感知」未必是 combat unit，generic hostile ground 語意更貼切。未知 → a-u-G（fail-safe 不誤標友軍）。
+const _AFFILIATION_COT_TYPE = {
+  friendly: 'a-f-G',
+  hostile: 'a-h-G',
+  neutral: 'a-n-G',
+  unknown: 'a-u-G',
+};
+export function affiliationToCotType(affiliation) {
+  return _AFFILIATION_COT_TYPE[affiliation] || _AFFILIATION_COT_TYPE.unknown;
+}

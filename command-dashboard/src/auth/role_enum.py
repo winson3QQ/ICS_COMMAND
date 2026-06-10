@@ -111,7 +111,7 @@ def allowed_roles_for(method: str, path: str) -> frozenset[str] | None:
     if path.startswith("/api/ai/"):
         return WRITE_ROLES if method == "POST" else READ_ROLES
     # P1-14 HIGH-4：exercises 個別場 detail / AAR / activate / archive / status 限指揮層
-    #（擋 observer 帶任意 exercise_id 撈歷史場 AAR / metadata）。list（GET ""）保留 READ_ROLES
+    # （擋 observer 帶任意 exercise_id 撈歷史場 AAR / metadata）。list（GET ""）保留 READ_ROLES
     # 供前端 header chip / 選擇器顯示場次；create（POST ""）限指揮層。
     if path == "/api/exercises":
         return READ_ROLES if method == "GET" else COMMAND_ROLES
@@ -120,6 +120,13 @@ def allowed_roles_for(method: str, path: str) -> frozenset[str] | None:
         return SYSADMIN_ONLY if method == "DELETE" else COMMAND_ROLES
     if path.startswith("/api/sync/") and method != "GET":
         return COMMAND_ROLES
+    if path.startswith("/api/tak/share/"):
+        # P2-30 part 3（#180）：分享既有 COP 標記到 TAK 放寬到 WRITE_ROLES —— 一線回報敵情者
+        # （operator）放置的感知標記可直接推上 TAK（符合 operator = 前線感知職責）。與 #146 收緊的
+        # POST /api/tak/events 不同：share 只推「已存在的 cop_entity」（get→entity_to_cot），不接受
+        # 任意 client CoT、不繞過 cop 來源守門；且 share endpoint audit-first（每次強制稽核分享意圖）。
+        # **窄洞**：僅此 path 放寬，其餘 /api/tak/* POST（events 注入、admin cert/role）維持 COMMAND_ROLES。
+        return WRITE_ROLES if method == "POST" else READ_ROLES
     if path.startswith("/api/tak/"):
         # #146：REST ingest（POST /api/tak/events）收緊到 COMMAND_ROLES —— 防 operator 經此
         # 端點注入/竄改 tak 物件、繞過 cop PUT/DELETE 的來源守門。真實 TAK 資料走 :8089 串流

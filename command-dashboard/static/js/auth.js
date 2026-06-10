@@ -714,7 +714,7 @@ function _auditRenderModal(logs, activeFilter) {
     if (_at.startsWith('cop_entity_')) {
       let _d = {};
       try { _d = JSON.parse(log.detail || '{}'); } catch (e) {}
-      const _kindZh = { zone: '節點', route: '路線', polygon: '範圍', infra: '設施', event: '圖釘' };
+      const _kindZh = { zone: '節點', route: '路線', polygon: '範圍', infra: '設施', event: '圖釘', contact: '敵情標記' };
       const _isMove = Array.isArray(_d.fields) && _d.fields.some(f => f === 'lat' || f === 'lon');
       const _verb = _at.endsWith('_created') ? '新增' : _at.endsWith('_deleted') ? '刪除' : (_isMove ? '移動' : '更新');
       badge = { c: badge.c, zh: _verb + (_kindZh[_d.kind] || '標繪') };
