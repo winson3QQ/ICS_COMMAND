@@ -2086,15 +2086,15 @@
       "name": ""
     },
     "body": "## 來源\nP2-10 真機 dogfood 通盤考慮(2026-06-07)。\n\n## 問題\nTAK 連線目前**只由 `TAK_ENABLED` env 在啟動時決定**,無 runtime 控制。但「**就算 TAK server 啟動,ICS 也應能選擇不連**」:\n- 演習 vs 實戰用不同 feed;暫停 TAK 注入(避免污染);問題隔離(feed 異常時手動切斷)。\n- 現況要改 env + 重啟整個 dashboard,實戰中不可行。\n\n## 需求\n- dashboard 控制(**COMMAND_ROLES 限定**)**runtime 啟用/停用 TAK 連線**:\n  - 啟用 → launch subscribe() 背景 task;停用 → graceful cancel(對齊 main.py lifespan shutdown 的 cancel 邏輯)。\n- 狀態與 [#163](https://github.com/winson3QQ/ICS_COMMAND/issues/163) 連線指示連動(toggle + 狀態同一處)。\n- TAK_ENABLED env 仍作開機預設;runtime toggle 覆寫。\n\n## 安全 / audit\n- 控制限 **COMMAND_ROLES**(指揮層才能切 feed)。\n- 啟用/停用寫 audit(`TAK_FEED_TOGGLE operator=.. state=on/off`)—— feed 切換是指揮決策。\n\n## 關聯\n[#163](https://github.com/winson3QQ/ICS_COMMAND/issues/163)(連線狀態顯示,同一 UI)、P2-03(subscribe lifecycle)、P2-12。\n\n## 性質\n通盤考慮先提,**既有 soft-stale 解完後再做**。與 #163 可能同批(同一 TAK 連線控制/狀態 UI)。",
-    "closedAt": null,
+    "closedAt": "2026-06-10T16:03:46Z",
     "comments": [],
     "createdAt": "2026-06-07T10:09:43Z",
     "labels": [],
     "milestone": null,
     "number": 164,
-    "state": "OPEN",
+    "state": "CLOSED",
     "title": "Dashboard 可手動啟用/停用 TAK 連線(runtime toggle,非僅 TAK_ENABLED env)",
-    "updatedAt": "2026-06-07T10:09:43Z",
+    "updatedAt": "2026-06-10T16:03:46Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/164"
   },
   {

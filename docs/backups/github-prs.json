@@ -3141,5 +3141,47 @@
     "title": "feat(cop): P2-33a 事件導航鏈唯讀 UI（消費 /events/{id}/chain，#191）",
     "updatedAt": "2026-06-10T09:43:10Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/195"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "P2-14 前置 reality check（活 TAK 5.7，cop-subscriber cert 實測）落地 memory + 指標。\n\n- 🔑 標出權威來源 `docs/reference/takserver-5.7-openapispec.json`（301 paths）為 TAK REST 動工首查（MEMORY 索引 + memory 頂部）\n- `/cot/sa` resync 契約敲定：`.000Z` + 小時間窗（大窗 400 是 gotcha 非格式），bbox 選填，cert 即可\n- Mission CRUD（含 DELETE mission）對 tool=public+creator 200 → 精煉「需 ROLE_ADMIN」\n- mission 成員 ≠ repository 刪除：可靠刪除須 mission-native + iTAK 訂閱 mission\n- 留痕 [#194](https://github.com/winson3QQ/ICS_COMMAND/issues/194#issuecomment-4668980148)\n\n純 memory/docs，無 code、無版號。\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+    "closedAt": "2026-06-10T10:13:31Z",
+    "comments": [],
+    "createdAt": "2026-06-10T10:13:08Z",
+    "headRefName": "docs/p2-14-reality-check",
+    "labels": [],
+    "mergedAt": "2026-06-10T10:13:31Z",
+    "number": 197,
+    "state": "MERGED",
+    "title": "docs(memory): P2-14 Marti reality check + OpenAPI spec 指標",
+    "updatedAt": "2026-06-10T10:13:57Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/197"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "Closes #164. ROADMAP **P2-24**（TAK 連結 runtime 開關，P2-10 dogfood 衍生）。\n\n## 變更\n- **`POST /api/tak/connection {enabled}`**（**SYSADMIN_ONLY**，**audit-first** `TAK_CONNECTION_TOGGLE`）：runtime 啟用/停用 :8089 訂閱、**不重啟 process**。\n- **持久化**於 config 表 `tak.connection_enabled`（重啟後維持）；開機優先序：**持久值 > `TAK_ENABLED` env**。\n- **新 `services/tak_runtime.py`** 控制器：訂閱 task 生命週期升成**模組級單一 handle**（`asyncio.Lock` 互斥）；lifespan 與 toggle endpoint **共用同一 handle**。\n- **`/api/tak/status`** 的 `enabled` 改讀 `effective_enabled()` → 連線燈跟著開關走。\n- **`auth/role_enum.py`** 加 `/api/tak/connection → SYSADMIN_ONLY`（比照 `/api/exercises/` DELETE）。\n\n## code-review 修正（cross-file）\n`cop.py _resync_tak_if_shared`（P2-30 part-3）原 gate `config.TAK_ENABLED`（啟動 env）→ 改 `effective_enabled()`，否則 runtime 關掉 TAK 後 move 已分享標記仍會推、純 toggle 開啟反而不推。+ 回歸測試。\n\n## 測試 / 驗證\n- `test_tak_connection_toggle.py`（持久/audit/status 反映/SYSADMIN gate+operator 403/resync 受 toggle 守門）+ 改寫 `test_tak_lifespan.py` → `tak_runtime`。\n- 全後端 suite 綠、pyflakes clean、doc-sync passed。\n- `/code-review`（high）1 cross-file finding（已修）；`/security-review` 0 finding。\n\n## 範圍\n**純後端**（row DoD 無 UI 項）。碰 `cop.py`（1 行 gate + import，additive 好 rebase）。無版號 bump。\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n",
+    "closedAt": "2026-06-10T16:03:45Z",
+    "comments": [],
+    "createdAt": "2026-06-10T16:00:48Z",
+    "headRefName": "feat/issue-164-tak-connection-toggle",
+    "labels": [],
+    "mergedAt": "2026-06-10T16:03:45Z",
+    "number": 198,
+    "state": "MERGED",
+    "title": "P2-24: TAK 連線 runtime 開關（#164）",
+    "updatedAt": "2026-06-10T16:03:45Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/198"
   }
 ]
