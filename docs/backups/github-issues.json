@@ -2470,15 +2470,30 @@
       "name": ""
     },
     "body": "ROADMAP **P2-32**（Phase 2，P2-27 [#183](https://github.com/winson3QQ/ICS_COMMAND/pull/183) 拆出的位置 SoT 清理收尾）。原 roadmap row 標 `(no issue)`，本 issue 補上並附 **2026-06-10 reality check**（盤 main code 後的範圍補正）。\n\n設計 SoT：[`docs/design/cop-event-layering.md`](https://github.com/winson3QQ/ICS_COMMAND/blob/main/docs/design/cop-event-layering.md)（§位置 SoT 三份併入 P2-27 清）。\n\n## 目標\n\n砍除 `events.location_zone_id` 死欄。`events.lat/lon` 已於 #183（m022）砍除，本項為位置清理另一半：`location_zone_id` 存的是 client 端 `'evt_'+Date.now()` 字串、無 `location_zone` 表、非位置來源——與「`cop_entity.lat/lon` = 事件位置唯一 SoT」doctrine 牴觸的誤命名欄。\n\n## ✅ Reality check：斷言驗證為真（2026-06-10）\n\n| 宣稱 | 實測 | 位置 |\n|---|---|---|\n| 存 client uuid `'evt_'+Date.now()` | 屬實（註解自承「consumer 主要靠 event_id 連結」） | [map.js:916,939](https://github.com/winson3QQ/ICS_COMMAND/blob/main/command-dashboard/static/js/map.js#L916-L939) |\n| 無 `location_zone` 表 | 屬實 | core/database.py |\n| 非位置來源（位置 SoT = `cop_entity.lat/lon`） | 屬實 | [map.js:958-964](https://github.com/winson3QQ/ICS_COMMAND/blob/main/command-dashboard/static/js/map.js#L958-L964) |\n\n**關鍵佐證**：事件↔標記的權威連結**早已是 `attributes.event_id`**（map.js:964 建事件圖釘 cop_entity 時帶）+ P2-27 的 `event_markers` junction → `location_zone_id` 的「關聯」角色**已被取代**。\n\n## ⚠️ 範圍補正：原 row 的砍除清單少列 4 個觸點\n\n原 row 只列：**map.js 停送 + event_repo create/patch 停存 + `ALTER TABLE events DROP COLUMN`**。實際 grep 出的觸點還有：\n\n1. **後端唯一讀者** [`dashboard_service.py:177`](https://github.com/winson3QQ/ICS_COMMAND/blob/main/command-dashboard/src/services/dashboard_service.py#L177)：`open_events_on_map = [e for e in events if e.get(\"location_zone_id\")]`。**但此 output field 零 consumer**（全 repo 僅此一行 producer）→ 本身是死輸出，砍欄時一併移除（否則 `.get()` 永遠 falsy → 死邏輯）。\n2. **PATCH 路徑** [`routers/events.py:86-87`](https://github.com/winson3QQ/ICS_COMMAND/blob/main/command-dashboard/src/routers/events.py#L86-L87) + **兩個 schema** [`schemas/event.py:12,25`](https://github.com/winson3QQ/ICS_COMMAND/blob/main/command-dashboard/src/schemas/event.py#L12)（`EventCreate` + `EventPatch`）。\n3. **TTX inject** [`ttx.py:93`](https://github.com/winson3QQ/ICS_COMMAND/blob/main/command-dashboard/src/routers/ttx.py#L93)：event inject 仍塞此欄，停送。\n4. **前端讀者** [`events.js:539,555`](https://github.com/winson3QQ/ICS_COMMAND/blob/main/command-dashboard/static/js/events.js#L539-L555)：`showEventDetail` 的 `fakeZone.id = ev.location_zone_id || ev.id` + `showEventProcessModal` 反查 `find(e => e.location_zone_id === zone.id)`。\n\n### 前端讀者其實是死 fallback\n`showEventProcessModal` 兩分支主路徑走 `zone.event_id`（[events.js:553-554](https://github.com/winson3QQ/ICS_COMMAND/blob/main/command-dashboard/static/js/events.js#L553-L554)）；`location_zone_id` 反查只在 `event_id` falsy 時觸發。因 cop_entity 事件圖釘**一定帶 `attributes.event_id`** → 反查分支**現存資料從不命中**，`fakeZone.id` 也已有 `|| ev.id` 兜底 → 砍前端讀者風險極低（改吃 `ev.id`）。\n\n## 動工面實況\n- **後端 DROP trivial**：events 表**無任何 index**、`location_zone_id` 無 FK → 直接 `ALTER TABLE events DROP COLUMN location_zone_id`（SQLite 3.35+，idempotent guard），**比照 [m022 砍 lat/lon](https://github.com/winson3QQ/ICS_COMMAND/blob/main/command-dashboard/src/core/database.py#L968)**，不需 table rebuild。下一 migration = **m025**。\n- **依賴修正**：原 row 說「宜與 P2-33 合做」。事實 `location_zone_id` 關聯角色已被 `attributes.event_id` + junction 取代 → **P2-32 不被 P2-33 卡住**，讀者全死、可獨立提前砍。合做僅為「同批前端檔、同退役 legacy glue」的**便利性 bundling，非硬依賴**。\n\n## DoD\n- [ ] m025：`ALTER TABLE events DROP COLUMN location_zone_id`（idempotent，比照 m022）\n- [ ] 後端停存/停讀：`event_repo` create/patch（allowed set）、`schemas/event.py` ×2、`routers/events.py` PATCH、`ttx.py` inject、`dashboard_service.open_events_on_map`（連同死 field 移除）\n- [ ] 前端停送/停讀：`map.js`（停送 `location_zone_id`）、`events.js`（`fakeZone.id`→`ev.id`、移除 `location_zone_id` 反查分支）\n- [ ] 測試：event create/patch 不再帶該欄回歸；事件 modal（經 `event_id` 路徑）仍正常開\n- [ ] Human verify：瀏覽器建事件 → 開事件 modal → 處置流程正常（前端讀者移除後）\n- [ ] `/code-review` + `/security-review`\n- [ ] ROADMAP P2-32 row 落地註記（PR# + commit hash）\n\n## 依賴 / 邊界\n- 上游：P2-27 [#183](https://github.com/winson3QQ/ICS_COMMAND/pull/183)（位置 SoT doctrine + m022 砍 lat/lon）\n- 姊妹項：P2-31 [#184](https://github.com/winson3QQ/ICS_COMMAND/issues/184)（已完成 [#185](https://github.com/winson3QQ/ICS_COMMAND/pull/185)）、P2-33（event↔marker 前端 cutover）\n- 非純後端（動 `map.js` / `events.js`）→ 需 Human Verification\n",
-    "closedAt": "2026-06-10T00:08:02Z",
-    "comments": [],
+    "closedAt": null,
+    "comments": [
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "後端半已於 [#187](https://github.com/winson3QQ/ICS_COMMAND/pull/187)（`a721bae`）完成並 merge：m025 DROP COLUMN + 後端停存/停讀全清。**本 issue 保留開啟**——剩餘前端半（`map.js` 停送 + `events.js` 停讀）= **P2-33** 前端 cutover，屆時才完整收尾。（merge 自動關閉非預期，已 reopen。）",
+        "createdAt": "2026-06-10T00:08:35Z",
+        "id": "IC_kwDOSnBjpc8AAAABFhGljw",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/186#issuecomment-4665222543"
+      }
+    ],
     "createdAt": "2026-06-09T23:54:30Z",
     "labels": [],
     "milestone": null,
     "number": 186,
-    "state": "CLOSED",
+    "state": "OPEN",
     "title": "P2-32: 砍 events.location_zone_id 死欄（P2-27 拆出）— reality check + 範圍補正",
-    "updatedAt": "2026-06-10T00:08:02Z",
+    "updatedAt": "2026-06-10T00:08:35Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/186"
   }
 ]
