@@ -12,7 +12,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 
-import { affiliationFromCot, cotToSidc } from '../../static/js/map/mil_symbol.js';
+import { affiliationFromCot, cotToSidc, affiliationToCotType } from '../../static/js/map/mil_symbol.js';
 
 // 載入 vendored milsymbol（UMD）→ 取 CJS 出口，驗 SIDC 真能渲染
 const _here = dirname(fileURLToPath(import.meta.url));
@@ -65,6 +65,27 @@ describe('cotToSidc', () => {
     expect(cotToSidc('b-m-r')).toBe(null);
     expect(cotToSidc('u-d-f')).toBe(null);
     expect(cotToSidc(null)).toBe(null);
+  });
+});
+
+describe('affiliationToCotType（P2-30 part 3：建敵情標記，affiliationFromCot 之逆）', () => {
+  it('四態 → generic 地面 atom', () => {
+    expect(affiliationToCotType('friendly')).toBe('a-f-G');
+    expect(affiliationToCotType('hostile')).toBe('a-h-G');
+    expect(affiliationToCotType('neutral')).toBe('a-n-G');
+    expect(affiliationToCotType('unknown')).toBe('a-u-G');
+  });
+  it('未知/缺省 → 不明（fail-safe，不誤標友軍）', () => {
+    expect(affiliationToCotType('garbage')).toBe('a-u-G');
+    expect(affiliationToCotType(undefined)).toBe('a-u-G');
+  });
+  it('與 affiliationFromCot 互逆（round-trip）', () => {
+    for (const aff of ['friendly', 'hostile', 'neutral', 'unknown']) {
+      expect(affiliationFromCot(affiliationToCotType(aff))).toBe(aff);
+    }
+  });
+  it('產出能被 cotToSidc 渲染（hostile → SIDC 位2=H，2525 紅框）', () => {
+    expect(cotToSidc(affiliationToCotType('hostile'))[1]).toBe('H');
   });
 });
 

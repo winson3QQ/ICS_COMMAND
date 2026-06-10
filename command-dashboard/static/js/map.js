@@ -53,7 +53,7 @@ import {
   pickForeground,
 } from './map/entity_layer.js';
 import { NAPSG_GLYPH_SVG, hasNapsgGlyph } from './map/napsg_glyphs.js';
-import { cotToSidc, affiliationFromCot } from './map/mil_symbol.js';
+import { cotToSidc, affiliationFromCot, affiliationToCotType } from './map/mil_symbol.js';
 import { DrawPreview } from './map/draw_tools.js';
 import { LabelMarkerManager } from './map/label_markers.js';
 import { EventPopup } from './map/event_popup.js';
@@ -112,6 +112,7 @@ let _routeLayer = null;     // EntityLayer (LineString)
 let _zoneLayer = null;      // EntityLayer (Point circle) — step 7 階段 1
 let _facilitiesLayer = null;   // P1-17：永久設施唯讀基準層（獨立 facilities source）
 let _takLayer = null;       // P2-05(c)：TAK 單位 MIL-STD-2525 符號層（milsymbol frame icon）
+let _contactLayer = null;   // P2-30 part 3：手動感知/敵情標記（circle + abbr，affiliation 色；同步即時，仿 infra）
 let _facilitiesData = null;    // /api/facilities 快取（lazy：首次開圖層才抓）
 let _facilitiesPopup = null;   // P1-17：hover tooltip（maplibregl.Popup）
 let _facilitiesHoverWired = false;
@@ -139,7 +140,14 @@ let _mgrsGridVisible = sessionStorage.getItem('_mgrsGridVisible') !== '0';
 // 由 _layerVis.zones（節點）/ _layerVis.events（事件）控制，feature-level 過濾（取消勾「節點」
 // 不再連帶把事件藏掉）。
 // P1-17：facilities（永久設施基準層）預設**關**——唯讀參考層，需要才從面板開，避免雜訊。
-const _layerVis = { zones: true, events: true, polygons: true, infra: true, routes: true, facilities: false, tak: true, mgrs: _mgrsGridVisible };
+const _layerVis = { zones: true, events: true, polygons: true, infra: true, routes: true, facilities: false, tak: true, contact: true, mgrs: _mgrsGridVisible };
+// P2-30 part 3：手動感知/敵情標記 affiliation → 色 + abbr（circle + 字，仿 infra；即時、無 async bake）。
+const _CONTACT_AFF = {
+  hostile: { color: '#d9342b', abbr: '敵' },
+  unknown: { color: '#caa800', abbr: '?' },
+  neutral: { color: '#2e8b57', abbr: '中' },
+  friendly: { color: '#2b6cd9', abbr: '友' },
+};
 // P2-25（#163 系列）：TAK 單位（2525 markers）的地圖篩選器——純前端 view filter（不刪資料）。
 // affiliation 對映 affiliationFromCot 的四態；showStale=false 隱藏過 stale 的活追蹤單位。
 const _takFilter = { friendly: true, hostile: true, neutral: true, unknown: true, showStale: true };
@@ -583,6 +591,7 @@ function _scheduleCopRender() {
     _renderZones(); // PR-G1b：事件位置圖釘也在 cop_entities，即時重繪
     _renderInfra(); // P1-16 PR-2：設施（kind='infra'）cutover 進 cop_entities，即時重繪
     _renderTakUnits(); // P2-05(c)：TAK 單位 2525 符號（source='tak' atom），即時重繪
+    _renderContacts(); // P2-30 part 3：手動感知/敵情標記（kind='contact'），即時重繪
   };
   if (typeof requestAnimationFrame !== 'undefined') requestAnimationFrame(run);
   else setTimeout(run, 0);
@@ -600,6 +609,7 @@ export function refreshLeafletMarkers() {
   _renderZones();
   _renderFacilities();  // P1-17：永久設施基準層（lazy + 預設關）
   _renderTakUnits();    // P2-05(c)：TAK 單位 MIL-STD-2525 符號
+  _renderContacts();    // P2-30 part 3：手動感知/敵情標記
 }
 
 /**
@@ -871,6 +881,11 @@ function _rebuildLayerPanel() {
   if (canUseRealModeControls()) {
     html += `<div class="layer-row" data-action="openNodePlace">
       <span style="font-size:11px;color:var(--text2);">⊙ 放置節點</span></div>`;
+  }
+  // P2-30 part 3：敵情/感知標記入口（operator+——無線電回報敵情是一線職責，比節點放置開放）
+  if (canAccessMapObjects()) {
+    html += `<div class="layer-row" data-action="openContactPlace">
+      <span style="font-size:11px;color:var(--text2);">📍 敵情/感知標記</span></div>`;
   }
   panel.innerHTML = html;
 }
@@ -1333,6 +1348,27 @@ function _ensureEntityLayers() {
     ],
   });
 
+  // P2-30 part 3：手動感知/敵情標記層（circle + abbr，仿 infra；同步渲染→放置即時顯示、無 async bake-race）。
+  _contactLayer = new EntityLayer(map, 'contact', {
+    layers: [
+      {
+        id: 'contact-circle', type: 'circle',
+        paint: {
+          'circle-radius': 11, 'circle-color': ['get', 'color'],
+          'circle-stroke-width': 2, 'circle-stroke-color': '#ffffff', 'circle-opacity': 0.95,
+        },
+      },
+      {
+        id: 'contact-label', type: 'symbol',
+        layout: {
+          'text-field': ['get', 'abbr'], 'text-font': ['Noto Sans Regular'], 'text-size': 12,
+          'text-anchor': 'center', 'text-allow-overlap': true, 'text-ignore-placement': true,
+        },
+        paint: { 'text-color': '#ffffff', 'text-halo-color': '#000000', 'text-halo-width': 0.5 },
+      },
+    ],
+  });
+
   // P1-10b 步驟 7 階段 2/3a：bake SDF icons（zone abbr 字 + arrow 三角形）
   // 必須在新 EntityLayer 建 symbol layer 之前 addImage，否則 layer 找不到 icon-image。
   // 不重複 bake — bakeTextSdf/bakeArrowSdf 內部 hasImage 判斷。
@@ -1661,6 +1697,7 @@ function _ensureEntityLayers() {
   // routes/polygons-stroke 拆兩 layer（solid/dash），各自掛
   map.on('click', 'polygons-fill', (e) => _onPolygonClick(e));
   map.on('click', 'infra-circle', (e) => _onInfraClick(e));
+  map.on('click', 'contact-circle', (e) => _onContactClick(e));  // P2-30 part 3：點感知標記 → detail（刪除 + 分享 TAK）
   map.on('click', 'routes-line-solid', (e) => _onRouteClick(e));
   map.on('click', 'routes-line-dash', (e) => _onRouteClick(e));
   map.on('click', 'routes-line-dotted', (e) => _onRouteClick(e));
@@ -2030,6 +2067,59 @@ function _onInfraClick(e) {
   _deps.openModal?.(`${def.abbr} ${item.label || def.label}`, body);
 }
 
+// P2-30 part 3：點感知/敵情標記 → detail（座標 + 刪除 + 分享到 TAK）。仿 _onInfraClick。
+function _onContactClick(e) {
+  if (!canAccessMapObjects()) return;
+  const id = e.features?.[0]?.properties?.id;
+  const ent = _copStream?.getEntity(id);
+  if (!ent) return;
+  const affZh = { friendly: '友軍', hostile: '敵性', neutral: '中立', unknown: '不明' }[affiliationFromCot(ent.type)] || '不明';
+  const desc = `${affZh}接觸　${ent.lat != null ? _coordValueHTML(ent.lat, ent.lon) : ''}`;
+  const FLD = 'width:100%;padding:6px 8px;margin-bottom:8px;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:6px;font-family:var(--mono);font-size:12px;box-sizing:border-box;';
+  const BTN = 'width:100%;padding:8px;margin-bottom:8px;color:#fff;border:none;border-radius:6px;font-weight:700;cursor:pointer;font-family:var(--mono);font-size:12px;';
+  let body = `<div style="font-size:12px;line-height:1.7;color:var(--text2);margin-bottom:12px;">${desc}</div>`;
+  // 注記（標籤 + 備註）—— operator+ 可編輯（無線電回報內容）。callsign/remarks 經 PUT 落地。
+  if (id && canAccessMapObjects()) {
+    body += `<input id="contact-callsign-${_escapeHtml(String(id))}" placeholder="標籤/呼號" value="${_escapeHtml(ent.callsign || '')}" style="${FLD}"/>`;
+    body += `<textarea id="contact-remarks-${_escapeHtml(String(id))}" placeholder="備註（回報內容）" rows="2" style="${FLD}resize:vertical;">${_escapeHtml(ent.remarks || '')}</textarea>`;
+    body += `<button data-action="saveContactNote" data-id="${_escapeHtml(String(id))}" style="${BTN}background:var(--accent,#2b6cd9);">💾 儲存注記</button>`;
+  }
+  // 分享到 TAK 限指揮層（後端 /api/tak/share = COMMAND_ROLES）。
+  if (canUseRealModeControls() && id) {
+    body += `<button data-action="shareContactTak" data-id="${_escapeHtml(String(id))}" style="${BTN}background:var(--green,#2e8b57);">📡 分享到 TAK</button>`;
+  }
+  if (id) {
+    body += `<button data-action="deleteContact" data-id="${_escapeHtml(String(id))}" style="${BTN}background:var(--red);">🗑 刪除標記</button>`;
+  }
+  _deps.openModal?.(`${affZh}接觸 ${ent.callsign || ''}`, body);
+}
+
+export async function _deleteContact(id) {
+  if (!canAccessMapObjects() || !_copStream) return;
+  const ok = await _copStream.deleteEntity(id);
+  _deps.closeModal?.();
+  _flashMapMsg(ok ? '✓ 已刪除標記' : '✗ 刪除失敗');
+}
+
+export async function _saveContactNote(id) {
+  if (!canAccessMapObjects() || !_copStream) return;
+  const cs = el(`contact-callsign-${id}`);
+  const rm = el(`contact-remarks-${id}`);
+  const patch = {};
+  if (cs) patch.callsign = cs.value.trim();
+  if (rm) patch.remarks = rm.value.trim();
+  const ok = await _copStream.updateEntity(id, patch);  // PUT + If-Match（內部帶 version_clock）
+  _deps.closeModal?.();
+  _flashMapMsg(ok ? '✓ 注記已儲存' : '✗ 儲存失敗（可能版本衝突，請重開）');
+}
+
+export async function _shareContactTak(id) {
+  if (!canUseRealModeControls()) return;  // 分享限指揮層
+  const r = await authFetch(`/api/tak/share/${encodeURIComponent(id)}`, { method: 'POST' });
+  _deps.closeModal?.();
+  _flashMapMsg(r && r.ok ? '✓ 已分享到 TAK（現場端可見）' : '✗ 分享到 TAK 失敗');
+}
+
 function _onRouteClick(e) {
   if (!canAccessMapObjects()) return;
   const id = e.features?.[0]?.properties?.id;
@@ -2163,6 +2253,27 @@ function _renderInfra() {
     })
     .filter(Boolean);
   _infraLayer.update(features);
+}
+
+// P2-30 part 3：渲染手動感知/敵情標記（kind='contact'）。仿 _renderInfra —— 同步 circle+abbr，
+// affiliation 色由 type 推（affiliationFromCot）。即時顯示、無 async bake-race（不走 _takLayer）。
+function _renderContacts() {
+  if (!_contactLayer) return;
+  _contactLayer.setVisible(_layerVis.contact);
+  if (!_layerVis.contact) { _contactLayer.clear(); return; }
+  const features = [];
+  for (const e of (_copStream?.getEntitiesByKind('contact') || [])) {
+    const lat = Number(e.lat);
+    const lon = Number(e.lon);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+    const aff = _CONTACT_AFF[affiliationFromCot(e.type)] || _CONTACT_AFF.unknown;
+    features.push({
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: [lon, lat] },
+      properties: { id: e.uid, color: aff.color, abbr: aff.abbr, label: e.callsign || '' },
+    });
+  }
+  _contactLayer.update(features);
 }
 
 function _bearing(lat1, lng1, lat2, lng2) {
@@ -2737,6 +2848,37 @@ export function _openNodePlacePicker() {
 export function _startNodePlace(nodeType) { _startPlace('zone', nodeType || 'command'); }
 export function _cancelNodePlace() { _cancelPlace(); }
 
+// ── P2-30 part 3（#180）：手動感知/敵情標記（無線電回報 → 可共享 COP 標記）──
+// RBAC：建立開給 operator+（canAccessMapObjects）——無線電回報敵情是一線/幕僚職責，非指揮層專屬
+//（與 zone/infra 的 canUseRealModeControls 刻意不同；後端 kind='contact' 非 _COMMAND_ONLY_KINDS = WRITE_ROLES）。
+// 分享到 TAK 仍限指揮層（POST /api/tak/share，COMMAND_ROLES）。
+const _CONTACT_AFFILIATIONS = [
+  { aff: 'hostile', label: '敵性', color: '#d9342b' },
+  { aff: 'unknown', label: '不明', color: '#caa800' },
+  { aff: 'neutral', label: '中立', color: '#2e8b57' },
+  { aff: 'friendly', label: '友軍', color: '#2b6cd9' },
+];
+export function _openContactPlacePicker() {
+  if (!canAccessMapObjects()) return;  // operator+
+  const BTN = 'display:block;width:100%;padding:10px;margin-bottom:8px;background:var(--surface);border:1px solid var(--border);border-radius:6px;cursor:pointer;font-family:var(--mono);font-size:13px;text-align:left;';
+  let html = '<div style="font-size:11px;color:var(--text3);margin-bottom:12px;">選擇敵我屬性，接著點地圖標記（無線電回報接觸）：</div>';
+  for (const a of _CONTACT_AFFILIATIONS) {
+    html += `<button data-action="startContactPlace" data-affiliation="${a.aff}" style="${BTN}border-left:4px solid ${a.color};color:var(--text);">${a.label}接觸</button>`;
+  }
+  _deps.openModal?.('📍 敵情/感知標記', html);
+}
+export function _startContactPlace(affiliation) {
+  if (!canAccessMapObjects()) return;  // operator+（與 _startPlace 的指揮層 gate 不同，故不複用）
+  if (_routeDrawState) _cancelRouteDraw();
+  if (_polyDrawState) _cancelPolyDraw();
+  if (_currentMap !== 'outdoor') switchMap('outdoor');
+  _placeState = { kind: 'contact', type: affiliationToCotType(affiliation) };
+  const banner = el('node-place-banner');
+  if (banner) banner.style.display = 'flex';
+  if (el('map-coord-panel')) el('map-coord-panel').style.display = 'none';
+  if (_leafletMap) _leafletMap.getCanvas().style.cursor = 'crosshair';
+}
+
 // P1-16 follow-up：節點/設施放置共用實作（取代原 _startNodePlace/_startInfraPlace、
 // _cancelNodePlace/_cancelInfraPlace、_placeNodeAt/_placeInfraAt 的近重複）。單一 `_placeState`
 // 同時根除「兩個 state 殘留互斥」隱患（原 MED-1）。kind='zone'→_PERM_NODES/node_type；
@@ -2764,23 +2906,29 @@ function _cancelPlace() {
 async function _placeAt(lat, lng) {
   if (!_placeState || !_copStream) return;
   const { kind, type } = _placeState;
-  let label, attributes;
+  let label, attributes, cotType = 'a-f-G-I';  // zone/infra：友軍設施型 atom（既有行為）
   if (kind === 'zone') {
     label = _PERM_NODES.find((n) => n.node_type === type)?.label || '';
     attributes = { kind: 'zone', node_type: type };
+  } else if (kind === 'contact') {
+    // P2-30 part 3：手動感知/敵情標記。type 已是 affiliation 推導的 CoT type（a-h-G 等）。
+    cotType = type;
+    const aff = affiliationFromCot(type);
+    label = { friendly: '友軍接觸', hostile: '敵情', neutral: '中立接觸', unknown: '不明接觸' }[aff] || '不明接觸';
+    attributes = { kind: 'contact', affiliation: aff };
   } else {
     label = (INFRA_TYPES[type] || INFRA_TYPES.utility).label;
     attributes = { kind: 'infra', infra_type: type };
   }
   const created = await _copStream.createEntity({
-    type: 'a-f-G-I',
+    type: cotType,
     lat: +(+lat).toFixed(6),
     lon: +(+lng).toFixed(6),
     callsign: label,
     attributes,
   });
   if (!created) {
-    _flashMapMsg('✗ ' + (kind === 'zone' ? '節點' : '設施') + '放置失敗，請重試');
+    _flashMapMsg('✗ ' + ({ zone: '節點', contact: '感知標記' }[kind] || '設施') + '放置失敗，請重試');
     return;
   }
   // createEntity 內部 upsert + onChange 自動重繪（_scheduleCopRender），不必手動 render。
