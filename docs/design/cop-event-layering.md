@@ -79,6 +79,21 @@ ICS 是**多源 COP 的匯流 + 指揮中樞**：各路「感知標記」匯成�
 | **L4 事故層** | REST `/api/events`·`/api/decisions`·`/api/chats`（同 `:8000`／prod `:443`） | **HTTP(S)** | **對外無獨立 port**；不外流，出向只借 L3 兩閘（感知標記 + 衍生 tasking） |
 | **L5 指揮層** | 瀏覽器 ↔ FastAPI `:443`(nginx；dev `:8000`) | **HTTPS** · **WS/WSS**(同源) | dashboard 靜態 + 即時推皆復用 L3 的 WS；無自有對外埠 |
 
+#### 元件視角（actor × 連線方向）
+
+> 上表按「層」切；本表把同一條鏈按「**元件**」拆——誰監聽（listen）、誰主動連出（egress）、走什麼。先釐清三件易混的事：
+> ① 本 repo 的 **command server** 可跑 Mac（`start_mac.sh`）或 **Pi**（`start_pi.sh`，headless、bind `0.0.0.0` 給區網平板）——**Pi 上跑的就是同一支 command server（FastAPI :8000），不是另一種 server**。
+> ② **TAK server 是外部基礎設施**（`deploy/tak-server/`），ICS 對它是 client，三埠都是「往外連」非自身監聽。
+> ③ `server/` Node relay 服務的 shelter / medical **PWA 不在本 repo COP 範圍**（CLAUDE.md），僅作 L0 邊緣節點的背景列出。
+
+| 元件 | 角色（層） | 監聽 listen | 主動連出 egress | protocol |
+|---|---|---|---|---|
+| **TAK client**（ATAK/iTAK/WinTAK） | L0 邊緣：感測+顯示+收 COP | —（純 client） | TAK server `:8089`（`connectString0=<host>:8089:ssl`）；憑證註冊 `:8446` / web `:8443` | CoT over **TLS**（mTLS，v0 XML / v1 protobuf）；`u-d-*`、GeoChat `b-t-f`、`_medevac_` |
+| **TAK server**（外部基礎設施） | CoT 匯流 + Mission 持久 + federation | `:8089`（CoT TLS streaming）、`:8443`（web/Marti REST HTTPS）、`:8446`（cert enroll，clientAuth=false）、`:8444`/`:9000`（federation，選配） | federation peer `:9000` / `:8444` | **TLS** / **HTTPS**；憑證 step-ca |
+| **Command server**（ICS 指揮部 FastAPI；Mac 或 **Pi**） | L1–L5 主體：接入·正規化·COP·事故·指揮 | `:8000`（HTTP；Pi bind `0.0.0.0`；prod 由 nginx → `:443` TLS+HSTS） | **入向訂閱** TAK `:8089`（mTLS 串流）、**主動查** TAK Marti `:8443`（mTLS）、**出向下行** `send_cot` → TAK `:8089`（mTLS，**非 Marti**，複用訂閱 cert） | 自身 **HTTP(S)**；對 TAK **TLS/HTTPS**（mTLS） |
+| **Frontend**（commander dashboard，瀏覽器） | L5 呈現 + L3 即時態勢 | —（純 browser） | command server `:443`（dev `:8000`）：靜態 + REST `/api/*` + WS `/api/cop/ws/updates` | **HTTPS** + **WS/WSS**（token 走 `Sec-WebSocket-Protocol`，不進 URL） |
+| _(Pi-node / Node relay；上游 PWA 邊緣，**非本 repo COP**)_ | L0：shelter/medical PWA 中繼 | relay `:8765`/`8775`（WS）、admin `:8766`/`8776` | — | **WS/WSS**（HMAC 簽章） |
+
 > **三個層界要記住**：① **L2（cop_service）= 接縫**，transport 與語意在此分離、所有 doctrine 在此蓋章；
 > ② **L3↔L4 = 感知層/事故層分水嶺，也是 TAK 能力天花板**——L3 以下（含軌跡、變更稽核）TAK 都會，L4 起（severity/狀態/結案/跨源聚合）TAK 結構上沒有，是「Incident **Command**」的字面本體；
 > ③ **L4「不外流」= 安全邊界**，出向只有 L3 感知標記（雙向）與 L4 衍生的下行 tasking（P2-13）兩個閘。
