@@ -1175,6 +1175,21 @@ def _m025_events_drop_location_zone_id_down(conn: sqlite3.Connection) -> None:
     _add_column_if_missing(conn, "events", "location_zone_id", "TEXT")
 
 
+def _m026_aar_entries_ref_t(conn: sqlite3.Connection) -> None:
+    """P2-21（#204 發現 1）：aar_entries 加 `ref_t`——課程標記連結的**回放時間點**（ISO Z）。
+
+    `created_at` 是 DB 寫入牆鐘時刻，載不了「回放到第 T 分鐘打的標記」的 T（row 原文
+    「created_at=T+N」為誤導，#204 已更正）。一般 AAR 文字條目 ref_t 為 NULL。idempotent。
+    """
+    _add_column_if_missing(conn, "aar_entries", "ref_t", "TEXT")
+
+
+def _m026_aar_entries_ref_t_down(conn: sqlite3.Connection) -> None:
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(aar_entries)")}
+    if "ref_t" in cols:
+        conn.execute("ALTER TABLE aar_entries DROP COLUMN ref_t")
+
+
 _MIGRATIONS: list[tuple[int, str, object]] = [
     (1, "events_columns", _m001_events_columns),
     (2, "decisions_columns", _m002_decisions_columns),
@@ -1201,6 +1216,7 @@ _MIGRATIONS: list[tuple[int, str, object]] = [
     (23, "decisions_fk", _m023_decisions_fk),
     (24, "ai_rec_decision_fk", _m024_ai_rec_decision_fk),
     (25, "events_drop_location_zone_id", _m025_events_drop_location_zone_id),
+    (26, "aar_entries_ref_t", _m026_aar_entries_ref_t),
 ]
 
 

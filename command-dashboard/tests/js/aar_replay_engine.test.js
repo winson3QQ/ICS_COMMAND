@@ -79,3 +79,14 @@ describe('stepSummary / fmtClock', () => {
     expect(fmtClock('2026-01-01T03:00:00Z')).toMatch(/^\d{2}:\d{2}:\d{2}$/);
   });
 });
+
+describe('stepIndexAtOrBefore (P2-21 bookmark 跳轉)', () => {
+  test('取 t ≤ refT 最後一筆；早於全部 → 0；晚於全部 → 最後', async () => {
+    const { stepIndexAtOrBefore } = await import('../../static/js/aar/replay_engine.js');
+    const steps = ITEMS; // 已按 t 排序
+    expect(stepIndexAtOrBefore(steps, '2026-01-01T02:30:00Z')).toBe(1); // 02:00 track
+    expect(stepIndexAtOrBefore(steps, '2026-01-01T00:30:00Z')).toBe(0);
+    expect(stepIndexAtOrBefore(steps, '2099-01-01T00:00:00Z')).toBe(steps.length - 1);
+    expect(stepIndexAtOrBefore(steps, '2026-01-01T03:30:00Z')).toBe(3); // 恰等於 → 含
+  });
+});

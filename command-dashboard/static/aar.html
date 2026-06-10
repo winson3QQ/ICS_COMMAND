@@ -20,6 +20,15 @@
     min-height: 44px; display: inline-flex; align-items: center; padding: 0 8px; } /* 觸控 ≥44px（P1-18） */
   #aar-title { font-size: 15px; font-weight: 700; }
   #aar-truncated { display: none; color: var(--yellow, #e3b341); font-size: 12px; }
+  #aar-bookmark-btn { margin-left: auto; min-height: 44px; min-width: 44px; padding: 0 14px;
+    background: rgba(227,179,65,.15); color: var(--yellow, #e3b341); border: 1px solid var(--yellow, #e3b341);
+    border-radius: 6px; font-family: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
+  #aar-bookmark-btn:disabled { opacity: .35; cursor: not-allowed; }
+  #aar-bookmarks { display: none; flex: 0 0 auto; padding: 4px 10px; border-bottom: 1px solid var(--border, #30363d);
+    font-size: 11px; display: flex; flex-wrap: wrap; gap: 6px; }
+  #aar-bookmarks:empty { display: none; }
+  .aar-bm { background: rgba(227,179,65,.12); color: var(--yellow, #e3b341); border: 1px solid rgba(227,179,65,.4);
+    border-radius: 10px; padding: 2px 10px; cursor: pointer; min-height: 28px; display: inline-flex; align-items: center; }
   #aar-body { display: flex; flex: 1 1 auto; min-height: 0; }
   #aar-map { flex: 0 0 60%; min-width: 0; }
   #aar-panel { flex: 1 1 40%; display: flex; flex-direction: column; min-width: 0;
@@ -55,11 +64,13 @@
     <a class="back" href="/static/commander_dashboard.html">← 返回指揮台</a>
     <span id="aar-title">AAR 回放</span>
     <span id="aar-truncated">⚠ 資料量超過上限已截斷——請以較窄時間窗查詢</span>
+    <button id="aar-bookmark-btn" disabled title="先點選任一筆事件">🔖 標記此刻</button>
   </header>
   <div id="aar-body">
     <div id="aar-map"></div>
     <div id="aar-panel">
       <div id="aar-status">初始化…</div>
+      <div id="aar-bookmarks"></div>
       <ul id="aar-steps"></ul>
     </div>
   </div>

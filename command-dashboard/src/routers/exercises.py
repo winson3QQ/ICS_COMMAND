@@ -13,6 +13,7 @@ from repositories.cop_entity_repo import list_tracks_by_exercise
 from repositories.exercise_repo import delete_exercise, update_exercise_status
 from schemas.exercise import AAREntryIn, ExerciseCreateIn, ExerciseStatusIn
 from services.exercise_service import archive, create, get, list_all, set_active
+from services.kpi_service import build_kpis
 from services.realtime_hub import cop_hub
 from services.timeline_service import build_timeline
 
@@ -96,7 +97,8 @@ def add_aar(exercise_id: int, body: AAREntryIn, request: Request):
     sess = validate_session(request)
     try:
         return create_aar_entry(exercise_id, body.category, body.content,
-                                body.created_by or sess["username"])
+                                body.created_by or sess["username"],
+                                ref_t=body.ref_t)
     except ValueError as e:
         raise HTTPException(422, str(e)) from e
 
@@ -173,3 +175,18 @@ def get_timeline(
         until=_range_bound(to, end=True),
         limit=min(max(limit, 1), 5000),
     )
+
+
+# ── 演習指標（P2-21 子集 / issue #204）─────────────────────────────────────
+
+
+@router.get("/{exercise_id}/kpis")
+def get_kpis(exercise_id: int):
+    """演習 KPI 快照（事件處置時長 / 通聯量 by 組 / 決策裁示時長 / 軌跡量 / AAR 條目數）。
+
+    RBAC：COMMAND_ROLES（中央 gate `/api/exercises/*` 非 DELETE；統計含演習表現資訊，
+    row 規格明定不暴露 public API）。量不出的指標回 null+reason（#204 誠實邊界）。
+    """
+    if not get(exercise_id):
+        raise HTTPException(404, "演練不存在")
+    return build_kpis(exercise_id)
