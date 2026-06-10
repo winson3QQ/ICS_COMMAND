@@ -209,8 +209,7 @@ document.addEventListener('click', function (e) {
       const unit = btn.dataset.unit || '';
       const lat = btn.dataset.lat !== '' ? parseFloat(btn.dataset.lat) : null;
       const lng = btn.dataset.lng !== '' ? parseFloat(btn.dataset.lng) : null;
-      const zoneId = btn.dataset.zone || '';
-      openEventForm(unit, (lat != null && lng != null) ? { lat, lng } : null, zoneId);
+      openEventForm(unit, (lat != null && lng != null) ? { lat, lng } : null);
       break;
     }
     case 'closeEventForm': closeEventForm(); break;
