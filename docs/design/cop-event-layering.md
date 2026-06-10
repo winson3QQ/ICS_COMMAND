@@ -27,23 +27,23 @@ ICS 是**多源 COP 的匯流 + 指揮中樞**：各路「感知標記」匯成�
 ```
                               OODA       能力歸屬
 ┌──────────────────────────────────────────────────────────┐
-│ L0 節點/邊緣  感測+顯示+執行(三合一)     Observe   外部      │ ← TAK client / 無線電(人) /
-│    單一視角、無權威、server 不信其宣告    +Act              │    WaveInk / Pi-node / 指揮部下達
+│ L5 指揮/決策  整理成支持決策的資訊        Decide   ICS       │ ← dashboard / filter / DCI / 告警
+│    角色分層視圖、告警「何時決策」(支持≠替代)                 │   (主動告警後端為缺口)
 ├──────────────────────────────────────────────────────────┤
-│ L1 傳輸/接入  把節點資料送進來           —        TAK+ICS   │ ← :8089/:8443/:9000 ↘
-│                                                           │   routers/tak·ingress·manual·cop
-├──────────────────────────────────────────────────────────┤
-│ L2 正規化接縫 多源→單一 CoPEntity        —        ICS       │ ← services/cop_service.py
-│    蓋章(scope/severity/防偽)+扇出(WS+軌跡)                  │   ingest_cot_event = 共用接縫
+│ L4 事故層    流程性、生命週期、問責       Orient/  **ICS 獨有**│ ← events/decisions/chats
+│    event→決策→行→結案、**不外流**        Decide  (TAK 無此模型)│  (四表割裂，待 P2-27 梳理)
 ├══════════════════════════════════════════════════════════┤
 │ L3 感知層COP  位置性、即時、**雙向可共享** Observe  TAK 也做  │ ← cop_entities(單一SoT)
 │    「來源無感」、進得來該出得去          (共享)             │   realtime_hub / cop_entity_tracks
 ├──────────────────────────────────────────────────────────┤
-│ L4 事故層    流程性、生命週期、問責       Orient/  **ICS 獨有**│ ← events/decisions/chats
-│    event→決策→行→結案、**不外流**        Decide  (TAK 無此模型)│  (四表割裂，待 P2-27 梳理)
+│ L2 正規化接縫 多源→單一 CoPEntity        —        ICS       │ ← services/cop_service.py
+│    蓋章(scope/severity/防偽)+扇出(WS+軌跡)                  │   ingest_cot_event = 共用接縫
 ├──────────────────────────────────────────────────────────┤
-│ L5 指揮/決策  整理成支持決策的資訊        Decide   ICS       │ ← dashboard / filter / DCI / 告警
-│    角色分層視圖、告警「何時決策」(支持≠替代)                 │   (主動告警後端為缺口)
+│ L1 傳輸/接入  把節點資料送進來           —        TAK+ICS   │ ← :8089/:8443/:9000 ↘
+│                                                           │   routers/tak·ingress·manual·cop
+├──────────────────────────────────────────────────────────┤
+│ L0 節點/邊緣  感測+顯示+執行(三合一)     Observe   外部      │ ← TAK client / 無線電(人) /
+│    單一視角、無權威、server 不信其宣告    +Act              │    WaveInk / Pi-node / 指揮部下達
 └──────────────────────────────────────────────────────────┘
    ║ L2↔L3 那條雙線 = cop_service 接縫，也是「感知層入口」（來源無感在此執行）
    ║ L3↔L4 = 感知標記 N:1 聚合成事件；doctrine 已分、code 還以 attributes JSON 黏定（P2-27 拆）
