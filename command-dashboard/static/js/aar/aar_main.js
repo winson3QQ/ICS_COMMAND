@@ -11,12 +11,14 @@ import { authFetch, getToken } from '../auth.js';
 import { initAarMap, setPositions, fitToPositions } from './aar_map.js';
 import {
   buildReplayIndex, foldPositionsAt, stepSummary, fmtClock, TYPE_LABELS,
+  stepIndexAtOrBefore,
 } from './replay_engine.js';
 
 const el = id => document.getElementById(id);
 
 let _idx = { steps: [], trackIdx: [] };
 let _cur = -1; // 目前 step（-1 = 尚未選）
+let _exid = null; // 目前回放的 exercise_id（bookmark POST 用）
 
 function _setStatus(text) {
   el('aar-status').textContent = text;
@@ -69,6 +71,51 @@ function _gotoStep(i) {
   // 折疊到該筆的 T → 上圖
   setPositions(foldPositionsAt(_idx.trackIdx, it.t));
   _setStatus(`T = ${fmtClock(it.t)}（第 ${i + 1}/${_idx.steps.length} 筆・${TYPE_LABELS[it.type] || it.type}）`);
+  const btn = el('aar-bookmark-btn');
+  if (btn) {
+    btn.disabled = false;
+    btn.title = '在目前 T 打課程標記（P2-21）';
+  }
+}
+
+// ── 課程標記 bookmark（P2-21 #204：ref_t = 目前 step 的 T）─────────────────
+
+async function _refreshBookmarks() {
+  const box = el('aar-bookmarks');
+  if (!box || !_exid) return;
+  const r = await authFetch(`/api/exercises/${encodeURIComponent(_exid)}/aar`);
+  if (!r.ok) return; // 列表失敗不擋回放（bookmark 為輔助）
+  const entries = await r.json();
+  box.replaceChildren();
+  (Array.isArray(entries) ? entries : [])
+    .filter(e => e.category === 'bookmark' && e.ref_t)
+    .forEach((e) => {
+      const chip = document.createElement('span');
+      chip.className = 'aar-bm';
+      chip.textContent = `🔖 ${fmtClock(e.ref_t)} ${e.content || ''}`;
+      chip.title = `跳到 ${e.ref_t}（${e.created_by || ''}）`;
+      chip.addEventListener('click', () => _gotoStep(stepIndexAtOrBefore(_idx.steps, e.ref_t)));
+      box.appendChild(chip);
+    });
+}
+
+async function _addBookmark() {
+  if (_cur < 0 || !_exid) return;
+  const it = _idx.steps[_cur];
+  // prompt 取備註（CSP 安全、零依賴）；取消 → 不送
+  const content = window.prompt('課程標記備註：', stepSummary(it));
+  if (content === null) return;
+  const r = await authFetch(`/api/exercises/${encodeURIComponent(_exid)}/aar`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ category: 'bookmark', content, ref_t: it.t }),
+  });
+  if (!r.ok) {
+    _setStatus(`標記失敗（HTTP ${r.status}）`);
+    return;
+  }
+  _setStatus(`✓ 已標記 ${fmtClock(it.t)}`);
+  await _refreshBookmarks();
 }
 
 function _wireKeys() {
@@ -110,6 +157,7 @@ async function _renderPicker() {
 }
 
 async function _loadTimeline(exid) {
+  _exid = exid;
   _setStatus('載入時間軸…');
   const r = await authFetch(`/api/exercises/${encodeURIComponent(exid)}/timeline`);
   if (r.status === 403) {
@@ -138,11 +186,13 @@ async function _loadTimeline(exid) {
   // 開場：視野收到「全部事件折疊完」的單位範圍，但 T 停在第一筆前（未選）
   fitToPositions(foldPositionsAt(_idx.trackIdx, _idx.steps[_idx.steps.length - 1].t));
   _setStatus(`共 ${_idx.steps.length} 筆（${fmtClock(data.meta.t_start)} ~ ${fmtClock(data.meta.t_end)}）— 點選任一筆開始`);
+  await _refreshBookmarks(); // 既有課程標記 chips（點擊跳該時點）
 }
 
 async function main() {
   initAarMap('aar-map');
   _wireKeys();
+  el('aar-bookmark-btn')?.addEventListener('click', _addBookmark);
   if (!getToken()) {
     _showMessage('未登入——請從指揮台（同分頁）進入本頁。');
     return;

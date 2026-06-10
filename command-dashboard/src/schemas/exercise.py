@@ -21,6 +21,7 @@ class ExerciseStatusIn(BaseModel):
 
 
 class AAREntryIn(BaseModel):
-    category: str    # 'well' | 'improve' | 'recommend'
+    category: str    # 'well' | 'improve' | 'recommend' | 'bookmark'（P2-21 #204）
     content:  str
     created_by: str | None = None
+    ref_t: str | None = None  # bookmark 連結的回放時間點（ISO Z；一般條目 NULL）

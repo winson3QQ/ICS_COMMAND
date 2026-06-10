@@ -98,3 +98,14 @@ export function fmtClock(isoZ) {
   const d = new Date(isoZ);
   return Number.isNaN(d.getTime()) ? String(isoZ) : d.toLocaleTimeString('zh-TW', { hour12: false });
 }
+
+/** 書籤跳轉（P2-21 #204）：t ≤ refT 的**最後一筆** step index；全部 > refT → 0（跳開頭）。
+ *  steps 已按 t 排序（buildReplayIndex 保證）。 */
+export function stepIndexAtOrBefore(steps, refT) {
+  let idx = 0;
+  for (let i = 0; i < steps.length; i++) {
+    if (steps[i].t > refT) break;
+    idx = i;
+  }
+  return idx;
+}
