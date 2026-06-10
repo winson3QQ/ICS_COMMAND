@@ -2546,14 +2546,29 @@
     },
     "body": "P2-30 part 3 dogfood 浮出：iTAK 送的標記（source=tak，如 3QQ）在 ICS 重連 / DB 清空後**不重新顯示**——streaming 不重播既有靜態標記。\n\n實證（#192 期間）：TAK server `<repository>` 持久化一切、`<latestSA>` 只對**新連線**補發；ICS 既有連線 reconnect 不補既有標記 → COP 漏標記。\n\n工作（= P2-14 核心，#173 衍生）：\n- Marti 權威 resync：`GET /Marti/api/cot/sa`（或 `/cot/search`）拉現有 SA → ingest 進 cop_entities，補 streaming 漏掉的既有標記。\n- cert 沿用 `tak-server-marti-cert-not-oauth`（:8443 mTLS，與 part 3 實驗用同一張）。\n\n依賴/關聯：P2-14（Mission/DataSync）、#173（reconnect 漏靜態標記）。memory `tak-streaming-archive-stale-vs-mission`、strategy §4b。",
     "closedAt": null,
-    "comments": [],
+    "comments": [
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## P2-14 reality check（活 TAK 5.7-RELEASE-43，cop-subscriber cert 實測，2026-06-10）\n\n對活 Marti 實打,de-risk P2-14（Mission/DataSync 可靠刪除 + 權威 resync）。**權威來源 = `docs/reference/takserver-5.7-openapispec.json`（301 paths）** —— 動 TAK REST 先查它別猜。\n\n### ✅ `/cot/sa` resync 契約敲定（本 issue 核心）\n`GET /Marti/api/cot/sa?start=&end=`：\n- **date 格式 = `yyyy-MM-dd'T'HH:mm:ss.SSS'Z'`（`.000Z`）**；`epoch`/`+0000` → `Failed to convert ... java.util.Date`。\n- **start/end 必填；`left/bottom/right/top`(bbox)、`isFiltered` 選填**。\n- **★ 真正 gotcha = 時間窗有上限**：窄窗（2h）→ **200 回真 CoT（123 events，含活 iTAK 裝置）**；大窗（40 天）→ generic `BAD_REQUEST Invalid Request`（與參數錯共用此頁，極易誤判成格式/auth 壞）。\n- → resync 用 **since-last-seen 小窗** 天然避開。cop-subscriber cert 即可（無需 admin/register）。\n- **#194 resync 可行性 = 確認。**\n\n### ✅ Mission CRUD 全鏈用 cert 可行（非 admin）— P2-14 reliable delete context\n`PUT /missions/{n}?creatorUid=&tool=public`→201、`PUT/DELETE .../contents`→200、`DELETE /missions/{n}`→200。\n- **精煉 memory「DELETE mission 需 ROLE_ADMIN」**：對 `tool=public`+creator 可 200；ROLE_ADMIN-403 應是非 public/非 creator 情境。\n\n### ⚠️ 關鍵架構洞察：mission 成員 ≠ repository 刪除\n把既有 repository CoT（:8089 streaming 來、archived）加進 mission 再 REMOVE_CONTENT 後,**該 CoT 仍在一般 repository**（`GET /cot/xml` 200）。→ REMOVE_CONTENT 只對 **mission 訂閱者**廣播移除。**可靠刪除真正前提 = 標記 mission-native（走 mission 通道發布）+ 現場 iTAK 訂閱該 mission**；part 3 的 :8089+archive 是另一條通道,兩者不互通。\n\n### ⚠️ 唯一未驗（P2-14 動工前最該 dogfood）\nmission REMOVE_CONTENT → **iTAK 真的移除標記嗎**?server 200 是必要非充分,要真機 + iTAK 訂閱 mission 才驗得了。\n\n詳見 memory `tak-marti-authz-model`（已更正落地）。",
+        "createdAt": "2026-06-10T10:09:59Z",
+        "id": "IC_kwDOSnBjpc8AAAABFkr7tA",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/194#issuecomment-4668980148"
+      }
+    ],
     "createdAt": "2026-06-10T08:46:50Z",
     "labels": [],
     "milestone": null,
     "number": 194,
     "state": "OPEN",
     "title": "Marti 權威 resync：ICS 顯示漏掉的 iTAK streaming 標記（P2-14）",
-    "updatedAt": "2026-06-10T08:46:50Z",
+    "updatedAt": "2026-06-10T10:09:59Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/194"
   },
   {
