@@ -2590,5 +2590,25 @@
     "title": "P2-33b: event↔marker 連結來源遷移到 junction（glue 退役，kind 留 event）",
     "updatedAt": "2026-06-10T09:50:00Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/196"
+  },
+  {
+    "assignees": [],
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "body": "ROADMAP **P2-20(A)**（AAR 回放——後端統一時間軸 API）。原 row 標 `(no issue)`，本 issue 補上，並記錄 **2026-06-11 設計定案 + 業界調查**。前端 AAR 頁面 = **P2-20(B)**，明確延後（動 map.js，與 P2-33/part-3 session 領地重疊）。\n\n## 目標\n\n`GET /api/exercises/{id}/timeline` — 把一場演習散在四張表的「發生過的事」合併成**按時間排序的單一事件流**：\n\n| 來源表 | type | 時間欄 | scope 方式 |\n|---|---|---|---|\n| `cop_entity_tracks` | `track` | `t` | **JOIN cop_entities 取 exercise_id**（tracks 無此欄；#125 caveat 照註不擴大處理） |\n| `events` | `event` | `COALESCE(occurred_at, created_at)` | `exercise_id` |\n| `chats` | `chat` | `time` | `exercise_id` |\n| `audit_log` | `decision` 等 | `created_at` | `exercise_id` |\n\n回傳統一 shape：`{type, t, actor, payload}`，+ metadata（首尾時間戳、總筆數）供前端 slider 知道時間軸全長。支援 `?from=&to=` 時間窗 + 筆數上限。\n\n## 設計定案：事件流，不做定時落盤快照\n\n**模型 = (a) 事件流**：時間軸 = 實際發生的事、各帶真實時間戳；「T 時刻的狀態」由前端折疊事件流重建（每 uid 取 ≤T 最後一筆）。**不是 (b) 定時快照**（每 N 秒全表落盤）。\n\n使用者問過兩個關鍵問題，答案記錄如下：\n\n**Q1：不定時存快照，回放時間尺度會跳來跳去嗎？**\n不會——「等速時間軸」由**播放器的虛擬時鐘**保證，與資料怎麼存無關：\n- **Play mode**：虛擬時鐘 T 等速前進（1x/2x/4x），每 tick 折疊事件流到 ≤T 渲染。事件疏的時段畫面靜止、但時間指針等速滑（同影片播放器：不是每 ms 都有 keyframe，進度條仍等速走）。\n- **Step mode**：T 跳到下一筆事件——**刻意跳**，桌面推演要的就是這個。\n- 誠實限制：**位置內插**——單位 10:00 在 A、10:05 才回報 B，回放 10:02 顯示在 A（最後已知位置）。這是來源回報頻率的物理限制，**定時快照同樣解決不了**（快照只能存當時已知的最後位置）。\n\n**Q2：隨機 seek（拖 slider 亂跳）不會慢嗎？**\n一場演習資料量有界（千~萬筆），前端一次拉回、記憶體折疊，順播是增量 O(新事件)。隨機 seek 若量大 → 前端可自建**記憶體 keyframe**（折疊快取，每 N 分鐘一個）——這是回放器最佳化，**不需要後端落盤快照**。\n\n## 業界調查（2026-06-11，三個領域同指一個答案）\n\n**1. Event Sourcing 社群**（最直接對應——我們就是「事件流=真相、狀態=投影」模型）：\n- 快照**純屬效能最佳化**；[EventSourcingDB「Snapshot Paradox」](https://docs.eventsourcingdb.io/blog/2026/03/02/the-snapshot-paradox/)：先量測再說，想像中的重播瓶頸絕大多數場景不會出現。\n- 經驗閾值：[重播 >100ms 的熱聚合才值得加](https://oneuptime.com/blog/post/2026-01-30-event-snapshotting/view)（量級對比：購物車 10 筆 vs 帳戶 5 萬筆——演習接近前者）。\n- [DDD/CQRS 論壇共識](https://groups.google.com/g/dddcqrs/c/hQ1PyRJMMN0)：「除非效能監測證明需要，否則強烈不建議快照」。\n- [同步寫快照拖慢寫入、非同步又 stale](https://www.kurrent.io/blog/snapshots-in-event-sourcing/)——演習進行中持續落盤 = 寫入負擔。\n\n**2. 遊戲回放系統**（seek 體驗先例）：\n- [EarthWork Games replay seeking](https://www.earthworkgames.com/dev-blog/replay-seeking/) / [Game Developer replay 系統教學](https://www.gamedeveloper.com/programming/developing-your-own-replay-system)：**keyframe 正常播放時被跳過、只有 seek 才用**——與「前端記憶體 keyframe」同構。確定性輸入重播那派不適用（COP 非確定性模擬）。\n\n**3. TAK 生態（同行 AAR）**：\n- [PAR Government TAK Data Replay](https://pargovernment.com/par-sa/tak)（商用 AAR）：「**錄下所有 CoT 流量**供回放/AAR」——錄的就是事件流，與 `cop_entity_tracks`+events+chats+audit 同型。\n- [社群 ATAK replay](https://github.com/ba1ake/Atak_replay_system) 用輪詢存位置快照——那是**接不到串流的妥協**（只能 KML 輪詢），非設計偏好；我們有完整入向串流。\n- [FreeTAKServer #127](https://github.com/FreeTAKTeam/FreeTakServer/issues/127) 同樣朝記錄流量方向。\n\n**結論分工**：記錄=事件流（已在錄）／播放=虛擬時鐘等速折疊（前端 B）／seek 加速=記憶體 keyframe（量測證明慢才加、不落盤）。\n\n## 安全 / scope（沿 row 規格）\n\n- `COMMAND_ROLES` + `resolve_scope()` 跨演習存取守門（P1-14 三態；歷史場限指揮層）——時間軸含 PII（通聯內容、audit），不得 observer 任意場拉取。\n- `snapshot_repo` 與本項無關（issue #98 已釐清那是 unit-KPI 聚合、非 per-entity 時間軸），不碰。\n\n## DoD\n\n- [ ] `services/timeline_service.py`（純讀聚合：四源查詢 → 統一 shape → 合併排序）\n- [ ] `GET /api/exercises/{id}/timeline`（`?from=&to=` + 筆數上限 + metadata）\n- [ ] role_enum：沿用既有 `/api/exercises/` → COMMAND_ROLES gate（確認覆蓋）\n- [ ] 測試：四源合併排序正確／type-actor-payload shape／跨場 scope 擋（404）／時間窗過濾／空場\n- [ ] `/code-review` + `/security-review`\n- [ ] ROADMAP P2-20 row 註記（(A) 完成、(B) 延後 + 證據）\n\n## 邊界\n\n- **不做**：前端 AAR 頁面（= P2-20(B)，動 map.js → 等 P2-33/part-3 session 退場）、定時落盤快照、位置內插、`?at=` 狀態重建端點（需要時另開）。\n- 零碰三個活躍 session 領地（map/events/cop/tak router）。\n",
+    "closedAt": null,
+    "comments": [],
+    "createdAt": "2026-06-10T16:26:38Z",
+    "labels": [],
+    "milestone": null,
+    "number": 199,
+    "state": "OPEN",
+    "title": "P2-20(A): AAR 後端統一時間軸 API — 事件流設計定案 + 業界調查",
+    "updatedAt": "2026-06-10T16:26:38Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/199"
   }
 ]
