@@ -521,7 +521,8 @@ describe('copEntityToEventZone adapter（PR-G1b cutover）', () => {
       lat: 24.8,
       lon: 121.0,
       callsign: '疑似爆裂物',
-      attributes: { kind: 'event', event_id: 'ev-123', event_code: 'EV-0529-001', event_group: 'security' },
+      event_id: 'ev-123',  // P2-33b：頂層（junction 權威），不再讀 attributes.event_id
+      attributes: { kind: 'event', event_code: 'EV-0529-001', event_group: 'security' },
     };
     const z = copEntityToEventZone(ent);
     expect(z.id).toBe('manual:e1');       // cop uid → zone.id（刪除/回查用）
@@ -537,16 +538,24 @@ describe('copEntityToEventZone adapter（PR-G1b cutover）', () => {
   test('back-compat：舊 entity 用 node_type 存 group → 仍還原成 event_group', () => {
     const z = copEntityToEventZone({
       uid: 'manual:e2', lat: 24.8, lon: 121.0, callsign: '受困救援',
-      attributes: { kind: 'event', event_id: 'ev-9', node_type: 'rescue' },  // 舊欄位
+      event_id: 'ev-9',  // P2-33b：頂層
+      attributes: { kind: 'event', node_type: 'rescue' },  // 舊欄位
     });
     expect(z.event_group).toBe('rescue');
+  });
+
+  test('P2-33b：event_id 只在 attributes（glue）不在頂層 → 回 null（junction 為唯一源）', () => {
+    expect(copEntityToEventZone({
+      uid: 'manual:e3', lat: 24.8, lon: 121.0, callsign: 'x',
+      attributes: { kind: 'event', event_id: 'glue-only' },  // 舊 glue、無頂層 → 不認
+    })).toBeNull();
   });
 
   test('非 event kind / 缺 event_id / null → 回 null', () => {
     expect(copEntityToEventZone(null)).toBeNull();
     expect(copEntityToEventZone({ uid: 'x', lat: 1, lon: 2, attributes: { kind: 'route', vertices: [] } })).toBeNull();
     expect(copEntityToEventZone({ uid: 'x', lat: 1, lon: 2, attributes: { kind: 'event' } })).toBeNull(); // 缺 event_id
-    expect(copEntityToEventZone({ uid: 'x', attributes: { kind: 'event', event_id: 'e' } })).toBeNull(); // 缺座標
+    expect(copEntityToEventZone({ uid: 'x', event_id: 'e', attributes: { kind: 'event' } })).toBeNull(); // 缺座標
   });
 });
 

@@ -647,7 +647,8 @@ export function copEntityToPolygon(entity) {
  *   - uid              → id（cop 主鍵；刪除 / 回查用）
  *   - lat / lon        → lat / lng（注意：cop 用 lon，zone 用 lng）
  *   - callsign         → label（事件類型中文名）
- *   - attributes.{event_id, event_code} → 同名（event_id 是與 events 表的連結）
+ *   - event_id（**頂層**，P2-33b：來源 = `event_markers` junction 權威，非 attributes glue）
+ *   - attributes.event_code → event_code（event_id 是與 events 表的連結）
  *   - attributes.event_group（或 back-compat 舊 node_type）→ event_group（事件類別，解撞名 #66 PR-B）
  *   - icon 固定 'event'
  *
@@ -656,7 +657,8 @@ export function copEntityToPolygon(entity) {
 export function copEntityToEventZone(entity) {
   if (entity == null) return null;
   const attrs = entity.attributes || {};
-  if (attrs.kind !== 'event' || !attrs.event_id) return null;
+  // P2-33b：event_id 改吃**頂層**（junction 權威），不再讀 attributes.event_id glue。
+  if (attrs.kind !== 'event' || !entity.event_id) return null;
   const lat = Number(entity.lat);
   const lng = Number(entity.lon);
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
@@ -669,7 +671,7 @@ export function copEntityToEventZone(entity) {
     // back-compat：舊 cop entity attributes 用 node_type 存 group → fallback 讀回。
     event_group: attrs.event_group ?? attrs.node_type ?? 'ops',
     icon: 'event',
-    event_id: attrs.event_id,
+    event_id: entity.event_id,
     event_code: attrs.event_code ?? null,
   };
 }
