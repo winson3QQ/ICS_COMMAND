@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>AAR 回放 — ICS 指揮部</title>
+<!-- P2-20(B) B1（issue #201）：獨立回放頁。CSP enforce script-src 'self' → JS 全外部模組檔。 -->
+<link rel="stylesheet" href="/static/lib/maplibre-gl.css">
+<link rel="stylesheet" href="/static/css/ds-tokens.css">
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg, #0d1117); color: var(--text, #e6edf3);
+    font-family: 'JetBrains Mono', ui-monospace, monospace; }
+  /* layout：header + 主區（地圖 60% / 面板 40%，row 規格） */
+  #aar-root { display: flex; flex-direction: column; height: 100%; }
+  header { display: flex; align-items: center; gap: 12px; padding: 8px 12px;
+    border-bottom: 1px solid var(--border, #30363d); flex: 0 0 auto; }
+  header a.back { color: var(--yellow, #e3b341); text-decoration: none; font-weight: 700;
+    min-height: 44px; display: inline-flex; align-items: center; padding: 0 8px; } /* 觸控 ≥44px（P1-18） */
+  #aar-title { font-size: 15px; font-weight: 700; }
+  #aar-truncated { display: none; color: var(--yellow, #e3b341); font-size: 12px; }
+  #aar-body { display: flex; flex: 1 1 auto; min-height: 0; }
+  #aar-map { flex: 0 0 60%; min-width: 0; }
+  #aar-panel { flex: 1 1 40%; display: flex; flex-direction: column; min-width: 0;
+    border-left: 1px solid var(--border, #30363d); }
+  #aar-status { padding: 6px 10px; font-size: 12px; color: var(--text2, #8b949e);
+    border-bottom: 1px solid var(--border, #30363d); flex: 0 0 auto; }
+  #aar-steps { list-style: none; margin: 0; padding: 0; overflow-y: auto; flex: 1 1 auto; }
+  .aar-step { display: flex; gap: 8px; align-items: baseline; padding: 8px 10px;
+    border-bottom: 1px solid rgba(48,54,61,.5); cursor: pointer; min-height: 44px; font-size: 12px; }
+  .aar-step:hover { background: rgba(56,139,253,.08); }
+  .aar-step.active { background: rgba(56,139,253,.18); border-left: 3px solid #58a6ff; }
+  .aar-t { color: var(--text2, #8b949e); flex: 0 0 auto; }
+  .aar-tag { flex: 0 0 auto; font-size: 10px; padding: 1px 6px; border-radius: 8px;
+    background: rgba(139,148,158,.15); color: var(--text2, #8b949e); }
+  .t-event .aar-tag { background: rgba(248,81,73,.18); color: #f85149; }
+  .t-decision .aar-tag, .t-command .aar-tag { background: rgba(227,179,65,.18); color: var(--yellow, #e3b341); }
+  .t-chat .aar-tag { background: rgba(63,185,80,.15); color: #3fb950; }
+  .aar-sum { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .aar-msg { padding: 16px 12px; color: var(--text2, #8b949e); font-size: 13px; }
+  .aar-step a { color: var(--text, #e6edf3); text-decoration: none; display: block; width: 100%;
+    min-height: 44px; display: flex; align-items: center; }
+  /* 窄螢幕（iPad 直立以下）：上下疊（地圖上 55% / 面板下） */
+  @media (max-width: 900px) {
+    #aar-body { flex-direction: column; }
+    #aar-map { flex: 0 0 55%; }
+    #aar-panel { border-left: none; border-top: 1px solid var(--border, #30363d); }
+  }
+</style>
+</head>
+<body>
+<div id="aar-root">
+  <header>
+    <a class="back" href="/static/commander_dashboard.html">← 返回指揮台</a>
+    <span id="aar-title">AAR 回放</span>
+    <span id="aar-truncated">⚠ 資料量超過上限已截斷——請以較窄時間窗查詢</span>
+  </header>
+  <div id="aar-body">
+    <div id="aar-map"></div>
+    <div id="aar-panel">
+      <div id="aar-status">初始化…</div>
+      <ul id="aar-steps"></ul>
+    </div>
+  </div>
+</div>
+<script src="/static/lib/maplibre-gl.js"></script>
+<script src="/static/lib/pmtiles.js"></script>
+<script type="module" src="/static/js/aar/aar_main.js"></script>
+</body>
+</html>

@@ -1,0 +1,81 @@
+// aar_replay_engine.test.js — P2-20(B) B1（#201）回放核心純函式
+import { describe, expect, test } from 'vitest';
+
+import {
+  buildReplayIndex, foldPositionsAt, positionsToGeoJSON, stepSummary, fmtClock,
+} from '../../static/js/aar/replay_engine.js';
+
+const tk = (uid, t, lat, lon, actor = uid) => ({
+  type: 'track', t, actor, payload: { uid, lat, lon, heading_deg: null, speed_mps: null },
+});
+
+const ITEMS = [
+  { type: 'chat', t: '2026-01-01T01:00:00Z', actor: 'ALPHA', payload: { group: 'ops', message: '到位' } },
+  tk('u1', '2026-01-01T02:00:00Z', 24.0, 120.0, 'ALPHA'),
+  tk('u1', '2026-01-01T03:00:00Z', 24.1, 120.1, 'ALPHA'),
+  tk('u2', '2026-01-01T03:30:00Z', 25.0, 121.0, 'BRAVO'),
+  { type: 'event', t: '2026-01-01T04:00:00Z', actor: 'shelter',
+    payload: { event_code: 'EV-0101-001', event_type: 'fire', severity: 'critical', description: 'x' } },
+];
+
+describe('buildReplayIndex', () => {
+  test('steps 全收且按 t 排序；trackIdx 只含 track', () => {
+    const shuffled = [ITEMS[4], ITEMS[1], ITEMS[0], ITEMS[3], ITEMS[2]];
+    const { steps, trackIdx } = buildReplayIndex(shuffled);
+    expect(steps.map(s => s.t)).toEqual(ITEMS.map(s => s.t)); // 防禦排序
+    expect(trackIdx).toHaveLength(3);
+    expect(trackIdx.every(it => it.type === 'track')).toBe(true);
+  });
+
+  test('空 / undefined 容忍', () => {
+    expect(buildReplayIndex([]).steps).toEqual([]);
+    expect(buildReplayIndex(undefined).steps).toEqual([]);
+  });
+});
+
+describe('foldPositionsAt', () => {
+  const { trackIdx } = buildReplayIndex(ITEMS);
+
+  test('每 uid 取 ≤T 最後一筆（u1 在 T=02:30 停在 02:00 的點）', () => {
+    const pos = foldPositionsAt(trackIdx, '2026-01-01T02:30:00Z');
+    expect(pos.size).toBe(1);
+    expect(pos.get('u1').lat).toBe(24.0);
+  });
+
+  test('T 推進 → u1 更新到 03:00、u2 於 03:30 出現', () => {
+    const pos = foldPositionsAt(trackIdx, '2026-01-01T03:30:00Z');
+    expect(pos.get('u1').lat).toBe(24.1);
+    expect(pos.get('u2').actor).toBe('BRAVO');
+  });
+
+  test('T 早於全部 → 空（單位尚未回報，不畫）', () => {
+    expect(foldPositionsAt(trackIdx, '2026-01-01T00:00:00Z').size).toBe(0);
+  });
+});
+
+describe('positionsToGeoJSON', () => {
+  test('Map → FeatureCollection（lon,lat 順序、callsign 屬性）', () => {
+    const pos = foldPositionsAt(buildReplayIndex(ITEMS).trackIdx, '2026-01-01T09:00:00Z');
+    const gj = positionsToGeoJSON(pos);
+    expect(gj.type).toBe('FeatureCollection');
+    expect(gj.features).toHaveLength(2);
+    const u1 = gj.features.find(f => f.properties.uid === 'u1');
+    expect(u1.geometry.coordinates).toEqual([120.1, 24.1]); // [lon, lat]
+    expect(u1.properties.callsign).toBe('ALPHA');
+  });
+});
+
+describe('stepSummary / fmtClock', () => {
+  test('各 type 摘要不炸、含關鍵欄位', () => {
+    expect(stepSummary(ITEMS[0])).toContain('到位');
+    expect(stepSummary(ITEMS[4])).toContain('EV-0101-001');
+    expect(stepSummary({ type: 'decision', actor: 'cmd', payload: { action: 'decision_made', detail: { action: 'approved' } } }))
+      .toContain('approved');
+    expect(stepSummary({ type: 'unknown', actor: 'x', payload: {} })).toBe('x');
+  });
+
+  test('fmtClock 非法值原樣回、合法值出 HH:MM:SS', () => {
+    expect(fmtClock('not-a-date')).toBe('not-a-date');
+    expect(fmtClock('2026-01-01T03:00:00Z')).toMatch(/^\d{2}:\d{2}:\d{2}$/);
+  });
+});
