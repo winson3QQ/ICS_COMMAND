@@ -12,6 +12,7 @@ handle**（單一真相），否則 toggle 停的是另一個 task、lifespan �
 """
 
 import asyncio
+import sqlite3
 from contextlib import suppress
 
 import structlog
@@ -32,8 +33,15 @@ def is_running() -> bool:
 
 
 def persisted_enabled() -> bool | None:
-    """config 表的持久選擇；未設 → None（代表回退 env 預設）。"""
-    raw = config_repo.get_config(_CONFIG_KEY)
+    """config 表的持久選擇；未設 → None（代表回退 env 預設）。
+
+    防禦：`config` 表不存在 / 暫時鎖（如純單元測試直呼 `tak_status()` 未建 DB、或 DB 忙）
+    → 視同未設、回退 env。**唯讀的狀態查詢不該因 DB 小瑕疵而 500**（set_* 寫入不在此例，
+    仍會 surface 錯誤）。"""
+    try:
+        raw = config_repo.get_config(_CONFIG_KEY)
+    except sqlite3.OperationalError:
+        return None
     if raw is None:
         return None
     return raw.strip().lower() == "true"
