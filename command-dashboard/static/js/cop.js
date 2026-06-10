@@ -544,7 +544,6 @@ export function initCop() {
     doPoll: poll,
     appConfirm,
     findZoneByEventId,
-    showEventProcessModal: _showEventProcessModalWrapper,
     renderZoneC,
   });
   initMap({
@@ -576,11 +575,12 @@ export function initCop() {
 }
 
 /**
- * 包裝函式：cop.js 協調 showEventProcessModal（events.js 匯出）
- * 此包裝讓 map.js 的 onOpenEventModal CustomEvent 也能走同一路徑
+ * 包裝函式：注入給 map.js initMap 的 _deps.showEventProcessModal。
+ * map.js 點圖釘 → 此 wrapper dispatch CustomEvent → events.js 的 listener 接手，
+ * 呼叫 events.js 模組自身的 showEventProcessModal（解耦，模組不互相 import）。
+ * ⚠️ 不可把本 wrapper 注入 initEvents 的 showEventProcessModal 參數 ——
+ *    會讓 events.js listener 回呼 wrapper 形成無限遞迴。
  */
 function _showEventProcessModalWrapper(zone) {
-  // events.js 的 showEventProcessModal 透過 initEvents 注入
-  // 此處透過 CustomEvent 觸發，保持模組解耦
   document.dispatchEvent(new CustomEvent('events:showProcessModal', { detail: { zone } }));
 }

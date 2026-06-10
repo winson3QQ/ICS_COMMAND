@@ -286,13 +286,12 @@ let _openModal            = null;  // (title, body, footer?) => void
 let _doPoll               = null;  // async () => void
 let _appConfirm           = null;  // (title, msg) => Promise<bool>
 let _findZoneByEventId    = null;  // (id) => zone | null
-let _showEventProcessModal_ext = null; // (zone) => void（外部 cop.js 呼叫）
 let _renderZoneC_ext      = null;  // (d) => void
 
 export function initEvents({
   getData, getCurrentOperator, closeModal, openModal,
   doPoll, appConfirm, findZoneByEventId,
-  showEventProcessModal, renderZoneC,
+  renderZoneC,
 }) {
   _getData             = getData;
   _getCurrentOperator  = getCurrentOperator;
@@ -301,10 +300,11 @@ export function initEvents({
   _doPoll              = doPoll;
   _appConfirm          = appConfirm;
   _findZoneByEventId   = findZoneByEventId;
-  _showEventProcessModal_ext = showEventProcessModal;
   _renderZoneC_ext     = renderZoneC;
 
-  // 監聽 cop.js 傳來的 show process modal 事件
+  // 監聽 cop.js（map.js _deps.showEventProcessModal = wrapper）dispatch 的事件。
+  // ⚠️ 這裡必須呼叫本模組 hoisted 的 showEventProcessModal（line 545），
+  //    不可注入 wrapper 當參數 —— 否則 wrapper→dispatch→此 listener→wrapper 無限遞迴。
   document.addEventListener('events:showProcessModal', (e) => {
     const { zone } = e.detail || {};
     if (zone) showEventProcessModal(zone);
