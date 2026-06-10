@@ -6,7 +6,7 @@ import uuid
 import structlog
 from core.database import get_conn
 
-from ._helpers import NULL_SCOPE, add_minutes, audit, now_utc, row_to_dict
+from ._helpers import NULL_SCOPE, add_minutes, audit, iso_utc, now_utc, row_to_dict
 
 _log = structlog.get_logger()
 
@@ -17,7 +17,9 @@ def create_event(data: dict, exercise_id: int | None = None) -> dict:
     severity = data.get("severity", "info")
 
     deadline_min      = {"critical": 10, "warning": 30, "info": 60}.get(severity, 60)
-    occurred          = data.get("occurred_at") or now
+    # P2-20(A) #199 review：occurred_at 正規化為 UTC Z 再入庫——timeline / 查詢以字串序比較時間，
+    # offset ISO（+08:00）混 Z 會排錯序、時間窗漏抓（前端送 Z，但 API client / TTX inject 不保證）。
+    occurred          = iso_utc(data.get("occurred_at")) or now
     response_deadline = add_minutes(occurred, deadline_min)
 
     mmdd   = now[5:7] + now[8:10]
