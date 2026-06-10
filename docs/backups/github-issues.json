@@ -2515,5 +2515,45 @@
     "title": "P2-33a: 事件導航鏈唯讀 UI（消費 GET /events/{id}/chain，#183 價值兌現）",
     "updatedAt": "2026-06-10T08:27:11Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/191"
+  },
+  {
+    "assignees": [],
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "body": "P2-30 part 3 dogfood 浮出：點 ICS 地圖上的 contact 標記，detail 顯示應與 iTAK 點同一標記時一致。\n\n背景：part 3 已讓 ICS 廣播的 CoT remarks 帶 `source: ICS`（#192），iTAK 點開可辨來源。反向缺口 = ICS 端 detail modal 與 iTAK marker tap 的欄位/行為不一致。\n\n工作：\n- ICS contact detail modal 對齊 iTAK marker tap 的顯示（type/2525 標示、callsign、remark 含 source、座標 MGRS/經緯、affiliation）。\n- 確認雙向顯示一致（同一顆標記在 ICS 與 iTAK 看到的核心資訊相同）。\n\n來源：#180 part 3 dogfood（#192）。屬 P2-12 TAK UI 面板統一範疇。",
+    "closedAt": null,
+    "comments": [],
+    "createdAt": "2026-06-10T08:46:49Z",
+    "labels": [],
+    "milestone": null,
+    "number": 193,
+    "state": "OPEN",
+    "title": "ICS 標記詳情與 iTAK 對齊（點標記顯示一致 + source: ICS）",
+    "updatedAt": "2026-06-10T08:46:49Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/193"
+  },
+  {
+    "assignees": [],
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "body": "P2-30 part 3 dogfood 浮出：iTAK 送的標記（source=tak，如 3QQ）在 ICS 重連 / DB 清空後**不重新顯示**——streaming 不重播既有靜態標記。\n\n實證（#192 期間）：TAK server `<repository>` 持久化一切、`<latestSA>` 只對**新連線**補發；ICS 既有連線 reconnect 不補既有標記 → COP 漏標記。\n\n工作（= P2-14 核心，#173 衍生）：\n- Marti 權威 resync：`GET /Marti/api/cot/sa`（或 `/cot/search`）拉現有 SA → ingest 進 cop_entities，補 streaming 漏掉的既有標記。\n- cert 沿用 `tak-server-marti-cert-not-oauth`（:8443 mTLS，與 part 3 實驗用同一張）。\n\n依賴/關聯：P2-14（Mission/DataSync）、#173（reconnect 漏靜態標記）。memory `tak-streaming-archive-stale-vs-mission`、strategy §4b。",
+    "closedAt": null,
+    "comments": [],
+    "createdAt": "2026-06-10T08:46:50Z",
+    "labels": [],
+    "milestone": null,
+    "number": 194,
+    "state": "OPEN",
+    "title": "Marti 權威 resync：ICS 顯示漏掉的 iTAK streaming 標記（P2-14）",
+    "updatedAt": "2026-06-10T08:46:50Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/194"
   }
 ]
