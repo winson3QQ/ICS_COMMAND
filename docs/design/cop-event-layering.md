@@ -212,6 +212,8 @@ chats(報/通聯)  →  events(事)  →  decisions(決)  →  下行 tasking(�
 
 ## 事件 vs 標記的梳理（核心，使用者 2026-06-09 提）
 
+> **操作流 / 呈現設計 / founding-why 細節（2026-06-10 深化）→ [`cop-marker-event-decoupling.md`](cop-marker-event-decoupling.md)**（降級定義、triage 三態、N:1 多選聚合、長按關聯網、即時全貌視圖、兩 type 軸）。本節為摘要。
+
 - **現狀**：建 event 時前端配一個 `cop_entity`（`attributes.kind='event'` + `event_id`），**JSON 名義綁定、無 FK、只能 1:1** —— 把「感知標記」與「工作流事件」黏在一起。
 - **模型**：
   - **感知標記 = 一等公民**（感知層，可共享 #2）。
