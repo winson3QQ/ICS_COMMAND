@@ -20,7 +20,6 @@ from auth.first_run_gate import first_run_gate_middleware
 from auth.middleware import auth_middleware
 from auth.rate_limit import auth_rate_limit_middleware
 from auth.service import cleanup_expired_sessions
-from core import config
 from core.config import ALLOWED_ORIGINS, APP_VERSION, STATIC_DIR
 from core.database import init_db
 from core.logging import correlation_middleware, init_logging
@@ -55,46 +54,6 @@ log = logging.getLogger(__name__)
 _SESSION_CLEANUP_INTERVAL = 300  # 秒：週期清理閒置/逾時 session 的間隔
 
 
-async def _start_tak_subscriber() -> tuple[asyncio.Task, asyncio.Event] | None:
-    """P2-03（#107）：若 TAK_ENABLED，啟動 :8089 CoT 訂閱背景 task。
-
-    TAK 是選配的外部 COP 來源 —— config 缺/錯只 log，**不擋 app 開機**（不讓 TAK 拖垮指揮部）。
-    回傳 (task, stop_event) 供 shutdown 收尾；未啟動回 None。
-    """
-    if not config.TAK_ENABLED:
-        return None
-    # **任何**失敗（config ValueError / import / create_task / 其他）都只 log 不擋 app 開機
-    # —— TAK 是選配外部來源，不該拖垮指揮部（code-review #107）。
-    try:
-        from services import tak_service
-
-        cfg = tak_service.build_subscribe_config(
-            cot_url=config.TAK_COT_URL,
-            client_cert=config.TAK_CLIENT_CERT,
-            client_key=config.TAK_CLIENT_KEY,
-            cafile=config.TAK_CAFILE,
-            allow_insecure_tls=config.TAK_ALLOW_INSECURE_TLS,
-        )
-        stop_event = asyncio.Event()
-        task = asyncio.create_task(tak_service.subscribe(cfg, stop_event=stop_event))
-    except Exception:  # noqa: BLE001 — 保證 TAK 啟動失敗永不擋 app 開機
-        log.warning("[tak] CoT 訂閱啟動失敗（config/import/task），app 照常開機", exc_info=True)
-        return None
-    log.info("[tak] CoT 訂閱背景 task 啟動：%s", config.TAK_COT_URL)
-    return task, stop_event
-
-
-async def _stop_tak_subscriber(handle: tuple[asyncio.Task, asyncio.Event] | None) -> None:
-    """graceful shutdown：軟停 + cancel + await 回收（避免 pending task 殘留警告）。"""
-    if handle is None:
-        return
-    task, stop_event = handle
-    stop_event.set()  # 軟停：停止重連
-    task.cancel()  # 硬停：中斷可能正卡在 readcot 的 await
-    with suppress(asyncio.CancelledError):
-        await task
-
-
 async def _periodic_session_cleanup():
     """#93(b)：週期清理 abandoned（關頁/切帳號 → token 不再被用）的逾時 session。
     cleanup_expired_sessions 內含 audit（逾時登出留痕），故 abandoned 登出 ~閒置逾時內即記，
@@ -125,15 +84,19 @@ async def lifespan(app: FastAPI):
     event_taxonomy_store.ensure()
     # #93(b)：啟動週期 session 清理任務（abandoned 逾時登出及時 audit）
     _cleanup_task = asyncio.create_task(_periodic_session_cleanup())
-    # P2-03（#107）：若 TAK_ENABLED，啟動 :8089 CoT 訂閱背景 task（CoT → ingest → COP）
-    _tak_handle = await _start_tak_subscriber()
+    # P2-03（#107）：啟動 :8089 CoT 訂閱背景 task（CoT → ingest → COP）。
+    # P2-24（#164）：啟停改由 tak_runtime 控制器管（單一 handle，與 runtime toggle 共用）；
+    # 開機依 effective_enabled()（持久選擇優先、回退 TAK_ENABLED env）決定是否起。
+    from services import tak_runtime
+
+    await tak_runtime.start_if_enabled()
     yield
     # shutdown：停週期清理 + 停 TAK 訂閱 + 關閉所有 COP WS 連線（issue #29 PR-D in-process hub）
     # cancel 後 await 回收任務（否則 task 仍 pending → asyncio「Task was destroyed」警告 / 殘留）。
     _cleanup_task.cancel()
     with suppress(asyncio.CancelledError):
         await _cleanup_task
-    await _stop_tak_subscriber(_tak_handle)
+    await tak_runtime.stop()
     from services.realtime_hub import cop_hub
 
     await cop_hub.close_all()
