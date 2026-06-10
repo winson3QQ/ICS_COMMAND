@@ -127,6 +127,54 @@ ICS 是**多源 COP 的匯流 + 指揮中樞**：各路「感知標記」匯成�
 | `:443`（prod）**nginx server cert** | 部署者佈署（**repo 未綁定**來源） | step-ca 或公開 CA（依場景） | **nginx** 對瀏覽器出示 | 瀏覽器系統信任庫；內網則裝 step-ca root |
 | `:8765`/`8775` **relay TLS**（選配）+ **HMAC** | `CERT_PATH/KEY_PATH`（部署者）、同目錄 `rootCA.pem` | step-ca（同 PKI） | **relay** 出示 TLS；app 層另以 **HMAC 共享密鑰**逐筆簽 | client 用 `CA_CERT` 驗 TLS；HMAC 驗訊息完整性（非本 repo COP） |
 
+#### 憑證鏈全圖（cert chain，傳輸層）
+
+> 上表逐埠列「誰出示」，本圖補「**整棵樹**」：step-ca 一根長到每張 leaf。`[srv]`＝server cert（被連方出示）、`[cli]`＝client cert（主動連方出示）。SoT＝`deploy/step-ca/` + `deploy/tak-server/pki/issue-tak-certs.sh`。
+
+```
+step-ca（standalone CA，deploy/step-ca/，金鑰在 ~/.step/）
+└─ root_ca.crt ───────────────────────── 信任根（長效、離線；裝進各 truststore / TAK_CAFILE）
+   └─ intermediate_ca.crt ── 實際簽發層（所有 leaf 由它簽；client fullchain 補的就是它）
+      provisioner：admin@ics.local（JWK，手動/腳本簽）｜ acme（ACME，Pi/Command 自動申領）
+      │
+      ├─[srv] CN=<TAK_HOSTNAME> RSA2048 +SAN → takserver.jks ── TAK 對 :8089/:8443/:8446 出示
+      │         （RSA 非 EC：api jwkSource 寫死 RSAPublicKey，給 EC 會 8443 不綁 #101）
+      ├─[cli] cop-subscriber    (fullchain) → command server ── :8089 訂閱入向 + send_cot 下行（共用）
+      ├─[cli] ics-mission-read  (fullchain) → command server ── :8443 Marti 讀
+      ├─[cli] ics-mission-write (fullchain) → command server ── :8443 Marti 寫（cert 給身分，role 另管）
+      ├─[srv] nginx / dashboard cert        → :443 對瀏覽器出示（場景擇 step-ca 或公開 CA，repo 未綁定）
+      └─[srv] relay cert                    → :8765 relay 出示（選配，非本 repo COP）
+
+  truststore（驗對端用，內容皆 = root + intermediate）：
+    · truststore-root.jks → TAK 驗 client/peer        · fed-truststore.jks → federation peer
+    · TAK_CAFILE = root_ca.crt → command server 驗 TAK server 憑證
+    ※ client 一律送 fullchain：truststore 只有 root，缺 intermediate → peer not verified（#106/#170）
+
+  效期：step-ca 預設 24h（dev 夠用，renew-cert.sh 快速）；prod 須改 2160h(90d)
+        （~/.step/config/ca.json 的 provisioner.claims，C3-B install.sh patch）。
+        client cert 效期 = TAK_CLIENT_CERT_DURATION（預設 2160h）。
+```
+
+#### 金鑰鏈全圖（key chain，靜態層；**非傳輸**）
+
+> **SoT = [`docs/roadmap/p1-key-management.md`](../roadmap/p1-key-management.md)（P1-12）**，此處只放全圖 + 與憑證鏈的邊界，細節不複製（避免雙 SoT 漂移）。
+
+```
+FIDO2 token（CTAP2 hmac-secret extension；enroll N 把：主 / 備援 / 災後）
+   │ service start：PIN + touch（單一 unlock，所有 key 一次推出）
+   ▼
+master key（32 bytes，僅 process memory；落盤＝/etc/ics/master-key.enc，hmac-secret-wrapped）
+   │ HKDF-SHA256，label-based derive
+   ├─ child[0] "backup-v1" → Fernet key    → backup_db.py（data/ 備份加密）
+   ├─ child[1] "db-v1"     → SQLCipher key  → live DB at-rest 加密
+   └─ child[2..]（未來）    → audit log signing / session token 簽章
+   rescue：master key BIP-39 助記詞紙本（可手動 reenroll）
+```
+
+> **兩鏈邊界（紅線）**：① **憑證鏈**（step-ca，上）＝**傳輸層**身分 / mTLS，管「誰能連、連線會不會被竊聽」；
+> ② **金鑰鏈**（FIDO2 / HKDF，本圖）＝**靜態層**機密，管「磁碟上的 DB / 備份有沒有加密」。
+> 兩者**不交叉**：傳輸憑證私鑰不拿去加密 DB，HKDF child key 也不當 TLS 私鑰。唯一未來交點＝`child[2..]` 的 audit / session 簽章（仍與 mTLS 無關）。
+
 > **三個層界要記住**：① **L2（cop_service）= 接縫**，transport 與語意在此分離、所有 doctrine 在此蓋章；
 > ② **L3↔L4 = 感知層/事故層分水嶺，也是 TAK 能力天花板**——L3 以下（含軌跡、變更稽核）TAK 都會，L4 起（severity/狀態/結案/跨源聚合）TAK 結構上沒有，是「Incident **Command**」的字面本體；
 > ③ **L4「不外流」= 安全邊界**，出向只有 L3 感知標記（雙向）與 L4 衍生的下行 tasking（P2-13）兩個閘。
