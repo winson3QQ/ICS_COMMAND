@@ -63,6 +63,118 @@ ICS 是**多源 COP 的匯流 + 指揮中樞**：各路「感知標記」匯成�
 | **L4 事故層** | event(severity/狀態/結案)+decision+tasking、問責、**不外流** | **ICS 獨有**（TAK 無此模型）| `events` · `decisions` · `chats` 三表 + 下行 tasking |
 | **L5 指揮層** | 整理成支持決策的資訊、角色視圖、告警 | ICS | dashboard chrome、map filter、DCI、status-lamp；主動告警後端 |
 
+### 每層實體網路對應（port / protocol）
+
+> 把上表每層落到**實體網路**：跑哪個 port、走哪個 protocol（值以 code 為準，2026-06-10 核）。
+> 三點先記：① **TAK 三埠是對接外部 TAK Server**，非 ICS 自身監聽；ICS 自己只開 FastAPI 一埠 + Node relay。
+> ② **L2 無網路埠**——同進程 Python 呼叫，是 transport↔語意的分離面，不過 socket。
+> ③ **Prod 由 nginx 反代終結 TLS**（對外 `:443` + HSTS），`:8000` 是 dev 直跑埠；憑證體系 = step-ca（mTLS）。
+
+| 層 | port | protocol | 通道 / 備註 |
+|---|---|---|---|
+| **L0 節點** | —（節點側，非本機監聽） | CoT · 語音RF · WS | TAK client→CoT；無線電(人)→**RF 語音、無 IP**（頻外，靠幕僚手動上車 `manual`）；WaveInk→RF 足跡(未來)；Pi-node/PWA→WS |
+| **L1 傳輸** | 外部 TAK `:8089` · `:8443` · `:9000`(/`:8444`)；ICS FastAPI `:8000`；Node relay `:8765`(prod `8775`) + admin `:8766`(prod `8776`) | `:8089` **TLS/TCP**(TAK Protocol v0 CoT-XML / v1 protobuf，mTLS) · `:8443` **HTTPS**(Marti REST `/Marti/api`，mTLS) · `:9000` **TLS**(federation transport) · `:8000` **HTTP**(dev；prod→nginx TLS) · relay **WS/WSS**(HMAC 簽章) | pytak `readuntil(b"</event>")` 處理 TCP 分幀、`use_protobuf` 自動 v0/v1；憑證 step-ca |
+| **L2 接縫** | **— in-process** | —（同進程函式呼叫，無 socket） | `cop_service.normalize_cot` + `ingest_cot_event`；所有 doctrine 在此蓋章 |
+| **L3 感知層** | REST `/api/cop/*`、WS `/api/cop/ws/updates`（同 `:8000`／prod `:443`）；出向 → TAK `:8089` | **HTTP(S)** · **WS/WSS**(token 走 `Sec-WebSocket-Protocol`，不進 URL) · 出向 **CoT/TLS**(`send_cot`) | 雙向：入＝串流/REST POST，出＝per-entity 閘 send_cot（P2-13/30） |
+| **L4 事故層** | REST `/api/events`·`/api/decisions`·`/api/chats`（同 `:8000`／prod `:443`） | **HTTP(S)** | **對外無獨立 port**；不外流，出向只借 L3 兩閘（感知標記 + 衍生 tasking） |
+| **L5 指揮層** | 瀏覽器 ↔ FastAPI `:443`(nginx；dev `:8000`) | **HTTPS** · **WS/WSS**(同源) | dashboard 靜態 + 即時推皆復用 L3 的 WS；無自有對外埠 |
+
+#### 元件視角（actor × 連線方向）
+
+> 上表按「層」切；本表把同一條鏈按「**元件**」拆——誰監聽（listen）、誰主動連出（egress）、走什麼。先釐清三件易混的事：
+> ① 本 repo 的 **command server** 可跑 Mac（`start_mac.sh`）或 **Pi**（`start_pi.sh`，headless、bind `0.0.0.0` 給區網平板）——**Pi 上跑的就是同一支 command server（FastAPI :8000），不是另一種 server**。
+> ② **TAK server 是外部基礎設施**（`deploy/tak-server/`），ICS 對它是 client，三埠都是「往外連」非自身監聽。
+> ③ `server/` Node relay 服務的 shelter / medical **PWA 不在本 repo COP 範圍**（CLAUDE.md），僅作 L0 邊緣節點的背景列出。
+
+| 元件 | 角色（層） | 監聽 listen | 主動連出 egress | protocol |
+|---|---|---|---|---|
+| **TAK client**（ATAK/iTAK/WinTAK） | L0 邊緣：感測+顯示+收 COP | —（純 client） | TAK server `:8089`（`connectString0=<host>:8089:ssl`）；憑證註冊 `:8446` / web `:8443` | CoT over **TLS**（mTLS，v0 XML / v1 protobuf）；`u-d-*`、GeoChat `b-t-f`、`_medevac_` |
+| **TAK server**（外部基礎設施） | CoT 匯流 + Mission 持久 + federation | `:8089`（CoT TLS streaming）、`:8443`（web/Marti REST HTTPS）、`:8446`（cert enroll，clientAuth=false）、`:8444`/`:9000`（federation，選配） | federation peer `:9000` / `:8444` | **TLS** / **HTTPS**；憑證 step-ca |
+| **Command server**（ICS 指揮部 FastAPI；Mac 或 **Pi**） | L1–L5 主體：接入·正規化·COP·事故·指揮 | `:8000`（HTTP；Pi bind `0.0.0.0`；prod 由 nginx → `:443` TLS+HSTS） | **入向訂閱** TAK `:8089`（mTLS 串流）、**主動查** TAK Marti `:8443`（mTLS）、**出向下行** `send_cot` → TAK `:8089`（mTLS，**非 Marti**，複用訂閱 cert） | 自身 **HTTP(S)**；對 TAK **TLS/HTTPS**（mTLS） |
+| **Frontend**（commander dashboard，瀏覽器） | L5 呈現 + L3 即時態勢 | —（純 browser） | command server `:443`（dev `:8000`）：靜態 + REST `/api/*` + WS `/api/cop/ws/updates` | **HTTPS** + **WS/WSS**（token 走 `Sec-WebSocket-Protocol`，不進 URL） |
+| _(Pi-node / Node relay；上游 PWA 邊緣，**非本 repo COP**)_ | L0：shelter/medical PWA 中繼 | relay `:8765`/`8775`（WS）、admin `:8766`/`8776` | — | **WS/WSS**（HMAC 簽章） |
+
+#### port 速查（每埠作用）
+
+> 把上兩表出現的埠攤平，逐一標「這個埠在做什麼」。`:8089`–`:9000` 是**外部 TAK server** 的埠（ICS 對它是 client）；`:8000`/`:443` 是 **ICS 自身**；`:876x` 是上游 relay（非本 repo COP）。
+
+| port | 屬於 | 作用（這個埠在做什麼） | protocol |
+|---|---|---|---|
+| `:8089` | TAK server | **CoT 雙向串流匯流**——ICS 訂閱（入向）+ `send_cot` 下行（出向）皆走此埠；TAK client 的 `connectString0=<host>:8089:ssl` 也連這裡 | **TLS**（mTLS），TAK Protocol v0 XML / v1 protobuf |
+| `:8443` | TAK server | **web UI + Marti REST API**——人類 admin 登入 + ICS 主動查（mission / groups / presence，P2-11/14） | **HTTPS**（mTLS） |
+| `:8446` | TAK server | **憑證註冊（enrollment）**——managed-cert 申領，`clientAuth=false`；ICS COP subscriber **不經此**（用 CA 簽 fullchain client cert 即可） | **HTTPS** |
+| `:8444` | TAK server | **federation HTTPS（fed_https）**——多機構憑證/治理介面（選配，P2-15） | **HTTPS** |
+| `:9000` | TAK server | **federation transport**——多機構 CoT 互聯傳輸（選配，P2-15） | **TLS** |
+| `:8000` | command server | **ICS 指揮部 FastAPI 本體**——dashboard + REST `/api/*` + WS；dev 直跑，Pi bind `0.0.0.0` 給區網平板 | **HTTP**（prod 由 nginx 終結 TLS） |
+| `:443` | nginx（prod） | **對外 HTTPS 入口**——反代終結 TLS + 注入 HSTS，轉發給 `:8000`；CSP/X-Frame 等由 FastAPI 出 | **HTTPS** |
+| `:8765`/`8775` | Node relay | **PWA WebSocket 中繼**——shelter（8765）/ medical（8775）即時同步（**非本 repo COP**） | **WS/WSS**（HMAC 簽章） |
+| `:8766`/`8776` | Node relay | **relay admin 介面**——首次設定/PIN/稽核（對應上欄各單位） | **WS/WSS** |
+
+#### 憑證信任鏈（每埠：誰產出 · 誰簽 · 給誰）
+
+> **單一信任根 = step-ca**（雙層 root→intermediate→leaf，`deploy/step-ca/`）。TAK server 棄官方自簽 CA 改用此 CA（#98 drift 2）→ dashboard / TAK / 未來 federation 同一條鏈（`deploy/tak-server/pki/issue-tak-certs.sh`）。
+> mTLS 埠**雙向各一張 cert**：server 出示 server cert、client 出示 client cert，彼此靠 truststore（step-ca root+intermediate）互驗；client 一律送 **fullchain（leaf+intermediate）**，因 TAK truststore 只有 root，缺 intermediate 會 `peer not verified`（#106/#170 實證）。
+> ⚠ **與 at-rest / backup 金鑰無關**：那是 FIDO2 → HKDF master→child（`p1-key-management.md`），管 DB / 備份加密，不是傳輸憑證——兩條鏈別混。
+
+| port / 憑證 | 誰產出（命令） | 誰簽（CA） | 配給誰（出示方） | 對端怎麼驗 |
+|---|---|---|---|---|
+| `:8089`·`:8443`·`:8446` **server cert** | `issue-tak-certs.sh`：`step ca certificate`（**RSA 2048**，含 SAN）→ `takserver.jks` | step-ca **intermediate** | **TAK server** 對所有 TLS listener 出示 | client 用 `truststore-root.jks`（root+intermediate）驗 |
+| `:8089` **client** `cop-subscriber` | `issue-tak-certs.sh`：離線 `step certificate create`（fullchain=leaf+int） | step-ca **intermediate** | **command server**（`TAK_CLIENT_CERT/KEY`；訂閱入向 + `send_cot` 下行**共用**這張） | TAK 用 `truststore-root.jks` 驗（fullchain 補鏈） |
+| `:8443` **client** `ics-mission-read` / `ics-mission-write` | 同上（離線簽 fullchain，三張一起簽） | step-ca **intermediate** | **command server**（`TAK_MARTI_READ/WRITE_CERT/KEY`） | truststore 信任即可**讀**；**寫**另由 mission-role（MISSION_WRITE/owner）把關，非 cert（P2-13 待解） |
+| `:8446` **enrollment**（`clientAuth=false`） | —（官方 managed-cert 申領路徑） | — | 無需 client cert | **ICS COP 不經此**（CA 簽 fullchain 即可，毋須 enroll） |
+| `:8444`·`:9000` **federation peer cert** | 對端機構各自產 | 各自 CA（PoC 同 step-ca） | federation **peer** 互相出示 | `fed-truststore.jks`（step-ca root+int；對端用別的 CA 時再匯入對端 root，P2-15） |
+| `:8000`（dev）**無 TLS** | —（純 HTTP，本機/區網 dev） | — | — | — |
+| `:443`（prod）**nginx server cert** | 部署者佈署（**repo 未綁定**來源） | step-ca 或公開 CA（依場景） | **nginx** 對瀏覽器出示 | 瀏覽器系統信任庫；內網則裝 step-ca root |
+| `:8765`/`8775` **relay TLS**（選配）+ **HMAC** | `CERT_PATH/KEY_PATH`（部署者）、同目錄 `rootCA.pem` | step-ca（同 PKI） | **relay** 出示 TLS；app 層另以 **HMAC 共享密鑰**逐筆簽 | client 用 `CA_CERT` 驗 TLS；HMAC 驗訊息完整性（非本 repo COP） |
+
+#### 憑證鏈全圖（cert chain，傳輸層）
+
+> 上表逐埠列「誰出示」，本圖補「**整棵樹**」：step-ca 一根長到每張 leaf。`[srv]`＝server cert（被連方出示）、`[cli]`＝client cert（主動連方出示）。SoT＝`deploy/step-ca/` + `deploy/tak-server/pki/issue-tak-certs.sh`。
+
+```
+step-ca（standalone CA，deploy/step-ca/，金鑰在 ~/.step/）
+└─ root_ca.crt ───────────────────────── 信任根（長效、離線；裝進各 truststore / TAK_CAFILE）
+   └─ intermediate_ca.crt ── 實際簽發層（所有 leaf 由它簽；client fullchain 補的就是它）
+      provisioner：admin@ics.local（JWK，手動/腳本簽）｜ acme（ACME，Pi/Command 自動申領）
+      │
+      ├─[srv] CN=<TAK_HOSTNAME> RSA2048 +SAN → takserver.jks ── TAK 對 :8089/:8443/:8446 出示
+      │         （RSA 非 EC：api jwkSource 寫死 RSAPublicKey，給 EC 會 8443 不綁 #101）
+      ├─[cli] cop-subscriber    (fullchain) → command server ── :8089 訂閱入向 + send_cot 下行（共用）
+      ├─[cli] ics-mission-read  (fullchain) → command server ── :8443 Marti 讀
+      ├─[cli] ics-mission-write (fullchain) → command server ── :8443 Marti 寫（cert 給身分，role 另管）
+      ├─[srv] nginx / dashboard cert        → :443 對瀏覽器出示（場景擇 step-ca 或公開 CA，repo 未綁定）
+      └─[srv] relay cert                    → :8765 relay 出示（選配，非本 repo COP）
+
+  truststore（驗對端用，內容皆 = root + intermediate）：
+    · truststore-root.jks → TAK 驗 client/peer        · fed-truststore.jks → federation peer
+    · TAK_CAFILE = root_ca.crt → command server 驗 TAK server 憑證
+    ※ client 一律送 fullchain：truststore 只有 root，缺 intermediate → peer not verified（#106/#170）
+
+  效期：step-ca 預設 24h（dev 夠用，renew-cert.sh 快速）；prod 須改 2160h(90d)
+        （~/.step/config/ca.json 的 provisioner.claims，C3-B install.sh patch）。
+        client cert 效期 = TAK_CLIENT_CERT_DURATION（預設 2160h）。
+```
+
+#### 金鑰鏈全圖（key chain，靜態層；**非傳輸**）
+
+> **SoT = [`docs/roadmap/p1-key-management.md`](../roadmap/p1-key-management.md)（P1-12）**，此處只放全圖 + 與憑證鏈的邊界，細節不複製（避免雙 SoT 漂移）。
+
+```
+FIDO2 token（CTAP2 hmac-secret extension；enroll N 把：主 / 備援 / 災後）
+   │ service start：PIN + touch（單一 unlock，所有 key 一次推出）
+   ▼
+master key（32 bytes，僅 process memory；落盤＝/etc/ics/master-key.enc，hmac-secret-wrapped）
+   │ HKDF-SHA256，label-based derive
+   ├─ child[0] "backup-v1" → Fernet key    → backup_db.py（data/ 備份加密）
+   ├─ child[1] "db-v1"     → SQLCipher key  → live DB at-rest 加密
+   └─ child[2..]（未來）    → audit log signing / session token 簽章
+   rescue：master key BIP-39 助記詞紙本（可手動 reenroll）
+```
+
+> **兩鏈邊界（紅線）**：① **憑證鏈**（step-ca，上）＝**傳輸層**身分 / mTLS，管「誰能連、連線會不會被竊聽」；
+> ② **金鑰鏈**（FIDO2 / HKDF，本圖）＝**靜態層**機密，管「磁碟上的 DB / 備份有沒有加密」。
+> 兩者**不交叉**：傳輸憑證私鑰不拿去加密 DB，HKDF child key 也不當 TLS 私鑰。唯一未來交點＝`child[2..]` 的 audit / session 簽章（仍與 mTLS 無關）。
+
 > **三個層界要記住**：① **L2（cop_service）= 接縫**，transport 與語意在此分離、所有 doctrine 在此蓋章；
 > ② **L3↔L4 = 感知層/事故層分水嶺，也是 TAK 能力天花板**——L3 以下（含軌跡、變更稽核）TAK 都會，L4 起（severity/狀態/結案/跨源聚合）TAK 結構上沒有，是「Incident **Command**」的字面本體；
 > ③ **L4「不外流」= 安全邊界**，出向只有 L3 感知標記（雙向）與 L4 衍生的下行 tasking（P2-13）兩個閘。
