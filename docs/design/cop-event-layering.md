@@ -110,6 +110,23 @@ ICS 是**多源 COP 的匯流 + 指揮中樞**：各路「感知標記」匯成�
 | `:8765`/`8775` | Node relay | **PWA WebSocket 中繼**——shelter（8765）/ medical（8775）即時同步（**非本 repo COP**） | **WS/WSS**（HMAC 簽章） |
 | `:8766`/`8776` | Node relay | **relay admin 介面**——首次設定/PIN/稽核（對應上欄各單位） | **WS/WSS** |
 
+#### 憑證信任鏈（每埠：誰產出 · 誰簽 · 給誰）
+
+> **單一信任根 = step-ca**（雙層 root→intermediate→leaf，`deploy/step-ca/`）。TAK server 棄官方自簽 CA 改用此 CA（#98 drift 2）→ dashboard / TAK / 未來 federation 同一條鏈（`deploy/tak-server/pki/issue-tak-certs.sh`）。
+> mTLS 埠**雙向各一張 cert**：server 出示 server cert、client 出示 client cert，彼此靠 truststore（step-ca root+intermediate）互驗；client 一律送 **fullchain（leaf+intermediate）**，因 TAK truststore 只有 root，缺 intermediate 會 `peer not verified`（#106/#170 實證）。
+> ⚠ **與 at-rest / backup 金鑰無關**：那是 FIDO2 → HKDF master→child（`p1-key-management.md`），管 DB / 備份加密，不是傳輸憑證——兩條鏈別混。
+
+| port / 憑證 | 誰產出（命令） | 誰簽（CA） | 配給誰（出示方） | 對端怎麼驗 |
+|---|---|---|---|---|
+| `:8089`·`:8443`·`:8446` **server cert** | `issue-tak-certs.sh`：`step ca certificate`（**RSA 2048**，含 SAN）→ `takserver.jks` | step-ca **intermediate** | **TAK server** 對所有 TLS listener 出示 | client 用 `truststore-root.jks`（root+intermediate）驗 |
+| `:8089` **client** `cop-subscriber` | `issue-tak-certs.sh`：離線 `step certificate create`（fullchain=leaf+int） | step-ca **intermediate** | **command server**（`TAK_CLIENT_CERT/KEY`；訂閱入向 + `send_cot` 下行**共用**這張） | TAK 用 `truststore-root.jks` 驗（fullchain 補鏈） |
+| `:8443` **client** `ics-mission-read` / `ics-mission-write` | 同上（離線簽 fullchain，三張一起簽） | step-ca **intermediate** | **command server**（`TAK_MARTI_READ/WRITE_CERT/KEY`） | truststore 信任即可**讀**；**寫**另由 mission-role（MISSION_WRITE/owner）把關，非 cert（P2-13 待解） |
+| `:8446` **enrollment**（`clientAuth=false`） | —（官方 managed-cert 申領路徑） | — | 無需 client cert | **ICS COP 不經此**（CA 簽 fullchain 即可，毋須 enroll） |
+| `:8444`·`:9000` **federation peer cert** | 對端機構各自產 | 各自 CA（PoC 同 step-ca） | federation **peer** 互相出示 | `fed-truststore.jks`（step-ca root+int；對端用別的 CA 時再匯入對端 root，P2-15） |
+| `:8000`（dev）**無 TLS** | —（純 HTTP，本機/區網 dev） | — | — | — |
+| `:443`（prod）**nginx server cert** | 部署者佈署（**repo 未綁定**來源） | step-ca 或公開 CA（依場景） | **nginx** 對瀏覽器出示 | 瀏覽器系統信任庫；內網則裝 step-ca root |
+| `:8765`/`8775` **relay TLS**（選配）+ **HMAC** | `CERT_PATH/KEY_PATH`（部署者）、同目錄 `rootCA.pem` | step-ca（同 PKI） | **relay** 出示 TLS；app 層另以 **HMAC 共享密鑰**逐筆簽 | client 用 `CA_CERT` 驗 TLS；HMAC 驗訊息完整性（非本 repo COP） |
+
 > **三個層界要記住**：① **L2（cop_service）= 接縫**，transport 與語意在此分離、所有 doctrine 在此蓋章；
 > ② **L3↔L4 = 感知層/事故層分水嶺，也是 TAK 能力天花板**——L3 以下（含軌跡、變更稽核）TAK 都會，L4 起（severity/狀態/結案/跨源聚合）TAK 結構上沒有，是「Incident **Command**」的字面本體；
 > ③ **L4「不外流」= 安全邊界**，出向只有 L3 感知標記（雙向）與 L4 衍生的下行 tasking（P2-13）兩個閘。
