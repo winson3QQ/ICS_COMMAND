@@ -94,6 +94,22 @@ ICS 是**多源 COP 的匯流 + 指揮中樞**：各路「感知標記」匯成�
 | **Frontend**（commander dashboard，瀏覽器） | L5 呈現 + L3 即時態勢 | —（純 browser） | command server `:443`（dev `:8000`）：靜態 + REST `/api/*` + WS `/api/cop/ws/updates` | **HTTPS** + **WS/WSS**（token 走 `Sec-WebSocket-Protocol`，不進 URL） |
 | _(Pi-node / Node relay；上游 PWA 邊緣，**非本 repo COP**)_ | L0：shelter/medical PWA 中繼 | relay `:8765`/`8775`（WS）、admin `:8766`/`8776` | — | **WS/WSS**（HMAC 簽章） |
 
+#### port 速查（每埠作用）
+
+> 把上兩表出現的埠攤平，逐一標「這個埠在做什麼」。`:8089`–`:9000` 是**外部 TAK server** 的埠（ICS 對它是 client）；`:8000`/`:443` 是 **ICS 自身**；`:876x` 是上游 relay（非本 repo COP）。
+
+| port | 屬於 | 作用（這個埠在做什麼） | protocol |
+|---|---|---|---|
+| `:8089` | TAK server | **CoT 雙向串流匯流**——ICS 訂閱（入向）+ `send_cot` 下行（出向）皆走此埠；TAK client 的 `connectString0=<host>:8089:ssl` 也連這裡 | **TLS**（mTLS），TAK Protocol v0 XML / v1 protobuf |
+| `:8443` | TAK server | **web UI + Marti REST API**——人類 admin 登入 + ICS 主動查（mission / groups / presence，P2-11/14） | **HTTPS**（mTLS） |
+| `:8446` | TAK server | **憑證註冊（enrollment）**——managed-cert 申領，`clientAuth=false`；ICS COP subscriber **不經此**（用 CA 簽 fullchain client cert 即可） | **HTTPS** |
+| `:8444` | TAK server | **federation HTTPS（fed_https）**——多機構憑證/治理介面（選配，P2-15） | **HTTPS** |
+| `:9000` | TAK server | **federation transport**——多機構 CoT 互聯傳輸（選配，P2-15） | **TLS** |
+| `:8000` | command server | **ICS 指揮部 FastAPI 本體**——dashboard + REST `/api/*` + WS；dev 直跑，Pi bind `0.0.0.0` 給區網平板 | **HTTP**（prod 由 nginx 終結 TLS） |
+| `:443` | nginx（prod） | **對外 HTTPS 入口**——反代終結 TLS + 注入 HSTS，轉發給 `:8000`；CSP/X-Frame 等由 FastAPI 出 | **HTTPS** |
+| `:8765`/`8775` | Node relay | **PWA WebSocket 中繼**——shelter（8765）/ medical（8775）即時同步（**非本 repo COP**） | **WS/WSS**（HMAC 簽章） |
+| `:8766`/`8776` | Node relay | **relay admin 介面**——首次設定/PIN/稽核（對應上欄各單位） | **WS/WSS** |
+
 > **三個層界要記住**：① **L2（cop_service）= 接縫**，transport 與語意在此分離、所有 doctrine 在此蓋章；
 > ② **L3↔L4 = 感知層/事故層分水嶺，也是 TAK 能力天花板**——L3 以下（含軌跡、變更稽核）TAK 都會，L4 起（severity/狀態/結案/跨源聚合）TAK 結構上沒有，是「Incident **Command**」的字面本體；
 > ③ **L4「不外流」= 安全邊界**，出向只有 L3 感知標記（雙向）與 L4 衍生的下行 tasking（P2-13）兩個閘。
