@@ -2630,5 +2630,25 @@
     "title": "P2-20(B): AAR 回放前端頁（獨立頁 /static/aar.html）— reality check + 分刀 B1/B2/B3",
     "updatedAt": "2026-06-10T22:24:05Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/201"
+  },
+  {
+    "assignees": [],
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "body": "ROADMAP **P2-21**（演習指標＋課程標記）。原 row 標 `(no issue)`，本 issue 補上並記 **2026-06-11 reality check**（盤 main code 實況 + 可做/卡住切分）。上游：P2-20(A) 時間軸 [#200](https://github.com/winson3QQ/ICS_COMMAND/pull/200)、(B) B1 回放頁 [#203](https://github.com/winson3QQ/ICS_COMMAND/pull/203)。\n\n## Row 三件事 × 地基實況\n\n| # | 內容 | 實測 |\n|---|---|---|\n| (1) 課程標記 bookmark | `aar_entries` 表＋`POST /api/exercises/{id}/aar` **已在** | 但見發現 1/2 |\n| (2) 統計面板 | `chats.group` ✓、`events.occurred_at`/`resolved_at`（**有 writer**，status→resolved/closed 時寫）✓ | 通聯量/處置時長**可算**；見發現 3 |\n| (3) 演習報告 | `GET /api/ai/report/{id}` 存在 | 是 **Wave 5 LLM stub**（固定字串）；`AAR_EXPORT` audit 未有 |\n\n## Reality check 發現（4）\n\n1. **(1) schema 缺口**：`aar_entries` 欄位 = `(category, content, created_by, created_at)`——**無「回放時間點」欄**。Row 寫「`created_at=T+N` 連結回放時間點」**誤導**：`created_at` 是 DB 寫入牆鐘時刻，載不了回放 T。bookmark 需 `ADD COLUMN ref_t TEXT`（小 migration）＋端點收此欄。\n\n2. **(1) 已部分解鎖**：先前評估「bookmark 卡 P2-20(B)」——**B1（#203）merge 後不再全卡**。Step mode 已有「目前 T」，在 AAR 頁（`static/js/aar/` 自有領地、零衝突）加「標記此刻」鈕 → POST 帶 `ref_t` = **bookmark 最小可用版**。Play mode 中打標記才需 B2。\n\n3. **(2) MEDEVAC 反應時間：缺第二個時間戳**。MEDEVAC 請求有落（P2-09 → `cop_entities.attributes`、severity critical），但**全 repo 無任何「確認/承接」動作**——「request→確認」的「確認」不存在，此 KPI **量不出來**。需先有產品決策（什麼動作算確認：建關聯事件？下行回覆？新端點？）。同類：`events.acknowledged_at` 為**零 writer 死欄**。\n\n4. **兩個沉睡 stub**：`exercise_kpis` 表（`exercise_id/kpi_key/kpi_value/computed_at`）**零 writer**（僅出現在刪除級聯白名單）——C0 預埋 KPI 快取，可啟用或先即時算；`get_post_exercise_report`＝stub，(3) 要把 KPI 接進去才有肉。\n\n## 可做 / 卡住切分\n\n**現在可做（子集，零碰活躍 session 領地）**：\n- (2) KPI API：`GET /api/exercises/{id}/kpis`——事件處置時長（occurred→resolved 分佈/平均）、通聯量 by 組、事件量 by 嚴重度/類型、決策數/裁示時長（decisions created→decided）。COMMAND_ROLES（沿 /timeline 同 gate）。EXCHECK/MEDEVAC 項留 stub 註記。\n- (1) bookmark 最小版：`aar_entries.ref_t` migration＋端點收欄＋AAR 頁「標記此刻」鈕（B1 Step mode 的 T）。\n- (3) KPI 納入報告＋`AAR_EXPORT` audit（COMMAND_ROLES）。\n\n**卡住（記帳不做）**：\n- MEDEVAC 反應時間 → 卡「確認」動作的產品決策（發現 3）。\n- EXCHECK 完成率 → 卡 P2-18（P2-22 TTX gate 後）。\n- Play mode 中打標記 → 卡 B2（#201）。\n\n## DoD（子集）\n- [ ] migration：`aar_entries.ref_t TEXT`（ADD COLUMN，idempotent）\n- [ ] `GET /api/exercises/{id}/kpis`（可算項全上；不可算項回 null＋reason 註記，不假裝）\n- [ ] AAR 頁「標記此刻」鈕＋bookmark 列表顯示\n- [ ] `AAR_EXPORT` audit（報告/匯出路徑）\n- [ ] 測試：KPI 計算正確性（種資料驗數字）/ ref_t 寫讀 / RBAC 403\n- [ ] `/code-review`＋`/security-review`；ROADMAP 註記\n\n## 與 P2-22 gate 的關係\ngate 要求「每次 AAR ≥5 條課程標記」——用**既有** `POST /aar` 文字輸入即可滿足（不等 bookmark）；本項的 bookmark/KPI 是讓那兩場驗證演習「辦得起來、量得出來」的工具。\n",
+    "closedAt": null,
+    "comments": [],
+    "createdAt": "2026-06-10T23:17:11Z",
+    "labels": [],
+    "milestone": null,
+    "number": 204,
+    "state": "OPEN",
+    "title": "P2-21: 演習指標＋課程標記 — reality check（4 發現）+ 可做子集切分",
+    "updatedAt": "2026-06-10T23:17:11Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/204"
   }
 ]
