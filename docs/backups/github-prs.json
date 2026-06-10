@@ -3183,5 +3183,26 @@
     "title": "P2-24: TAK 連線 runtime 開關（#164）",
     "updatedAt": "2026-06-10T16:04:03Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/198"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "Closes #199. ROADMAP **P2-20(A)**（AAR 回放後端半；(B) 前端頁面延後）。\n\n## 變更\n- **`GET /api/exercises/{id}/timeline`** + 新 **`services/timeline_service.py`**：四源（tracks JOIN cop_entities／events／chats／**audit 白名單**）合併按 t 排序，統一 `{type,t,actor,payload}` + meta（count/t_start/t_end/**truncated**）。\n- audit 白名單 = `decision_*`／`TAK_DOWNLINK`／`COP_SHARE_TAK`／`event_status_updated`；**`event_created` 不取**（events 表已載，防雙計）。\n- `?from=&to=`（`_range_bound` 正規化）+ limit clamp；**truncated 用 limit+1 探測**（剛好 limit 筆不誤報、不靜默截斷）。\n- 排序：t 字串序 + 同秒固定 type 優先序 + 來源 id（**回放穩定**）。\n- RBAC = 中央 gate `/api/exercises/*` → COMMAND_ROLES（同 `/tracks` 先例；含軌跡/通聯 PII）。\n\n## 設計定案（#199 全記錄）\n**事件流、不做定時落盤快照**：等速時間軸由播放器虛擬時鐘保證、seek 加速=前端記憶體 keyframe。業界三域同證（event-sourcing「先量測再快照」/ 遊戲回放 keyframe 僅 seek 用 / PAR TAK Data Replay 錄 CoT 流量）。\n\n## review\n- `/code-review`（high）3 候選：① `occurred_at` 未正規化 → **修**（入庫 `iso_utc`，offset 混 Z 排錯序）＋回歸測試；② truncated 邊界誤報 → **修**（limit+1 探測）＋回歸測試；③ soft-deleted 軌跡入列 → **裁決保留**（AAR 完整歷史，同 /tracks 先例，docstring 記錄）。\n- `/security-review` **0 finding**（SQL 全綁定 10/10、gate 同源 /tracks、audit 白名單 detail 逐一查無機密）。\n\n## 測試 / 驗證\n- `test_timeline_api.py` ×10：四源合併排序＋shape／不雙計／時間窗／truncated 邊界／跨場隔離／空場／404／operator 403／occurred_at 正規化。\n- fresh-DB 全 suite 綠（CI 鏡像）、pyflakes clean、doc-sync passed。\n\n## 範圍\n純後端、零碰三個活躍 session 領地（map/events/cop/tak router）。(B) 前端 AAR 頁面（map.js）延後。無版號 bump。解鎖 P2-21（統計面板吃同一條時間軸）。\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n",
+    "closedAt": "2026-06-10T16:43:58Z",
+    "comments": [],
+    "createdAt": "2026-06-10T16:43:10Z",
+    "headRefName": "feat/issue-199-aar-timeline-api",
+    "labels": [],
+    "mergedAt": "2026-06-10T16:43:57Z",
+    "number": 200,
+    "state": "MERGED",
+    "title": "P2-20(A): AAR 統一時間軸 API — 四源事件流合併（#199）",
+    "updatedAt": "2026-06-10T16:43:58Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/200"
   }
 ]
