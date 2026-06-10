@@ -2430,15 +2430,15 @@
       "name": ""
     },
     "body": "ROADMAP **P2-30**（Phase 2，TTX 前；COP 分層治理群）。完成「感知層雙向性」出向半（[`docs/design/cop-event-layering.md`](https://github.com/winson3QQ/ICS_COMMAND/blob/main/docs/design/cop-event-layering.md) #2 / G5）。\n\n## 背景\nP2-13(A) 已做**點**下行（streaming-write → :8089 廣播）。本項補**下行共用基建**——P2-13（發指令）與本項（分享既有感知標記）的共用層；P2-13 下「線/區指令」依賴此（路線 2：先做本項）。\n\n## 範圍（分 slice）\n1. **🟢 第一刀 — 線/區出向幾何序列化（純後端，可獨立 E2E 驗）**\n   - `services/geometry_service.geometry_to_cot(...)`：vertices → CoT shape XML，**對稱 P2-08 入向 `extract_geometry`**：\n     - LineString → `<link point=\"lat,lon\"/>` 序列（route）\n     - Polygon → `<shape><polyline closed=\"true\"><vertex point/></polyline></shape>`（u-d-f）\n     - Circle/Ellipse → `<shape><ellipse major minor angle/></shape>` + center `<point>`（u-d-c-c）\n   - `services/tak_downlink.build_geometry_cot(...)`：包裝 + `<archive/>` + escape\n   - E2E：推一條線 / 一個區 → 活 iTAK 顯示\n2. **per-entity 共享閘**：哪些感知標記推 TAK（指揮層 validate 後外推，非自動轟全網）；對齊 `visible_to`（與 P2-29 協調）\n3. **手動感知標記一等公民**：「無線電回報 → 可共享 COP 標記（敵情/接觸點，affiliation）」命名流程（非 node/facility 放置）\n\n## 依賴 / 邊界\n- 依賴 P2-08（入向幾何，對稱參照）、P2-13（send_cot 基建）\n- memory `tak-marti-authz-model`（下行機制）；安全：streaming-write 對任何 truststore cert 開放 → 共享閘是身分控制點\n\n## DoD（第一刀）\n- [ ] `geometry_to_cot` 三型（line/polygon/circle）單元測試（round-trip：extract→to_cot→extract 一致）\n- [ ] `build_geometry_cot` + 端到端對活 TAK 驗（線/區上 iTAK）\n- [ ] `/code-review` + `/security-review`（XML 建構、無注入）",
-    "closedAt": null,
+    "closedAt": "2026-06-10T08:42:55Z",
     "comments": [],
     "createdAt": "2026-06-09T08:06:52Z",
     "labels": [],
     "milestone": null,
     "number": 180,
-    "state": "OPEN",
+    "state": "CLOSED",
     "title": "P2-30: 感知標記共享閘 + 手動感知標記 + 線/區出向幾何序列化（下行共用基建）",
-    "updatedAt": "2026-06-09T08:06:52Z",
+    "updatedAt": "2026-06-10T08:42:55Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/180"
   },
   {
