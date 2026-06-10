@@ -336,7 +336,7 @@ document.addEventListener('click', function (e) {
       break;
     }
     case 'shareContactTak': {
-      if (!canUseRealModeControls()) break;  // 分享到 TAK 限指揮層
+      if (!canAccessMapObjects()) break;  // P2-30 part 3：廣播放寬 operator+（後端 WRITE_ROLES）
       _shareContactTak(btn.dataset.id);
       break;
     }
