@@ -54,9 +54,9 @@ import {
   initMap, reloadMapConfig, switchMap, cancelPlaceMode, togglePinEditMode,
   toggleCsel, _toggleMgrsGrid, _toggleLayerPanel, setBasemapTheme,
   _startPolyDraw, _cancelPolyDraw, _finishPolyDraw,
-  _startInfraPlace, _startRouteDraw, _cancelRouteDraw, _finishRouteDraw,
+  _startRouteDraw, _cancelRouteDraw, _finishRouteDraw,
   _savePolygon, _saveRoute,
-  _openPolyForm, _openInfraForm, _openRouteForm,
+  _openPolyForm, _openRouteForm,
   _deletePolygon, _deleteRoute, _deleteInfra, _deleteEventZone,
   _deleteContact, _shareContactTak, _saveContactNote,
   _resetPolyLabelAnchor, _resetRouteLabelAnchor,
@@ -67,9 +67,8 @@ import {
   loadL3Records, _loadPwaIncidents,
   saveMapConfig,
   openMapConfigPanel, closeMapConfigPanel, admUploadMapImage,
-  admRemoveMapImage, _cancelNodePlace, _cancelInfraPlace, _cancelEventPin,
-  _openNodePlacePicker, _startNodePlace, _deleteNode,
-  _openContactPlacePicker, _startContactPlace,
+  admRemoveMapImage, _cancelEventPin,
+  _deleteNode,
   applyMapRoleUiGuards,
   _toggleLayer, _closeLayerPanel, toggleTakFilter,
   setCopStream,
@@ -264,7 +263,6 @@ document.addEventListener('click', function (e) {
     // ── 地圖 ──
     case 'switchMap':      switchMap(btn.dataset.map); break;
     case 'cancelPlaceMode': cancelPlaceMode(); break;
-    case 'cancelNodePlace': _cancelNodePlace(); _cancelInfraPlace(); break;
     case 'cancelEventPin': _cancelEventPin(); break;
     case 'togglePinEditMode': togglePinEditMode(); break;
     case 'toggleCsel':     toggleCsel(); break;
@@ -307,17 +305,6 @@ document.addEventListener('click', function (e) {
     case 'resetPolyLabelAnchor': {
       if (!canAccessMapObjects()) break;
       _resetPolyLabelAnchor(id);
-      break;
-    }
-    case 'startInfraPlace': {
-      if (!canAccessMapObjects()) break;
-      closeModal?.();
-      _startInfraPlace(btn.dataset.infraType);
-      break;
-    }
-    case 'openInfraForm': {
-      if (!canAccessMapObjects()) break;
-      _openInfraForm();
       break;
     }
     case 'deleteInfra': {
@@ -366,29 +353,9 @@ document.addEventListener('click', function (e) {
       _resetRouteLabelAnchor(id);
       break;
     }
-    // P1-16：on-demand 放置節點
-    case 'openNodePlace': {
-      if (!canAccessMapObjects()) break;
-      _openNodePlacePicker();
-      break;
-    }
-    case 'startNodePlace': {
-      if (!canAccessMapObjects()) break;
-      closeModal?.();
-      _startNodePlace(btn.dataset.nodeType);
-      break;
-    }
-    case 'openContactPlace': {
-      if (!canAccessMapObjects()) break;
-      _openContactPlacePicker();
-      break;
-    }
-    case 'startContactPlace': {
-      if (!canAccessMapObjects()) break;
-      closeModal?.();
-      _startContactPlace(btn.dataset.affiliation);
-      break;
-    }
+    // P2-34（#220）：放置節點/設施/敵情標記改走長按建立對話框（CreatePopup）；
+    // 舊 arm-then-click dispatch（openNodePlace/startNodePlace/openContactPlace/
+    // startContactPlace/openInfraForm/startInfraPlace）已隨面板入口退場。
     case 'deleteNode': {
       if (!canAccessMapObjects()) break;
       _deleteNode(id);
