@@ -2588,6 +2588,20 @@
         "minimizedReason": "",
         "reactionGroups": [],
         "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/194#issuecomment-4677638211"
+      },
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## 更正 + VERIFY-PASS（前一則的軌跡 claim 不實）\n\n前一則我寫「resync **順帶回填軌跡是 bonus**」—— **驗證後證實不實，更正**：\n\n`/cot/sa` 回的是 **newest-first 的 SA 歷史**。第一筆（最新）建/更 entity，其餘較舊筆被 `ingest_cot_event` 的順序守門擋下 → `cop_entity_tracks` 不增（隔離 temp DB 實測 `tracks=0`）。**核心目標（#173 靜態標記重畫）正確**：entity 收斂到當前態；但「軌跡回填」那個 bonus **不存在**。\n\n### VERIFY-PASS（純後端，CA 親驗）\n| 證據 | 結果 | 意義 |\n|---|---|---|\n| 隔離 temp DB（fresh）| `fetched=41 ingested=1 skipped=40 errors=0` | create 路徑成立，補進真 iTAK entity |\n| 活 app on-connect | `tak.resync.done fetched=38 ingested=0 skipped=38` | 冪等正確（串流已涵蓋此窗 → 無漏可補，不重造）|\n| 全套測試 | 960 passed | — |\n\n### 另記兩個已知限制（PR #210 已列）\n- **中途 :8089 斷線重連不自動 resync**：`resync_on_connect` 只在 app 啟動 / 手動 toggle 觸發，subscribe 內部重連迴圈不觸發 → 中途斷流靠手動 `POST /api/tak/resync` 補。\n- **(B) 安全網未做**：archived 持久 entity 無上限，resync 週期灌入會放大無界成長 → 下一刀 `PERSIST_MAX_AGE`/上限。\n\n實作 + review 修正見 PR #210（`/code-review` 修了 CoTParseError→503 與 task ref；`/security-review` 0 finding）。",
+        "createdAt": "2026-06-11T06:26:45Z",
+        "id": "IC_kwDOSnBjpc8AAAABFtGJeQ",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/194#issuecomment-4677798265"
       }
     ],
     "createdAt": "2026-06-10T08:46:50Z",
@@ -2596,7 +2610,7 @@
     "number": 194,
     "state": "OPEN",
     "title": "Marti 權威 resync：ICS 顯示漏掉的 iTAK streaming 標記（P2-14）",
-    "updatedAt": "2026-06-11T05:58:32Z",
+    "updatedAt": "2026-06-11T06:26:45Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/194"
   },
   {
