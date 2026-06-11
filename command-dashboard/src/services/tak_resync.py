@@ -27,12 +27,14 @@ from datetime import UTC, datetime, timedelta
 import structlog
 
 from core import config
+from repositories import cop_entity_repo
 from services import cop_service, tak_service
 from services.tak_rest_client import TakRestError, build_tak_rest_client
 
 log = structlog.get_logger()  # 對齊 tak_service：on-connect resync 日誌須可見（#173 訴求）
 
 _SA_PATH = "/Marti/api/cot/sa"
+_RECONCILE_LIMIT = 1000  # #222：重連 outbound 對帳單批上限；達上限記 capped 警告（不沉默截斷）
 
 
 def _format_marti_time(dt: datetime) -> str:
@@ -144,3 +146,40 @@ async def resync_on_connect() -> None:
         log.warning("tak.resync.on_connect_failed", exc_info=True)  # 不影響訂閱
     except Exception:  # noqa: BLE001 — 自動 resync 絕不拖垮連線啟動
         log.warning("tak.resync.on_connect_unexpected", exc_info=True)  # 不影響訂閱
+
+
+async def reconcile_shared_outbound() -> int:
+    """#222：重連後 **outbound 對帳** —— 把所有 `shared_tak` cop_entity 的當前狀態重推 TAK。
+
+    對稱於 `resync_on_connect` 的 inbound 半：inbound 補「server 有、ICS 沒有」；本函式補
+    「ICS 改了、斷線期間沒送出去」的 shared 標記（移動 / 註記）——讓現場端在 ICS 重連後**自動**
+    補上最新位置，不必操作員手動重廣播。CoT 同 uid idempotent（重推＝原地更新、不產生重複）。
+
+    守門：須 **TAK 開關啟用且連線已配置** 才對帳——對齊其餘三條出向路徑（push_downlink /
+    share / _resync_tak_if_shared 皆 gate `effective_enabled()`）。只看 is_configured 會在
+    「admin 關掉開關但 cert 仍在」時繞過開關照推＝洩漏 shared 標記位置、與 #222 的 409 閘矛盾。
+    best-effort 逐筆：單筆失敗（畸形幾何 / 連線抖動）只 log、不中斷其餘。回傳成功重推筆數。由
+    `tak_service.subscribe` 的 on_connect 在每次 (重)連上、inbound resync **之後**呼叫。
+    """
+    from services import tak_runtime  # lazy：避免 import 期循環
+
+    if not (tak_runtime.effective_enabled() and tak_runtime.is_configured()):
+        return 0
+    from services import tak_downlink  # lazy：與 send_cot 載入路徑一致（避免 import 期載 pytak）
+
+    entities = cop_entity_repo.list_shared_tak_entities(limit=_RECONCILE_LIMIT)
+    if len(entities) >= _RECONCILE_LIMIT:  # 沉默截斷 → 留痕（>limit 顆 shared 標記時補不全）
+        log.warning("tak.reconcile_outbound.capped", limit=_RECONCILE_LIMIT)
+    pushed = 0
+    for ent in entities:
+        # on_connect task 未必被 stop() 取消 → 對帳途中 admin 關掉開關時迴圈內再驗，立即停推。
+        if not tak_runtime.effective_enabled():
+            break
+        try:
+            await tak_downlink.send_cot(tak_downlink.entity_to_cot(ent))
+            pushed += 1
+        except Exception:  # noqa: BLE001 — best-effort：一顆失敗不擋整批對帳
+            log.warning("tak.reconcile_outbound.entity_failed", uid=ent.get("uid"), exc_info=True)
+    if entities:
+        log.info("tak.reconcile_outbound.done", shared=len(entities), pushed=pushed)
+    return pushed

@@ -293,26 +293,37 @@ async function _refreshCommandHealthLight() {
 }
 
 // P2-23（#163）：TAK 連線指示燈。authFetch /api/tak/status（READ_ROLES）→ 推導燈色。
-// 「無串流」門檻 120s（>iTAK 自身位置心跳間隔，活連線不會誤判黃）。
 // P2-24（#164）：加入 running / configured 區分，消除「沒 task 在跑卻顯示斷線重連中」謊報——
 //   未啟用            → 灰(lkp)
 //   啟用·連線參數未備妥 → 黃(warn)（部署層問題，非 admin 在 UI 修）
 //   啟用·已備妥·task 沒起 → 紅(crit)「啟動失敗」（非「重連中」，因為根本沒 task 在重連）
 //   啟用·task 在跑·未連上 → 紅(crit)「斷線（背景重連中）」（這時才是真的在重連）
-//   啟用·連上·無串流    → 黃(warn)
-//   啟用·連上·近期有 CoT → 綠(ok)
+//   啟用·連上            → 綠(ok)「已連線（可收發）」（#222：connected 即綠，入向 CoT age 只進
+//                          tooltip——無入向串流屬正常非故障，不再降級為黃）
 async function _refreshTakLight() {
   const dot = document.getElementById('cd-tak');
-  if (!dot) return;
+  let status = null;
   try {
     const resp = await authFetch(API_BASE + '/api/tak/status', { signal: AbortSignal.timeout(3000) });
     if (!resp.ok) throw new Error(resp.status);
-    const { level, title } = takLightState(await resp.json());
-    dot.className = 'conn-dot ' + level;
-    dot.title = title;
+    status = await resp.json();
+    if (dot) {
+      const { level, title } = takLightState(status);
+      dot.className = 'conn-dot ' + level;
+      dot.title = title;
+    }
   } catch (e) {
-    dot.className = 'conn-dot lkp';
-    dot.title = 'TAK 狀態：查詢失敗\n' + (e.message || e);
+    if (dot) {
+      dot.className = 'conn-dot lkp';
+      dot.title = 'TAK 狀態：查詢失敗\n' + (e.message || e);
+    }
+  }
+  // #222：把 TAK 啟用狀態廣播給其他模組（map.js 長按建立「TAK 標記」類別 gate）。**只在查詢
+  // 成功時** dispatch——transient 失敗（網路抖 / 3s timeout / session 過期 401）不翻動 _takEnabled，
+  // 保留上次已知值，避免單次掉包就讓建立入口閃一下消失。開關真的關 → status 回 enabled:false
+  // 為 200 成功 → 正常隱藏。每次成功輪詢（5s）+ init + tak:connection-changed 觸發。
+  if (status) {
+    document.dispatchEvent(new CustomEvent('tak:status', { detail: { enabled: !!status?.enabled } }));
   }
 }
 

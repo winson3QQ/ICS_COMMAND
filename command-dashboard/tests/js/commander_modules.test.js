@@ -661,6 +661,26 @@ describe('C1-F commander modules', () => {
     expect(mapSource).not.toMatch(/_NAPSG_GROUP_ABBR\[zone\.node_type\]/);  // 舊撞名寫法已移除
   });
 
+  test('issue222_tak_marker_category_renamed_and_gated_by_tak_enabled', () => {
+    const mapSource = file('static/js/map.js');
+    const copSource = file('static/js/cop.js');
+    // #222：類別改名「TAK 標記」（舊「感知 / 敵情標記」移除）。
+    expect(mapSource).toMatch(/label: '📍 TAK 標記'/);
+    expect(mapSource).not.toMatch(/感知 \/ 敵情標記/);
+    // gate：角色（operator+）且 TAK 開關啟用——關閉 TAK 時不提供 TAK 標記建立入口。
+    expect(mapSource).toMatch(/if \(canAccessMapObjects\(\) && _takEnabled\) \{/);
+    // _takEnabled fail-closed 預設 false，由 cop.js 的 tak:status 事件餵。
+    expect(mapSource).toMatch(/let _takEnabled = false;/);
+    expect(mapSource).toMatch(/addEventListener\('tak:status'/);
+    expect(mapSource).toMatch(/_takEnabled = !!e\.detail\?\.enabled/);
+    // cop.js 只在查詢成功（status 非 null）時才 dispatch enabled（transient 失敗保留上次值，不閃）。
+    expect(copSource).toMatch(/if \(status\) \{\s*\n\s*document\.dispatchEvent\(new CustomEvent\('tak:status'/);
+    expect(copSource).toMatch(/enabled: !!status\?\.enabled/);
+    // #222 review：既有 contact 的廣播按鈕/右鍵選單也受 _takEnabled gate（與建立入口對稱）+ 409 明確訊息。
+    expect(mapSource).toMatch(/!canAccessMapObjects\(\) \|\| !_takEnabled \|\| !_copStream/);
+    expect(mapSource).toMatch(/TAK 連線已停用，無法廣播/);
+  });
+
   test('observer_cannot_access_map_objects', () => {
     const authSource = file('static/js/auth.js');
     const mainSource = file('static/js/main.js');

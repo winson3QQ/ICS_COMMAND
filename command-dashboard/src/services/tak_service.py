@@ -475,6 +475,10 @@ def _build_receiver_class(pytak):
     return _CoTReceiver
 
 
+# #222：on_connect callback 的 fire-and-forget task 強 ref（防中途 GC）；done 自清。
+_on_connect_tasks: set = set()
+
+
 async def subscribe(
     config,
     *,
@@ -483,6 +487,7 @@ async def subscribe(
     backoff_initial: float = 1.0,
     backoff_max: float = 30.0,
     max_events_per_sec: float | None = None,
+    on_connect=None,
 ) -> None:
     """長駐背景 task：mTLS 連 TAK :8089 訂閱 CoT 串流，逐筆 → ingest_cot_event。
 
@@ -529,6 +534,12 @@ async def subscribe(
 
         log.info("tak.connected", cot_url=config.get("COT_URL"))
         _set_tak_connected(True)  # P2-23：socket 連上
+        if on_connect is not None:
+            # #222：每次 socket (重)連上都觸發（含本 loop 內部自動重連 —— TAK server 不穩定關開時
+            # 不會走 tak_runtime.start，故 resync/對帳必須掛這裡）。fire-and-forget 不擋 read loop。
+            _oc = asyncio.create_task(on_connect())
+            _on_connect_tasks.add(_oc)
+            _oc.add_done_callback(_on_connect_tasks.discard)
         receiver = Receiver(asyncio.Queue(), config, reader, ingest=ingest, stop_event=stop_event, limiter=limiter)
         try:
             await receiver.run()

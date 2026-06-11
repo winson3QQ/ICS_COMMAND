@@ -191,3 +191,80 @@ def test_run_resync_disabled_short_circuits(monkeypatch):
     summary = _run(tak_resync.run_resync())
     assert summary["enabled"] is False
     assert summary["fetched"] == 0
+
+
+# ── #222：重連 outbound 對帳（reconcile_shared_outbound）──────────────────────────
+
+
+def _set_downlink_configured(monkeypatch, *, configured=True):
+    # #222 review fix：reconcile 現 gate `tak_runtime.effective_enabled() and is_configured()`
+    # （對齊其餘出向路徑，停用時不繞過開關洩漏位置）→ 兩者一起 patch。
+    monkeypatch.setattr("services.tak_runtime.effective_enabled", lambda: configured)
+    monkeypatch.setattr("services.tak_runtime.is_configured", lambda: configured)
+
+
+def test_reconcile_outbound_pushes_all_shared(monkeypatch):
+    """每個 shared_tak entity 當前狀態都重推一次（斷線期間移動/編輯的補位）。"""
+    sent = []
+    ents = [
+        {"uid": "U1", "type": "a-h-G", "lat": 25.0, "lon": 121.0, "attributes": {}},
+        {"uid": "U2", "type": "a-f-G", "lat": 24.5, "lon": 120.9, "attributes": {}},
+    ]
+    _set_downlink_configured(monkeypatch)
+    monkeypatch.setattr(tak_resync.cop_entity_repo, "list_shared_tak_entities", lambda **k: ents)
+    monkeypatch.setattr("services.tak_downlink.entity_to_cot", lambda e: f"<cot uid={e['uid']}>")
+
+    async def _fake_send(cot):
+        sent.append(cot)
+
+    monkeypatch.setattr("services.tak_downlink.send_cot", _fake_send)
+
+    pushed = _run(tak_resync.reconcile_shared_outbound())
+    assert pushed == 2
+    assert sent == ["<cot uid=U1>", "<cot uid=U2>"]
+
+
+def test_reconcile_outbound_best_effort_one_fails(monkeypatch):
+    """單筆送出失敗（畸形/抖動）不中斷其餘——best-effort 逐筆。"""
+    sent = []
+    ents = [{"uid": "BAD"}, {"uid": "OK"}]
+    _set_downlink_configured(monkeypatch)
+    monkeypatch.setattr(tak_resync.cop_entity_repo, "list_shared_tak_entities", lambda **k: ents)
+    monkeypatch.setattr("services.tak_downlink.entity_to_cot", lambda e: f"<cot {e['uid']}>")
+
+    async def _fake_send(cot):
+        if "BAD" in cot:
+            raise RuntimeError("send fail")
+        sent.append(cot)
+
+    monkeypatch.setattr("services.tak_downlink.send_cot", _fake_send)
+
+    pushed = _run(tak_resync.reconcile_shared_outbound())
+    assert pushed == 1
+    assert sent == ["<cot OK>"]
+
+
+def test_reconcile_outbound_noop_when_downlink_unconfigured(monkeypatch):
+    """TAK 出向未配置 → no-op：連 entity 都不查、不送，回 0（不每筆 raise 洗 log）。"""
+    _set_downlink_configured(monkeypatch, configured=False)
+    called = []
+    monkeypatch.setattr(
+        tak_resync.cop_entity_repo, "list_shared_tak_entities", lambda **k: called.append(1) or []
+    )
+    pushed = _run(tak_resync.reconcile_shared_outbound())
+    assert pushed == 0
+    assert called == []
+
+
+def test_reconcile_outbound_noop_when_toggle_disabled_even_if_configured(monkeypatch):
+    """#222 review fix（fail-open 守門）：cert 配齊但 admin 關掉開關（effective_enabled=False）
+    → 不對帳、不送（否則重連會繞過開關、洩漏 shared 標記位置，與 #222 的 409 閘矛盾）。"""
+    monkeypatch.setattr("services.tak_runtime.effective_enabled", lambda: False)
+    monkeypatch.setattr("services.tak_runtime.is_configured", lambda: True)  # cert 仍在
+    called = []
+    monkeypatch.setattr(
+        tak_resync.cop_entity_repo, "list_shared_tak_entities", lambda **k: called.append(1) or []
+    )
+    pushed = _run(tak_resync.reconcile_shared_outbound())
+    assert pushed == 0
+    assert called == []  # gate 早於查詢 → 開關關了連查都不查

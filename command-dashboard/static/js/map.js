@@ -121,6 +121,10 @@ let _polyLabelMgr = null;      // LabelMarkerManager (polygons)
 let _routeLabelMgr = null;     // LabelMarkerManager (routes)
 let _createPopup = null;       // CreatePopup（P2-34 #220）— 長按 → 統一建立對話框（類別→子型）
 let _contactDragMgr = null;    // P2-30 part 3：感知/敵情標記專屬拖曳 manager（左拖移動、右鍵廣播）
+// #222：TAK 開關有效狀態（由 cop.js `tak:status` 事件餵；長按建立「TAK 標記」類別的顯示 gate）。
+// 預設 false = fail-closed：尚未確認 TAK 啟用前不提供 TAK 標記建立入口。模組層註冊監聽，永不漏事件。
+let _takEnabled = false;
+document.addEventListener('tak:status', (e) => { _takEnabled = !!e.detail?.enabled; });
 let _eventDragMgr = null;      // EventDragManager — 補 step 7 symbol layer 化後事件
                                //   zone 失去的拖曳行為；只服務事件 zone（節點不在 scope）
 let _entityLayersInstalled = false;
@@ -913,9 +917,11 @@ function _openCreatePopup(lat, lng) {
 // contact=operator+、event=canCreateEvents）——前端只顯示有權建立的類別。
 function _buildCreateCategories() {
   const cats = [];
-  if (canAccessMapObjects()) {
+  // #222：TAK 標記（感知/敵情）的存在意義就是推 TAK——關閉 TAK 連線時不提供此入口（亦對齊
+  // 後端 share 端點停用時回 409）。gate = 角色（operator+）且 TAK 開關啟用。
+  if (canAccessMapObjects() && _takEnabled) {
     cats.push({
-      key: 'contact', label: '📍 感知 / 敵情標記',
+      key: 'contact', label: '📍 TAK 標記',
       subtypes: [
         { value: 'friendly', label: '友軍', color: _AFFILIATION_COLOR.friendly },
         { value: 'hostile', label: '敵情', color: _AFFILIATION_COLOR.hostile },
@@ -2179,7 +2185,8 @@ export function _openContactDetail(id) {
   }
   // 廣播到 TAK：P2-30 part 3 放寬 operator+（後端 /api/tak/share = WRITE_ROLES）。
   // （移動改走左鍵拖曳，不再需要按鈕。）
-  if (canAccessMapObjects()) {
+  // #222：廣播是 TAK 動作——TAK 停用時不顯示（對齊長按建立類別 gate；後端 share 停用時回 409）。
+  if (canAccessMapObjects() && _takEnabled) {
     body += `<button data-action="shareContactTak" data-id="${_escapeHtml(String(id))}" style="${BTN}background:var(--green,#2e8b57);">📡 廣播</button>`;
   }
   body += `<button data-action="deleteContact" data-id="${_escapeHtml(String(id))}" style="${BTN}background:var(--red);">🗑 刪除標記</button>`;
@@ -2195,7 +2202,7 @@ function _closeContactMenu() {
   document.removeEventListener('click', _closeContactMenu);
 }
 function _openContactBroadcastMenu(id, e) {
-  if (!canAccessMapObjects() || !_copStream?.getEntity(id)) return;
+  if (!canAccessMapObjects() || !_takEnabled || !_copStream?.getEntity(id)) return;  // #222：TAK 停用不開廣播選單
   _closeContactMenu();
   const map = _getMap();
   const rect = map.getContainer().getBoundingClientRect();
@@ -2244,7 +2251,11 @@ export async function _shareContactTak(id) {
   await _persistContactInputs(id);
   const r = await authFetch(`/api/tak/share/${encodeURIComponent(id)}`, { method: 'POST' });
   _deps.closeModal?.();
-  _flashMapMsg(r && r.ok ? '✓ 已廣播到 TAK（現場端可見；之後移動/刪除即時同步）' : '✗ 廣播到 TAK 失敗');
+  // #222：停用時後端回 409 → 給明確訊息（非泛稱「失敗」，免操作員白重試）。
+  const msg = r && r.ok
+    ? '✓ 已廣播到 TAK（現場端可見；之後移動/刪除即時同步）'
+    : (r && r.status === 409 ? '✗ TAK 連線已停用，無法廣播' : '✗ 廣播到 TAK 失敗');
+  _flashMapMsg(msg);
 }
 
 function _onRouteClick(e) {

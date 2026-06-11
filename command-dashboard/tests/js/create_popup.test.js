@@ -127,7 +127,7 @@ function eventCategory(reporterOnChange = vi.fn()) {
 function defaultCategories(reporterOnChange) {
   return [
     {
-      key: 'contact', label: '📍 感知 / 敵情標記',
+      key: 'contact', label: '📍 TAK 標記',
       subtypes: [
         { value: 'friendly', label: '友軍', color: '#3da9fc' },
         { value: 'hostile', label: '敵情', color: '#f85149' },
@@ -168,7 +168,7 @@ describe('CreatePopup', () => {
     const dom = cp._popup._dom;
     expect(dom.querySelector('.ev-popup-mgrs').textContent).toContain('MGRS(24.83,121.01)');
     const btns = dom.querySelectorAll('.ev-popup-group-btn');
-    expect(btns.map(b => b.textContent)).toEqual(['📍 感知 / 敵情標記', '▲ 事件回報', '＋ 設施']);
+    expect(btns.map(b => b.textContent)).toEqual(['📍 TAK 標記', '▲ 事件回報', '＋ 設施']);
   });
 
   it('open() 拒絕非有限座標 / 空類別清單不開', () => {
@@ -197,7 +197,7 @@ describe('CreatePopup', () => {
   it('一般類別（contact）：類別 → 子型 → onCreate(catKey, value, latlng) 並關閉', () => {
     const { cp, onCreate } = makePopup();
     cp.open(24.83, 121.01);
-    cp._popup._dom.querySelectorAll('.ev-popup-group-btn').find(b => b.textContent.includes('感知')).click();
+    cp._popup._dom.querySelectorAll('.ev-popup-group-btn').find(b => b.textContent.includes('TAK')).click();
     const subs = cp._popup._dom.querySelectorAll('.ev-popup-type-btn');
     expect(subs.map(b => b.textContent)).toEqual(['友軍', '敵情']);
     subs.find(b => b.textContent === '敵情').click();

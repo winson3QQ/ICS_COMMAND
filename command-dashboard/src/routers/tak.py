@@ -62,6 +62,10 @@ async def push_downlink(body: DownlinkCommandIn, request: Request):
     Audit 紀律（DoD：不得 best-effort）：**audit-first** —— 先寫稽核再送 CoT。
     audit 失敗 → 例外上拋（指令不送，無未稽核之下達）；送出失敗 → 503（稽核已留下達意圖）。
     """
+    # #222：出向受開關閘控——TAK 連線停用時不下達指令。caller-side gate，對齊 cop.py
+    # _resync_tak_if_shared（P2-24 #164 已 gate 重推路徑，本處補上當時漏掉的直接端點）。
+    if not tak_runtime.effective_enabled():
+        raise HTTPException(409, "TAK 連線已停用，無法下達指令（請先於系統設定啟用 TAK 連線）")
     operator = request.state.session["username"]
     # 縱深防護：內容白名單已在 schema validator，這裡再過一次 sink 防護（對齊 cop.py #24）。
     validate_no_unsafe_strings(body.model_dump())
@@ -114,6 +118,9 @@ async def share_entity_to_tak(uid: str, request: Request):
 
     流程：查 entity → `entity_to_cot`（點/幾何分流）→ **audit-first** → send_cot。
     """
+    # #222：出向受開關閘控——TAK 連線停用時不廣播（gate 在查 entity 前，停用時連查都省）。
+    if not tak_runtime.effective_enabled():
+        raise HTTPException(409, "TAK 連線已停用，無法廣播到 TAK（請先於系統設定啟用 TAK 連線）")
     operator = request.state.session["username"]
     entity = cop_entity_repo.get_cop_entity(uid)
     if entity is None:

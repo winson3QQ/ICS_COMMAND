@@ -271,3 +271,40 @@ def test_subscribe_reconnects_on_connect_failure_then_stops(monkeypatch):
 
     asyncio.run(run())
     assert attempts["n"] >= 2  # 連線失敗有重試
+
+
+def test_subscribe_calls_on_connect_each_connect(monkeypatch):
+    """#222：on_connect 在每次 socket (重)連上都被呼叫——含 subscribe loop 內部自動重連
+    （TAK server 不穩定關開時 resync/對帳的觸發點，不靠 tak_runtime.start）。fake_pf 每次連上
+    即 EOF（空 reader）→ 反覆重連 → on_connect 應被呼叫多次（證明非只首次連上才觸發）。"""
+    connects = []
+
+    async def fake_pf(config):
+        return _FakeReader([]), _FakeWriter()  # 連上即 EOF → 立刻斷線重連
+
+    monkeypatch.setattr("pytak.protocol_factory", fake_pf)
+
+    async def on_connect():
+        connects.append(1)
+
+    async def run():
+        stop = asyncio.Event()
+        cfg = build_subscribe_config(cot_url="tls://h:8089", client_cert="/c", client_key="/k", allow_insecure_tls=True)
+        task = asyncio.create_task(
+            tak_service.subscribe(
+                cfg, ingest=lambda e: None, stop_event=stop,
+                backoff_initial=0.01, backoff_max=0.01, on_connect=on_connect,
+            )
+        )
+        await asyncio.sleep(0.12)  # 多輪 連上→EOF→重連
+        stop.set()
+        await asyncio.sleep(0.05)
+        if not task.done():
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+
+    asyncio.run(run())
+    assert len(connects) >= 2  # 每次 (重)連上都觸發，非只首次
