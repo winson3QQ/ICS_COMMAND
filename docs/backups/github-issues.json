@@ -2580,15 +2580,15 @@
       "name": ""
     },
     "body": "**P2-33 的結構地基刀**（reality check 2026-06-10，對 current main / part-3 #192 已併）。SoT → \\`docs/design/cop-marker-event-decoupling.md\\`。\n\n## Reality-check 修正後 scope（只做連結來源遷移 = B1）\nROADMAP「降級」混了兩件事，本 issue **只做 B1**（kind 留 \\`'event'\\`、低風險）；B2（kind rename / 事件無自身圖釘）推 P2-33c/P2-29：\n- **目標**：`event_markers` junction 成 event↔marker **唯一權威連結**；`attributes.event_id` JSON glue 退役。\n\n## 硬約束（不可 remove-first）\njunction 目前**被 glue 餵養**（`cop.py` 讀 `attributes.event_id` 才 `link_marker`）、前端 `zone.event_id` 唯一來源 = glue（23 處消費）。故順序：\n1. **後端加讀/寫路徑**：① 序列化 `_row_to_entity_dict`（或 list/get 查詢 JOIN）帶 junction primary event_id（additive，不動現有）；② cop create 接受 first-class 連結（不再單靠 attributes.event_id 餵 junction）。\n2. **前端遷移**：`copEntityToEventZone` 改吃 junction-fed event_id（payload top-level），23 處消費點不需逐改（adapter 單點轉換）。\n3. **才刪 glue**：`map.js _evPopupSubmit` 停寫 `attributes.event_id`、`cop.py` 停讀它。\n\n## 反例修正（必記）\n- 降級 kind **不可盲目改 `contact`**：part-3 的 `contact` = 敵情/接觸點（語意特定），事件圖釘 ≠ contact。本 issue **kind 留 `event`**，不碰 kind。\n\n## 不做（留後續）\n- B2 概念降級（kind rename、事件無自身圖釘、渲染/分層）→ P2-33c / P2-29。\n- N:1 聚合 → P2-33c。\n\n## 依賴 / 協調\nP2-27（#183 junction，done）；part-3（#192，已併 → map.js 重疊風險已消）。\n\n## DoD\n- junction 為唯一 event↔marker 連結來源；前端事件圖釘行為等價（點/拖/渲染/orphan 全綠）。\n- `attributes.event_id` 不再被讀寫（grep 清）；m021 junction backfill 既有。\n- pytest + vitest 綠；/verify（建 event→圖釘→處置 modal→拖移→結案）；/code-review + /security-review。",
-    "closedAt": null,
+    "closedAt": "2026-06-11T03:57:04Z",
     "comments": [],
     "createdAt": "2026-06-10T09:50:00Z",
     "labels": [],
     "milestone": null,
     "number": 196,
-    "state": "OPEN",
+    "state": "CLOSED",
     "title": "P2-33b: event↔marker 連結來源遷移到 junction（glue 退役，kind 留 event）",
-    "updatedAt": "2026-06-10T09:50:00Z",
+    "updatedAt": "2026-06-11T03:57:04Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/196"
   },
   {

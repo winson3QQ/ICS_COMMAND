@@ -3288,5 +3288,26 @@
     "title": "P2-20(B) B2: Play mode 虛擬時鐘 + slider + 軌跡尾跡（#201）",
     "updatedAt": "2026-06-11T00:02:31Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/206"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "## ROADMAP item\n- Closes #196（P2-33b — P2-33「降級」的 B1：連結來源遷移；kind 留 event，B2 概念降級留 P2-33c）\n\n## What changed\nevent↔marker 權威連結改走 `event_markers` junction，`attributes.event_id` JSON glue 退役。\n- **① 後端序列化**：`cop_entity_repo` get/list 頂層帶 junction primary `event_id`（批次避 N+1，additive）。\n- **② 前端讀**：`copEntityToEventZone` / `findZoneByEventId` / drag 改吃頂層 `entity.event_id`。\n- **③ 寫退役**：`map.js` event_id 改頂層 first-class；`cop.py create_entity` pop 頂層（back-compat fallback attributes）→ **先 link junction 再廣播**。\n- **review 硬化**（`c663cc1`）：create link 對 `OperationalError`（DB lock）**重試一次**，保「event 圖釘必有 event_id」不變式；`IntegrityError`（event 不存在）不重試＝orphan、不反射 forged 值。\n\n硬約束遵守：先加讀/寫路徑 → 遷前端 → 才停 glue（非 remove-first）；m021 junction 已 backfill。\n\n## DoD checklist\n- [x] Tests：unit/test_event_markers +4、integration/test_cop_router +3、js/entity_layer 改 2+加 1\n- [x] `pytest` green（full，1 skip）\n- [x] `npm test` green（vitest 254）\n- [x] 設計 doc：`cop-marker-event-decoupling.md`（P2-33a PR 已入）+ ROADMAP P2-33b/c 既載\n- [x] `/code-review`（1 finding → 已修）、`/security-review`（0）\n\n## §8 Human Verification Script\n\\`\\`\\`bash\ncd <主 repo> && ./start_mac.sh   # 瀏覽器登入（worktree 空 DB 會 423）\n# 重構，行為應與改前一致：\n# 1. 建事件 → 圖釘出現為事件樣式；Network POST /api/cop/entities 的 event_id 在**頂層**、不在 attributes\n# 2. 點圖釘 → 開處置 modal；拖圖釘 → 移動+存（PUT 回應帶頂層 event_id）；結案 → 圖釘移除\n# 3. 重整頁面 → 圖釘仍是事件（GET list 帶 junction event_id）\n# 4. **開兩個分頁** → 一邊建事件，另一邊即時看到圖釘為事件樣式（廣播帶頂層 event_id；link-before-broadcast）\n\\`\\`\\`\n\n## Out of scope\n- B2 概念降級（kind rename `event`→sighting/contact、事件無自身圖釘）→ P2-33c / P2-29。\n- N:1 聚合 → P2-33c。\n\n## Notes for reviewer\n- `cop.py` 與 main #197 自動 merge（不同區域：`_resync_tak_if_shared` vs `create_entity`）。\n- 全貌設計 SoT → `docs/design/cop-marker-event-decoupling.md`。",
+    "closedAt": "2026-06-11T03:57:03Z",
+    "comments": [],
+    "createdAt": "2026-06-11T03:56:47Z",
+    "headRefName": "feat/issue-196-p2-33b-junction-link",
+    "labels": [],
+    "mergedAt": "2026-06-11T03:57:03Z",
+    "number": 208,
+    "state": "MERGED",
+    "title": "feat(cop): P2-33b event↔marker 連結來源遷移到 junction（glue 退役，#196）",
+    "updatedAt": "2026-06-11T03:57:03Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/208"
   }
 ]
