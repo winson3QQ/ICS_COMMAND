@@ -3393,5 +3393,26 @@
     "title": "fix(map): TAK 單位顯示 callsign 標籤（#213 a-slice）",
     "updatedAt": "2026-06-11T08:58:16Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/218"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "地圖 UX 重整 **CREATE × VIEW 二分**之 CREATE 半（VIEW 側 = #219）。建立流程從散落（長按事件 popup + ☰ 面板 arm-then-click 放置節點/設施/敵情標記）統一進**長按 contextual 對話框**，filter 面板回歸純 view。\n\n## 落地\n- 新 `static/js/map/create_popup.js` `CreatePopup`：類別→子型 launcher（marker-first 排序、`getCategories` 於 open() 即時解析反映角色/taxonomy）\n- `map.js`：長按 → `_openCreatePopup`（gate 放寬 `canAccessMapObjects‖canCreateEvents`）+ `_buildCreateCategories()`（角色濾：標記=operator+／事件=canCreateEvents／設施·節點=指揮層）+ `onCreate` 路由（事件→`_evPopupSubmit`、其餘→`_placeAt(lat,lng,{kind,type})`）\n- filter 面板放置入口移除 → 純 view（接 #219、無提示）；affiliation 色票抽 `_AFFILIATION_COLOR` 共用\n- **arm-then-click 死碼全退場**：`_placeState`/`_startPlace`/`_cancelPlace`/`_openInfraForm`/`_openNodePlacePicker`/`_openContactPlacePicker`/`_startContactPlace` + 單擊分支 + `main.js` imports/dispatch + HTML `node-place-banner` + CSS；`event_popup.js` + test 刪除\n\n## reality-check（#220 留言）三修正全落實\n不叫「TAK 類」（ICS 不建 TAK 單位、是建本站標記可外推）、通用 2525 SIDC picker 列 out-of-scope、marker-first（選單以標記為首）。poly/route 多頂點 draw 不收進長按。\n\n## 測試 / 驗證\n- 新 `create_popup.test.js` 10 例（類別/子型/事件兩階段/reporter/返回/soft-delete/getCategories 即時解析）；vitest **279**、eslint **0**\n- `/code-review`（affiliation 色票去重 + 長按 gate 完整性經角色階層確認）+ `/security-review` **0 finding**（全 `textContent` 無 XSS、後端 RBAC 未動仍守 zone/infra=COMMAND、payload hardcoded）\n- **純前端、零後端、無版號變更**（建立入口位置遷移，非新 UI 功能組；前端版待 #219 完成一併評估）\n- Human verify by user（dev env 長按各角色建立）\n\nCloses #220.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+    "closedAt": "2026-06-11T10:10:27Z",
+    "comments": [],
+    "createdAt": "2026-06-11T10:10:15Z",
+    "headRefName": "feat/issue-220-create-longpress",
+    "labels": [],
+    "mergedAt": "2026-06-11T10:10:27Z",
+    "number": 221,
+    "state": "MERGED",
+    "title": "feat(map): P2-34 建立動作整合進長按對話框 — CreatePopup（CREATE 側，#220）",
+    "updatedAt": "2026-06-11T10:10:27Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/221"
   }
 ]
