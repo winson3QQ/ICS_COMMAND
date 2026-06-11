@@ -34,6 +34,9 @@ import {
   confirmResetDB,
 } from './cop.js';
 import {
+  initChatPanel, switchRightTab, chatFilterRoom,
+} from './chat_panel.js';
+import {
   getSeries, expandSpark, getExpandedSpark, renderSparklines,
   buildSliceHtml,
 } from './charts.js';
@@ -49,6 +52,7 @@ import {
   _addEventNote, _updateEvAndRefresh, _updateEvTypeFromCategories, _syncEvSeverity,
   _renderZoneModal, setZoneModalTab,
   loadEventTaxonomy, openTaxonomyEditor, saveTaxonomyFromEditor,
+  _resizeEvtList,
 } from './events.js';
 import {
   initMap, reloadMapConfig, switchMap, cancelPlaceMode, togglePinEditMode,
@@ -389,6 +393,10 @@ document.addEventListener('click', function (e) {
     // ── COP 面板切換 ──
     case 'switchLeftPanel': switchLeftPanel(btn.dataset.group); break;
     case 'switchDecTab':    switchDecTab(btn.dataset.tab); break;
+    // ── 右欄頂層 tab（事件追蹤 ｜ 通聯）+ 通聯 room 過濾（#213 b1）──
+    // 切回事件即重算列表高（顯示後才量得到 clientHeight；補隱藏期間 window resize 的殘留）。
+    case 'switchRightTab':  switchRightTab(btn.dataset.rtab); if (btn.dataset.rtab !== 'chat') _resizeEvtList(); break;
+    case 'chatFilterRoom':  chatFilterRoom(btn.dataset.room); break;
 
     // ── 演習管理（P1-14 PR-2，取代死掉的實戰/演練切換）──
     case 'openExercisePanel': {
@@ -661,6 +669,7 @@ function _loadClassicScript(src) {
   // 2. 初始化所有模組
   setModalHandlers({ openModal, closeModal });
   initCop();
+  initChatPanel();  // #213 b1：右欄通聯面板（poll + 監聽 tak:conn-state 控 tab 顯隱）
 
   // 3. 預填表單下拉
   _populateNapsgCsel();

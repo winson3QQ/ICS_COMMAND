@@ -396,6 +396,19 @@ body{position:fixed;inset:0;}
 /* 裁示頁籤 */
 .dec-tab{cursor:pointer;font-size:9px;color:var(--text3);padding:1px 4px;border-radius:3px;}
 .dec-tab.active{color:var(--text);background:rgba(255,255,255,.1);}
+/* #213 b1 通聯面板 ── 右欄頂層 tab + 單流 + room chips */
+.rtab{cursor:pointer;font-size:10px;font-weight:600;color:var(--text3);padding:2px 8px;border-radius:4px;display:inline-flex;align-items:center;gap:4px;transition:all .15s;}
+.rtab.active{color:var(--text);background:rgba(255,255,255,.1);}
+.chat-unread{min-width:15px;height:15px;padding:0 4px;border-radius:8px;background:var(--red);color:#fff;font-size:9px;font-weight:700;line-height:15px;text-align:center;}
+.chat-chip{cursor:pointer;font-size:9px;color:var(--text3);padding:1px 7px;border-radius:10px;border:1px solid var(--border);transition:all .15s;}
+.chat-chip.active{color:var(--text);background:rgba(255,255,255,.12);border-color:var(--text3);}
+.chat-empty{color:var(--text3);font-size:11px;padding:6px 2px;}
+.chat-row{padding:4px 4px 5px;border-bottom:1px solid rgba(255,255,255,.04);}
+.chat-row-head{display:flex;align-items:baseline;gap:5px;margin-bottom:1px;}
+.chat-room-tag{color:var(--cyan,#4fd1c5);font-size:8px;font-weight:700;flex-shrink:0;}
+.chat-who{color:var(--text2);font-size:9px;font-weight:600;flex-shrink:0;}
+.chat-time{color:var(--text3);font-size:8px;margin-left:auto;flex-shrink:0;}
+.chat-msg{color:var(--text);font-size:10px;line-height:1.35;word-break:break-word;white-space:pre-wrap;}
 
 /* 左側面板切換頁籤 */
 #panel-left-tabs{margin-bottom:3px;}
@@ -1147,12 +1160,17 @@ body{position:fixed;inset:0;}
 
   <!-- 右：事件追蹤 + 待裁示 -->
   <div class="side-panel right" id="panel-right">
+    <!-- 頂層 tab：事件追蹤 ｜ 通聯（#213 b1，二選一）。通聯 tab 在 TAK 停用時隱藏（chat_panel.js 同源 takConnState）-->
+    <div id="right-top-tabs" style="display:flex;align-items:center;gap:4px;padding:4px 8px;flex-shrink:0;border-bottom:1px solid var(--border);">
+      <span id="rtab-events" class="rtab active" data-action="switchRightTab" data-rtab="events">事件追蹤</span>
+      <span id="rtab-chat" class="rtab" data-action="switchRightTab" data-rtab="chat" style="display:none;">通聯 <span id="chat-unread" class="chat-unread" style="display:none;">0</span></span>
+    </div>
     <!-- 上：事件追蹤 60% -->
     <div id="right-events" style="flex:6;display:flex;flex-direction:column;overflow:hidden;min-height:0;">
       <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 8px;flex-shrink:0;border-bottom:1px solid var(--border);">
         <span style="display:flex;align-items:center;gap:4px;">
           <!-- evt-expand-arrow 已移除（dashboard UX 互斥 expand mode 易誤觸；保留 events.js 的 toggleRightExpand handler 給 decisions header 用） -->
-          <span style="font-size:10px;font-weight:600;color:var(--text3);">事件追蹤 <span id="evt-open-total" style="font-size:9px;color:var(--yellow);"></span> <span id="evt-overdue" style="font-size:9px;"></span></span>
+          <span style="font-size:10px;font-weight:600;color:var(--text3);"><span id="evt-open-total" style="font-size:9px;color:var(--yellow);"></span> <span id="evt-overdue" style="font-size:9px;"></span></span>
           <!-- 分組模式：回報 / 處理，互斥，可點擊取消 -->
           <span id="evt-grp-reported" data-action="toggleEvtGroupMode" data-mode="reported"
             style="font-size:9px;padding:1px 5px;border-radius:3px;border:1px solid var(--border);color:var(--text3);cursor:pointer;transition:all .15s;">回報</span>
@@ -1164,6 +1182,13 @@ body{position:fixed;inset:0;}
       <div id="evt-filter-bar" style="display:none;padding:3px 8px;background:var(--surface2);border-bottom:1px solid var(--border);font-size:9px;color:var(--text2);flex-shrink:0;"></div>
       <div id="right-evt-list" style="flex:1;overflow-y:auto;padding:0 4px;font-size:10px;min-height:0;">
         <div style="color:var(--green);font-size:11px;">無開放事件</div>
+      </div>
+    </div>
+    <!-- 通聯（#213 b1）：與事件追蹤同 flex:6 槽位、二選一顯示。單一流 + [room] 標籤 + 動態 filter chips -->
+    <div id="right-chat" style="flex:6;display:none;flex-direction:column;overflow:hidden;min-height:0;">
+      <div id="chat-chips" style="display:flex;flex-wrap:wrap;gap:4px;padding:4px 8px;flex-shrink:0;border-bottom:1px solid var(--border);"></div>
+      <div id="chat-stream" style="flex:1;overflow-y:auto;padding:4px 6px;font-size:10px;min-height:0;">
+        <div class="chat-empty">無通聯</div>
       </div>
     </div>
     <!-- 分隔線 -->

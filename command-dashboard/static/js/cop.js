@@ -36,7 +36,7 @@ import {
   getMapConfig, findZoneByEventId, saveMapConfig,
 } from './map.js';
 import { getCurrentOperator, closeSettings, getAdminPin, closeAdminPanel } from './auth.js';
-import { takLightState } from './tak_light_state.js';
+import { takLightState, takConnState } from './tak_light_state.js';
 
 const API_BASE = location.origin;
 
@@ -307,9 +307,13 @@ async function _refreshTakLight() {
   try {
     const resp = await authFetch(API_BASE + '/api/tak/status', { signal: AbortSignal.timeout(3000) });
     if (!resp.ok) throw new Error(resp.status);
-    const { level, title } = takLightState(await resp.json());
+    const status = await resp.json();
+    const { level, title } = takLightState(status);
     dot.className = 'conn-dot ' + level;
     dot.title = title;
+    // #213 b1：通聯 tab 顯隱與 header 燈同源——派出狀態碼，chat_panel.js 只聽不另判
+    //（TAK 停用＝disabled → 隱藏通聯 tab；對齊 #164「燈號不謊報」單一真相紀律）。
+    document.dispatchEvent(new CustomEvent('tak:conn-state', { detail: { state: takConnState(status) } }));
   } catch (e) {
     dot.className = 'conn-dot lkp';
     dot.title = 'TAK 狀態：查詢失敗\n' + (e.message || e);
