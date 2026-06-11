@@ -865,6 +865,19 @@ export function admShowTab(tab) {
 export function admShowSys() {
   el('adm-panel-sys').innerHTML = `
     <div style="margin-bottom:24px;">
+      <div style="font-size:13px;font-weight:600;margin-bottom:8px;color:var(--text);">📡 TAK 連線</div>
+      <div style="font-size:11px;color:var(--text2);margin-bottom:10px;line-height:1.6;max-width:360px;">
+        runtime 啟用／停用與 TAK Server 的 CoT 串流連線（不重啟服務）。<br>
+        連線參數於部署時備妥，此處只負責開關。<span style="color:var(--red);">關閉 = 整個 COP 態勢中斷。</span>
+      </div>
+      <label style="display:flex;align-items:center;gap:10px;cursor:pointer;max-width:360px;">
+        <input id="adm-tak-toggle" type="checkbox" data-action="adm-toggle-tak"
+               style="width:18px;height:18px;cursor:pointer;" disabled>
+        <span id="adm-tak-toggle-label" style="font-size:13px;color:var(--text);">載入中…</span>
+      </label>
+      <div id="adm-tak-status" style="font-size:11px;color:var(--text2);margin-top:8px;min-height:16px;"></div>
+    </div>
+    <div style="margin-bottom:24px;border-top:1px solid var(--border);padding-top:16px;">
       <div style="font-size:13px;font-weight:600;margin-bottom:12px;color:var(--text);">🔑 更改 Admin PIN</div>
       <div style="display:flex;flex-direction:column;gap:8px;max-width:320px;">
         <input id="adm-sys-old-pin" class="login-input" type="password" inputmode="numeric"
@@ -887,6 +900,83 @@ export function admShowSys() {
       <button class="login-btn" data-action="confirmResetDB"
               style="background:var(--red);color:#fff;border:none;max-width:320px;">重設指揮部資料庫</button>
     </div>`;
+  _admLoadTakConn();
+}
+
+// P2-24（#164）：把 status 物件描述成系統 tab 的唯讀連線狀態行。
+// 分類邏輯**鏡像** tak_light_state.js 的 `takConnState()`（header 燈用同一套狀態界線，
+// 含「連上但無串流」=stale）。**不直接 import**：auth.js 是 root module、受
+// `module_boundaries_enforced` 測試強制零 import；故此處內聯一份等價分類。改其一須同步另一。
+// configured/running/connected 由後端唯讀回報；admin 不在此設定 config（部署層職責），只看健康。
+function _admRenderTakStatus(s) {
+  const line = el('adm-tak-status');
+  if (!line) return;
+  let txt, color;
+  if (!s.enabled) { txt = '● 已停用'; color = 'var(--text3)'; }
+  else if (s.configured === false) { txt = '⚠ 已啟用，但連線參數未備妥（部署層問題，非此處設定）'; color = 'var(--yellow)'; }
+  else if (s.running === false) { txt = '✕ 已啟用，但訂閱未啟動（檢查後端 log）'; color = 'var(--red)'; }
+  else if (!s.connected) { txt = '✕ 已啟用 · 未連線（背景重連中）'; color = 'var(--red)'; }
+  else if (s.last_cot_age_s == null || s.last_cot_age_s > 120) { txt = '● 已啟用 · 連線中（尚無串流）'; color = 'var(--yellow)'; }  // 對齊 header 燈 stale
+  else { txt = '● 已啟用 · 連線中'; color = 'var(--green)'; }
+  line.textContent = txt;
+  line.style.color = color;
+}
+
+async function _admLoadTakConn() {
+  const toggle = el('adm-tak-toggle');
+  const label = el('adm-tak-toggle-label');
+  if (!toggle) return;
+  try {
+    const r = await authFetch(API_BASE + '/api/tak/status', { signal: AbortSignal.timeout(3000) });
+    if (!r.ok) throw new Error(r.status);
+    const s = await r.json();
+    toggle.checked = !!s.enabled;
+    toggle.disabled = false;
+    if (label) label.textContent = s.enabled ? 'TAK 連線：啟用' : 'TAK 連線：停用';
+    _admRenderTakStatus(s);
+  } catch (e) {
+    toggle.disabled = true;
+    if (label) label.textContent = 'TAK 連線：狀態查詢失敗';
+    const line = el('adm-tak-status');
+    if (line) { line.textContent = '✕ ' + (e.message || e); line.style.color = 'var(--red)'; }
+  }
+}
+
+export async function admToggleTak() {
+  const toggle = el('adm-tak-toggle');
+  const label = el('adm-tak-toggle-label');
+  if (!toggle) return;
+  const desired = toggle.checked;          // checkbox 已被使用者點成新狀態
+  toggle.disabled = true;
+  if (label) label.textContent = desired ? '啟用中…' : '停用中…';
+  try {
+    const r = await authFetch(API_BASE + '/api/tak/connection', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: desired }),
+    });
+    const body = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      // 後端拒絕（403 非 sysadmin / 422）→ 還原 checkbox，顯示原因
+      toggle.checked = !desired;
+      const line = el('adm-tak-status');
+      if (line) { line.textContent = '✕ ' + (body.detail || ('操作失敗（' + r.status + '）')); line.style.color = 'var(--red)'; }
+      if (label) label.textContent = toggle.checked ? 'TAK 連線：啟用' : 'TAK 連線：停用';
+      return;
+    }
+    // 成功：重抓完整 status（含 configured/connected）誠實描述狀態行 +（toggle 由 _admLoadTakConn 還原）
+    document.dispatchEvent(new CustomEvent('tak:connection-changed'));   // 立即重抓 header 燈
+    await _admLoadTakConn();
+  } catch (e) {
+    // 網路錯誤 / timeout（authFetch 拋出）：POST 未成立 → 還原 checkbox 至原狀並提示，
+    // 否則 UI 停在樂觀值且無任何回饋（unhandled rejection）。
+    toggle.checked = !desired;
+    const line = el('adm-tak-status');
+    if (line) { line.textContent = '✕ 連線失敗：' + (e.message || e); line.style.color = 'var(--red)'; }
+    if (label) label.textContent = toggle.checked ? 'TAK 連線：啟用' : 'TAK 連線：停用';
+  } finally {
+    toggle.disabled = false;
+  }
 }
 
 export async function admChangeAdminPin() {

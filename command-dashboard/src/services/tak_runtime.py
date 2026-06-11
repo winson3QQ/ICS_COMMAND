@@ -56,6 +56,17 @@ def effective_enabled() -> bool:
     return config.TAK_ENABLED if persisted is None else persisted
 
 
+def is_configured() -> bool:
+    """連線參數（:8089 streaming URL + client cert/key）是否齊備。
+
+    與開關**正交**：config 屬**部署層**（`issue-tak-certs.sh` 簽憑證 + env 餵
+    `config.TAK_*`），admin UI **不設定、只消費開關**。供 `/api/tak/status` 區分兩種
+    『開了卻不綠』：① `enabled 且 !configured` → 部署未備妥連線參數（非 admin 在 UI 能修，
+    屬部署/ops）；② `enabled 且 configured 但連不上` → 網路 / 憑證 / TAK server 問題。
+    """
+    return bool(config.TAK_COT_URL and config.TAK_CLIENT_CERT and config.TAK_CLIENT_KEY)
+
+
 def set_persisted_enabled(enabled: bool) -> None:
     """持久化開關選擇（重啟後維持）。不在此 audit —— 由 endpoint 以 TAK_CONNECTION_TOGGLE
     audit-first 記錄（避免與 config_updated 雙記）。"""

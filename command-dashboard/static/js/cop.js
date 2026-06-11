@@ -36,6 +36,7 @@ import {
   getMapConfig, findZoneByEventId, saveMapConfig,
 } from './map.js';
 import { getCurrentOperator, closeSettings, getAdminPin, closeAdminPanel } from './auth.js';
+import { takLightState } from './tak_light_state.js';
 
 const API_BASE = location.origin;
 
@@ -291,24 +292,22 @@ async function _refreshCommandHealthLight() {
   }
 }
 
-// P2-23（#163）：TAK 連線指示燈。authFetch /api/tak/status（READ_ROLES）→ 推導燈色：
-//   未啟用→灰(lkp)／斷線→紅(crit)／連上但無串流→黃(warn)／連上且近期有 CoT→綠(ok)。
+// P2-23（#163）：TAK 連線指示燈。authFetch /api/tak/status（READ_ROLES）→ 推導燈色。
 // 「無串流」門檻 120s（>iTAK 自身位置心跳間隔，活連線不會誤判黃）。
+// P2-24（#164）：加入 running / configured 區分，消除「沒 task 在跑卻顯示斷線重連中」謊報——
+//   未啟用            → 灰(lkp)
+//   啟用·連線參數未備妥 → 黃(warn)（部署層問題，非 admin 在 UI 修）
+//   啟用·已備妥·task 沒起 → 紅(crit)「啟動失敗」（非「重連中」，因為根本沒 task 在重連）
+//   啟用·task 在跑·未連上 → 紅(crit)「斷線（背景重連中）」（這時才是真的在重連）
+//   啟用·連上·無串流    → 黃(warn)
+//   啟用·連上·近期有 CoT → 綠(ok)
 async function _refreshTakLight() {
   const dot = document.getElementById('cd-tak');
   if (!dot) return;
   try {
     const resp = await authFetch(API_BASE + '/api/tak/status', { signal: AbortSignal.timeout(3000) });
     if (!resp.ok) throw new Error(resp.status);
-    const s = await resp.json();
-    const age = s.last_cot_age_s;
-    let level, title;
-    if (!s.enabled) { level = 'lkp'; title = 'TAK：未啟用'; }
-    else if (!s.connected) { level = 'crit'; title = 'TAK：斷線（背景重連中）'; }
-    else if (age == null || age > 120) {
-      level = 'warn';
-      title = 'TAK：連線中 · 無串流' + (age != null ? `（${age}s 前最後 CoT）` : '（尚未收到 CoT）');
-    } else { level = 'ok'; title = `TAK：連線中（${age}s 前收到 CoT）`; }
+    const { level, title } = takLightState(await resp.json());
     dot.className = 'conn-dot ' + level;
     dot.title = title;
   } catch (e) {
@@ -316,6 +315,10 @@ async function _refreshTakLight() {
     dot.title = 'TAK 狀態：查詢失敗\n' + (e.message || e);
   }
 }
+
+// P2-24（#164）：admin 在系統 tab 切換 TAK 開關後，立即重抓燈（不等 5s 輪詢）。
+// 用 DOM 事件解耦，避免 auth.js → cop.js 循環 import（cop.js 已 import auth.js）。
+document.addEventListener('tak:connection-changed', _refreshTakLight);
 
 export async function poll() {
   if (!isPollActive()) return;

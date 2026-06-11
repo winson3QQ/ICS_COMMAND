@@ -52,9 +52,10 @@ APP_VERSION = "2.5.0"
 # v1.0.0：拆分自 ICS_DMAS 後首個完整可用形態（MapLibre 地圖引擎全換 P1-10b + PWA 移除 P1-11
 #         + 演習/放置/稽核 UI P1-13/14/16/#93 + 分類編輯器 #66）→ 0.x 畢業為 MAJOR 紀元。
 CMD_VERSION: str = os.getenv(
-    "CMD_VERSION", "v1.3.0"
-)  # MINOR：P2-30 part 3（#180）敵情標記 UI 功能組 —— 2525 milsymbol 渲染 + callsign 標籤
-# + 右鍵單鍵廣播 menu + 左鍵拖曳移動 + detail modal（手動感知/敵情標記一等公民）
+    "CMD_VERSION", "v1.4.0"
+)  # MINOR：P2-24 前端尾（#164）TAK runtime 控制 UI 功能組 —— 系統 tab sysadmin 開/關 toggle
+# + 唯讀連線狀態行 + header 燈號認實化（running/configured 區分，消除「沒 task 卻顯斷線重連」謊報）
+# v1.3.0：P2-30 part 3（#180）敵情標記 UI —— 2525 渲染 + callsign + 右鍵廣播 + 拖曳 + detail modal
 
 # ── CORS（C1-B）──────────────────────────
 # 架構備忘：PWA→Pi→Command 為 hub-and-spoke，瀏覽器無跨源呼叫，CORS 在主流程中無作用。

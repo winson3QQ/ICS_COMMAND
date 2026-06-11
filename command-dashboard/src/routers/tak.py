@@ -211,6 +211,11 @@ def tak_status():
         "connected": health["connected"],
         "last_cot_at": last,
         "last_cot_age_s": age_s,
+        # P2-24 前端尾（#164）：唯讀診斷欄位，讓 admin 開關燈號能誠實區分
+        #   running   = 訂閱 task 是否真的在跑（!running 而 enabled → 啟動失敗，非「重連中」）
+        #   configured= 部署層連線參數是否齊備（!configured 而 enabled → 部署未備妥，非 admin 在 UI 修）
+        "running": tak_runtime.is_running(),
+        "configured": tak_runtime.is_configured(),
     }
 
 
