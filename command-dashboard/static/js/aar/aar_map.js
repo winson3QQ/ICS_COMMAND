@@ -8,17 +8,39 @@ import { initMaplibre } from '../map/maplibre_core.js';
 import { positionsToGeoJSON } from './replay_engine.js';
 
 const SRC = 'aar-units';
+const SRC_TRAILS = 'aar-trails';
 let _map = null;
 let _ready = false;
 let _pending = null; // map 未 ready 前最後一次 setPositions 的資料（ready 後補渲染）
+let _pendingTrails = null; // 同上（B2 尾跡）
 
 /** 建 source + 兩層（circle + callsign label）。style 未就緒時 addSource 會 throw →
  *  回 false 讓 caller 改掛事件重試。idempotent（_ready 守門）。 */
 function _ensureLayers() {
   if (_ready || !_map) return _ready;
   try {
-    _map.addSource(SRC, { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
-    _map.addLayer({
+    // 每步都有 idempotent guard（review #201-B2-1）：style 競態下可能「部分加入後 throw」，
+    // retry 若重 addSource 會撞 'already exists' → 永遠卡在 not-ready。guard 後 retry 只補缺的。
+    // 尾跡層先加（線在點之下）
+    if (!_map.getSource(SRC_TRAILS)) {
+      _map.addSource(SRC_TRAILS, { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+    }
+    if (!_map.getLayer('aar-trails-line')) {
+      _map.addLayer({
+        id: 'aar-trails-line',
+        type: 'line',
+        source: SRC_TRAILS,
+        paint: {
+          'line-color': '#3fb950',
+          'line-width': 2,
+          'line-opacity': 0.45,
+        },
+      });
+    }
+    if (!_map.getSource(SRC)) {
+      _map.addSource(SRC, { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+    }
+    if (!_map.getLayer('aar-units-dot')) _map.addLayer({
       id: 'aar-units-dot',
       type: 'circle',
       source: SRC,
@@ -29,7 +51,7 @@ function _ensureLayers() {
         'circle-stroke-color': '#0d1117',
       },
     });
-    _map.addLayer({
+    if (!_map.getLayer('aar-units-label')) _map.addLayer({
       id: 'aar-units-label',
       type: 'symbol',
       source: SRC,
@@ -53,6 +75,10 @@ function _ensureLayers() {
   if (_pending) {
     setPositions(_pending);
     _pending = null;
+  }
+  if (_pendingTrails) {
+    setTrails(_pendingTrails);
+    _pendingTrails = null;
   }
   return true;
 }
@@ -79,6 +105,16 @@ export function setPositions(posMap) {
   }
   const src = _map?.getSource(SRC);
   if (src) src.setData(positionsToGeoJSON(posMap));
+}
+
+/** B2 尾跡（GeoJSON FeatureCollection of LineStrings）。map 未 ready → 暫存待補。 */
+export function setTrails(geojson) {
+  if (!_ready) {
+    _pendingTrails = geojson;
+    return;
+  }
+  const src = _map?.getSource(SRC_TRAILS);
+  if (src) src.setData(geojson);
 }
 
 /** 首次載入時把視野收到所有單位的範圍（無單位 → 不動，沿用預設中心）。 */

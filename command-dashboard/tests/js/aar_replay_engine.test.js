@@ -90,3 +90,43 @@ describe('stepIndexAtOrBefore (P2-21 bookmark 跳轉)', () => {
     expect(stepIndexAtOrBefore(steps, '2026-01-01T03:30:00Z')).toBe(3); // 恰等於 → 含
   });
 });
+
+describe('B2 Play mode 純函式 (#201)', () => {
+  test('tToMs/msToT 互逆且秒精度 Z 格式', async () => {
+    const { tToMs, msToT } = await import('../../static/js/aar/replay_engine.js');
+    expect(msToT(tToMs('2026-01-01T03:00:00Z'))).toBe('2026-01-01T03:00:00Z');
+  });
+
+  test('advanceClock：wall-delta×speed、到 end 夾住回 ended', async () => {
+    const { advanceClock } = await import('../../static/js/aar/replay_engine.js');
+    const r1 = advanceClock(1000, 500, 2, 10000); // +500ms wall × 2x = +1000
+    expect(r1).toEqual({ tMs: 2000, ended: false });
+    const r2 = advanceClock(9500, 1000, 4, 10000); // 越過 end → 夾住
+    expect(r2).toEqual({ tMs: 10000, ended: true });
+  });
+
+  test('增量折疊游標：前進 O(Δ) 結果 = 全折疊；倒退由 caller reset', async () => {
+    const { buildReplayIndex, makeFoldCursor, advanceFold, foldPositionsAt } =
+      await import('../../static/js/aar/replay_engine.js');
+    const { trackIdx } = buildReplayIndex(ITEMS);
+    const cur = makeFoldCursor();
+    advanceFold(trackIdx, cur, '2026-01-01T02:30:00Z');
+    expect(cur.pos.get('u1').lat).toBe(24.0);
+    const pos2 = advanceFold(trackIdx, cur, '2026-01-01T03:30:00Z'); // 增量前進
+    const full = foldPositionsAt(trackIdx, '2026-01-01T03:30:00Z');
+    expect([...pos2.keys()].sort()).toEqual([...full.keys()].sort());
+    expect(pos2.get('u1').lat).toBe(full.get('u1').lat);
+  });
+
+  test('trailGeoJSON：窗口切片、<2 點不畫、[lon,lat] 序', async () => {
+    const { buildReplayIndex, trailGeoJSON } = await import('../../static/js/aar/replay_engine.js');
+    const { tracksByUid } = buildReplayIndex(ITEMS);
+    // T=03:30，窗口 120 分 → u1 兩點成線；u2 只 1 點不畫
+    const gj = trailGeoJSON(tracksByUid, '2026-01-01T03:30:00Z', 120);
+    expect(gj.features).toHaveLength(1);
+    expect(gj.features[0].properties.uid).toBe('u1');
+    expect(gj.features[0].geometry.coordinates).toEqual([[120.0, 24.0], [120.1, 24.1]]);
+    // 窗口縮到 10 分 → u1 在窗內只剩 1 點 → 零線
+    expect(trailGeoJSON(tracksByUid, '2026-01-01T03:05:00Z', 10).features).toHaveLength(0);
+  });
+});

@@ -21,7 +21,14 @@ function _byT(a, b) {
 export function buildReplayIndex(items) {
   const steps = [...(items || [])].sort(_byT);
   const trackIdx = steps.filter(it => it.type === 'track');
-  return { steps, trackIdx };
+  // B2 尾跡：per-uid 點序列（各自天然按 t 序——trackIdx 已排序，依序歸戶即保序）
+  const tracksByUid = new Map();
+  for (const it of trackIdx) {
+    const p = it.payload;
+    if (!tracksByUid.has(p.uid)) tracksByUid.set(p.uid, []);
+    tracksByUid.get(p.uid).push({ t: it.t, lat: p.lat, lon: p.lon });
+  }
+  return { steps, trackIdx, tracksByUid };
 }
 
 /**
@@ -108,4 +115,67 @@ export function stepIndexAtOrBefore(steps, refT) {
     idx = i;
   }
   return idx;
+}
+
+// ── B2 Play mode（#201）────────────────────────────────────────────────────
+
+/** ISO Z ↔ epoch ms（slider/虛擬時鐘的數值域） */
+export function tToMs(isoZ) {
+  return new Date(isoZ).getTime();
+}
+
+/** epoch ms → ISO Z（秒精度，與 timeline t 同格式、可直接字串比較） */
+export function msToT(ms) {
+  return new Date(ms).toISOString().replace(/\.\d{3}Z$/, 'Z');
+}
+
+/**
+ * 虛擬時鐘推進（純函式；caller 在 rAF 餵 wall-clock delta）。
+ * 用 wall-delta × speed 而非固定步長：背景分頁 rAF 被節流 → 回前景自動跳補到正確 T。
+ * @returns {{tMs: number, ended: boolean}} 到 endMs 夾住並回 ended=true（caller 停播）。
+ */
+export function advanceClock(tMs, wallDeltaMs, speed, endMs) {
+  const next = tMs + wallDeltaMs * speed;
+  if (next >= endMs) return { tMs: endMs, ended: true };
+  return { tMs: next, ended: false };
+}
+
+/**
+ * 增量折疊游標（B2 前進播放 O(Δ新事件)；#199 定案不做 keyframe）。
+ * cursor = {idx, pos}（**就地推進**）；T 倒退時 caller 用 resetFoldCursor 重來（全折疊）。
+ */
+export function makeFoldCursor() {
+  return { idx: 0, pos: new Map() };
+}
+
+export function advanceFold(trackIdx, cursor, T) {
+  while (cursor.idx < trackIdx.length && trackIdx[cursor.idx].t <= T) {
+    const it = trackIdx[cursor.idx];
+    const p = it.payload;
+    cursor.pos.set(p.uid, {
+      uid: p.uid, lat: p.lat, lon: p.lon, t: it.t, actor: it.actor,
+      heading_deg: p.heading_deg, speed_mps: p.speed_mps,
+    });
+    cursor.idx += 1;
+  }
+  return cursor.pos;
+}
+
+/**
+ * 尾跡：每 uid 取 [T - windowMin 分, T] 窗口內的點 → LineString FeatureCollection。
+ * <2 點的 uid 不畫（畫不成線）。tracksByUid 各陣列已按 t 序（buildReplayIndex 保證）。
+ */
+export function trailGeoJSON(tracksByUid, T, windowMin = 10) {
+  const from = msToT(tToMs(T) - windowMin * 60_000);
+  const features = [];
+  for (const [uid, pts] of tracksByUid) {
+    const seg = pts.filter(p => p.t >= from && p.t <= T);
+    if (seg.length < 2) continue;
+    features.push({
+      type: 'Feature',
+      geometry: { type: 'LineString', coordinates: seg.map(p => [p.lon, p.lat]) },
+      properties: { uid },
+    });
+  }
+  return { type: 'FeatureCollection', features };
 }
