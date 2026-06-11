@@ -1,6 +1,8 @@
-# TAK streaming = 原生 stale+archive；可靠刪除只在 Mission/DataSync
+# TAK streaming = 原生 stale+archive；~~可靠刪除只在 Mission~~ → 對 iTAK 地圖**刪不掉**（client 硬限制）
 
 > **[2026-06-09 收編進 doc]** 本決策實質已搬進 `docs/roadmap/tak-integration-strategy.md` §4b「CoT 生命週期/刪除語意」（ROADMAP 可見、P2-14 對接）。本檔留 recall 指標 + code 級 How-to-apply。
+>
+> **★ [2026-06-11 dogfood 推翻「Mission = 可靠刪除」]**（真機 iTAK iOS + 活 5.7，[#194 comment](https://github.com/winson3QQ/ICS_COMMAND/issues/194#issuecomment-4677048174)）：跑完整 mission 刪除傳播 dogfood（乾淨隔離：mission 通道送達確認、無 streaming 混淆）。**所有 server 端刪除信號 iTAK 地圖都不清**：mission `REMOVE_CONTENT`（iTAK **收到 REMOVE 訊息但地圖 marker 不消失**）、t-x-d-d（含 mission dest）、**DELETE 整個 mission（任務包整個沒了 marker 還在）**。→ **iTAK(iOS) 對 server 任何刪除信號都不移除地圖 marker，只能裝置本機刪 = client 硬限制，下文「Mission 內刪除→真正刪了大家都刪」對 iTAK 不成立**。**P2-14 (A) 可靠刪除 = 不可解（不建 Mission delete 子系統）；(C) 權威 resync（讀，`/cot/sa`）不受影響仍可行**。連帶：`PUT/DELETE missions/{n}/contents` 必帶 `creatorUid` 否則 200-no-op（見 [[tak-marti-authz-model]]）。
 
 ## 事實（真機 iTAK + 活 server dogfood 實證，2026-06-08，issue #161）
 - **iTAK「從地圖刪除」是純本機 declutter**：刪 marker/繪圖 → :8089 wire 零 `t-x-d-d`、TAK server（Marti `GET /Marti/api/cot/xml/{uid}`）原封不動。
