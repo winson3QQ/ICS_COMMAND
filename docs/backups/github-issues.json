@@ -2791,5 +2791,25 @@
     "title": "ATAK(Android) Mission 刪除 + DataSync dogfood — 驗證 P2-14 (A)/(DataSync) 是否 iTAK-only 限制",
     "updatedAt": "2026-06-11T06:50:34Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/211"
+  },
+  {
+    "assignees": [],
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "body": "## ROADMAP 對照\n**P2-30**（感知標記共享閘 + 手動感知標記 + **線/區出向幾何序列化**，#180 CLOSED）的**前端收尾缺口**。\n- P2-30 part 1（[#181](https://github.com/winson3QQ/ICS_COMMAND/pull/181)）：後端 `geometry_service.vertices_to_cot_shape` + `tak_downlink.build_geometry_cot` **完成且端到端對活 iTAK 推線+區實收驗過**。\n- P2-30 part 2/3（#182/#192）：share 閘 `POST /api/tak/share/{uid}`（`entity_to_cot` 點/幾何分流，含 polygon/route）+ 右鍵「📡 廣播」UI **只接到 contact（感知/敵情標記）**。\n- **缺**：畫好的 **zone（polygon/route）沒有任何「推到 TAK」的前端觸發**（map.js grep 確認：share UI 僅 `_contactDragMgr`/`_openContactBroadcastMenu`，zone 無）。\n\n## 現況（畫區域/線的步驟）\n1. 點 `▱`/`↗` 繪製鈕（zone = COMMAND_ROLES）→ 2. 逐點加頂點 → 3. 完成 → 4. 填名稱/類型存 → 5. `POST /api/cop` 寫 cop_entities + WS 廣播 → **其他 ICS client 即時看到**。\n**到此為止只在 ICS 內部共享；推不到現場 TAK。**\n\n## 缺口\n後端能把 polygon/route 序列化並經 `/api/tak/share/{uid}` 推上 TAK（已驗），但 **UI 上點不到** —— 指揮畫的管制區/路線無法分享給現場 TAK，除非手動打 API。\n\n## 工作（純前端，後端零工）\n- [ ] 畫好的 zone（polygon/route）右鍵選單 / 詳情面板加「📡 推到 TAK」按鈕 → 呼叫既有 `POST /api/tak/share/{uid}`。\n- [ ] RBAC：zone 分享屬指揮行為 → COMMAND_ROLES（與 contact 放寬到 operator+ 不同；後端 `/api/tak/share` 現為 WRITE_ROLES，需確認 zone 分享是否要收緊或沿用）。\n- [ ] 分享後視覺回饋（已分享標記，比照 contact 的 `attributes.shared_tak`）。\n- [ ] human verify：ICS 畫區域 → 推 → 現場 TAK 實收。\n\n## 關聯\n- ROADMAP：P2-30（後端 ✅）；UI 落點可與 **P2-12**（TAK UI 面板統一）協調。\n- 共用後端：`/api/tak/share/{uid}`、`tak_downlink.entity_to_cot`/`build_geometry_cot`。",
+    "closedAt": null,
+    "comments": [],
+    "createdAt": "2026-06-11T07:20:31Z",
+    "labels": [],
+    "milestone": null,
+    "number": 212,
+    "state": "OPEN",
+    "title": "畫的區域/線無「推到 TAK」UI — P2-30 出向幾何後端已成、前端只接 contact 未接 zone",
+    "updatedAt": "2026-06-11T07:20:31Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/212"
   }
 ]
