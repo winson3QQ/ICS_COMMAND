@@ -134,6 +134,16 @@ TAK_MARTI_READ_KEY: str = os.getenv("TAK_MARTI_READ_KEY", "")  # 讀 cert 私鑰
 TAK_MARTI_WRITE_CERT: str = os.getenv("TAK_MARTI_WRITE_CERT", "")  # 寫 cert PEM（fullchain）
 TAK_MARTI_WRITE_KEY: str = os.getenv("TAK_MARTI_WRITE_KEY", "")  # 寫 cert 私鑰 PEM
 
+# ── Marti 權威 resync（P2-14 (C) / #194 / #173）────────────────────────────────
+# :8089 串流不對重連者重播既有靜態標記 → ICS 重啟/斷線會漏 server 已持久化的 marker。
+# 解法：拉 Marti `GET /cot/sa?start=&end=` 權威快照逐筆補進 cop_entities（只 upsert 不刪）。
+# 回看窗（秒）：每次 resync 抓「now - lookback ~ now」的 SA 快照。
+#   ⚠ /cot/sa 大時間窗回 BAD_REQUEST(400)（活 5.7 實測：2h 通、40 天掛；且 400 與 auth 拒
+#   共用同一頁，易誤判）→ 預設 2h（known-good 上限），需更長請自行驗證該 server 的窗上限。
+TAK_RESYNC_LOOKBACK_S: float = float(os.getenv("TAK_RESYNC_LOOKBACK_S", "7200"))  # 預設 2h（known-good）
+# (重)連線後是否自動跑一次 resync 補回 streaming 漏掉的靜態標記（#173 主訴求）。
+TAK_RESYNC_ON_CONNECT: bool = os.getenv("TAK_RESYNC_ON_CONNECT", "true").lower() == "true"
+
 # ── COP 軌跡抽樣（P2-06a / #120）──────────────────────────────────────────────
 # cop_entity_tracks per-uid 最短寫入間隔（秒）。ATAK 可 >0.5Hz，不節流則每筆位置更新
 # 都落一筆軌跡 → 表爆量。抽樣基準 = CoT event time（非 wall-clock）。不同演習場景

@@ -1,0 +1,9 @@
+<?xml version='1.0' encoding='UTF-8' standalone='yes'?><events><event version='2.0' uid='RESYNC-PLI-1' type='a-f-G-U-C' time='2026-06-11T04:47:35Z' start='2026-06-11T04:47:35Z' stale='2026-06-11T04:49:35Z' how='m-g'><point lat='24.7747' lon='121.0133' hae='102.4' ce='9999999.0' le='9999999.0' /><detail>
+<contact callsign="ALPHA-1" endpoint="*:-1:stcp"/>
+<__group name="Dark Green" role="Team Member"/>
+<takv device="Synthetic" platform="iTAK" os="0" version="0"/>
+<uid Droid="ALPHA-1"/></detail></event>
+<event version='2.0' uid='RESYNC-MARK-2' type='a-h-G' time='2026-06-11T04:40:00Z' start='2026-06-11T04:40:00Z' stale='2026-06-11T04:42:00Z' how='h-g-i-g-o'><point lat='24.8000' lon='121.0500' hae='50.0' ce='10.0' le='10.0' /><detail>
+<contact callsign="敵情-A"/>
+<archive/>
+<remarks>疑似敵方觀察哨</remarks></detail></event></events>
