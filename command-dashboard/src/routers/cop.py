@@ -294,16 +294,31 @@ async def create_entity(request: Request, response: Response):
     # OperationalError=DB locked）——只攔 IntegrityError 則高併發 link 撞 locked 會噴 500、client 重試又撞 409。
     _kind = (created.get("attributes") or {}).get("kind")
     if _kind == "event" and _event_id:
-        try:
-            event_marker_repo.link_marker(_event_id, created["uid"], "primary")
-            created["event_id"] = _event_id  # 廣播/回應帶上（insert 回的 created 在 link 前 event_id=None）
-        except sqlite3.Error as e:
-            log.warning(
-                "[cop] event↔marker 關聯失敗（FK/DB 錯，best-effort 不擋圖釘）event_id=%s uid=%s：%s",
-                _event_id,
-                created["uid"],
-                e,
-            )
+        # glue 退役後 event 圖釘的 event-ness **唯一**靠此 junction link 成功（前端只認頂層 event_id）。
+        # 故對 OperationalError（DB locked，瞬時；get_conn 已有 5s busy timeout 兜底）**重試一次**，
+        # 保「event 圖釘必有 event_id」不變式；IntegrityError（event 不存在）不重試＝正解（orphan）。
+        # 仍 best-effort：終究失敗只 warn、不擋圖釘上 COP（event_id 留 None）。
+        for _attempt in (1, 2):
+            try:
+                event_marker_repo.link_marker(_event_id, created["uid"], "primary")
+                created["event_id"] = _event_id  # 廣播/回應帶上（insert 回的 created 在 link 前 event_id=None）
+                break
+            except sqlite3.IntegrityError as e:
+                log.warning(
+                    "[cop] event↔marker 關聯失敗（event 不存在→orphan）event_id=%s uid=%s：%s",
+                    _event_id,
+                    created["uid"],
+                    e,
+                )
+                break
+            except sqlite3.OperationalError as e:
+                if _attempt == 2:
+                    log.warning(
+                        "[cop] event↔marker 關聯失敗（DB locked，重試後仍失敗）event_id=%s uid=%s：%s",
+                        _event_id,
+                        created["uid"],
+                        e,
+                    )
 
     await _broadcast("create", created)
     # #93：COP 建立 audit。**跳過 event kind**（event_created 已涵蓋，避免同動作雙記）；

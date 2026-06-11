@@ -371,3 +371,11 @@ def test_event_pin_back_compat_attributes_event_id(client):
     ent = _create(client, h, attributes={"kind": "event", "event_id": ev, "event_code": "EV-002"})
     assert ent["event_id"] == ev
     assert [e["id"] for e in get_events_for_marker(ent["uid"])] == [ev]
+
+
+def test_event_pin_forged_event_id_orphans_not_500(client):
+    """不存在的 event_id（FK 撞 IntegrityError）→ best-effort：圖釘照建（201）但 event_id=None
+    （orphan）、不噴 500、**不反射 forged 值**（review 硬化：link 失敗不 set created.event_id）。"""
+    h = _login(client)
+    ent = _create(client, h, event_id="no-such-event", attributes={"kind": "event"})
+    assert ent["event_id"] is None
