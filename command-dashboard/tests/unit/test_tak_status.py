@@ -79,3 +79,37 @@ def test_status_endpoint_disconnected_no_cot_age_none():
     assert body["connected"] is False
     assert body["last_cot_at"] is None
     assert body["last_cot_age_s"] is None
+
+
+# ── P2-24（#164）前端尾：running / configured 唯讀診斷欄位 ──
+
+
+def test_is_configured_true_when_url_and_certs_present(monkeypatch):
+    from core import config
+    from services import tak_runtime
+
+    monkeypatch.setattr(config, "TAK_COT_URL", "tls://tak:8089")
+    monkeypatch.setattr(config, "TAK_CLIENT_CERT", "/p/cert.pem")
+    monkeypatch.setattr(config, "TAK_CLIENT_KEY", "/p/key.pem")
+    assert tak_runtime.is_configured() is True
+
+
+def test_is_configured_false_when_any_param_missing(monkeypatch):
+    from core import config
+    from services import tak_runtime
+
+    monkeypatch.setattr(config, "TAK_COT_URL", "tls://tak:8089")
+    monkeypatch.setattr(config, "TAK_CLIENT_CERT", "")  # 缺憑證
+    monkeypatch.setattr(config, "TAK_CLIENT_KEY", "/p/key.pem")
+    assert tak_runtime.is_configured() is False
+
+
+def test_status_endpoint_includes_running_and_configured(monkeypatch):
+    """燈號要靠這兩欄區分『沒 task 在跑』vs『部署層未備妥』vs『真的在重連』。"""
+    tak_service.reset_tak_status()
+    from core import config
+
+    monkeypatch.setattr(config, "TAK_COT_URL", "")  # 未備妥連線參數
+    body = tak_router.tak_status()
+    assert body["configured"] is False
+    assert isinstance(body["running"], bool)
