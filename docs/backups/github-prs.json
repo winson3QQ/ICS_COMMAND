@@ -3454,7 +3454,28 @@
     "number": 224,
     "state": "MERGED",
     "title": "fix(tak): #222 出向受開關閘控 + 燈號 connected=綠 + 重連 outbound 對帳",
-    "updatedAt": "2026-06-11T15:56:20Z",
+    "updatedAt": "2026-06-11T15:57:07Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/224"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "## 摘要\n\nb1 的通聯面板靠 **7s poll** → 現場發訊最多等 ~7s 才顯示。b2 改**即時**：通聯一入 `chats` 表就 WS 推給訂閱者，幾乎即時跳出；poll 降為 **30s safety-net**（斷線/重連補對帳）。\n\n**重用既有 `CopHub` + `/ws/updates`，多工一個 `chat` op，不開新 socket、不加新 RBAC 面。** #213 b2。\n\n## 改了什麼\n\n**後端**\n- `chat_service.ingest_chat` 改 `async`，寫入後 `await cop_hub.broadcast({\"op\":\"chat\",\"chat\":_feed_item(row)}, exercise_id=row.exercise_id)`；`cop_service:377` 加 `await`。\n- `_feed_item`：chats row → 與 GET `/api/chat` 一致的 feed 形狀（`t = time or received_at`）。\n- exercise scope 沿用 `cop_hub` 既有 `wants` 過濾（與 entity 同模型，observer/operator 鎖當前場）；broadcast 對死連線容錯不拋（同 entity 廣播路徑）。\n\n**前端**\n- `cop_stream.js`：switch 加 `case \"chat\"` → 派 `chat:new` DOM 事件（**不進 entity store**，同 `exercise_switched` 解耦模式）。\n- `chat_panel.js`：監聽 `chat:new` → `_onLiveChat`（`mergeLiveChat` 去重 + 依 `(t,id)` 排序對齊 poll）；poll 7s→30s。\n\n## Reviews\n\n- **`/code-review`**：修 3 — ① `mergeLiveChat` 改 sorted insert（時鐘偏移的遲到訊息不錯位、與 poll `ORDER BY t,id` 同序）；② `_renderChips` 只在房間集合改變時重建（省 DOM）；③ live 路徑加 `LIVE_CAP=200` 對齊 poll 窗（防 poll 間隔內無界增長）。`_feed_item` 與 `list_chats` 形狀重複 → 註記 + shared helper 留後續（`t` 在此等價：CoT `time` `min_length≥1`，`or` ≡ SQL `COALESCE`）。\n- **`/security-review`**：**0 finding**（廣播 scope 與 entity 同源 server-derived `exercise_id` + `resolve_scope` 守門 + strict `wants()`；`textContent` sink；無新端點；與 b1 `/api/chat` 政策一致）。\n\n## §8 Verification script\n\n```bash\ncd command-dashboard && python -m pytest -q                       # 全綠（geochat +2）\npython -m pytest tests/unit/test_geochat_routing.py -q            # 9 passed\nnpx vitest run                                                    # 299 passed（mergeLiveChat +5）\npython ../scripts/doc_sync_check.py                               # exit 0\n```\n\n**即時推播 human verify（待實機，可選）**：起 dashboard（帶 TAK env，`start-ics-tak.ps1`）→ iTAK 發 GeoChat → 通聯面板**即時**跳出（不再等 7s）；中途 WS 斷線 → 30s poll 補回。\n\n## 衝突\n\n零。#224（#222 出向閘）未碰 b2 任一檔；唯一 b1↔#224 共改的 `cop.js` 本 PR 不碰。\n\n## 仍後置（#213 不關）\n\nb3 marker 連結（`GeoChat.<uid>` `split('.')[1]` 已實證 = 來源 marker uid）· 欄位盤點(#193) · O/C 識別與限可見。\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n",
+    "closedAt": "2026-06-11T16:31:37Z",
+    "comments": [],
+    "createdAt": "2026-06-11T16:30:12Z",
+    "headRefName": "feat/issue-213-geochat-ws",
+    "labels": [],
+    "mergedAt": "2026-06-11T16:31:37Z",
+    "number": 225,
+    "state": "MERGED",
+    "title": "feat(tak): P2-12 通聯即時 WS 推播（#213 b2）",
+    "updatedAt": "2026-06-11T16:31:53Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/225"
   }
 ]

@@ -2864,6 +2864,20 @@
         "minimizedReason": "",
         "reactionGroups": [],
         "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/213#issuecomment-4681470061"
+      },
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## ⚠️ 已知限制（b2 dogfood 實證）：斷線期間 GeoChat 無 backfill\n\n**現象（實機驗證 2026-06-12）**：把 TAK 開關**關掉** → iTAK 發一則 GeoChat → 開**回**開關 → ICS **看不到**那則訊息。\n\n**判定：限制（limitation），非 bug。** ICS 照架構行為運作；b1（面板）/ b2（即時 WS）皆無缺陷。\n\n### 根因（兩層疊加，皆設計性）\n1. **TAK :8089 串流不對重連者重播**（已 dogfood 證實 [#173](https://github.com/winson3QQ/ICS_COMMAND/issues/173)）—— ICS 退訂閱期間 server 收到的東西，重新訂閱後串流不補送。\n2. **重連 resync 拉 `/Marti/api/cot/sa`（SA = 位置/標記快照），不含 chat**。resync 逐筆走 `ingest_cot_event`（會把 `b-t-f` 分流到 chats）→ **「若」`/cot/sa` 含 chat 就會自動補回，但本次實證沒補回 = `/cot/sa` 不帶 chat**。\n\n→ 斷線期間的**標記/位置**會被 resync 補回（[#194](https://github.com/winson3QQ/ICS_COMMAND/issues/194)/P2-14 C），**通聯（chat）不會**。**對稱於 #194 的標記 resync 缺口。**\n\n### 與 b1/b2 無關\n- b2 即時 WS 管的是「連線著的時候」ICS→瀏覽器那一跳（已驗，即時）。\n- 此漏訊發生在**更上游**（ICS 根本沒從 server 收到）→ b1/b2 再完美也救不了從沒進 ICS 的資料；瀏覽器端的 30s poll + 重連 GET resync 也只能從 ICS 既有 chats 補，補不出 ICS 沒收到的。\n\n### 可能的解（未驗，需 reality-check）\n類似標記做一個「**chat resync**」——前提是 Marti 有 **chat / message 歷史 API** 可拉（`/Marti/api/...`）。需確認端點是否存在 + 是否回 `b-t-f`。屬 #213 後續（b-series）或併 P2-14 同類缺口處理。\n\n> 來源：#213 b2（[PR #225](https://github.com/winson3QQ/ICS_COMMAND/pull/225)）merge 後即時推播 dogfood，使用者主動測「關開關→發訊→開開關」確認。\n",
+        "createdAt": "2026-06-11T23:08:11Z",
+        "id": "IC_kwDOSnBjpc8AAAABF0xq7g",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/213#issuecomment-4685851374"
       }
     ],
     "createdAt": "2026-06-11T07:24:56Z",
@@ -2872,7 +2886,7 @@
     "number": 213,
     "state": "OPEN",
     "title": "入向 TAK 顯示忠實度：client 推什麼就完整顯示（callsign/remarks/GeoChat），declutter 用 map filter 不在 ingest 丟",
-    "updatedAt": "2026-06-11T14:11:33Z",
+    "updatedAt": "2026-06-11T23:08:12Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/213"
   },
   {
