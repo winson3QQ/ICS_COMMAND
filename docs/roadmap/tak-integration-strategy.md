@@ -112,7 +112,7 @@
 - **TAK server 持久化一切**：CoreConfig `<repository>`（PostgreSQL）存每 uid 最新 CoT，**不靠 stale 移除**；`<latestSA>` 對新連線補發、`<repeater>` 僅 4 種 emergency 重播（一般 marker 不重播）→ **ICS 重連會漏既有靜態標記**（= #173，須 Marti 權威 resync）。
 - **持久訊號 = CoT `<archive/>`**（不是 `how`）：帶 `<archive/>`（如 `a-u-G` 放置標記）→ 過 stale 仍保留；無 archive（如繪圖 `u-d-r`）→ 過 stale 即移除（server repository 仍留）。**`stale` = client 顯示提示，非 server 刪除條件**。
 - **決策（#161）**：ICS = 一般 streaming subscriber，**對齊原生 = honor `stale` + honor `<archive/>`**（archived 豁免 stale、non-archived 過 stale 移除）；退掉 last-heard 時間窗。
-- **可靠刪除 / 權威 resync 只在 Mission/DataSync 層**（`GET /Marti/api/missions` + mission 內刪除廣播訂閱者）→ **P2-14**；過渡期＝操作員「移出 COP」+ 無界成長安全網（P2-14 (A)）。
+- **~~可靠刪除 / 權威 resync 只在 Mission/DataSync 層~~ → [2026-06-11 dogfood 推翻可靠刪除半]**：原假設「mission 內刪除廣播訂閱者 → 可靠刪除」**經真機 iTAK iOS dogfood 推翻**（[#194](https://github.com/winson3QQ/ICS_COMMAND/issues/194#issuecomment-4677048174)）：mission `REMOVE_CONTENT`（iTAK 收到 REMOVE 訊息但地圖 marker 不消失）、t-x-d-d、**DELETE 整個 mission（任務包沒了 marker 還在）** —— **iTAK(iOS) 對 server 任何刪除信號都不移除地圖 marker，只能裝置本機刪 = client 硬限制，Mission 也救不了**。→ **(A) 可靠刪除：不可解（client 擋死），不建 Mission delete 子系統**；過渡期＝操作員「移出 COP」（ICS 端）+ 無界成長安全網。**(C) 權威 resync（讀方向）不受影響、仍可行**（`/cot/sa` 已敲定，#194）→ **P2-14 收斂以 resync 為主**。
 - **威脅模型角度**：「streaming 層刪除不同步」為 **COP 完整性結構性限制** → 文件化 `docs/compliance/threat_model.md` §8（隨 P2-17）。
 - **降階關聯**：archived 標記是 Tier 2「凍結 TAK 最後實體」可保留的依據（archived 不隨 stale 消失）。
 
