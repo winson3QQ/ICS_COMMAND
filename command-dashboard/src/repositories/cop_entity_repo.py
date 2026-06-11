@@ -149,6 +149,25 @@ def list_cop_entities(
         return entities
 
 
+def list_shared_tak_entities(limit: int = 1000) -> list[dict]:
+    """列出所有「已廣播到 TAK」（attributes.shared_tak=true）且未刪除的 cop_entity（#222）。
+
+    供 **重連 outbound 對帳**：TAK (重)連線後把這些 entity 的**當前狀態**重推一次，補回
+    斷線期間發生的移動/編輯——CoT 同 uid idempotent（重推＝原地更新、不產生重複）。
+    **不分 exercise**：TAK 不知場域，只要 ICS 仍標記為已分享就重推其當前位置/內容。
+    排除 `deleted` 墓碑（已刪不該復活到現場）。`json_extract($.shared_tak)` 對 json true 回 1。
+    """
+    sql = (
+        "SELECT * FROM cop_entities "
+        "WHERE COALESCE(deleted, 0) = 0 "
+        "AND json_extract(attributes, '$.shared_tak') = 1 "
+        "ORDER BY received_at DESC, uid DESC LIMIT ?"
+    )
+    with get_conn() as conn:
+        rows = conn.execute(sql, (limit,)).fetchall()
+        return [_row_to_entity_dict(r) for r in rows]
+
+
 def aggregate_squads(exercise_id=None) -> list[dict]:
     """按 team_color 分組聚合 COP entity，供小隊態勢面板 / dashboard 用（P2-06d，issue #128）。
 

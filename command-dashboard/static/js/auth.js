@@ -904,10 +904,11 @@ export function admShowSys() {
 }
 
 // P2-24（#164）：把 status 物件描述成系統 tab 的唯讀連線狀態行。
-// 分類邏輯**鏡像** tak_light_state.js 的 `takConnState()`（header 燈用同一套狀態界線，
-// 含「連上但無串流」=stale）。**不直接 import**：auth.js 是 root module、受
-// `module_boundaries_enforced` 測試強制零 import；故此處內聯一份等價分類。改其一須同步另一。
+// 分類邏輯**鏡像** tak_light_state.js 的 `takConnState()`（header 燈用同一套狀態界線）。
+// **不直接 import**：auth.js 是 root module、受 `module_boundaries_enforced` 測試強制零 import；
+// 故此處內聯一份等價分類。改其一須同步另一。
 // configured/running/connected 由後端唯讀回報；admin 不在此設定 config（部署層職責），只看健康。
+// #222：connected = 可收可發 → 一律綠；入向 CoT age 只附註不降級（無入向串流屬正常，非故障）。
 function _admRenderTakStatus(s) {
   const line = el('adm-tak-status');
   if (!line) return;
@@ -916,8 +917,11 @@ function _admRenderTakStatus(s) {
   else if (s.configured === false) { txt = '⚠ 已啟用，但連線參數未備妥（部署層問題，非此處設定）'; color = 'var(--yellow)'; }
   else if (s.running === false) { txt = '✕ 已啟用，但訂閱未啟動（檢查後端 log）'; color = 'var(--red)'; }
   else if (!s.connected) { txt = '✕ 已啟用 · 未連線（背景重連中）'; color = 'var(--red)'; }
-  else if (s.last_cot_age_s == null || s.last_cot_age_s > 120) { txt = '● 已啟用 · 連線中（尚無串流）'; color = 'var(--yellow)'; }  // 對齊 header 燈 stale
-  else { txt = '● 已啟用 · 連線中'; color = 'var(--green)'; }
+  else {  // #222：連上即綠「可收發」；入向 CoT age 僅附註，不再因無串流變黃
+    txt = '● 已啟用 · 已連線（可收發）'
+      + (s.last_cot_age_s != null ? `，${s.last_cot_age_s}s 前收到 CoT` : '，尚無入向串流');
+    color = 'var(--green)';
+  }
   line.textContent = txt;
   line.style.color = color;
 }

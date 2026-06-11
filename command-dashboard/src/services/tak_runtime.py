@@ -25,9 +25,8 @@ log = structlog.get_logger()
 _CONFIG_KEY = "tak.connection_enabled"
 _handle: tuple[asyncio.Task, asyncio.Event] | None = None
 _lock = asyncio.Lock()
-# 留住 fire-and-forget resync task 的強 ref，否則 asyncio 只在內部 set 持弱 ref，
-# task 可能在跑完前被 GC 回收（Python docs create_task 警告）。done callback 清掉。
-_bg_tasks: set[asyncio.Task] = set()
+# #222：on_connect resync/對帳互斥——flap（server 反覆關開）時上一輪未跑完就跳過，避免疊跑。
+_on_connect_lock = asyncio.Lock()
 
 
 def is_running() -> bool:
@@ -73,6 +72,25 @@ def set_persisted_enabled(enabled: bool) -> None:
     config_repo.set_config(_CONFIG_KEY, "true" if enabled else "false")
 
 
+async def _on_reconnect_resync_reconcile() -> None:
+    """TAK socket 每次 (重)連上時跑：inbound resync（補 server 有、ICS 沒有）→ outbound 對帳
+    （補 ICS 改了、斷線沒送出的 shared 標記）。由 `tak_service.subscribe` 的 on_connect 觸發——
+    **含 subscribe loop 內部自動重連**（#222：TAK server 不穩定關開時 subscribe 內部重連不會走
+    `start()`，故掛 on_connect 才補得到，不能只靠 start）。outbound 排 inbound 之後＝ICS 端為
+    最後權威，不被 inbound 的 server 舊快照蓋回。互斥：flap 疊跑時跳過上一輪未完者。
+    """
+    if _on_connect_lock.locked():
+        return  # 上一輪 resync/對帳還在跑（flap）→ 跳過避免疊跑
+    async with _on_connect_lock:
+        try:
+            from services import tak_resync
+
+            await tak_resync.resync_on_connect()  # 內部已吞例外 + 受 TAK_RESYNC_ON_CONNECT 開關
+            await tak_resync.reconcile_shared_outbound()  # 內部 best-effort + 未配置 no-op
+        except Exception:  # noqa: BLE001 — 背景 resync/對帳絕不拖垮訂閱
+            log.warning("[tak] 重連 resync/reconcile 背景任務異常", exc_info=True)
+
+
 async def start() -> bool:
     """啟動 :8089 CoT 訂閱 task。已在跑 → no-op 回 False。
 
@@ -94,21 +112,17 @@ async def start() -> bool:
                 allow_insecure_tls=config.TAK_ALLOW_INSECURE_TLS,
             )
             stop_event = asyncio.Event()
-            task = asyncio.create_task(tak_service.subscribe(cfg, stop_event=stop_event))
+            # #222：resync/對帳掛在 subscribe 的 on_connect（每次 socket (重)連上都觸發，含
+            # subscribe loop 內部自動重連）——而非只在 start()。否則 TAK server 不穩定關開時，
+            # subscribe 內部重連不走 start()，斷線期間 shared 標記的移動就補不回現場端。
+            task = asyncio.create_task(
+                tak_service.subscribe(cfg, stop_event=stop_event, on_connect=_on_reconnect_resync_reconcile)
+            )
         except Exception:  # noqa: BLE001 — TAK 選配，啟動失敗只 log 不擋呼叫端
             log.warning("[tak] CoT 訂閱啟動失敗（config/import/task）", exc_info=True)
             return False
         _handle = (task, stop_event)
         log.info("[tak] CoT 訂閱背景 task 啟動：%s", config.TAK_COT_URL)
-
-        # P2-14 (C)（#173/#194）：(重)連線後背景補一次 Marti 權威 resync——:8089 串流不重播
-        # 既有靜態標記，重啟/斷線會漏 server 已持久化的 marker。fire-and-forget，失敗只 log
-        # 不影響訂閱（resync_on_connect 內部已吞例外 + 受 TAK_RESYNC_ON_CONNECT 開關）。
-        from services import tak_resync
-
-        resync_task = asyncio.create_task(tak_resync.resync_on_connect())
-        _bg_tasks.add(resync_task)  # 留強 ref 防中途 GC；跑完自清
-        resync_task.add_done_callback(_bg_tasks.discard)
         return True
 
 

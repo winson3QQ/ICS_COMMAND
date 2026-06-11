@@ -6,8 +6,9 @@
  * - 啟用·連線參數未備妥  → 黃(warn)（部署層，非 admin 在 UI 修）
  * - 啟用·已備妥·task 沒起 → 紅(crit)「啟動失敗」（不可顯示「重連中」——根本沒 task 在重連）
  * - 啟用·task 在跑·未連上 → 紅(crit)「斷線（背景重連中）」（這時才是真重連）
- * - 啟用·連上·無串流(>120s) → 黃(warn)
- * - 啟用·連上·近期有 CoT → 綠(ok)
+ * - 啟用·連上（無論入向 CoT 有無）→ 綠(ok)「已連線（可收發）」
+ *   #222：connected = ICS 已連上 TAK server = 可收可發 → 一律綠；入向串流有無只反映別的
+ *   client 有沒有在推，非 ICS 連線健康（單一 client / 安靜網段無入向屬正常），不再降級為黃。
  */
 import { describe, expect, test } from 'vitest';
 
@@ -26,8 +27,11 @@ describe('takConnState (header 燈與管理面板共用的單一分類器)', () 
   test('啟用·在跑·未連上 → disconnected', () => {
     expect(takConnState({ enabled: true, configured: true, running: true, connected: false })).toBe('disconnected');
   });
-  test('啟用·連上·無串流 → stale', () => {
-    expect(takConnState({ enabled: true, configured: true, running: true, connected: true, last_cot_age_s: 300 })).toBe('stale');
+  test('#222 啟用·連上·無入向串流(>120s) → ok（不再降級 stale）', () => {
+    expect(takConnState({ enabled: true, configured: true, running: true, connected: true, last_cot_age_s: 300 })).toBe('ok');
+  });
+  test('#222 啟用·連上·尚無 CoT(null) → ok', () => {
+    expect(takConnState({ enabled: true, configured: true, running: true, connected: true, last_cot_age_s: null })).toBe('ok');
   });
   test('啟用·連上·近期有 CoT → ok', () => {
     expect(takConnState({ enabled: true, configured: true, running: true, connected: true, last_cot_age_s: 5 })).toBe('ok');
@@ -58,15 +62,16 @@ describe('takLightState', () => {
     expect(r.title).toContain('重連中');
   });
 
-  test('啟用·連上·無串流(>120s) → 黃', () => {
+  test('#222 啟用·連上·無入向串流(>120s) → 綠（不再黃警示），tooltip 標「已連線」', () => {
     const r = takLightState({ enabled: true, configured: true, running: true, connected: true, last_cot_age_s: 300 });
-    expect(r.level).toBe('warn');
-    expect(r.title).toContain('無串流');
+    expect(r.level).toBe('ok');
+    expect(r.title).toContain('已連線');
   });
 
-  test('啟用·連上·尚未收到 CoT → 黃', () => {
+  test('#222 啟用·連上·尚無 CoT(null) → 綠，tooltip 註明尚無入向串流', () => {
     const r = takLightState({ enabled: true, configured: true, running: true, connected: true, last_cot_age_s: null });
-    expect(r.level).toBe('warn');
+    expect(r.level).toBe('ok');
+    expect(r.title).toContain('尚無入向串流');
   });
 
   test('啟用·連上·近期有 CoT → 綠', () => {
