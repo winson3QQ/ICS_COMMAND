@@ -3139,7 +3139,7 @@
     "number": 195,
     "state": "MERGED",
     "title": "feat(cop): P2-33a 事件導航鏈唯讀 UI（消費 /events/{id}/chain，#191）",
-    "updatedAt": "2026-06-10T09:43:10Z",
+    "updatedAt": "2026-06-11T04:00:36Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/195"
   },
   {
@@ -3307,7 +3307,7 @@
     "number": 208,
     "state": "MERGED",
     "title": "feat(cop): P2-33b event↔marker 連結來源遷移到 junction（glue 退役，#196）",
-    "updatedAt": "2026-06-11T03:57:03Z",
+    "updatedAt": "2026-06-11T04:00:36Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/208"
   }
 ]
