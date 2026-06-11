@@ -3267,5 +3267,26 @@
     "title": "P2-21 子集: 演習 KPI API + 回放課程標記 + AAR_EXPORT audit（#204）",
     "updatedAt": "2026-06-10T23:42:52Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/205"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "Refs #201（**不 Closes**——B3 觸控收尾 + Human verify 仍排隊）。承 B1 [#203](https://github.com/winson3QQ/ICS_COMMAND/pull/203)。\n\n## 變更（純前端：aar.html + aar/ 三 JS + vitest）\n- **虛擬時鐘**：rAF + wall-delta×速率（1x/2x/4x）、t_end 自停、空白鍵播放/暫停；**delta cap 1s**（隱藏分頁回前景不瞬移）。\n- **底部播放列**：▶/⏸ + 速段 + range slider（t_start~t_end ms）+ T 時鐘；scrub/跳步/書籤一律**自動暫停**。\n- **軌跡尾跡**：`tracksByUid` → `trailGeoJSON`（10 分窗 LineString）→ `aar-trails` line layer。\n- **增量折疊游標**（前進 O(Δ)、倒退 reset；#199 定案不做 keyframe）。\n- **bookmark 升級**：用虛擬 T（**#204「Play 中打標記」項解鎖**）；chip 直接定位任意 T。\n\n## review\n- `/code-review` 2 修：`_ensureLayers` 每步 idempotent guard（部分加入後 retry 撞 already-exists 永卡）；`data.meta` 兜底。＋1 防禦：`_setT` NaN T 早退（legacy 垃圾 ref_t）。\n- `/security-review` **0 finding**（新 DOM 寫入全 textContent、零新攻擊面、CSP enforce 維持）。\n\n## 驗證\n- vitest +4（`advanceClock`／增量游標≡全折疊／`trailGeoJSON` 窗口語意／`tToMs` 互逆），全 JS suite **266 綠**、eslint 0。\n- preview 實彈：scrub → 時鐘/單位/尾跡正確（mid 窗內 1 點不畫、end 兩點成線）、三層齊。\n- **rAF 播放在 preview 不動屬環境**（實測 `visibility:hidden` → rAF 0 回呼）——實機前景即動，併入 B3 Human verify。\n\n## 範圍\n後端零改動、零碰活躍 session 領地。B3（iPad 觸控 + Human verify）續 #201。無版號 bump（B1-B3 功能組全齊再進 frontend MINOR）。\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n",
+    "closedAt": "2026-06-11T00:02:12Z",
+    "comments": [],
+    "createdAt": "2026-06-11T00:01:37Z",
+    "headRefName": "feat/issue-201-aar-play-mode",
+    "labels": [],
+    "mergedAt": "2026-06-11T00:02:12Z",
+    "number": 206,
+    "state": "MERGED",
+    "title": "P2-20(B) B2: Play mode 虛擬時鐘 + slider + 軌跡尾跡（#201）",
+    "updatedAt": "2026-06-11T00:02:31Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/206"
   }
 ]
