@@ -3372,5 +3372,26 @@
     "title": "feat(tak): P2-24 前端尾 — 系統 tab TAK runtime 開關 + 燈號認實化（#164）",
     "updatedAt": "2026-06-11T07:46:29Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/215"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "## ROADMAP item\n- 推進 #213（a-slice：TAK marker callsign 標籤）；#213 (b) GeoChat 顯示另刀\n\n## What changed\n`tak-units-icon` 圖層原本只畫 2525 icon，feature 已帶 `label`（callsign||uid）卻無 `text-field` → 現場 TAK 單位在地圖上**看不到名稱**（#213 reality check 定位的精確根因）。修法：同層加 `text-field`（label 掛 2525 框下方，比照 production 的 `contact-callsign-label` / `infra-label`）+ stale 時標籤一起轉淡。\n\n## DoD checklist\n- [x] eslint 0 + `node --check` OK\n- [ ] `npm test`（vitest 未裝；JS 測試覆蓋 EntityLayer 資料層，不測 MapLibre paint 規格，與本改無關）\n- [x] 比照既有 working 圖層（`contact-callsign-label`）—— 零新樣式風險\n- [ ] CMD_VERSION bump（前端 UI 可感變更 → 合併時 PATCH bump v1.4.1 + frontend tag；合併前確認別的 session 未撞號）\n\n## §8 Human Verification Script\n```bash\n# 前置：app 起在有 TAK 資料、過 first-run 的 DB；TAK 2525 單位可見\n# Step 1: lint\ncd command-dashboard && npx eslint static/js/map.js   # 預期 0 error\n\n# Step 2: 視覺（活 server + 登入）\n# 開 commander_dashboard，地圖拉到 TAK 單位 → 2525 符號下方應顯示 callsign（如 3QQ）\n# 過 stale 的單位：符號 + 標籤一起轉淡（0.4）\n```\n\n## Out of scope\n- #213 (b) GeoChat 顯示（面板 + GET /api/chat + chat↔marker 連結決策，caveat：sender_uid = 整串 GeoChat uid ≠ marker uid）。\n- detail 欄位顯示完整度盤點（#213 後續）。\n\n## Notes for reviewer\n- 純前端，1 個圖層加 `text-field`/text-paint，完全比照 `contact-callsign-label`（map.js:1391）。feature `label` 早已填，先前被丟棄。filter 自動涵蓋（同層）。\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+    "closedAt": "2026-06-11T08:58:16Z",
+    "comments": [],
+    "createdAt": "2026-06-11T08:54:28Z",
+    "headRefName": "feat/issue-213a-tak-callsign-label",
+    "labels": [],
+    "mergedAt": "2026-06-11T08:58:16Z",
+    "number": 218,
+    "state": "MERGED",
+    "title": "fix(map): TAK 單位顯示 callsign 標籤（#213 a-slice）",
+    "updatedAt": "2026-06-11T08:58:16Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/218"
   }
 ]

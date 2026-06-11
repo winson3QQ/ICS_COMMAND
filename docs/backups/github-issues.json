@@ -2921,5 +2921,25 @@
     "title": "COP 一致性 doctrine：現場↔指揮部 TAK 物件生命週期須一致（declutter 走 filter，非分歧的 archive/stale）— 重評 #161",
     "updatedAt": "2026-06-11T08:53:23Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/217"
+  },
+  {
+    "assignees": [],
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "body": "## 背景 / 問題\n\n站外地圖「圖層」面板（`_rebuildLayerPanel`，`command-dashboard/static/js/map.js:834-891`）把多個**性質不同的軸**塞進同一條垂直清單，隨能力增加越來越長、操作不便：節點/事件/範圍/設施/路線 + 公共設施 + TAK 單位(+友/敵/中/不明/stale) + MGRS 格線 + 放置工具，全擠在一起。\n\n## Reality check：實際混了 4 軸 + 動作\n\n| 性質 | 項目 | 來源 |\n|---|---|---|\n| 本站 COP（演習綁定、可編輯）| 節點/事件/範圍/設施/路線 | `_layerVis` |\n| 外部來源 | TAK 單位 + 友/敵/中/不明 + stale | P2-25 `_takFilter` |\n| 參考底圖（唯讀、非演習資料）| 公共設施（8000+ 點）| P1-17 facilities |\n| 座標疊加（非資料）| MGRS 格線 | coord_tools |\n| **動作（非 filter）** | 新增設施 / 放置節點 / 敵情標記 | map.js:875-890 |\n\n## 與 P2-29 / P2-33c 的關係（重要 — 本 issue 刻意 scope）\n\n這正是 **P2-29「角色/分層感知地圖視圖」** 的動機，`docs/design/cop-event-layering.md:251` 已列為 gap（「map filter 僅 3 維、`visible_to` 預留未用、指揮官與幕僚看同一張圖」）。\n\n**本 issue = P2-29 前置**，只做**不依賴 doctrine 分層**的部分；完整分層語意 + `visible_to` 後端過濾留給 P2-29（且 P2-29 依賴 P2-33c：`kind→sighting/contact`、事件無自身圖釘）。\n\n## Scope（本 issue 做）\n\n1. **分群可收合**：`態勢(本站)` / `TAK 態勢` / `參考底圖` / `座標疊加`，每群 master toggle + 展開（預設收合）。\n2. **角色預設骨架**：指揮官 / 幕僚 / 觀察員 一鍵套一組圖層 —— 純前端 view preset（先用現有 kind 軸；P2-29 再換成 doctrine 分層）。解「太長」的主要槓桿：常見情況一鍵、不必滑完整清單。\n3. **放置工具移出 filter 面板**（新增設施/放置節點/敵情標記 → 獨立入口）—— 動作 ≠ view filter，零依賴可先做。\n4. **MGRS 格線雙控收斂**（toolbar `⊞` map.js:481 vs 面板）。\n\n## Out of scope（留 P2-29）\n\n- doctrine 三層（感知標記/事件/計畫指令）分層語意 —— 依賴 P2-33c。\n- `visible_to` per-entity 後端過濾。\n- 角色預設的「**強制**」語意（本 issue 只做 view 偏好，非 RBAC 強制隱藏）。\n\n## 參考\n\n- 設計 SoT：`docs/design/cop-event-layering.md`（G1 / L5）、`docs/design/cop-marker-event-decoupling.md`\n- 現況：`map.js` `_rebuildLayerPanel` / `_layerVis` / `_takFilter`（P2-25）\n- 相關 roadmap：P2-29（本 issue 為其前置）、P2-33c、P1-17（facilities）、P2-25（TAK filter）\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+    "closedAt": null,
+    "comments": [],
+    "createdAt": "2026-06-11T09:02:16Z",
+    "labels": [],
+    "milestone": null,
+    "number": 219,
+    "state": "OPEN",
+    "title": "feat(map): P2-29 前置 — 圖層 filter 面板資訊架構重整 + 角色預設骨架",
+    "updatedAt": "2026-06-11T09:02:16Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/219"
   }
 ]
