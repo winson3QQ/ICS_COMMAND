@@ -33,6 +33,7 @@ from routers import (
     ai,
     auth,
     backups,
+    chat,
     config_router,
     cop,
     dashboard,
@@ -167,6 +168,7 @@ for router in (
     ttx.router,
     ai.router,
     tak.router,
+    chat.router,
     security.router,
 ):
     app.include_router(router)

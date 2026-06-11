@@ -1446,6 +1446,10 @@ export function _resizeEvtList() {
   const container = document.getElementById('right-events');
   const list = document.getElementById('right-evt-list');
   if (!container || !list) return;
+  // #213 b1：在「通聯」分頁時 #right-events 為 display:none → clientHeight=0，
+  // 算出 availH≤0 會把 list maxHeight 釘成 50px 並殘留，切回事件後列表卡半截。
+  // 容器隱藏（offsetParent 為 null 或 clientHeight 0）時不量、保留上次可見值。
+  if (container.offsetParent === null || container.clientHeight === 0) return;
   let usedH = 0;
   for (const child of container.children) {
     if (child === list) break;

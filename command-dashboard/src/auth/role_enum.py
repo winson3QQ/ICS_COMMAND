@@ -136,6 +136,12 @@ def allowed_roles_for(method: str, path: str) -> frozenset[str] | None:
         # 端點注入/竄改 tak 物件、繞過 cop PUT/DELETE 的來源守門。真實 TAK 資料走 :8089 串流
         # （背景 task 直呼 ingest，不經 HTTP RBAC），故收緊無生產影響。機器對機器 auth = TAK-A。
         return COMMAND_ROLES if method == "POST" else READ_ROLES
+    if path == "/api/chat":
+        # #213 b1：通聯唯讀（GET）→ READ_ROLES——observer 做 audit/AAR 觀察需看當前場通聯，
+        # 屬與 events/COP 同層級的情境資料；跨場 PII 由 resolve_scope 守門（observer/operator
+        # 鎖當前 active 場，歷史場 ?exercise_id 限 COMMAND_ROLES）。出向 compose（POST，#216）
+        # ＝指揮對外發話、audit-first → 預留 COMMAND_ROLES（未實作；明示避免落非-GET 的 WRITE_ROLES 預設）。
+        return READ_ROLES if method == "GET" else COMMAND_ROLES
     if method in {"GET", "HEAD", "OPTIONS"}:
         return READ_ROLES
     return WRITE_ROLES
