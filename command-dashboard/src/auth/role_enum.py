@@ -127,6 +127,10 @@ def allowed_roles_for(method: str, path: str) -> frozenset[str] | None:
         # 任意 client CoT、不繞過 cop 來源守門；且 share endpoint audit-first（每次強制稽核分享意圖）。
         # **窄洞**：僅此 path 放寬，其餘 /api/tak/* POST（events 注入、admin cert/role）維持 COMMAND_ROLES。
         return WRITE_ROLES if method == "POST" else READ_ROLES
+    if path == "/api/tak/connection":
+        # P2-24（#164）：runtime 開關 TAK 連線＝關掉整 COP 態勢全斷、blast radius 最大 →
+        # 比照 /api/exercises/ DELETE 鎖 SYSADMIN_ONLY（commander 不可，避免誤觸把全 COP 弄瞎）。
+        return SYSADMIN_ONLY
     if path.startswith("/api/tak/"):
         # #146：REST ingest（POST /api/tak/events）收緊到 COMMAND_ROLES —— 防 operator 經此
         # 端點注入/竄改 tak 物件、繞過 cop PUT/DELETE 的來源守門。真實 TAK 資料走 :8089 串流

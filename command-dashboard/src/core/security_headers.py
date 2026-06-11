@@ -40,6 +40,9 @@ from core.config import CSP_MODE, CSP_REPORT_URI, ENABLE_SECURITY_HEADERS
 
 ENFORCE_PATHS: tuple[str, ...] = (
     "/static/commander_dashboard.html",
+    # P2-20(B) #201：AAR 回放頁（commander 頁面）。無 inline script / handler、JS 全外部
+    # module（security review 確認符合 enforce 條件；inline <style> 由 style-src 允許）。
+    "/static/aar.html",
     # 未來新增 commander-related 路徑時加入此清單（需 security review）
 )
 

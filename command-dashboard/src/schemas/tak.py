@@ -133,3 +133,9 @@ class DownlinkCommandIn(BaseModel):
         if v and not re.match(r"^[A-Za-z0-9._-]{1,128}$", v):
             raise ValueError("uid 只允許 [A-Za-z0-9._-]")
         return v
+
+
+class TakConnectionToggleIn(BaseModel):
+    """P2-24（#164）：runtime 啟用/停用 TAK :8089 訂閱。"""
+
+    enabled: bool

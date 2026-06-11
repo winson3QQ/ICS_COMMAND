@@ -3141,5 +3141,152 @@
     "title": "feat(cop): P2-33a 事件導航鏈唯讀 UI（消費 /events/{id}/chain，#191）",
     "updatedAt": "2026-06-10T09:43:10Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/195"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "P2-14 前置 reality check（活 TAK 5.7，cop-subscriber cert 實測）落地 memory + 指標。\n\n- 🔑 標出權威來源 `docs/reference/takserver-5.7-openapispec.json`（301 paths）為 TAK REST 動工首查（MEMORY 索引 + memory 頂部）\n- `/cot/sa` resync 契約敲定：`.000Z` + 小時間窗（大窗 400 是 gotcha 非格式），bbox 選填，cert 即可\n- Mission CRUD（含 DELETE mission）對 tool=public+creator 200 → 精煉「需 ROLE_ADMIN」\n- mission 成員 ≠ repository 刪除：可靠刪除須 mission-native + iTAK 訂閱 mission\n- 留痕 [#194](https://github.com/winson3QQ/ICS_COMMAND/issues/194#issuecomment-4668980148)\n\n純 memory/docs，無 code、無版號。\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+    "closedAt": "2026-06-10T10:13:31Z",
+    "comments": [],
+    "createdAt": "2026-06-10T10:13:08Z",
+    "headRefName": "docs/p2-14-reality-check",
+    "labels": [],
+    "mergedAt": "2026-06-10T10:13:31Z",
+    "number": 197,
+    "state": "MERGED",
+    "title": "docs(memory): P2-14 Marti reality check + OpenAPI spec 指標",
+    "updatedAt": "2026-06-10T10:13:57Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/197"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "Closes #164. ROADMAP **P2-24**（TAK 連結 runtime 開關，P2-10 dogfood 衍生）。\n\n## 變更\n- **`POST /api/tak/connection {enabled}`**（**SYSADMIN_ONLY**，**audit-first** `TAK_CONNECTION_TOGGLE`）：runtime 啟用/停用 :8089 訂閱、**不重啟 process**。\n- **持久化**於 config 表 `tak.connection_enabled`（重啟後維持）；開機優先序：**持久值 > `TAK_ENABLED` env**。\n- **新 `services/tak_runtime.py`** 控制器：訂閱 task 生命週期升成**模組級單一 handle**（`asyncio.Lock` 互斥）；lifespan 與 toggle endpoint **共用同一 handle**。\n- **`/api/tak/status`** 的 `enabled` 改讀 `effective_enabled()` → 連線燈跟著開關走。\n- **`auth/role_enum.py`** 加 `/api/tak/connection → SYSADMIN_ONLY`（比照 `/api/exercises/` DELETE）。\n\n## code-review 修正（cross-file）\n`cop.py _resync_tak_if_shared`（P2-30 part-3）原 gate `config.TAK_ENABLED`（啟動 env）→ 改 `effective_enabled()`，否則 runtime 關掉 TAK 後 move 已分享標記仍會推、純 toggle 開啟反而不推。+ 回歸測試。\n\n## 測試 / 驗證\n- `test_tak_connection_toggle.py`（持久/audit/status 反映/SYSADMIN gate+operator 403/resync 受 toggle 守門）+ 改寫 `test_tak_lifespan.py` → `tak_runtime`。\n- 全後端 suite 綠、pyflakes clean、doc-sync passed。\n- `/code-review`（high）1 cross-file finding（已修）；`/security-review` 0 finding。\n\n## 範圍\n**純後端**（row DoD 無 UI 項）。碰 `cop.py`（1 行 gate + import，additive 好 rebase）。無版號 bump。\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n",
+    "closedAt": "2026-06-10T16:03:45Z",
+    "comments": [],
+    "createdAt": "2026-06-10T16:00:48Z",
+    "headRefName": "feat/issue-164-tak-connection-toggle",
+    "labels": [],
+    "mergedAt": "2026-06-10T16:03:45Z",
+    "number": 198,
+    "state": "MERGED",
+    "title": "P2-24: TAK 連線 runtime 開關（#164）",
+    "updatedAt": "2026-06-10T16:04:03Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/198"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "Closes #199. ROADMAP **P2-20(A)**（AAR 回放後端半；(B) 前端頁面延後）。\n\n## 變更\n- **`GET /api/exercises/{id}/timeline`** + 新 **`services/timeline_service.py`**：四源（tracks JOIN cop_entities／events／chats／**audit 白名單**）合併按 t 排序，統一 `{type,t,actor,payload}` + meta（count/t_start/t_end/**truncated**）。\n- audit 白名單 = `decision_*`／`TAK_DOWNLINK`／`COP_SHARE_TAK`／`event_status_updated`；**`event_created` 不取**（events 表已載，防雙計）。\n- `?from=&to=`（`_range_bound` 正規化）+ limit clamp；**truncated 用 limit+1 探測**（剛好 limit 筆不誤報、不靜默截斷）。\n- 排序：t 字串序 + 同秒固定 type 優先序 + 來源 id（**回放穩定**）。\n- RBAC = 中央 gate `/api/exercises/*` → COMMAND_ROLES（同 `/tracks` 先例；含軌跡/通聯 PII）。\n\n## 設計定案（#199 全記錄）\n**事件流、不做定時落盤快照**：等速時間軸由播放器虛擬時鐘保證、seek 加速=前端記憶體 keyframe。業界三域同證（event-sourcing「先量測再快照」/ 遊戲回放 keyframe 僅 seek 用 / PAR TAK Data Replay 錄 CoT 流量）。\n\n## review\n- `/code-review`（high）3 候選：① `occurred_at` 未正規化 → **修**（入庫 `iso_utc`，offset 混 Z 排錯序）＋回歸測試；② truncated 邊界誤報 → **修**（limit+1 探測）＋回歸測試；③ soft-deleted 軌跡入列 → **裁決保留**（AAR 完整歷史，同 /tracks 先例，docstring 記錄）。\n- `/security-review` **0 finding**（SQL 全綁定 10/10、gate 同源 /tracks、audit 白名單 detail 逐一查無機密）。\n\n## 測試 / 驗證\n- `test_timeline_api.py` ×10：四源合併排序＋shape／不雙計／時間窗／truncated 邊界／跨場隔離／空場／404／operator 403／occurred_at 正規化。\n- fresh-DB 全 suite 綠（CI 鏡像）、pyflakes clean、doc-sync passed。\n\n## 範圍\n純後端、零碰三個活躍 session 領地（map/events/cop/tak router）。(B) 前端 AAR 頁面（map.js）延後。無版號 bump。解鎖 P2-21（統計面板吃同一條時間軸）。\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n",
+    "closedAt": "2026-06-10T16:43:58Z",
+    "comments": [],
+    "createdAt": "2026-06-10T16:43:10Z",
+    "headRefName": "feat/issue-199-aar-timeline-api",
+    "labels": [],
+    "mergedAt": "2026-06-10T16:43:57Z",
+    "number": 200,
+    "state": "MERGED",
+    "title": "P2-20(A): AAR 統一時間軸 API — 四源事件流合併（#199）",
+    "updatedAt": "2026-06-10T16:44:13Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/200"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "## 這份 PR 是什麼\n\n新增 `docs/roadmap/architecture-readiness-review.md`——以「民防工作者 + 軍勤支援」操作視角做的 code review **評論文件**（critique，非設計 SoT、非工作清單）。\n\n**定位**：作者觀點，非已拍板決策。設計 SoT 仍指回 `cop-marker-event-decoupling.md` / `tak-integration-strategy.md` / `threat_model.md`。code 發現分「已抽驗（事實）」與「待查（推論）」兩級標明。\n\n## 內容結構\n\n**Part A — 運維就緒度（會不會死在現場）**\n- 站得住的設計 4 點（TAK 來源紅線 / server 權威隔離 / 責任鏈 / 後端工程品質）\n- 五個現場情境：A 斷網 48h 靜默資料遺失（`sync.js:275`）／B 下錯令收不回（`tak_downlink` t-x-d-d）／C 裝置被擄撤不掉（threat_model §8.5）／D 指揮所棄守私鑰明文（§8.4）／E 夜班單人（主動告警未建 + 前端韌性）\n- code 層發現（事實 vs 待查分級）+ 測試/CI 缺口（JS 測試沒進 CI）+ 供應鏈 enforcement 落差\n- 主動告警「依據什麼判斷」：calc_engine 門檻模式延伸到 COP 空間/運動軸\n\n**Part B — marker/event N:1 聚合架構四個結構性偏差**\n- B1 輔助聚合排在脊椎之後（北極星與機制倒置）\n- B2 proximity 是對的 natural-hazard 訊號、錯的 adversary 訊號\n- B3 re-parent = delete+insert 毀掉 AAR 認知時間軸（`_m021_event_markers`）\n- B4 兩軸分離但共用 NAPSG 詞彙 → 命名協同事件時軸塌回 1:1\n\n**優先序總表**：跨 A/B 統一排序 9 項。\n\n## 性質\n\n純文件新增，無 code 變更。draft 待 review。\n\n\n---\n_Generated by [Claude Code](https://claude.ai/code/session_016UEKM6a1VsspXrt3yRV8sR)_",
+    "closedAt": "2026-06-10T22:36:54Z",
+    "comments": [],
+    "createdAt": "2026-06-10T22:30:13Z",
+    "headRefName": "claude/new-session-cadiuy",
+    "labels": [],
+    "mergedAt": "2026-06-10T22:36:54Z",
+    "number": 202,
+    "state": "MERGED",
+    "title": "docs(roadmap): ICS_Command 架構與運維就緒度評論",
+    "updatedAt": "2026-06-10T22:36:54Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/202"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "Refs #201（**不 Closes**——B2 Play mode/尾跡、B3 觸控收尾仍排隊；Human verify 待使用者實機驗）。消費 P2-20(A) [#200](https://github.com/winson3QQ/ICS_COMMAND/pull/200) 的時間軸 API。\n\n## 變更（5 新檔 + security_headers 一行）\n- **`static/aar.html`**：獨立回放頁（60% 地圖 / 40% 事件流面板、≥44px 觸控、CSP 合規零 inline script）。\n- **`static/js/aar/`**：`replay_engine.js`（純函式折疊核心）/ `aar_map.js`（自帶 MapLibre 實例 + circle/label 層）/ `aar_main.js`（Step mode：點選/↑↓ → T 跳轉 → 折疊上圖；401/403/404/truncated 全路徑處理）。\n- **`security_headers.py`**：`/static/aar.html` 登錄 `ENFORCE_PATHS`（security review 抓的 invariant 缺漏；實測 header 轉 enforce、功能正常）。\n\n## 衝突歸零（#201 reality check）\n獨立頁直接 import `maplibre_core`/`auth` 模組，**map.js / events.js / main.js 全不碰**——與 P2-33b/c、part-3 領地零重疊。入口 = 同分頁 URL 直進（`/static/aar.html?exercise_id=N`；sessionStorage per-tab）。\n\n## review / 驗證\n- dogfood 修：pmtiles 在載時 `load` 不 fire → layer 建不起 → 「能加先加，失敗掛 once('load')+styledata 重試」。\n- `/code-review`：1 修（缺座標顯示 `—`）；`/security-review`：1 修（CSP 登錄）+ XSS 面通過（全 textContent/createElement）。\n- vitest ×8 新測、全 JS suite **261 綠**、eslint 0、CSP pytest 17 綠。\n- preview 實走（enforce CSP 下）：登入 → 時間軸 5 筆四源合併 → Step 跳轉 → 地圖折疊座標逐步正確、零 console error。\n- **Human verify 待辦**：使用者實機瀏覽器走一遍（#201 DoD 最後一項）。\n\n## 範圍\n無版號 bump（frontend MINOR 等 B1-B3 功能組全齊）。B2/B3 續 #201。\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n",
+    "closedAt": "2026-06-10T23:02:22Z",
+    "comments": [],
+    "createdAt": "2026-06-10T23:00:40Z",
+    "headRefName": "feat/issue-201-aar-replay-page",
+    "labels": [],
+    "mergedAt": "2026-06-10T23:02:22Z",
+    "number": 203,
+    "state": "MERGED",
+    "title": "P2-20(B) B1: AAR 回放獨立頁骨架 + Step mode（#201）",
+    "updatedAt": "2026-06-10T23:02:36Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/203"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "Refs #204（**不 Closes**——MEDEVAC「承接」動作（決策 C）/ EXCHECK（卡 P2-18）/ Play mode 中打標記（卡 B2）仍 pending）。上游：P2-20(A) #200、(B) B1 #203。\n\n## 變更\n- **`GET /api/exercises/{id}/kpis`**（新 `services/kpi_service.py`）：事件處置時長 / 通聯量 by 組 / 決策裁示時長 / 軌跡量 / AAR 條目數（= P2-22 gate 對帳數字）。**誠實邊界**：medevac/excheck 量不出 → `null+reason` 不假裝。不寫沉睡 `exercise_kpis` 表（即時算）。RBAC = 中央 gate COMMAND_ROLES。\n- **bookmark**：m026 `aar_entries.ref_t`（回放時間點；`created_at` 是牆鐘載不了 T——#204 發現 1）+ category `'bookmark'` + AAR 頁「標記此刻」鈕（B1 Step mode 解鎖——#204 發現 2）+ 書籤 chips 跳轉。\n- **AAR_EXPORT audit**：`/api/ai/report`、`/api/ai/export` audit-first 強制留痕。\n\n## review\n- `/code-review` 1 真 bug：`_group_count` NULL/`''` 同 key 覆蓋計數 → 改累加＋回歸測試。\n- `/security-review` 0 finding＋1 informational 收緊：垃圾 `ref_t` 入庫前 `iso_to_dt` 驗格式 → 422＋回歸測試。其餘：SQL 全 bind、chips 零 innerHTML（無 stored XSS）、audit 無 silent bypass、KPI 只回聚合無 row-level PII。\n\n## 測試 / 驗證\n- `test_exercise_kpis` ×9 + vitest ×9（含 `stepIndexAtOrBefore`）；fresh-DB 全 suite 綠（CI 鏡像）、pyflakes/eslint 0。\n- preview 實彈：選步→鈕啟用→標記→chip 渲染→點擊跳回時點→`/kpis` 真數字。\n\n## 範圍\n後端＋AAR 頁自有領地（`static/js/aar/`），**map.js/events.js/main.js/tak 全不碰**。無版號 bump。\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n",
+    "closedAt": "2026-06-10T23:42:35Z",
+    "comments": [],
+    "createdAt": "2026-06-10T23:41:37Z",
+    "headRefName": "feat/issue-204-exercise-kpis",
+    "labels": [],
+    "mergedAt": "2026-06-10T23:42:35Z",
+    "number": 205,
+    "state": "MERGED",
+    "title": "P2-21 子集: 演習 KPI API + 回放課程標記 + AAR_EXPORT audit（#204）",
+    "updatedAt": "2026-06-10T23:42:52Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/205"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "Refs #201（**不 Closes**——B3 觸控收尾 + Human verify 仍排隊）。承 B1 [#203](https://github.com/winson3QQ/ICS_COMMAND/pull/203)。\n\n## 變更（純前端：aar.html + aar/ 三 JS + vitest）\n- **虛擬時鐘**：rAF + wall-delta×速率（1x/2x/4x）、t_end 自停、空白鍵播放/暫停；**delta cap 1s**（隱藏分頁回前景不瞬移）。\n- **底部播放列**：▶/⏸ + 速段 + range slider（t_start~t_end ms）+ T 時鐘；scrub/跳步/書籤一律**自動暫停**。\n- **軌跡尾跡**：`tracksByUid` → `trailGeoJSON`（10 分窗 LineString）→ `aar-trails` line layer。\n- **增量折疊游標**（前進 O(Δ)、倒退 reset；#199 定案不做 keyframe）。\n- **bookmark 升級**：用虛擬 T（**#204「Play 中打標記」項解鎖**）；chip 直接定位任意 T。\n\n## review\n- `/code-review` 2 修：`_ensureLayers` 每步 idempotent guard（部分加入後 retry 撞 already-exists 永卡）；`data.meta` 兜底。＋1 防禦：`_setT` NaN T 早退（legacy 垃圾 ref_t）。\n- `/security-review` **0 finding**（新 DOM 寫入全 textContent、零新攻擊面、CSP enforce 維持）。\n\n## 驗證\n- vitest +4（`advanceClock`／增量游標≡全折疊／`trailGeoJSON` 窗口語意／`tToMs` 互逆），全 JS suite **266 綠**、eslint 0。\n- preview 實彈：scrub → 時鐘/單位/尾跡正確（mid 窗內 1 點不畫、end 兩點成線）、三層齊。\n- **rAF 播放在 preview 不動屬環境**（實測 `visibility:hidden` → rAF 0 回呼）——實機前景即動，併入 B3 Human verify。\n\n## 範圍\n後端零改動、零碰活躍 session 領地。B3（iPad 觸控 + Human verify）續 #201。無版號 bump（B1-B3 功能組全齊再進 frontend MINOR）。\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n",
+    "closedAt": "2026-06-11T00:02:12Z",
+    "comments": [],
+    "createdAt": "2026-06-11T00:01:37Z",
+    "headRefName": "feat/issue-201-aar-play-mode",
+    "labels": [],
+    "mergedAt": "2026-06-11T00:02:12Z",
+    "number": 206,
+    "state": "MERGED",
+    "title": "P2-20(B) B2: Play mode 虛擬時鐘 + slider + 軌跡尾跡（#201）",
+    "updatedAt": "2026-06-11T00:02:31Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/206"
   }
 ]

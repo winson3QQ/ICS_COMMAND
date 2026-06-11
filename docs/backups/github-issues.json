@@ -2086,15 +2086,15 @@
       "name": ""
     },
     "body": "## 來源\nP2-10 真機 dogfood 通盤考慮(2026-06-07)。\n\n## 問題\nTAK 連線目前**只由 `TAK_ENABLED` env 在啟動時決定**,無 runtime 控制。但「**就算 TAK server 啟動,ICS 也應能選擇不連**」:\n- 演習 vs 實戰用不同 feed;暫停 TAK 注入(避免污染);問題隔離(feed 異常時手動切斷)。\n- 現況要改 env + 重啟整個 dashboard,實戰中不可行。\n\n## 需求\n- dashboard 控制(**COMMAND_ROLES 限定**)**runtime 啟用/停用 TAK 連線**:\n  - 啟用 → launch subscribe() 背景 task;停用 → graceful cancel(對齊 main.py lifespan shutdown 的 cancel 邏輯)。\n- 狀態與 [#163](https://github.com/winson3QQ/ICS_COMMAND/issues/163) 連線指示連動(toggle + 狀態同一處)。\n- TAK_ENABLED env 仍作開機預設;runtime toggle 覆寫。\n\n## 安全 / audit\n- 控制限 **COMMAND_ROLES**(指揮層才能切 feed)。\n- 啟用/停用寫 audit(`TAK_FEED_TOGGLE operator=.. state=on/off`)—— feed 切換是指揮決策。\n\n## 關聯\n[#163](https://github.com/winson3QQ/ICS_COMMAND/issues/163)(連線狀態顯示,同一 UI)、P2-03(subscribe lifecycle)、P2-12。\n\n## 性質\n通盤考慮先提,**既有 soft-stale 解完後再做**。與 #163 可能同批(同一 TAK 連線控制/狀態 UI)。",
-    "closedAt": null,
+    "closedAt": "2026-06-10T16:03:46Z",
     "comments": [],
     "createdAt": "2026-06-07T10:09:43Z",
     "labels": [],
     "milestone": null,
     "number": 164,
-    "state": "OPEN",
+    "state": "CLOSED",
     "title": "Dashboard 可手動啟用/停用 TAK 連線(runtime toggle,非僅 TAK_ENABLED env)",
-    "updatedAt": "2026-06-07T10:09:43Z",
+    "updatedAt": "2026-06-10T16:03:46Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/164"
   },
   {
@@ -2546,14 +2546,159 @@
     },
     "body": "P2-30 part 3 dogfood 浮出：iTAK 送的標記（source=tak，如 3QQ）在 ICS 重連 / DB 清空後**不重新顯示**——streaming 不重播既有靜態標記。\n\n實證（#192 期間）：TAK server `<repository>` 持久化一切、`<latestSA>` 只對**新連線**補發；ICS 既有連線 reconnect 不補既有標記 → COP 漏標記。\n\n工作（= P2-14 核心，#173 衍生）：\n- Marti 權威 resync：`GET /Marti/api/cot/sa`（或 `/cot/search`）拉現有 SA → ingest 進 cop_entities，補 streaming 漏掉的既有標記。\n- cert 沿用 `tak-server-marti-cert-not-oauth`（:8443 mTLS，與 part 3 實驗用同一張）。\n\n依賴/關聯：P2-14（Mission/DataSync）、#173（reconnect 漏靜態標記）。memory `tak-streaming-archive-stale-vs-mission`、strategy §4b。",
     "closedAt": null,
-    "comments": [],
+    "comments": [
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## P2-14 reality check（活 TAK 5.7-RELEASE-43，cop-subscriber cert 實測，2026-06-10）\n\n對活 Marti 實打,de-risk P2-14（Mission/DataSync 可靠刪除 + 權威 resync）。**權威來源 = `docs/reference/takserver-5.7-openapispec.json`（301 paths）** —— 動 TAK REST 先查它別猜。\n\n### ✅ `/cot/sa` resync 契約敲定（本 issue 核心）\n`GET /Marti/api/cot/sa?start=&end=`：\n- **date 格式 = `yyyy-MM-dd'T'HH:mm:ss.SSS'Z'`（`.000Z`）**；`epoch`/`+0000` → `Failed to convert ... java.util.Date`。\n- **start/end 必填；`left/bottom/right/top`(bbox)、`isFiltered` 選填**。\n- **★ 真正 gotcha = 時間窗有上限**：窄窗（2h）→ **200 回真 CoT（123 events，含活 iTAK 裝置）**；大窗（40 天）→ generic `BAD_REQUEST Invalid Request`（與參數錯共用此頁，極易誤判成格式/auth 壞）。\n- → resync 用 **since-last-seen 小窗** 天然避開。cop-subscriber cert 即可（無需 admin/register）。\n- **#194 resync 可行性 = 確認。**\n\n### ✅ Mission CRUD 全鏈用 cert 可行（非 admin）— P2-14 reliable delete context\n`PUT /missions/{n}?creatorUid=&tool=public`→201、`PUT/DELETE .../contents`→200、`DELETE /missions/{n}`→200。\n- **精煉 memory「DELETE mission 需 ROLE_ADMIN」**：對 `tool=public`+creator 可 200；ROLE_ADMIN-403 應是非 public/非 creator 情境。\n\n### ⚠️ 關鍵架構洞察：mission 成員 ≠ repository 刪除\n把既有 repository CoT（:8089 streaming 來、archived）加進 mission 再 REMOVE_CONTENT 後,**該 CoT 仍在一般 repository**（`GET /cot/xml` 200）。→ REMOVE_CONTENT 只對 **mission 訂閱者**廣播移除。**可靠刪除真正前提 = 標記 mission-native（走 mission 通道發布）+ 現場 iTAK 訂閱該 mission**；part 3 的 :8089+archive 是另一條通道,兩者不互通。\n\n### ⚠️ 唯一未驗（P2-14 動工前最該 dogfood）\nmission REMOVE_CONTENT → **iTAK 真的移除標記嗎**?server 200 是必要非充分,要真機 + iTAK 訂閱 mission 才驗得了。\n\n詳見 memory `tak-marti-authz-model`（已更正落地）。",
+        "createdAt": "2026-06-10T10:09:59Z",
+        "id": "IC_kwDOSnBjpc8AAAABFkr7tA",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/194#issuecomment-4668980148"
+      }
+    ],
     "createdAt": "2026-06-10T08:46:50Z",
     "labels": [],
     "milestone": null,
     "number": 194,
     "state": "OPEN",
     "title": "Marti 權威 resync：ICS 顯示漏掉的 iTAK streaming 標記（P2-14）",
-    "updatedAt": "2026-06-10T08:46:50Z",
+    "updatedAt": "2026-06-10T10:09:59Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/194"
+  },
+  {
+    "assignees": [],
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "body": "**P2-33 的結構地基刀**（reality check 2026-06-10，對 current main / part-3 #192 已併）。SoT → \\`docs/design/cop-marker-event-decoupling.md\\`。\n\n## Reality-check 修正後 scope（只做連結來源遷移 = B1）\nROADMAP「降級」混了兩件事，本 issue **只做 B1**（kind 留 \\`'event'\\`、低風險）；B2（kind rename / 事件無自身圖釘）推 P2-33c/P2-29：\n- **目標**：`event_markers` junction 成 event↔marker **唯一權威連結**；`attributes.event_id` JSON glue 退役。\n\n## 硬約束（不可 remove-first）\njunction 目前**被 glue 餵養**（`cop.py` 讀 `attributes.event_id` 才 `link_marker`）、前端 `zone.event_id` 唯一來源 = glue（23 處消費）。故順序：\n1. **後端加讀/寫路徑**：① 序列化 `_row_to_entity_dict`（或 list/get 查詢 JOIN）帶 junction primary event_id（additive，不動現有）；② cop create 接受 first-class 連結（不再單靠 attributes.event_id 餵 junction）。\n2. **前端遷移**：`copEntityToEventZone` 改吃 junction-fed event_id（payload top-level），23 處消費點不需逐改（adapter 單點轉換）。\n3. **才刪 glue**：`map.js _evPopupSubmit` 停寫 `attributes.event_id`、`cop.py` 停讀它。\n\n## 反例修正（必記）\n- 降級 kind **不可盲目改 `contact`**：part-3 的 `contact` = 敵情/接觸點（語意特定），事件圖釘 ≠ contact。本 issue **kind 留 `event`**，不碰 kind。\n\n## 不做（留後續）\n- B2 概念降級（kind rename、事件無自身圖釘、渲染/分層）→ P2-33c / P2-29。\n- N:1 聚合 → P2-33c。\n\n## 依賴 / 協調\nP2-27（#183 junction，done）；part-3（#192，已併 → map.js 重疊風險已消）。\n\n## DoD\n- junction 為唯一 event↔marker 連結來源；前端事件圖釘行為等價（點/拖/渲染/orphan 全綠）。\n- `attributes.event_id` 不再被讀寫（grep 清）；m021 junction backfill 既有。\n- pytest + vitest 綠；/verify（建 event→圖釘→處置 modal→拖移→結案）；/code-review + /security-review。",
+    "closedAt": null,
+    "comments": [],
+    "createdAt": "2026-06-10T09:50:00Z",
+    "labels": [],
+    "milestone": null,
+    "number": 196,
+    "state": "OPEN",
+    "title": "P2-33b: event↔marker 連結來源遷移到 junction（glue 退役，kind 留 event）",
+    "updatedAt": "2026-06-10T09:50:00Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/196"
+  },
+  {
+    "assignees": [],
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "body": "ROADMAP **P2-20(A)**（AAR 回放——後端統一時間軸 API）。原 row 標 `(no issue)`，本 issue 補上，並記錄 **2026-06-11 設計定案 + 業界調查**。前端 AAR 頁面 = **P2-20(B)**，明確延後（動 map.js，與 P2-33/part-3 session 領地重疊）。\n\n## 目標\n\n`GET /api/exercises/{id}/timeline` — 把一場演習散在四張表的「發生過的事」合併成**按時間排序的單一事件流**：\n\n| 來源表 | type | 時間欄 | scope 方式 |\n|---|---|---|---|\n| `cop_entity_tracks` | `track` | `t` | **JOIN cop_entities 取 exercise_id**（tracks 無此欄；#125 caveat 照註不擴大處理） |\n| `events` | `event` | `COALESCE(occurred_at, created_at)` | `exercise_id` |\n| `chats` | `chat` | `time` | `exercise_id` |\n| `audit_log` | `decision` 等 | `created_at` | `exercise_id` |\n\n回傳統一 shape：`{type, t, actor, payload}`，+ metadata（首尾時間戳、總筆數）供前端 slider 知道時間軸全長。支援 `?from=&to=` 時間窗 + 筆數上限。\n\n## 設計定案：事件流，不做定時落盤快照\n\n**模型 = (a) 事件流**：時間軸 = 實際發生的事、各帶真實時間戳；「T 時刻的狀態」由前端折疊事件流重建（每 uid 取 ≤T 最後一筆）。**不是 (b) 定時快照**（每 N 秒全表落盤）。\n\n使用者問過兩個關鍵問題，答案記錄如下：\n\n**Q1：不定時存快照，回放時間尺度會跳來跳去嗎？**\n不會——「等速時間軸」由**播放器的虛擬時鐘**保證，與資料怎麼存無關：\n- **Play mode**：虛擬時鐘 T 等速前進（1x/2x/4x），每 tick 折疊事件流到 ≤T 渲染。事件疏的時段畫面靜止、但時間指針等速滑（同影片播放器：不是每 ms 都有 keyframe，進度條仍等速走）。\n- **Step mode**：T 跳到下一筆事件——**刻意跳**，桌面推演要的就是這個。\n- 誠實限制：**位置內插**——單位 10:00 在 A、10:05 才回報 B，回放 10:02 顯示在 A（最後已知位置）。這是來源回報頻率的物理限制，**定時快照同樣解決不了**（快照只能存當時已知的最後位置）。\n\n**Q2：隨機 seek（拖 slider 亂跳）不會慢嗎？**\n一場演習資料量有界（千~萬筆），前端一次拉回、記憶體折疊，順播是增量 O(新事件)。隨機 seek 若量大 → 前端可自建**記憶體 keyframe**（折疊快取，每 N 分鐘一個）——這是回放器最佳化，**不需要後端落盤快照**。\n\n## 業界調查（2026-06-11，三個領域同指一個答案）\n\n**1. Event Sourcing 社群**（最直接對應——我們就是「事件流=真相、狀態=投影」模型）：\n- 快照**純屬效能最佳化**；[EventSourcingDB「Snapshot Paradox」](https://docs.eventsourcingdb.io/blog/2026/03/02/the-snapshot-paradox/)：先量測再說，想像中的重播瓶頸絕大多數場景不會出現。\n- 經驗閾值：[重播 >100ms 的熱聚合才值得加](https://oneuptime.com/blog/post/2026-01-30-event-snapshotting/view)（量級對比：購物車 10 筆 vs 帳戶 5 萬筆——演習接近前者）。\n- [DDD/CQRS 論壇共識](https://groups.google.com/g/dddcqrs/c/hQ1PyRJMMN0)：「除非效能監測證明需要，否則強烈不建議快照」。\n- [同步寫快照拖慢寫入、非同步又 stale](https://www.kurrent.io/blog/snapshots-in-event-sourcing/)——演習進行中持續落盤 = 寫入負擔。\n\n**2. 遊戲回放系統**（seek 體驗先例）：\n- [EarthWork Games replay seeking](https://www.earthworkgames.com/dev-blog/replay-seeking/) / [Game Developer replay 系統教學](https://www.gamedeveloper.com/programming/developing-your-own-replay-system)：**keyframe 正常播放時被跳過、只有 seek 才用**——與「前端記憶體 keyframe」同構。確定性輸入重播那派不適用（COP 非確定性模擬）。\n\n**3. TAK 生態（同行 AAR）**：\n- [PAR Government TAK Data Replay](https://pargovernment.com/par-sa/tak)（商用 AAR）：「**錄下所有 CoT 流量**供回放/AAR」——錄的就是事件流，與 `cop_entity_tracks`+events+chats+audit 同型。\n- [社群 ATAK replay](https://github.com/ba1ake/Atak_replay_system) 用輪詢存位置快照——那是**接不到串流的妥協**（只能 KML 輪詢），非設計偏好；我們有完整入向串流。\n- [FreeTAKServer #127](https://github.com/FreeTAKTeam/FreeTakServer/issues/127) 同樣朝記錄流量方向。\n\n**結論分工**：記錄=事件流（已在錄）／播放=虛擬時鐘等速折疊（前端 B）／seek 加速=記憶體 keyframe（量測證明慢才加、不落盤）。\n\n## 安全 / scope（沿 row 規格）\n\n- `COMMAND_ROLES` + `resolve_scope()` 跨演習存取守門（P1-14 三態；歷史場限指揮層）——時間軸含 PII（通聯內容、audit），不得 observer 任意場拉取。\n- `snapshot_repo` 與本項無關（issue #98 已釐清那是 unit-KPI 聚合、非 per-entity 時間軸），不碰。\n\n## DoD\n\n- [ ] `services/timeline_service.py`（純讀聚合：四源查詢 → 統一 shape → 合併排序）\n- [ ] `GET /api/exercises/{id}/timeline`（`?from=&to=` + 筆數上限 + metadata）\n- [ ] role_enum：沿用既有 `/api/exercises/` → COMMAND_ROLES gate（確認覆蓋）\n- [ ] 測試：四源合併排序正確／type-actor-payload shape／跨場 scope 擋（404）／時間窗過濾／空場\n- [ ] `/code-review` + `/security-review`\n- [ ] ROADMAP P2-20 row 註記（(A) 完成、(B) 延後 + 證據）\n\n## 邊界\n\n- **不做**：前端 AAR 頁面（= P2-20(B)，動 map.js → 等 P2-33/part-3 session 退場）、定時落盤快照、位置內插、`?at=` 狀態重建端點（需要時另開）。\n- 零碰三個活躍 session 領地（map/events/cop/tak router）。\n",
+    "closedAt": "2026-06-10T16:43:59Z",
+    "comments": [],
+    "createdAt": "2026-06-10T16:26:38Z",
+    "labels": [],
+    "milestone": null,
+    "number": 199,
+    "state": "CLOSED",
+    "title": "P2-20(A): AAR 後端統一時間軸 API — 事件流設計定案 + 業界調查",
+    "updatedAt": "2026-06-10T16:43:59Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/199"
+  },
+  {
+    "assignees": [],
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "body": "ROADMAP **P2-20(B)**（AAR 回放——前端頁面）。(A) 後端時間軸 API 已完成（#199 / [#200](https://github.com/winson3QQ/ICS_COMMAND/pull/200)）。本 issue 記 **2026-06-11 reality check + 分刀計畫**。\n\n## Reality check（推翻一個關鍵假設）\n\n**「(B) 一定要動 map.js」不成立——衝突可歸零**：\n- Row 規格本就是**獨立頁面** `/aar/{exercise_id}`（非 ops dashboard toggle）；repo 已有 6 個獨立 HTML 頁先例（`admin_backups.html`、`scenario_designer.html`…）。\n- 地圖已模組化：`map/maplibre_core.js`（`initMaplibre()` 建獨立實例）+ `entity_layer.js`（`EntityLayer`、SDF baking 全 export）**可直接 import、不經 map.js**。\n- → AAR 頁自帶 map 實例 + 自帶回放渲染 = **新增檔為主，map.js / events.js / main.js 全不碰**，與 P2-33b/c、part-3 零衝突。\n\n**資料地基全到位**：`/timeline`（#200）、`/tracks`（P2-06b）、`/api/cop/entities`（exercise_id override）、`aar_entries` + `POST /{id}/aar`（未來 P2-21(1) bookmark 落點）、P1-18 觸控紀律（≥44px）。\n\n**三個真雷（設計已繞）**：\n1. **sessionStorage per-tab**：token 存 sessionStorage（auth.js）→ 新分頁開 AAR 頁拿不到登入態 → **同分頁導航**進出（頁內「← 返回指揮台」）；不做新開分頁。\n2. **CSP enforce `script-src 'self'`**：不能 inline script → AAR 頁 JS 一律外部模組檔（admin_backups 的 inline 寫法不能抄）。\n3. **事件無自身座標**（P2-27 砍位置欄，SoT 在 cop_entity）→ 回放 v1 地圖上「動」的是**有軌跡的單位**（fold tracks）+ chats 點位；**事件以側欄時間軸列表呈現**。事件上圖需經 event_markers junction 解標記位置 → **留 v2**（避免與 P2-33b junction cutover 撞語意）。\n\n**入口取捨**：dashboard 加按鈕會動 main.js（part-3 領地）→ **v1 不加連結**，URL 直進（`/static/aar.html?exercise_id=N`）；row 的 `/aar/{exercise_id}` 漂亮路徑屬可選 polish。\n\n## 權限模型（既定，非本項新決策）\n\n- 資料 API（`/timeline`、`/tracks`）= 中央 gate **COMMAND_ROLES**（commander + sysadmin）；operator/observer → 403、未登入 → 401 引導回 dashboard。門在 server side，頁面外殼不另設權限。\n- 回放本身**純唯讀**；唯一未來寫操作 = P2-21(1) bookmark（同 gate）。\n- 📌 **開放問題（不擋本項）**：TTX 的 O/C（裁判）該不該看 AAR？現行無獨立 O/C 角色（P2-19 才建 O/C 控制台），屆時若放行屬另一個 RBAC 決策。\n\n## 分刀\n\n**B1 — 骨架 + Step mode（先出價值）**\n- 新檔：`static/aar.html` + `static/js/aar/`（`aar_main.js` / `replay_engine.js` / `aar_map.js`）\n- exercise 選擇（query param / `/api/exercises`）→ 拉 `/timeline`（truncated → 提示縮時間窗）\n- **Step mode**：側欄事件流列表（40%），點任一筆 / 上下鍵 → T 跳該筆 → 地圖（60%）fold tracks 到 ≤T 畫單位位置\n- 403/401 → 引導回 dashboard\n- vitest：`replay_engine` fold 純函式（items + T → uid→位置）\n\n**B2 — Play mode + 尾跡**\n- 虛擬時鐘 1x/2x/4x（rAF + 速率係數）、播放/暫停、slider scrub（seek = 記憶體折疊；量大才加 keyframe 快取，#199 定案）\n- 軌跡尾跡：過去 N 分鐘路徑線（GeoJSON line 隨 T 滑動）\n\n**B3 — 觸控 + 收尾**\n- iPad：slider swipe、目標 ≥44px（沿 P1-18）；`/verify` + **Human verify（必要，純前端 UI）**\n- ROADMAP 註記。**(B) 完成後 P2-20 仍不全勾**：尚餘軌跡 PII retention policy 文件化（threat_model，連動 P2-17）。\n\n## DoD（B1）\n- [ ] 新檔 4＋測試；**既有檔零修改**\n- [ ] Step mode 可用：選場 → 時間軸列表 → 點選跳 T → 地圖單位位置正確\n- [ ] 403/401 路徑、truncated 提示\n- [ ] vitest（fold 邏輯）+ eslint 0\n- [ ] `/code-review` + `/security-review`\n- [ ] Human verify（瀏覽器實走）\n",
+    "closedAt": null,
+    "comments": [
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "**[2026-06-11 B2 reality check（動工前）]**\n\n① **效能假設驗證（#199「先量測」成立）**：timeline 上限 5000 筆、B1 實測單步全折疊無感。Play mode 前進用**增量游標**（O(Δ新事件)），倒退/scrub 才 reset 全折疊；**不需 keyframe 快取**。\n② **尾跡資料結構缺口（唯一動 engine 的點）**：`trackIdx` 為全 uid 混排 → `buildReplayIndex` 加 **`tracksByUid: Map<uid, points[]>`**（一次建、天然 t 序），每 tick 窗口切片 → LineString。純函式可測。\n③ **地圖層**：新 `aar-trails` line layer，掛 `_ensureLayers` 同一 retry 機制（沿用 B1 修過的 pmtiles load 雷）。\n④ **虛擬時鐘**：rAF＋**wall-clock delta×速率**（非固定步長；背景分頁節流回前景自動跳補）；推進邏輯抽純函式 `advanceClock()` → vitest 直測。到 t_end 自停。\n⑤ **UI**：底部 bar＝▶/⏸＋1x/2x/4x＋原生 range slider（domain=t_start~t_end ms）＋T 顯示。互動決策：**scrub 自動暫停**；播放中側欄高亮跟最近 step（`stepIndexAtOrBefore`），僅 step 變化時 scrollIntoView。\n⑥ **邊界**：truncated 視窗照舊；slider 觸控尺寸/swipe 歸 B3；**Play 中打 bookmark 將順帶解鎖**（#204 「卡 B2」項）。\n⑦ **足跡**：aar.html＋aar/ 三 JS＋vitest，**後端零改動、零碰活躍 session 領地**。\n",
+        "createdAt": "2026-06-10T23:48:09Z",
+        "id": "IC_kwDOSnBjpc8AAAABFrLIJA",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/201#issuecomment-4675782692"
+      }
+    ],
+    "createdAt": "2026-06-10T22:24:05Z",
+    "labels": [],
+    "milestone": null,
+    "number": 201,
+    "state": "OPEN",
+    "title": "P2-20(B): AAR 回放前端頁（獨立頁 /static/aar.html）— reality check + 分刀 B1/B2/B3",
+    "updatedAt": "2026-06-10T23:48:09Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/201"
+  },
+  {
+    "assignees": [],
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "body": "ROADMAP **P2-21**（演習指標＋課程標記）。原 row 標 `(no issue)`，本 issue 補上並記 **2026-06-11 reality check**（盤 main code 實況 + 可做/卡住切分）。上游：P2-20(A) 時間軸 [#200](https://github.com/winson3QQ/ICS_COMMAND/pull/200)、(B) B1 回放頁 [#203](https://github.com/winson3QQ/ICS_COMMAND/pull/203)。\n\n## Row 三件事 × 地基實況\n\n| # | 內容 | 實測 |\n|---|---|---|\n| (1) 課程標記 bookmark | `aar_entries` 表＋`POST /api/exercises/{id}/aar` **已在** | 但見發現 1/2 |\n| (2) 統計面板 | `chats.group` ✓、`events.occurred_at`/`resolved_at`（**有 writer**，status→resolved/closed 時寫）✓ | 通聯量/處置時長**可算**；見發現 3 |\n| (3) 演習報告 | `GET /api/ai/report/{id}` 存在 | 是 **Wave 5 LLM stub**（固定字串）；`AAR_EXPORT` audit 未有 |\n\n## Reality check 發現（4）\n\n1. **(1) schema 缺口**：`aar_entries` 欄位 = `(category, content, created_by, created_at)`——**無「回放時間點」欄**。Row 寫「`created_at=T+N` 連結回放時間點」**誤導**：`created_at` 是 DB 寫入牆鐘時刻，載不了回放 T。bookmark 需 `ADD COLUMN ref_t TEXT`（小 migration）＋端點收此欄。\n\n2. **(1) 已部分解鎖**：先前評估「bookmark 卡 P2-20(B)」——**B1（#203）merge 後不再全卡**。Step mode 已有「目前 T」，在 AAR 頁（`static/js/aar/` 自有領地、零衝突）加「標記此刻」鈕 → POST 帶 `ref_t` = **bookmark 最小可用版**。Play mode 中打標記才需 B2。\n\n3. **(2) MEDEVAC 反應時間：缺第二個時間戳**。MEDEVAC 請求有落（P2-09 → `cop_entities.attributes`、severity critical），但**全 repo 無任何「確認/承接」動作**——「request→確認」的「確認」不存在，此 KPI **量不出來**。需先有產品決策（什麼動作算確認：建關聯事件？下行回覆？新端點？）。同類：`events.acknowledged_at` 為**零 writer 死欄**。\n\n4. **兩個沉睡 stub**：`exercise_kpis` 表（`exercise_id/kpi_key/kpi_value/computed_at`）**零 writer**（僅出現在刪除級聯白名單）——C0 預埋 KPI 快取，可啟用或先即時算；`get_post_exercise_report`＝stub，(3) 要把 KPI 接進去才有肉。\n\n## 可做 / 卡住切分\n\n**現在可做（子集，零碰活躍 session 領地）**：\n- (2) KPI API：`GET /api/exercises/{id}/kpis`——事件處置時長（occurred→resolved 分佈/平均）、通聯量 by 組、事件量 by 嚴重度/類型、決策數/裁示時長（decisions created→decided）。COMMAND_ROLES（沿 /timeline 同 gate）。EXCHECK/MEDEVAC 項留 stub 註記。\n- (1) bookmark 最小版：`aar_entries.ref_t` migration＋端點收欄＋AAR 頁「標記此刻」鈕（B1 Step mode 的 T）。\n- (3) KPI 納入報告＋`AAR_EXPORT` audit（COMMAND_ROLES）。\n\n**卡住（記帳不做）**：\n- MEDEVAC 反應時間 → 卡「確認」動作的產品決策（發現 3）。\n- EXCHECK 完成率 → 卡 P2-18（P2-22 TTX gate 後）。\n- Play mode 中打標記 → 卡 B2（#201）。\n\n## DoD（子集）\n- [ ] migration：`aar_entries.ref_t TEXT`（ADD COLUMN，idempotent）\n- [ ] `GET /api/exercises/{id}/kpis`（可算項全上；不可算項回 null＋reason 註記，不假裝）\n- [ ] AAR 頁「標記此刻」鈕＋bookmark 列表顯示\n- [ ] `AAR_EXPORT` audit（報告/匯出路徑）\n- [ ] 測試：KPI 計算正確性（種資料驗數字）/ ref_t 寫讀 / RBAC 403\n- [ ] `/code-review`＋`/security-review`；ROADMAP 註記\n\n## 與 P2-22 gate 的關係\ngate 要求「每次 AAR ≥5 條課程標記」——用**既有** `POST /aar` 文字輸入即可滿足（不等 bookmark）；本項的 bookmark/KPI 是讓那兩場驗證演習「辦得起來、量得出來」的工具。\n",
+    "closedAt": null,
+    "comments": [
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "**[2026-06-11 產品決策（發現 3）：MEDEVAC「確認」= 選項 C「承接」動作，並設計為 P2-28 triage 的前身**\n\n- **「承接」動作**：MEDEVAC 標記卡上「承接」鈕 → `POST /api/cop/entities/{uid}/ack`（或等價）寫承接時間戳 + **強制 audit `MEDEVAC_ACK`**（operator、不得 best-effort）。RBAC 建議 COMMAND_ROLES（承接屬指揮層動作）。\n- **KPI 解鎖**：MEDEVAC 反應時間 = `received_at`（請求落 COP）→ 承接時間戳。\n- **前身設計（不變死碼）**：P2-28 triage 落地時，「升級為事件 / 關聯進大事件」**自動觸發同一承接記錄**——C 收斂進 A，KPI 定義不變。\n- **連帶清帳**：`events.acknowledged_at` 零 writer 死欄——實作時決定「接上（事件版承接）或砍掉」，不留假象（同 P2-32 紀律）。\n- 時間戳載點（attributes vs 新欄）與前端鈕位置（MEDEVAC 卡片 = P2-12 面板領地？）動工前再 reality check 一次，避免撞 P2-12/P2-33 領地。\n",
+        "createdAt": "2026-06-10T23:22:28Z",
+        "id": "IC_kwDOSnBjpc8AAAABFrBqQw",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/204#issuecomment-4675627587"
+      }
+    ],
+    "createdAt": "2026-06-10T23:17:11Z",
+    "labels": [],
+    "milestone": null,
+    "number": 204,
+    "state": "OPEN",
+    "title": "P2-21: 演習指標＋課程標記 — reality check（4 發現）+ 可做子集切分",
+    "updatedAt": "2026-06-10T23:22:28Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/204"
+  },
+  {
+    "assignees": [],
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "body": "P2-20 row 的 compliance 尾巴（「軌跡 PII retention policy 文件化」）。**2026-06-11 使用者拍板＝乙案＋開關**：\n\n## 決策\n- **政策**：ICS 側軌跡（`cop_entity_tracks`）retention = **exercise 刪除 cascade（既有）＋ 90 天 TTL 自動清理（新）**；TAK PG 側為 ops SOP（開 Data Retention GUI 設 TTL）。\n- **Admin 開關**：sysadmin 可 runtime 開/關 TTL 清理（比照 P2-24 toggle 模式：config 表持久化、audit-first）。**預設開啟**（政策出廠生效；可關以支援長保存需求）。\n- 90 天前的演習將**不能再 AAR 回放**（軌跡已清）——政策已知 trade-off。\n\n## 落地\n- [ ] `services/retention_service.py`：`cleanup_expired_tracks()`（刪 `t <` 90 天 cutoff；筆數寫 `RETENTION_CLEANUP` audit）\n- [ ] lifespan 週期 task（每日 + 開機跑一次；每次跑前讀開關）\n- [ ] `POST /api/admin/retention {enabled}` + GET 狀態（`/api/admin/` 中央 gate = SYSADMIN_ONLY 自動涵蓋）；`RETENTION_TOGGLE` audit-first；config key `retention.tracks_ttl_enabled`；TTL 天數 env `TRACKS_TTL_DAYS`（預設 90）\n- [ ] threat_model §8.4 retention 段升級為**正式政策**（乙案 + 開關 + TAK 側 SOP + trade-off 記明）\n- [ ] 測試：過期刪/未過期留/關閉時 no-op/RBAC 403/audit 留痕\n- [ ] `/code-review` + `/security-review`；ROADMAP P2-20 註記\n\n## 範圍\n碰 `admin.py`/`main.py` lifespan（小）＋新 service＋docs——零撞活躍 session 領地。\n",
+    "closedAt": null,
+    "comments": [],
+    "createdAt": "2026-06-11T00:32:19Z",
+    "labels": [],
+    "milestone": null,
+    "number": 207,
+    "state": "OPEN",
+    "title": "P2-20 收尾: 軌跡 PII retention — 90 天 TTL + Admin 開關 + threat_model 政策文件化",
+    "updatedAt": "2026-06-11T00:32:19Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/207"
   }
 ]

@@ -38,12 +38,11 @@ from starlette.websockets import WebSocketDisconnect
 
 from auth.role_enum import COMMAND_ROLES, READ_ROLES, is_role_allowed
 from auth.service import check_session
-from core import config
 from core.input_safety import validate_no_unsafe_strings
 from repositories import cop_entity_repo, event_marker_repo, exercise_repo
 from repositories._helpers import NULL_SCOPE, audit
 from schemas.cop import CoPEntity
-from services import tak_downlink
+from services import tak_downlink, tak_runtime
 from services.exercise_service import current_exercise_id, resolve_scope
 from services.realtime_hub import cop_hub
 
@@ -161,7 +160,9 @@ async def _resync_tak_if_shared(entity: dict) -> None:
     ICS 端 audit 已記 move（cop_entity_updated）；TAK 推送為其傳輸 side-effect，不另稽核。
     **刪除不在此**：刪除已廣播標記到 TAK 經實證 streaming 做不到（server 持久層不認 t-x-d-d/stale）→
     可靠刪除 = Mission/DataSync = P2-14（見 tak_downlink 註 + strategy §4b）。"""
-    if not config.TAK_ENABLED:
+    # P2-24（#164）：改讀 runtime 有效狀態（持久選擇優先、回退 env），與 :8089 訂閱同源——
+    # 否則 runtime 關掉 TAK 後 move 已分享標記仍會推、或純 toggle 開啟時反而不推（與開關不一致）。
+    if not tak_runtime.effective_enabled():
         return
     if not (entity.get("attributes") or {}).get("shared_tak"):
         return

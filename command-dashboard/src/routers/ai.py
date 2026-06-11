@@ -7,6 +7,7 @@ Wave 5 實裝：連接 Breeze/Ollama，補充即時狀態讀取。
 from fastapi import APIRouter, HTTPException, Request
 
 from auth.service import validate_session
+from repositories._helpers import audit
 from repositories.ai_repo import update_outcome
 from schemas.ai import AIOutcomeIn, AIRecommendIn
 from services.ai_service import get_ml_export, get_post_exercise_report, get_recommendation
@@ -23,15 +24,19 @@ def recommend(body: AIRecommendIn, request: Request):
 
 @router.get("/report/{exercise_id}")
 def report(exercise_id: int, request: Request):
-    """演練後分析"""
-    validate_session(request)
+    """演練後分析。P2-21（#204）：AAR 匯出強制 audit（audit-first，row 規格不得 best-effort）。"""
+    sess = validate_session(request)
+    audit(sess["username"], None, "AAR_EXPORT", "exercises", str(exercise_id),
+          {"kind": "report"}, exercise_id=exercise_id)
     return get_post_exercise_report(exercise_id)
 
 
 @router.get("/export/{exercise_id}")
 def export_ml(exercise_id: int, request: Request):
-    """ML 訓練資料匯出（state/action/outcome）"""
-    validate_session(request)
+    """ML 訓練資料匯出（state/action/outcome）。P2-21（#204）：同 AAR_EXPORT audit 紀律。"""
+    sess = validate_session(request)
+    audit(sess["username"], None, "AAR_EXPORT", "exercises", str(exercise_id),
+          {"kind": "ml_export"}, exercise_id=exercise_id)
     return get_ml_export(exercise_id)
 
 

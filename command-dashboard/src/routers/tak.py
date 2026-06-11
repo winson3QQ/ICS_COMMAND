@@ -23,8 +23,8 @@ from core import config
 from core.input_safety import validate_no_unsafe_strings
 from repositories import cop_entity_repo
 from repositories._helpers import audit
-from schemas.tak import CoTEventIn, DownlinkCommandIn
-from services import cop_service, tak_downlink, tak_service
+from schemas.tak import CoTEventIn, DownlinkCommandIn, TakConnectionToggleIn
+from services import cop_service, tak_downlink, tak_runtime, tak_service
 from services.exercise_service import current_exercise_id
 
 router = APIRouter(prefix="/api/tak", tags=["TAK"])
@@ -165,9 +165,12 @@ def tak_status():
             age_s = int((datetime.now(UTC) - dt).total_seconds())
         except ValueError:
             age_s = None
+    # P2-24（#164）：enabled 改讀 runtime 有效狀態（持久選擇優先、回退 TAK_ENABLED env），
+    # 燈號才會跟著開關走，而非只反映啟動時的 env。
+    enabled = tak_runtime.effective_enabled()
     return {
-        "enabled": config.TAK_ENABLED,
-        "cot_url": config.TAK_COT_URL if config.TAK_ENABLED else None,
+        "enabled": enabled,
+        "cot_url": config.TAK_COT_URL if enabled else None,
         "protocol": "CoT (Cursor on Target)",
         "standard": "MIL-STD-2525",
         # P2-23 連線健康
@@ -175,3 +178,32 @@ def tak_status():
         "last_cot_at": last,
         "last_cot_age_s": age_s,
     }
+
+
+@router.post("/connection")
+async def set_tak_connection(body: TakConnectionToggleIn, request: Request):
+    """P2-24（#164）：runtime 啟用/停用 :8089 訂閱，**不重啟 process**；選擇持久化、重啟後維持。
+
+    RBAC = **SYSADMIN_ONLY**（role_enum 中央 gate：path `/api/tak/connection`）——關 TAK＝整 COP
+    態勢全斷、blast radius 最大，比照演習刪除鎖 admin；commander 不可（斷線屬基礎設施控制、
+    非 per-incident 指揮決策）。
+
+    Audit 紀律（DoD：不得 best-effort）：**audit-first** —— 先記 `TAK_CONNECTION_TOGGLE`
+    再實際啟停。啟動失敗不 raise（TAK 選配，tak_runtime.start 內部 log），故回傳 `running`
+    讓呼叫端看實際結果（enabled=true 但 running=false → config/連線有問題）。
+    """
+    operator = request.state.session["username"]
+    audit(
+        operator,
+        None,
+        "TAK_CONNECTION_TOGGLE",
+        "config",
+        "tak.connection_enabled",
+        {"enabled": body.enabled},
+    )
+    tak_runtime.set_persisted_enabled(body.enabled)  # 持久化（重啟後維持）
+    if body.enabled:
+        await tak_runtime.start()
+    else:
+        await tak_runtime.stop()
+    return {"ok": True, "enabled": body.enabled, "running": tak_runtime.is_running()}
