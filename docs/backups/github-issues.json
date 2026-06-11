@@ -2878,6 +2878,20 @@
         "minimizedReason": "",
         "reactionGroups": [],
         "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/213#issuecomment-4685851374"
+      },
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## b3（通聯 ↔ 地圖 雙向連結）reality check — 2026-06-12\n\n**結論：可行，中等規模/風險（~1-2 天、~135 行、動 `map.js`）。** b2（[PR #225](https://github.com/winson3QQ/ICS_COMMAND/pull/225)）merge 後讀碼確認。\n\n### 機制盤點（已驗，讀 geochat-ws-b2 = 現 main）\n| 項目 | 現況 | 位置 |\n|---|---|---|\n| highlight 機制 | `_highlightEvent` 存在，但**寫死綁 `zones` source + `event_id`**；flyTo + 綠 pulse（RAF sin 波，對 zones feature-state） | `map.js:2014-2041` / pulse `1959-1996` |\n| 派發/監聽 | 事件卡長按派 `map:highlightEvent`，map.js 監聽 | `events.js:1511` / `map.js:1905` |\n| TAK marker click | **無 handler**（同 b1 觀察，`tak-units-icon` 未註冊 click） | `map.js:1787-1793` |\n| uid→座標查詢 | **已有** `_copStream.getEntity(uid)` → `.lat/.lon` | `cop_stream.js:372` |\n| 解耦 seam | DOM CustomEvent 慣例齊（`chat:new`/`tak:conn-state`/`map:highlightEvent`） | 多檔 |\n\n### ⚠️ 校正一個讀碼誤判（用 b2 dogfood 實據）\n`sender_uid` **不是**乾淨 entity uid。b2 dogfood 實測 `sender_uid = GeoChat.AC4B3A0B-E4DE-...`（GeoChat CoT 事件 uid 本身就是 `GeoChat.<senderUid>.<room>.<id>`），marker uid = `AC4B3A0B-...`。\n→ b3 **需 `split('.')[1]` 解析**（防禦式：`startsWith('GeoChat.') ? split('.')[1] : sender_uid`），callsign 當 fallback。\n\n### ⚠️ highlight 視覺的複雜點\n現有 pulse 是對 **`zones`（多邊形）feature-state** 做動畫。TAK 單位是 **`tak-units` 點符號** → 不能只換 source 參數，**點 marker 的 highlight 視覺要另做**（點位脈動圈層）。所以 `_highlightEvent`→`_highlightEntity` 比純參數化多一點。\n\n### 設計決定（本次拍板）\n- **過濾維度 = by-sender**（解析 sender uid / callsign），與既有 by-room chips **並存的新維度**，不是改 `_activeRoom`。\n- **點 marker → by-sender 過濾**（顯示該單位全部通聯）。\n- **點訊息**：有座標 → 跳地圖 + highlight；**無座標 → fallback 為 by-sender 過濾**。\n- **「無座標」實例**（兩個座標源 chat 自帶 lat/lon + sender marker 現位 都缺時）：① 發訊單位不在 COP（沒送過 PLI / marker 已 stale 移除，最常見）；② chat 自帶 point 是 0,0/空（桌面 WinTAK 等）；③ 系統 / O-C 注入 / 聊天室訊息無發訊單位座標。\n\n### 改動面\n- `map.js`（~90 行）：泛化 highlight + 點 highlight 視覺 + TAK `tak-units-icon` click handler + 兩 DOM 事件收發。**最大、最該小心的檔**（近期 P2-34/#222/#218 動過，P2-33 領地）。\n- `chat_panel.js`（~50 行）：訊息列掛 `data-sender-uid` + 點擊派 `chat:highlightSender`（或無座標→by-sender 過濾）+ 監聽 `map:unitSelected`。\n- `cop_stream.js`：**0 行**（getEntity 已有）。\n\n### 建議切法\n- **b3-1 = 點 marker → by-sender 過濾通聯**（風險低，不碰 highlight 視覺）。\n- **b3-2 = 點訊息 → 跳地圖 highlight（+ 無座標 fallback by-sender）**（要做點 highlight 視覺）。\n- **動工前 `git fetch` 確認 `map.js` 沒有別 session 在改**（#207 等仍在飛）。\n\n> 來源：#213 b2 merge 後對 `map.js`（`_highlightEvent`/click handlers）、`cop_stream.js`（`getEntity`）、`chat_panel.js`、`chat_service.py` 讀碼 + b2 dogfood 的 `sender_uid` 實據。\n",
+        "createdAt": "2026-06-11T23:33:06Z",
+        "id": "IC_kwDOSnBjpc8AAAABF051tQ",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/213#issuecomment-4685985205"
       }
     ],
     "createdAt": "2026-06-11T07:24:56Z",
@@ -2886,7 +2900,7 @@
     "number": 213,
     "state": "OPEN",
     "title": "入向 TAK 顯示忠實度：client 推什麼就完整顯示（callsign/remarks/GeoChat），declutter 用 map filter 不在 ingest 丟",
-    "updatedAt": "2026-06-11T23:08:12Z",
+    "updatedAt": "2026-06-11T23:33:06Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/213"
   },
   {
