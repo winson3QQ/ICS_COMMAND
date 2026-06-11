@@ -2831,5 +2831,25 @@
     "title": "入向 TAK 顯示忠實度：client 推什麼就完整顯示（callsign/remarks/GeoChat），declutter 用 map filter 不在 ingest 丟",
     "updatedAt": "2026-06-11T07:24:56Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/213"
+  },
+  {
+    "assignees": [],
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "body": "## 原則（使用者拍板 2026-06-11，#213 的出向對稱版）\nICS 既然能把標記推到現場 TAK client，**推上去的 CoT 內容就該比照真 client 填**——現況太貧乏，現場端收到只是個空殼 2525 框。\n\n## 現況（已驗，`services/tak_downlink.py`）\n`build_command_cot` / `entity_to_cot` 出向 detail **只有**：\n- `<contact callsign>`（僅 callsign，無 endpoint/phone）\n- `<remarks>`（含 `source: ICS` 誠實標記 ✅）\n- `<archive/>`（持久）\n- type / point / how / time-start-stale\n\n「四種符號」= ICS 只有 friendly/hostile/neutral/unknown 四種 affiliation；type 帶得出 affiliation 框，但**沒帶具體符號/色/隊伍**等細節。\n\n## ⚠️ 「比照 client」要分兩類（不可一律填）\n**✅ 該補（ICS 真有、有意義）**\n- [ ] `<__group name role>` 隊伍色/角色 —— **ICS 已存 `team_color`（schema `_m015`）卻沒往外送**，純漏填。\n- [ ] `<color argb>` 標記顏色（contact 有 affiliation→色，可序列化）。\n- [ ] `<usericon>` / iconsetpath 具體 2525 符號（讓現場端渲染更精確，非只一個框）。\n- [ ] `<link>` 關聯到來源事件（指令/標記的 originating event；依賴 P2-13 #5 / P2-27）。\n- [ ] severity / status（ICS 事件有 critical 等，可映射）。\n\n**❌ 不該編（ICS 沒有，填了＝說謊、誤導現場）**\n- `<takv device/platform/os/version>`、`<status battery>`、`<track speed/course>`、`<precisionlocation geopointsrc=\"GPS\">` —— ICS 不是 GPS 裝置；偽造裝置遙測會誤導現場判斷，且違背 `source: ICS` 誠實原則。\n\n## ROADMAP 對照\n- **P2-30**（共享閘 + 出向幾何序列化，#180 ✅）：`entity_to_cot`/`build_command_cot`/`build_geometry_cot` 是本 issue 的擴充對象。\n- **P2-13**（下行指令）：`build_command_cot` 同源；`<link>` 關聯事件 = P2-13 #5（依賴 P2-27）。\n- 對稱關聯 **#213**（入向顯示忠實度）—— 兩者合起來＝ICS 當忠實 TAK citizen（雙向都帶全資料）。\n\n## 工作\n- [ ] `build_command_cot` / `entity_to_cot` 補 `<__group>`（team_color/role）、`<color>`、`<usericon>`。\n- [ ] 評估 `<link>` 來源事件（待 P2-27 event↔marker 關聯就緒）。\n- [ ] **明確不填**裝置遙測欄位（加註解，防後人誤補）。\n- [ ] 端到端 human verify：ICS 推標記 → 現場 TAK 顯示隊伍色/符號/註記完整（對照真 client 推的）。\n- [ ] round-trip 檢查：ICS 推出去的 CoT 再被 ICS ingest（resync）不掉欄位。\n\n## 關聯\n- 後端為主（`tak_downlink`）；P2-30/P2-13 共用基建；對稱 #213。\n- 不卡 ATAK（iTAK 上即可驗收到的內容多寡）。",
+    "closedAt": null,
+    "comments": [],
+    "createdAt": "2026-06-11T07:31:22Z",
+    "labels": [],
+    "milestone": null,
+    "number": 214,
+    "state": "OPEN",
+    "title": "出向 CoT 內容忠實度：ICS→TAK 推標記只填 callsign+remarks，該補 ICS 真有的欄位（team/color/icon/link）",
+    "updatedAt": "2026-06-11T07:31:22Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/214"
   }
 ]
