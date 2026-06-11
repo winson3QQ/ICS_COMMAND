@@ -1,0 +1,224 @@
+/**
+ * chat_panel.js — 右欄「通聯」單一流面板（#213 b1）。
+ *
+ * GeoChat（CoT b-t-f）入向 P2-07 只「存進 chats 表」沒「送」→ 指揮看不到現場通聯。
+ * 本模組消費 GET /api/chat（READ_ROLES），把當前場通聯渲染成**單一時間流**：
+ *   - 每則前掛 `[room]` 標籤；room（聊天室）清單**動態**從實際出現的 group 生成 filter chips
+ *     （不寫死 全體/隊伍/O/C/DM——真實房間名待 reality check，泛型渲染避免基於假設）。
+ *   - 「事件追蹤」分頁時，通聯 tab 掛**紅圈未讀數**（地圖不閃——#213 #1 裁示）。
+ *   - **TAK 停用 → 通聯 tab 整個隱藏**，與 header TAK 燈同源（cop.js `_refreshTakLight` 算出
+ *     `takConnState()` 後派 `tak:conn-state` 事件，本模組只聽不另判，對齊 #164「燈號不謊報」紀律）。
+ *
+ * 安全：message 後端已 `html.escape`（chat_service 紅線）；本層以 `decodeChatMessage` 還原
+ *   那固定 5 種實體後**經 textContent 落 DOM**（純文字、無 innerHTML sink），雙重防 XSS。
+ *
+ * 範圍邊界（移出 b1，各自後置）：b3 marker 連結 / 欄位盤點(#193) / O/C 識別與限可見 / b2 即時 WS。
+ */
+
+import { authFetch, getToken } from './auth.js';
+
+// 同 cop.js 慣例：各模組各自定義（auth.js 的 API_BASE 非 export）。typeof 守門讓純函式
+// 能在無 location 的 vitest node 環境被 import（不影響瀏覽器：location 必存在）。
+const API_BASE = typeof location !== 'undefined' ? location.origin : '';
+const POLL_MS = 7000;
+
+// ── 純函式（可單測，無 DOM 依賴）─────────────────────────────────────────────
+
+/**
+ * 還原 chat_service `html.escape(quote=True)` 產生的固定 5 種實體。
+ * **非通用 HTML 解析**——只字串對映這 5 種；最終仍經 textContent 落 DOM（無 innerHTML），
+ * 故即使有漏網真標籤也只當文字顯示、不執行。`&amp;` 最後還原避免 `&amp;lt;` 二次解碼。
+ */
+export function decodeChatMessage(s) {
+  if (s == null) return '';
+  return String(s)
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#x27;/g, "'")
+    .replace(/&amp;/g, '&');
+}
+
+/** room 顯示標籤：group 為空（DM / 無房間）→ 「直接」。 */
+export function roomLabel(group) {
+  return group == null || group === '' ? '直接' : group;
+}
+
+/** 從通聯陣列取**出現過**的 distinct room（依首次出現序，供動態 chips）。 */
+export function distinctRooms(chats) {
+  const seen = [];
+  for (const c of chats || []) {
+    const label = roomLabel(c.group);
+    if (!seen.includes(label)) seen.push(label);
+  }
+  return seen;
+}
+
+/** 依 room 標籤過濾（room 為 null/'__all__' → 不過濾）。 */
+export function filterChatsByRoom(chats, room) {
+  if (room == null || room === '__all__') return chats || [];
+  return (chats || []).filter(c => roomLabel(c.group) === room);
+}
+
+/** 未讀數＝id > lastSeenId 的筆數（id server 端遞增、單調）。 */
+export function countUnread(chats, lastSeenId) {
+  return (chats || []).filter(c => Number(c.id) > Number(lastSeenId || 0)).length;
+}
+
+/** 最大 id（空 → 維持原 lastSeenId）。 */
+export function maxChatId(chats, fallback = 0) {
+  return (chats || []).reduce((m, c) => Math.max(m, Number(c.id) || 0), Number(fallback) || 0);
+}
+
+// ── 狀態 + DOM（dashboard runtime）──────────────────────────────────────────
+
+let _chats = [];
+let _activeRoom = '__all__';
+let _lastSeenId = 0;       // 已讀水位（切到通聯 tab 時更新）
+let _currentTab = 'events'; // 右欄當前分頁（events | chat）
+let _takDisabled = false;
+let _pollTimer = null;
+
+function _el(id) { return document.getElementById(id); }
+
+/** 初始化：綁 TAK 狀態事件 + 啟動 poll。data-action 委派在 main.js 全域 listener。 */
+export function initChatPanel() {
+  document.addEventListener('tak:conn-state', (e) => _applyTakState(e?.detail?.state));
+  if (_pollTimer) clearInterval(_pollTimer);
+  _pollTimer = setInterval(() => _poll(), POLL_MS);
+  _poll();
+}
+
+/** 右欄分頁切換（事件追蹤 ｜ 通聯）。切到通聯 → 清未讀水位。 */
+export function switchRightTab(tab) {
+  if (tab === 'chat' && _takDisabled) return; // 停用時不可切入
+  _currentTab = tab;
+  const events = _el('right-events');
+  const chat = _el('right-chat');
+  if (events) events.style.display = tab === 'chat' ? 'none' : 'flex';
+  if (chat) chat.style.display = tab === 'chat' ? 'flex' : 'none';
+  _el('rtab-events')?.classList.toggle('active', tab !== 'chat');
+  _el('rtab-chat')?.classList.toggle('active', tab === 'chat');
+  if (tab === 'chat') {
+    _lastSeenId = maxChatId(_chats, _lastSeenId);
+    _renderUnread();
+    _renderStream();
+  }
+}
+
+/** TAK 狀態套用：停用 → 隱藏通聯 tab（並把停留在通聯的使用者切回事件）。 */
+function _applyTakState(state) {
+  const disabled = state === 'disabled';
+  _takDisabled = disabled;
+  const tab = _el('rtab-chat');
+  if (tab) tab.style.display = disabled ? 'none' : 'inline-flex';
+  if (disabled && _currentTab === 'chat') switchRightTab('events');
+}
+
+async function _poll() {
+  if (_takDisabled || !getToken()) return;
+  try {
+    const resp = await authFetch(API_BASE + '/api/chat?limit=200', { signal: AbortSignal.timeout(5000) });
+    if (!resp.ok) return; // 靜默（含 first-run 423 / 403）；不污染畫面
+    const data = await resp.json();
+    _chats = Array.isArray(data?.chats) ? data.chats : [];
+    if (_currentTab === 'chat') {
+      _lastSeenId = maxChatId(_chats, _lastSeenId);
+    }
+    _renderUnread();
+    _renderChips();
+    if (_currentTab === 'chat') _renderStream();
+  } catch (_) { /* 逾時 / 網路 — 下輪重試 */ }
+}
+
+function _renderUnread() {
+  const badge = _el('chat-unread');
+  if (!badge) return;
+  // 通聯分頁中＝即時已讀，永遠 0；事件分頁才累計未讀
+  const n = _currentTab === 'chat' ? 0 : countUnread(_chats, _lastSeenId);
+  badge.textContent = String(n);
+  badge.style.display = n > 0 ? 'inline-block' : 'none';
+}
+
+function _renderChips() {
+  const bar = _el('chat-chips');
+  if (!bar) return;
+  const rooms = distinctRooms(_chats);
+  // 若當前選的 room 已不在資料中（時間窗滾動）→ 回退「全部」
+  if (_activeRoom !== '__all__' && !rooms.includes(_activeRoom)) _activeRoom = '__all__';
+  bar.replaceChildren();
+  // ≤1 房間時篩選無意義（「全部」與該房間同集合）→ 隱藏整條 chips bar，避免與 TAK
+  // 內建房間名（如「All Chat Rooms」）視覺撞「全部」。每則仍有 [room] 行內標籤。
+  if (rooms.length <= 1) {
+    bar.style.display = 'none';
+    _activeRoom = '__all__';
+    return;
+  }
+  bar.style.display = 'flex';
+  bar.appendChild(_chip('全部', '__all__'));
+  for (const r of rooms) bar.appendChild(_chip(r, r));
+}
+
+function _chip(label, room) {
+  const el = document.createElement('span');
+  el.className = 'chat-chip' + (room === _activeRoom ? ' active' : '');
+  el.dataset.action = 'chatFilterRoom';
+  el.dataset.room = room;
+  el.textContent = label;
+  return el;
+}
+
+/** chip 點擊（main.js data-action 委派進來）。 */
+export function chatFilterRoom(room) {
+  _activeRoom = room || '__all__';
+  _renderChips();
+  _renderStream();
+}
+
+function _renderStream() {
+  const stream = _el('chat-stream');
+  if (!stream) return;
+  const rows = filterChatsByRoom(_chats, _activeRoom);
+  stream.replaceChildren();
+  if (!rows.length) {
+    const empty = document.createElement('div');
+    empty.className = 'chat-empty';
+    empty.textContent = _takDisabled ? 'TAK 未啟用' : '無通聯';
+    stream.appendChild(empty);
+    return;
+  }
+  for (const c of rows) stream.appendChild(_row(c));
+  stream.scrollTop = stream.scrollHeight; // 單流貼底（最新在下）
+}
+
+function _row(c) {
+  const row = document.createElement('div');
+  row.className = 'chat-row';
+
+  const head = document.createElement('div');
+  head.className = 'chat-row-head';
+  const room = document.createElement('span');
+  room.className = 'chat-room-tag';
+  room.textContent = `[${roomLabel(c.group)}]`;
+  const who = document.createElement('span');
+  who.className = 'chat-who';
+  who.textContent = c.callsign || c.sender_uid || '?';
+  const time = document.createElement('span');
+  time.className = 'chat-time';
+  time.textContent = _shortTime(c.t);
+  head.append(room, who, time);
+
+  const body = document.createElement('div');
+  body.className = 'chat-msg';
+  body.textContent = decodeChatMessage(c.message); // 純文字落 DOM（無 innerHTML）
+
+  row.append(head, body);
+  return row;
+}
+
+/** ISO 8601 → HH:MM:SS（顯示用；非 ISO 原樣回傳，不臆測）。 */
+function _shortTime(t) {
+  if (typeof t !== 'string') return '';
+  const m = t.match(/T(\d{2}:\d{2}:\d{2})/);
+  return m ? m[1] : t;
+}
