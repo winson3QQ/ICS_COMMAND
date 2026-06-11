@@ -2560,6 +2560,20 @@
         "minimizedReason": "",
         "reactionGroups": [],
         "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/194#issuecomment-4668980148"
+      },
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## P2-14 reliable-delete dogfood —— 定論：Mission 也救不了 iTAK 地圖刪除（2026-06-11 真機 iTAK iOS）\n\n承上 reality check，跑了完整 mission 刪除傳播 dogfood（活 TAK 5.7 + 真機 iTAK，使用者親驗）：\n\n**設置（乾淨隔離）**：建 mission `ICS-DOGFOOD`（tool=public）→ 加標記「P2-14測試」進 mission（`PUT contents?creatorUid=`，**creatorUid 必帶否則 200-no-op**）。基線：iTAK **未訂閱前看不到** → 訂閱 mission 後**出現** = mission 通道送達乾淨（無 streaming 混淆）。\n\n**刪除測試結果（所有 server 信號 iTAK 地圖都不清）**：\n| 信號 | iTAK 地圖 |\n|---|---|\n| mission `REMOVE_CONTENT` | ❌ 收到 REMOVE 訊息（任務日誌可見）**但地圖 marker 不消失** |\n| t-x-d-d（含 mission dest） | ❌ |\n| **DELETE 整個 mission** | ❌ 任務包整個沒了，**地圖 marker 還在** |\n| （前次）streaming t-x-d-d / stale / 墓碑 | ❌ |\n\n### 結論\n**iTAK(iOS) 對 server 端「任何」刪除信號都不移除地圖 marker** —— marker 一旦上圖（streaming 或 mission），只能在**裝置本機刪**。這是 **iTAK client 硬限制，非 ICS 可解**。\n\n→ **推翻 strategy §4b / memory「可靠刪除只在 Mission/DataSync」的核心前提**：Mission 也救不了。\n\n### 對 P2-14 的影響\n- **「reliable delete to iTAK」= 做不到（client 擋死）** → 不建 Mission delete 子系統（會白做；dogfood 先驗省了大工）。\n- **Mission/DataSync 仍有用 = 權威 resync（本 #194，`/cot/sa`，讀方向）**，與刪除無關，可行。\n- **P2-14 重切**：reliable-delete 降為「client 限制·operators 本機刪」；P2-14 收斂成 resync 為主。",
+        "createdAt": "2026-06-11T03:58:14Z",
+        "id": "IC_kwDOSnBjpc8AAAABFsYXbg",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/194#issuecomment-4677048174"
       }
     ],
     "createdAt": "2026-06-10T08:46:50Z",
@@ -2568,7 +2582,7 @@
     "number": 194,
     "state": "OPEN",
     "title": "Marti 權威 resync：ICS 顯示漏掉的 iTAK streaming 標記（P2-14）",
-    "updatedAt": "2026-06-10T10:09:59Z",
+    "updatedAt": "2026-06-11T03:58:14Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/194"
   },
   {
