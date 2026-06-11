@@ -61,6 +61,21 @@ def test_resync_fetch_failure_returns_503(client, auth, monkeypatch):
     assert len(_audit_rows()) == 1
 
 
+def test_resync_malformed_events_returns_503(client, auth, monkeypatch):
+    # Marti 回畸形/超大 <events> → parse_cot_events raise CoTParseError → 端點回乾淨 503（非 500）
+    from services.tak_service import CoTParseError
+
+    monkeypatch.setattr(tak_resync, "resync_enabled", lambda: True)
+
+    async def _bad(lookback_s=None):
+        raise CoTParseError("CoT 集合 root 應為 <events>")
+
+    monkeypatch.setattr(tak_resync, "run_resync", _bad)
+    r = client.post("/api/tak/resync", headers=auth)
+    assert r.status_code == 503
+    assert len(_audit_rows()) == 1  # audit-first：意圖已留痕
+
+
 def test_observer_cannot_resync(client, monkeypatch):
     monkeypatch.setattr(tak_resync, "resync_enabled", lambda: True)
     create_account("obs_rs", "1234", ROLE_OBSERVER_ZH, "Obs RS", "observer")

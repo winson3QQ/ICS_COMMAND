@@ -22,14 +22,15 @@
 (2) `POST /api/tak/resync` 手動觸發（COMMAND_ROLES + audit）。
 """
 
-import logging
 from datetime import UTC, datetime, timedelta
+
+import structlog
 
 from core import config
 from services import cop_service, tak_service
 from services.tak_rest_client import TakRestError, build_tak_rest_client
 
-log = logging.getLogger(__name__)
+log = structlog.get_logger()  # 對齊 tak_service：on-connect resync 日誌須可見（#173 訴求）
 
 _SA_PATH = "/Marti/api/cot/sa"
 
@@ -89,7 +90,7 @@ async def resync_once(client, *, lookback_s: float, now: datetime | None = None)
             result = await cop_service.ingest_cot_event(event)
         except Exception:  # noqa: BLE001 — 單筆失敗不拖垮整批（best-effort resync）
             errors += 1
-            log.warning("tak.resync.ingest_failed uid=%s", event.uid, exc_info=True)
+            log.warning("tak.resync.ingest_failed", uid=event.uid, exc_info=True)
             continue
         if result is None:  # 重送/亂序/GeoChat 分流/t-x-d-d → 非錯，正常跳過
             skipped += 1
@@ -98,13 +99,13 @@ async def resync_once(client, *, lookback_s: float, now: datetime | None = None)
 
     summary = {"fetched": len(events), "ingested": ingested, "skipped": skipped, "errors": errors}
     log.info(
-        "tak.resync.done fetched=%d ingested=%d skipped=%d errors=%d window=%s~%s",
-        summary["fetched"],
-        ingested,
-        skipped,
-        errors,
-        start,
-        end,
+        "tak.resync.done",
+        fetched=summary["fetched"],
+        ingested=ingested,
+        skipped=skipped,
+        errors=errors,
+        window_start=start,
+        window_end=end,
     )
     return summary
 
@@ -113,10 +114,11 @@ async def run_resync(lookback_s: float | None = None) -> dict:
     """config 驅動的 resync 入口：建讀 client → resync_once → close。
 
     lookback_s 預設取 `TAK_RESYNC_LOOKBACK_S`。resync 未啟用（缺 URL/cert）→ 回 disabled summary。
-    HTTP 失敗（TakRestError）往上拋，由 caller（endpoint 回 5xx / 背景 task 吞）決定。
+    HTTP 失敗（TakRestError）/ server 回畸形 `<events>`（CoTParseError）往上拋，由 caller
+    （endpoint 兩者皆回 503 / 背景 task 吞）決定。
     """
     if not resync_enabled():
-        log.info("tak.resync.skipped 未配置 TAK_MARTI_URL / READ cert")
+        log.info("tak.resync.skipped_not_configured")  # 缺 TAK_MARTI_URL / READ cert
         return {"enabled": False, "fetched": 0, "ingested": 0, "skipped": 0, "errors": 0}
 
     lookback = config.TAK_RESYNC_LOOKBACK_S if lookback_s is None else lookback_s
@@ -139,6 +141,6 @@ async def resync_on_connect() -> None:
     try:
         await run_resync()
     except TakRestError:
-        log.warning("tak.resync.on_connect_failed（不影響訂閱）", exc_info=True)
+        log.warning("tak.resync.on_connect_failed", exc_info=True)  # 不影響訂閱
     except Exception:  # noqa: BLE001 — 自動 resync 絕不拖垮連線啟動
-        log.warning("tak.resync.on_connect_unexpected（不影響訂閱）", exc_info=True)
+        log.warning("tak.resync.on_connect_unexpected", exc_info=True)  # 不影響訂閱

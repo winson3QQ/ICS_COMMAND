@@ -27,6 +27,7 @@ from schemas.tak import CoTEventIn, DownlinkCommandIn, TakConnectionToggleIn
 from services import cop_service, tak_downlink, tak_resync, tak_runtime, tak_service
 from services.exercise_service import current_exercise_id
 from services.tak_rest_client import TakRestError
+from services.tak_service import CoTParseError
 
 router = APIRouter(prefix="/api/tak", tags=["TAK"])
 
@@ -174,8 +175,10 @@ async def resync_from_tak(request: Request):
     )
     try:
         summary = await tak_resync.run_resync()
-    except TakRestError as e:
-        raise HTTPException(503, f"Marti resync 拉取失敗：{e}") from e
+    except (TakRestError, CoTParseError) as e:
+        # HTTP 層失敗（TakRestError）或 server 回畸形/超大 `<events>`（CoTParseError）→ 乾淨 503
+        # （非未處理 500）。稽核已在前面 audit-first 留下 resync 意圖。
+        raise HTTPException(503, f"Marti resync 失敗：{e}") from e
     return {"ok": True, **summary}
 
 
