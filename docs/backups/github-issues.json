@@ -2990,5 +2990,25 @@
     "title": "feat(map): CREATE 側 — 建立動作整合進長按 contextual 對話框（角色條件分類）",
     "updatedAt": "2026-06-11T10:10:29Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/220"
+  },
+  {
+    "assignees": [],
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "body": "## 症狀（使用者實測 2026-06-11）\n系統 tab 把「TAK 連線」開關**關掉**後，長按地圖仍可建立感知/敵情標記並**廣播 → 實際送達 iTAK**。開關對出向等於不存在。\n\n## Root cause（已驗證程式碼）\nP2-24（#164）的開關（`tak_runtime`）**只控制入向 :8089 訂閱 task**（`start()`/`stop()`）。出向走另一條獨立路徑 `tak_downlink.send_cot()`，每次自開短連線、config 直接讀 `config.TAK_*`，**完全不查 `tak_runtime.effective_enabled()`**。\n\n出向有 **3 條路**都過 `send_cot`、全部漏 gate：\n1. `POST /api/tak/downlink`（`routers/tak.py` `push_downlink`）\n2. `POST /api/tak/share/{uid}`（`routers/tak.py` `share_entity_to_tak`）\n3. `routers/cop.py` `_resync_tak_if_shared`（已分享 marker move/note 編輯 → 自動重推）\n\n## 衍生：燈號定義錯綁入向流量（使用者洞察）\n`connected` = mTLS :8089 socket 連上 = ICS 作為 TAK client **可收可發**；`last_cot_at` = 別的 client 有沒有在推。現燈號 `connected 但 age>120s → 黃「無串流」`。但**單一 client、沒人推 CoT 時 ICS 仍能正常廣播**，卻顯示黃色像故障。綠燈不該綁「有入向流量」。\n\n## 修法（三項一起，使用者拍板）\n**① 後端出向閘**\n- `send_cot` 內加 `effective_enabled()` 閘（縱深，覆蓋全部 3 條路；cop 重推 best-effort 吞例外不重推）。\n- `downlink`/`share` 端點 audit 前加預檢 → **409**「TAK 連線已停用」（不 audit、不送）。\n\n**② 前端 TAK標記類別：改名 + 開關 gate**\n- `📍 感知 / 敵情標記` → `📍 TAK 標記`；顯示條件 `canAccessMapObjects() && takEnabled`。\n- 接線：cop.js 輪詢 status → dispatch `tak:status`(enabled) → map.js 快取 `_takEnabled`。\n\n**③ 燈號改「connected = 綠」**\n- `tak_light_state.js` + `auth.js` 內聯鏡像：connected 即綠「已連線（可收發）」，入向 CoT age 移進 tooltip；移除「無串流→黃警示」。紅僅留真斷線/啟動失敗/未備妥。\n\n## 測試\n- 後端：disabled 時 downlink/share → 409 且 send_cot 未呼叫、無 audit；cop 重推 disabled → 不送不拋；enabled 回歸。\n- 前端：類別 gate（takEnabled false → 無 TAK標記）、tak_light 新綠燈語意、auth 鏡像。\n\n## 版號\nbackend PATCH（行為變更）+ frontend PATCH（UI 標籤+燈號）。",
+    "closedAt": null,
+    "comments": [],
+    "createdAt": "2026-06-11T13:57:53Z",
+    "labels": [],
+    "milestone": null,
+    "number": 222,
+    "state": "OPEN",
+    "title": "TAK 出向未受開關閘控：關閉後仍能廣播到 iTAK + 燈號誤把「無入向串流」當降級",
+    "updatedAt": "2026-06-11T13:57:53Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/222"
   }
 ]
