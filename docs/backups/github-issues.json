@@ -2733,14 +2733,29 @@
     },
     "body": "P2-20 row 的 compliance 尾巴（「軌跡 PII retention policy 文件化」）。**2026-06-11 使用者拍板＝乙案＋開關**：\n\n## 決策\n- **政策**：ICS 側軌跡（`cop_entity_tracks`）retention = **exercise 刪除 cascade（既有）＋ 90 天 TTL 自動清理（新）**；TAK PG 側為 ops SOP（開 Data Retention GUI 設 TTL）。\n- **Admin 開關**：sysadmin 可 runtime 開/關 TTL 清理（比照 P2-24 toggle 模式：config 表持久化、audit-first）。**預設開啟**（政策出廠生效；可關以支援長保存需求）。\n- 90 天前的演習將**不能再 AAR 回放**（軌跡已清）——政策已知 trade-off。\n\n## 落地\n- [ ] `services/retention_service.py`：`cleanup_expired_tracks()`（刪 `t <` 90 天 cutoff；筆數寫 `RETENTION_CLEANUP` audit）\n- [ ] lifespan 週期 task（每日 + 開機跑一次；每次跑前讀開關）\n- [ ] `POST /api/admin/retention {enabled}` + GET 狀態（`/api/admin/` 中央 gate = SYSADMIN_ONLY 自動涵蓋）；`RETENTION_TOGGLE` audit-first；config key `retention.tracks_ttl_enabled`；TTL 天數 env `TRACKS_TTL_DAYS`（預設 90）\n- [ ] threat_model §8.4 retention 段升級為**正式政策**（乙案 + 開關 + TAK 側 SOP + trade-off 記明）\n- [ ] 測試：過期刪/未過期留/關閉時 no-op/RBAC 403/audit 留痕\n- [ ] `/code-review` + `/security-review`；ROADMAP P2-20 註記\n\n## 範圍\n碰 `admin.py`/`main.py` lifespan（小）＋新 service＋docs——零撞活躍 session 領地。\n",
     "closedAt": null,
-    "comments": [],
+    "comments": [
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## 併入：archived cop_entities 無界成長（原 P2-14 (B) 安全網，reality check 後改掛此處）\n\nP2-14 (C) resync 落地（#194/PR #210）時做了 (B) 安全網的 reality check，結論是 **(B) 不是 resync follow-up，而是與本 issue 同類的「定期 retention 清理」**，故併入 #207 一起設計。\n\n### 查 code 確認的事實\n- `cop_entities` 的 **archived=1 entity 永不過期**（`list_cop_entities` 用 `COALESCE(archived,0)=1 OR stale>now` → archived 免疫 stale filter，永久保留）。\n- **無任何 entity 級 TTL/purge/hard-delete**：全 codebase 只有 soft-delete 墓碑（`deleted=1`），唯一 `DELETE FROM cop_entities` 是 admin db_reset（全清）。兩次 reset 之間 archived row 只增不減。\n- 威脅：被盜用的 mTLS 場端 cert 可長期 fire-and-forget 灌入大量不同 uid 的 archived marker → 永久 row 堆積（限速 60/s 但時間拉長無界）。\n\n### reality check 校正（避免照抄舊 ROADMAP 字）\n1. **不是 resync 造成的**：resync 是 upsert（既有 entity `ingested=0`，不新增 row，已驗證），只對真正新 uid 插一筆＝跟串流一樣。無界成長的驅動是「串流 + archive 持久化模型」，非 resync。\n2. **清理 metric 用錯欄位**：archived entity 的 `stale` 本就在過去（靠豁免 stale 才持久），用 `stale>now` 判齡對它無意義 → 應以 **`received_at`（last-heard）齡** 為界。\n3. **hide vs reclaim 要拍板**：操作員「移出 COP」= tombstone，只從 list 隱藏、DB row 還在。若威脅是盜用 cert 灌爆 DB/disk → **必須真 hard-delete**（本 repo 第一個 cop_entities hard-delete 路徑，需 cascade tracks/links + WS 廣播 delete）。tombstone 只解決畫面雜亂。\n4. **resync 不會復活已清的靜態 marker**：復活需 `_is_newer` 嚴格更新時戳（cop_service.py:436），靜態 archived marker 時戳不變 → prune 後不被 resync 帶回（活躍回報的 uid 會，合理）。\n\n### 合併建議\n本 issue 的 `retention_service.py` 週期 sweep **同時涵蓋兩張表**：\n- `cop_entity_tracks`：90 天 TTL（本 issue 既定）。\n- `cop_entities`：archived tak entity 的 `received_at` 超齡（可調 `PERSIST_MAX_AGE`≈7d）→ **hard-delete**（cascade tracks/links + 廣播 op=delete）。\n\n### 急迫性\n現況 dev DB 僅 25 entities / 4 archived → **非眼前 pain**，且 exercise reset cascade 天然界定每場成長。屬 threat-model 硬化（防長期惡意灌注），真實長期部署（不常 reset）才咬人。排序時可一併評估。",
+        "createdAt": "2026-06-11T06:40:15Z",
+        "id": "IC_kwDOSnBjpc8AAAABFtLF4w",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/207#issuecomment-4677879267"
+      }
+    ],
     "createdAt": "2026-06-11T00:32:19Z",
     "labels": [],
     "milestone": null,
     "number": 207,
     "state": "OPEN",
     "title": "P2-20 收尾: 軌跡 PII retention — 90 天 TTL + Admin 開關 + threat_model 政策文件化",
-    "updatedAt": "2026-06-11T00:32:19Z",
+    "updatedAt": "2026-06-11T06:40:15Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/207"
   }
 ]
