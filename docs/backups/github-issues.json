@@ -2952,14 +2952,29 @@
     },
     "body": "> 姊妹 issue：與 #219（VIEW 側 = ☰ filter 面板 IA + 角色預設）並列，兩者合為地圖 UX 重整的 **CREATE × VIEW 二分**。本 issue = CREATE 側。\n\n## 背景 / 問題\n\n建立流程目前散在兩個入口、且部分擠在「圖層」filter 面板（資訊架構錯）：\n- 長按地圖 → `EventPopup`（事件，NAPSG 6 類；gate `canCreateEvents`）\n- ☰ 面板「地圖設定」→ 新增設施 / 放置節點（`canUseRealModeControls` 指揮層）+ 敵情/感知標記（`canAccessMapObjects` operator+）\n\n長按是**位置錨定**的，本來就是建立動作的正確 altitude（你在哪按就放哪）。把所有建立動作收進長按對話框 → filter 面板回歸純 view（#219）、長按成唯一建立入口、兩邊都不再無限變長。\n\n## 設計：長按 contextual 對話框（角色條件分類）\n\n單一位置錨定選單，**依角色條件顯示類別**：\n\n- **感知/敵情標記**（operator+，marker-first 首選）→ 友/敵/中/不明〔+ 通用 2525 符號 picker，見下〕；標記上提供「外推 TAK」動作（P2-30 共享閘）\n- **事件回報**（`canCreateEvents`）→ NAPSG 6 類（原本流程）\n- **設施 / 節點**（指揮層 `canUseRealModeControls`）→ 設施類型 / 5 編組節點\n\n注意**選單深度**：別讓常用動作多一層；最常用的攤在第一層。觀察員無可建立類別 → 不顯示建立選單（沿用長按 gate）。\n\n## Reality-check 修正（動工前必看）\n\n1. **不要叫「TAK 類」。** ICS 不建立 TAK 單位——友軍 PLI 等是**從 TAK 裝置流入**。能建的是**本站感知/敵情標記**（2525），再經 P2-30 共享閘**外推**到 TAK。TAK 外推是標記上的**動作**、不是建立類別。\n2. **通用 2525 符號 picker = 淨新增**（今天只有 contact 的友/敵/中/不明 affiliation，無通用 SIDC 選擇器）。比「整合」更大，標為**可選 / 後續子項**，不綁死本 issue MVP。\n3. **doctrine（marker-first）**：[memory `cop-marker-event-decoupling`] + P2-28 方向 = 先落感知標記 → triage（升級事件/關聯既有/留裸標記），「自動生孤立事件正是要打的迷霧」。本 issue 選單以**標記為首**、事件為其一；P2-33c 後事件降為「從標記升級」。結構要能無痛翻轉，但 P2-33c 前事件流程先留現狀。\n\n## Scope（本 issue）\n\n1. 長按對話框升級為多類別 launcher（事件 / 設施·節點 / 感知·敵情標記），角色條件顯示。\n2. 把 `openInfraForm` / `openNodePlace` / `openContactPlace` 從 ☰ 面板「地圖設定」**移除**，改由長按對話框觸發（與 #219 的「放置工具移出 filter 面板」對接）。\n3. RBAC 條件渲染：events=`canCreateEvents` / 設施·節點=`canUseRealModeControls` / 標記=`canAccessMapObjects`。\n\n## Out of scope\n\n- 通用 2525 SIDC picker（淨新增，另議或本 issue 可選子項）。\n- marker-first 的事件「降級為升級動作」語意 → P2-33c。\n- VIEW 側（filter 分群 / 角色預設 / 分層）→ #219 / P2-29。\n\n## 參考\n\n- 現況：`map.js` `_openEventPopup` / `_rebuildLayerPanel`（地圖設定段 875-890）/ `openInfraForm`/`openNodePlace`/`openContactPlace`；`map/event_popup.js`（NAPSG 兩階段）\n- doctrine SoT：`docs/design/cop-marker-event-decoupling.md`、`docs/design/cop-event-layering.md`\n- 相關：#219（VIEW 側姊妹）、P2-28（入向升級/marker-first）、P2-30 part 3（手動感知標記）、P2-33c\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
     "closedAt": null,
-    "comments": [],
+    "comments": [
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## 實作 reality check（動工前精煉）\n\n**結論：純前端中等重構，零後端**（所有建立走既有 `_copStream.createEntity` + P1-14 scope 綁定，無 schema / migration）。\n\n### 1. 今天兩種建立互動模型\n- **事件**：長按 → `EventPopup`（位置錨定、兩階段 NAPSG）\n- **設施/節點/感知標記**：arm-then-click —— 面板鈕 → 設 `_placeState` → 下次點地圖 → `_placeAt`（`map.js:431, 3027-3077`）\n\n整合 = 把 arm-then-click 改成長按錨定。\n\n### 2. ✅ 資料層已可重用、且能順手簡化\n`_placeAt(lat,lng)`（`map.js:3047`）對 kind∈zone/contact/infra 已用 `createEntity` 建好——長按 popup 只要餵 kind/type + 長按座標。**arm-then-click 那套（`_placeState` banner / crosshair / 點擊抑制 `map.js:427`）對點放置可整個退場** → 反而簡化，解掉 place-mode 與其他互動的耦合。\n\n### 3. ⚠️ 長按 gate 必須放寬（行為改變）\n長按觸發 `map.js:444` 現為 `canCreateEvents()` only —— **operator 現在根本無法長按**。要 host 標記（operator+）須放寬到 `canAccessMapObjects`（最寬），再由 popup **依角色條件顯示類別**。各 gate 確實不同（`map.js:3012` 已註明「與 _startPlace 的指揮層 gate 不同，故不複用」）：事件=`canCreateEvents` / 設施·節點=`canUseRealModeControls` / 標記=`canAccessMapObjects`。觀察員仍無可建類別。\n\n### 4. ⚠️ poly/route 不適合塞長按（scope 修正）\n工具列 ▱範圍 / ↗路線（`map.js:474` `startPolyDraw`/`startRouteDraw`）是**多頂點 draw 流程**，無法收斂成單一長按點。**本 issue scope 成「點建立」**（事件/設施/節點/感知標記）；幾何留工具列 draw-mode，或長按選單提供「從此處繪製」launcher（但畫線本身仍多次點）。**別承諾「所有建立都進長按」。**\n\n### 5. EventPopup 要一般化（中等、非重寫）\n單一用途兩階段 → 「類別 launcher（類別→子型）」：事件=NAPSG / 設施=類型 / 節點=5編組 / 標記=affiliation。模式已存在（事件本就 cat→subcat）；rename 成 `CreatePopup` + 類別註冊表 = altitude-right。\n\n### 6. ⚠️ 選單深度\n加類別層會讓**事件回報變 3 tap**（類別→事件→NAPSG 子類）。緩解：依角色把主類別子選項攤平 / 記住上次類別。\n\n### 7. 工具列不清空\n▱↗⊞☀☾ 留著；只把**面板「地圖設定」的放置動作**（`map.js:875-890` 新增設施/放置節點/敵情標記）搬進長按 → 與 #219「放置工具移出 filter 面板」對接。\n\n### Scope 校正小結\n- **做**：長按多類別 launcher（點建立，角色條件）+ 移除面板放置入口 + 重用 `_placeAt` + 退場 arm-then-click。\n- **不做（已 out of scope）**：通用 2525 picker（淨新增）、poly/route 收進長按、marker-first 事件降級語意（P2-33c）。",
+        "createdAt": "2026-06-11T09:22:01Z",
+        "id": "IC_kwDOSnBjpc8AAAABFuUAPw",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/220#issuecomment-4679073855"
+      }
+    ],
     "createdAt": "2026-06-11T09:13:59Z",
     "labels": [],
     "milestone": null,
     "number": 220,
     "state": "OPEN",
     "title": "feat(map): CREATE 側 — 建立動作整合進長按 contextual 對話框（角色條件分類）",
-    "updatedAt": "2026-06-11T09:13:59Z",
+    "updatedAt": "2026-06-11T09:22:01Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/220"
   }
 ]
