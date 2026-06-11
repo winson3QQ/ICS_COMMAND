@@ -2897,14 +2897,29 @@
     },
     "body": "## Doctrine（使用者拍板 2026-06-11）\n**COP 的 C = Common。現場與指揮部看到的不一致，就不叫 Common。**\n- 雜亂(太多記號)→ 用 **filter** 解(顯示層 declutter)。\n- **生命週期不該分歧** —— 不一致造成**溝通摩擦**(指揮看不到現場還在的管制區、或盯著現場早撤掉的敵情)，比畫面雜亂嚴重。\n- 這是 #213「現場推什麼就帶什麼、declutter 走 filter」原則從**內容**延伸到**生命週期**。\n\n## 現況不一致（已實證）\n| 類型 | iTAK 送的 | `<archive/>` | ICS 行為 | 結果 |\n|---|---|---|---|---|\n| 放置標記(敵情 a-h-G 等) | `<point>` | ✅ 帶 | archived=1 永久 | **現場刪了、指揮部永遠不清** |\n| 繪圖(圓 u-d-c-c/方 u-d-r/多邊) | `<shape>` | ❌ 不帶 | 過 stale ~2-3min 移除 | **指揮部消失了、現場螢幕還留著** |\n\n兩者都「照 TAK 原生正確」(#161：ICS=TAK subscriber，honor archive+stale)，但**合起來 = 指揮部 COP 與現場分歧**。根因：iTAK 給標記蓋 archive、給繪圖不蓋(且繪圖只廣播一次不重播)。\n\n## 要重評的決策\n**#161 當初選「照 TAK 原生 honor archive/stale」**(否決了 #160 的統一 last-heard)。本 issue 主張：對一個**指揮儀表板**，目標應是**盡量鏡像現場真實態勢 + 用 filter declutter**，而非照原生的分歧規則。\n\n## 技術約束（誠實標明，這不是純實作）\n真正的「完全一致」受 TAK 信號限制：\n- **iTAK 刪除不送任何信號**(#194/#211 dogfood) → ICS 無從得知標記被刪。\n- **繪圖只廣播一次** → ICS 無從得知現場是否還顯示。\n→ TAK 沉默處，ICS 必須做**一致的選擇**，不能像現在標記永久、繪圖 2min 各走各的。\n\n## 候選方向（待拍板）\n1. **統一 last-heard 超時**：標記/繪圖一視同仁，N 分鐘沒更新就老化/移除(復活 #160，#161 否決的；但你的觀察在替它翻案)。declutter 仍走 filter。\n2. **一律保留 + filter**：全留，雜亂交給 filter；但「現場已刪」仍清不掉(卡 #194 刪除不傳)。\n3. **混合**：保留為主 + 操作員「移出 COP」hide 動作(對 tak 標記也開，呼應前一 issue 的尖點)。\n\n## 關聯\n- 重評對象：**#161**(原決策)、**#160**(被否的 last-heard)\n- 相關：#172(繪圖老化 fade)、#194/#211(刪除不傳/ATAK 對照)、#207(retention)、#213(忠實度原則)、threat_model §8(COP 完整性)\n- ROADMAP：TAK 同步主線(P2-14 區)的顯示語意層\n\n## 狀態\n**Design/doctrine 決策待定**(非直接實作)。使用者持續測試中，蒐集更多不一致案例後再定方向。",
     "closedAt": null,
-    "comments": [],
+    "comments": [
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## 不一致案例 #2（出向刪除）：ICS 刪 marker → TAK 不清\n\n實測：在 ICS 上消掉一個（已分享到 TAK 的）marker，**現場 TAK client 沒反應、marker 還留著**。\n\n根因（code 已知）：`_resync_tak_if_shared`（cop.py）註解明載「刪除已廣播標記到 TAK 經實證 streaming 做不到（server 持久層不認 t-x-d-d/stale）」→ ICS 刪除走 soft-delete（本地墓碑），**不送任何 TAK 刪除信號**；就算送 t-x-d-d，server/client 也不認（#194 同根）。\n\n→ **刪除雙向都不通**：\n- TAK 刪 → ICS 不清（archived 標記，前述案例 #1）\n- ICS 刪 → TAK 不清（本案例 #2）\n\n兩個方向都讓現場↔指揮分歧，正是本 doctrine issue 的核心。可靠刪除受限於 TAK（#194 streaming 做不到、Mission 對 iTAK 也無效；ATAK 待 #211 驗）。**統一 last-heard 超時**之所以吸引人，正因為它**繞過刪除信號**——不靠「收到刪除」，靠「不再更新就老化」，雙向自然趨於一致。",
+        "createdAt": "2026-06-11T08:53:23Z",
+        "id": "IC_kwDOSnBjpc8AAAABFuGC8Q",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/217#issuecomment-4678845169"
+      }
+    ],
     "createdAt": "2026-06-11T08:50:36Z",
     "labels": [],
     "milestone": null,
     "number": 217,
     "state": "OPEN",
     "title": "COP 一致性 doctrine：現場↔指揮部 TAK 物件生命週期須一致（declutter 走 filter，非分歧的 archive/stale）— 重評 #161",
-    "updatedAt": "2026-06-11T08:50:36Z",
+    "updatedAt": "2026-06-11T08:53:23Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/217"
   }
 ]
