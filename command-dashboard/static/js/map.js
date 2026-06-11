@@ -56,7 +56,7 @@ import { NAPSG_GLYPH_SVG, hasNapsgGlyph } from './map/napsg_glyphs.js';
 import { cotToSidc, affiliationFromCot, affiliationToCotType } from './map/mil_symbol.js';
 import { DrawPreview } from './map/draw_tools.js';
 import { LabelMarkerManager } from './map/label_markers.js';
-import { EventPopup } from './map/event_popup.js';
+import { CreatePopup } from './map/create_popup.js';
 import { EventDragManager } from './map/event_drag.js';
 // P1-10b 步驟 10：座標工具（UTM / MGRS / WGS84 互轉）+ MGRS grid 渲染統一抽到
 // coord_tools.js。本檔保留舊命名作為 import alias，caller 無需改。
@@ -119,7 +119,7 @@ let _facilitiesHoverWired = false;
 let _drawPreview = null;       // DrawPreview — step 8（polygon / route 繪製預覽）
 let _polyLabelMgr = null;      // LabelMarkerManager (polygons)
 let _routeLabelMgr = null;     // LabelMarkerManager (routes)
-let _eventPopup = null;        // EventPopup — step 9（長按 → 兩階段事件選單）
+let _createPopup = null;       // CreatePopup（P2-34 #220）— 長按 → 統一建立對話框（類別→子型）
 let _contactDragMgr = null;    // P2-30 part 3：感知/敵情標記專屬拖曳 manager（左拖移動、右鍵廣播）
 let _eventDragMgr = null;      // EventDragManager — 補 step 7 symbol layer 化後事件
                                //   zone 失去的拖曳行為；只服務事件 zone（節點不在 scope）
@@ -128,7 +128,6 @@ let _mgrsGrid = null;        // MgrsGrid instance — step 10 port 到 MapLibre 
 let _coordPin = null;            // 雙擊放置的藍色十字 marker
 let _polyDrawState = null;       // { latlngs, markers, previewPoly }
 let _routeDrawState = null;      // { latlngs, markers, previewLine }
-let _placeState = null;          // P1-16：{ kind:'zone'|'infra', type } —— on-demand 放置模式（節點/設施共用；單一 state 根除互斥殘留）
 let _pendingPolyLatlngs = null;  // _openPolyForm → _savePolygon 暫存
 let _pendingRouteLatlngs = null; // _openRouteForm → _saveRoute 暫存
 let _pinEditMode = false;
@@ -202,7 +201,7 @@ const _EVENT_GROUPS = {
 
 // P1-10d 地基（#60/#66）：上面的 _EVENT_TYPES / _EVENT_GROUPS 為**內建 fallback**；
 // runtime SoT = /api/event_taxonomy。map.js 受 import boundary 限制不能 import events.js，
-// 故由 main.js 載入後呼叫本函式套用（就地 mutate 保 ref；EventPopup 持有的 ref 同步）。
+// 故由 main.js 載入後呼叫本函式套用（就地 mutate 保 ref；CreatePopup 事件類別持有同一 ref，即時同步）。
 export function applyEventTaxonomy(tax) {
   if (!tax || !Array.isArray(tax.events) || !Array.isArray(tax.groups)) return false;
   const unsafe = (k) => k === '__proto__' || k === 'constructor' || k === 'prototype';
@@ -306,6 +305,8 @@ const _SEV_COLORS = {
   info: cssVar('--severity-info', '#237ACF'),
 };
 const _RAG_COLORS = { ok: cssVar('--green', '#3fb950'), warn: cssVar('--yellow', '#e3b341'), crit: cssVar('--red', '#f85149') };
+// 敵我屬性 2525 色（友藍 / 敵紅 / 中綠 / 不明黃）—— TAK 篩選器與感知標記建立共用，避免色票漂移（P2-34）。
+const _AFFILIATION_COLOR = { friendly: '#3da9fc', hostile: '#f85149', neutral: '#3fb950', unknown: '#e3b341' };
 
 // 線/面/設施色 → 標準調色盤（#110/§8：遊離 hex control/danger/hospital/emergency→--red、
 // primary/assembly→--green、fire/shelter-node→--orange、ops/police→--accent、utility→--text-secondary）。
@@ -424,11 +425,10 @@ function _initMaplibre() {
   }
 
   _leafletMap = initMaplibre('leaflet-map', {
-    shouldSuppressInteraction: () => !!(_polyDrawState || _routeDrawState || _placeState),
+    shouldSuppressInteraction: () => !!(_polyDrawState || _routeDrawState),
 
-    // 單擊：繪製模式時新增頂點 / 放置節點 / 放置設施
+    // 單擊：繪製模式時新增頂點（P2-34 後點放置改走長按對話框，不再用單擊 arm-then-click）
     onClick: ({ lat, lng }) => {
-      if (_placeState) { _placeAt(lat, lng); return; }
       if (_polyDrawState) { _addPolyVertex(lat, lng); return; }
       if (_routeDrawState) { _addRouteVertex(lat, lng); return; }
     },
@@ -439,9 +439,9 @@ function _initMaplibre() {
       _refreshCoordPanel();
     },
 
-    // 長按地圖（650ms）→ 開啟事件回報 popup（NAPSG 兩階段選單）
+    // 長按地圖（650ms）→ 開啟統一建立對話框（類別→子型；P2-34 #220）
     onLongPress: ({ lat, lng }) => {
-      if (canCreateEvents()) _openEventPopup(lat, lng);
+      _openCreatePopup(lat, lng);
     },
 
     // moveend / zoomend → sessionStorage view save + MGRS placeholder + grid redraw
@@ -856,10 +856,10 @@ function _rebuildLayerPanel() {
     // P2-25：TAK 單位開啟時，展開 affiliation / stale 子篩選（純前端視圖過濾）。
     if (layer.key === 'tak' && _layerVis.tak) {
       const affs = [
-        { k: 'friendly', c: '#3da9fc', t: '友軍' },
-        { k: 'hostile',  c: '#f85149', t: '敵軍' },
-        { k: 'neutral',  c: '#3fb950', t: '中立' },
-        { k: 'unknown',  c: '#e3b341', t: '不明' },
+        { k: 'friendly', c: _AFFILIATION_COLOR.friendly, t: '友軍' },
+        { k: 'hostile',  c: _AFFILIATION_COLOR.hostile,  t: '敵軍' },
+        { k: 'neutral',  c: _AFFILIATION_COLOR.neutral,  t: '中立' },
+        { k: 'unknown',  c: _AFFILIATION_COLOR.unknown,  t: '不明' },
       ];
       for (const a of affs) {
         const on2 = _takFilter[a.k];
@@ -872,22 +872,8 @@ function _rebuildLayerPanel() {
       html += `<span style="font-size:11px;color:${_takFilter.showStale ? 'var(--text)' : 'var(--text3)'};">◌ 含過期(stale)</span></div>`;
     }
   }
-  html += `<div style="border-top:1px solid var(--border);margin:4px 0 2px;padding:4px 12px 2px;font-size:9px;color:var(--text3);letter-spacing:.1em;text-transform:uppercase;">地圖設定</div>`;
-  // P1-16 PR-2：on-demand 放置設施入口（限指揮層；operator/observer 不顯示，mirror 放置節點）
-  if (canUseRealModeControls()) {
-    html += `<div class="layer-row" data-action="openInfraForm">
-      <span style="font-size:11px;color:var(--text2);">＋ 新增設施</span></div>`;
-  }
-  // P1-16：on-demand 放置節點入口（限指揮層；operator/observer 不顯示）
-  if (canUseRealModeControls()) {
-    html += `<div class="layer-row" data-action="openNodePlace">
-      <span style="font-size:11px;color:var(--text2);">⊙ 放置節點</span></div>`;
-  }
-  // P2-30 part 3：敵情/感知標記入口（operator+——無線電回報敵情是一線職責，比節點放置開放）
-  if (canAccessMapObjects()) {
-    html += `<div class="layer-row" data-action="openContactPlace">
-      <span style="font-size:11px;color:var(--text2);">📍 敵情/感知標記</span></div>`;
-  }
+  // P2-34（#220）：放置動作（設施/節點/敵情標記）已移出 filter 面板 → 改由**長按地圖**
+  // 觸發統一建立對話框（CreatePopup，依角色顯示類別）。面板回歸純 view（接 #219），不另提示。
   panel.innerHTML = html;
 }
 
@@ -907,17 +893,62 @@ function _drawMgrsGrid() {
 // 使用 L.DomUtil + L.DomEvent，避免 inline onclick 失效
 // ══════════════════════════════════════════════════════════════
 
-// P1-10b 步驟 9：DOM 建構與 popup lifecycle 移至 EventPopup（map/event_popup.js），
-// 本檔僅保留 _openEventPopup（thin wrapper + 權限判定）+ _evPopupSubmit（資料層：
-// authFetch /api/events + 寫 map_config + 觸發 poll）。
+// P2-34（#220）：DOM 建構與 popup lifecycle 在 CreatePopup（map/create_popup.js）；
+// 本檔保留 _openCreatePopup（thin wrapper + gate）+ _buildCreateCategories（角色濾類別）
+// + 事件資料層 _evPopupSubmit（authFetch /api/events + 寫 map_config + 觸發 poll）。
 //
-// EventPopup instance 在 _ensureEntityLayers 末段 lazy 建立（與 DrawPreview / LabelMarkerManager 同層）。
+// CreatePopup instance 在 _ensureEntityLayers 末段 lazy 建立（與 DrawPreview / LabelMarkerManager 同層）。
 
-function _openEventPopup(lat, lng) {
-  if (!canCreateEvents()) return;
-  // P1-10b 步驟 11：Leaflet undefined guard 移除（MapLibre 必載入）。
-  if (!_eventPopup) return;   // _ensureEntityLayers 尚未跑（style not loaded），略
-  _eventPopup.open(lat, lng);
+// P2-34（#220）：長按 → 統一建立對話框。gate 放寬到「可建任何物件」（最寬聯集）——
+// operator 也能長按建感知標記；類別由 _buildCreateCategories() 依角色濾，觀察員無類別 →
+// open() 自動不開（空清單）。
+function _openCreatePopup(lat, lng) {
+  if (!canAccessMapObjects() && !canCreateEvents()) return;
+  if (!_createPopup) return;   // _ensureEntityLayers 尚未跑（style not loaded），略
+  _createPopup.open(lat, lng);
+}
+
+// P2-34（#220）：依當前角色組出長按可建立的類別（marker-first 排序）。每次 open() 重算，
+// 反映角色 / 事件 taxonomy 變動。對應後端 cop create RBAC（kind zone/infra=COMMAND_ROLES、
+// contact=operator+、event=canCreateEvents）——前端只顯示有權建立的類別。
+function _buildCreateCategories() {
+  const cats = [];
+  if (canAccessMapObjects()) {
+    cats.push({
+      key: 'contact', label: '📍 感知 / 敵情標記',
+      subtypes: [
+        { value: 'friendly', label: '友軍', color: _AFFILIATION_COLOR.friendly },
+        { value: 'hostile', label: '敵情', color: _AFFILIATION_COLOR.hostile },
+        { value: 'neutral', label: '中立', color: _AFFILIATION_COLOR.neutral },
+        { value: 'unknown', label: '不明', color: _AFFILIATION_COLOR.unknown },
+      ],
+    });
+  }
+  if (canCreateEvents()) {
+    cats.push({
+      key: 'event', label: '▲ 事件回報',
+      twoStage: { groups: _EVENT_GROUPS, types: _EVENT_TYPES },
+      reporter: {
+        options: [
+          ['command', '指揮部'], ['forward', '前進組'], ['security', '安全組'],
+          ['shelter', '收容組'], ['medical', '醫療組'],
+        ],
+        get: () => el('place-report-unit')?.value || 'command',
+        onChange: (v) => { const bar = el('place-report-unit'); if (bar) bar.value = v; },
+      },
+    });
+  }
+  if (canUseRealModeControls()) {
+    cats.push({
+      key: 'infra', label: '＋ 設施',
+      subtypes: Object.entries(INFRA_TYPES).map(([v, def]) => ({ value: v, label: def.label })),
+    });
+    cats.push({
+      key: 'zone', label: '◆ 節點',
+      subtypes: _PERM_NODES.map((n) => ({ value: n.node_type, label: n.label })),
+    });
+  }
+  return cats;
 }
 
 async function _evPopupSubmit(typeKey, ctx) {
@@ -1841,19 +1872,24 @@ function _ensureEntityLayers() {
     _drawMgrsGrid();
   }
 
-  // Step 9：EventPopup — 長按事件回報 popup（取代 Leaflet 的 L.popup + L.DomUtil/DomEvent）。
-  // 兩階段選單：group 按鈕 → type 按鈕；submit 走 _evPopupSubmit 寫 /api/events。
-  _eventPopup = new EventPopup(map, window.maplibregl, {
-    groups: _EVENT_GROUPS,
-    types: _EVENT_TYPES,
-    reporterOptions: [
-      ['command', '指揮部'], ['forward', '前進組'], ['security', '安全組'],
-      ['shelter', '收容組'], ['medical', '醫療組'],
-    ],
-    getReporter: () => el('place-report-unit')?.value || 'command',
-    onReporterChange: (v) => { const bar = el('place-report-unit'); if (bar) bar.value = v; },
+  // P2-34（#220）：CreatePopup — 長按 → 統一建立對話框。類別（感知標記/事件/設施/節點，
+  // 依角色濾）→ 子型；事件 onCreate 走 _evPopupSubmit、其餘走 _placeAt（顯式 kind/type）。
+  _createPopup = new CreatePopup(map, window.maplibregl, {
+    getCategories: _buildCreateCategories,
     latlngToMgrs: (lat, lng) => _latlngToMGRS(lat, lng, 5),
-    onSubmit: (typeKey, ctx) => _evPopupSubmit(typeKey, ctx),
+    onCreate: (catKey, payload, latlng) => {
+      if (catKey === 'event') {
+        // payload = { typeKey, reporter }；沿用既有事件建立資料層
+        _evPopupSubmit(payload.typeKey, { ...latlng, reporter: payload.reporter });
+        return;
+      }
+      // contact / infra / zone：payload = 子型 value。contact 須 affiliation→CoT type；
+      // zone/infra 直接傳 node_type / infra_type。重用 _placeAt（顯式 kind/type，免 arm）。
+      const kind = { contact: 'contact', infra: 'infra', zone: 'zone' }[catKey];
+      if (!kind) return;
+      const type = kind === 'contact' ? affiliationToCotType(payload) : payload;
+      _placeAt(latlng.lat, latlng.lng, { kind, type });
+    },
   });
 
   // 右側事件欄長按 → 地圖 highlight 該事件 + 其他暗化（events.js dispatch
@@ -2839,23 +2875,6 @@ export async function _resetPolyLabelAnchor(id) {
 //   v1 = 放 + 刪；拖移留 follow-up（OUT of scope）。
 // ══════════════════════════════════════════════════════════════
 
-// 圖層面板「＋ 新增設施」→ 開類型選擇 modal（5 類設施）。
-export function _openInfraForm() {
-  // 放置/管理設施限指揮層（sysadmin/commander）；operator/observer 不可開。
-  if (!canUseRealModeControls()) return;
-  const BTN = 'display:block;width:100%;padding:10px;margin-bottom:8px;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:6px;cursor:pointer;font-family:var(--mono);font-size:13px;text-align:left;';
-  let html = '<div style="font-size:11px;color:var(--text3);margin-bottom:12px;">選擇設施類型，接著點地圖放置：</div>';
-  for (const [type, def] of Object.entries(INFRA_TYPES)) {
-    if (type === '__proto__' || type === 'constructor' || type === 'prototype') continue;
-    html += `<button data-action="startInfraPlace" data-infra-type="${_escapeHtml(type)}" style="${BTN}">${_escapeHtml(def.label)}</button>`;
-  }
-  _deps.openModal?.('＋ 新增設施', html);
-}
-
-// thin wrapper（共用實作 _startPlace / _cancelPlace / _placeAt 見節點區）。
-export function _startInfraPlace(infraType) { _startPlace('infra', INFRA_TYPES[infraType] ? infraType : 'utility'); }
-export function _cancelInfraPlace() { _cancelPlace(); }
-
 export async function _deleteInfra(id) {
   if (!canUseRealModeControls()) return;  // 限指揮層（與放置一致）
   if (!_copStream || !id) return;
@@ -2973,80 +2992,13 @@ export async function _resetRouteLabelAnchor(id) {
 //   後端零新工：POST /api/cop/entities + P1-14 自動蓋 active exercise（或實戰 NULL）。
 // ══════════════════════════════════════════════════════════════
 
-// 工具列「⊙ 放置節點」→ 開類型選擇 modal（5 個 ICS 編組）。
-export function _openNodePlacePicker() {
-  // P1-16：放置/管理節點限指揮層（sysadmin/commander）；operator/observer 不可開。
-  if (!canUseRealModeControls()) return;
-  const BTN = 'display:block;width:100%;padding:10px;margin-bottom:8px;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:6px;cursor:pointer;font-family:var(--mono);font-size:13px;text-align:left;';
-  let html = '<div style="font-size:11px;color:var(--text3);margin-bottom:12px;">選擇節點類型，接著點地圖放置：</div>';
-  for (const n of _PERM_NODES) {
-    html += `<button data-action="startNodePlace" data-node-type="${_escapeHtml(n.node_type)}" style="${BTN}">${_escapeHtml(n.label)}</button>`;
-  }
-  _deps.openModal?.('⊙ 放置節點', html);
-}
-
-// thin wrapper（保留 export 給 main.js dispatch；實作見下方 _startPlace / _cancelPlace / _placeAt）。
-export function _startNodePlace(nodeType) { _startPlace('zone', nodeType || 'command'); }
-export function _cancelNodePlace() { _cancelPlace(); }
-
-// ── P2-30 part 3（#180）：手動感知/敵情標記（無線電回報 → 可共享 COP 標記）──
-// RBAC：建立開給 operator+（canAccessMapObjects）——無線電回報敵情是一線/幕僚職責，非指揮層專屬
-//（與 zone/infra 的 canUseRealModeControls 刻意不同；後端 kind='contact' 非 _COMMAND_ONLY_KINDS = WRITE_ROLES）。
-// 廣播到 TAK 亦放寬 operator+（P2-30 part 3：一線回報敵情可直推；後端 /api/tak/share = WRITE_ROLES）。
-const _CONTACT_AFFILIATIONS = [
-  { aff: 'hostile', label: '敵性', color: '#d9342b' },
-  { aff: 'unknown', label: '不明', color: '#caa800' },
-  { aff: 'neutral', label: '中立', color: '#2e8b57' },
-  { aff: 'friendly', label: '友軍', color: '#2b6cd9' },
-];
-export function _openContactPlacePicker() {
-  if (!canAccessMapObjects()) return;  // operator+
-  const BTN = 'display:block;width:100%;padding:10px;margin-bottom:8px;background:var(--surface);border:1px solid var(--border);border-radius:6px;cursor:pointer;font-family:var(--mono);font-size:13px;text-align:left;';
-  let html = '<div style="font-size:11px;color:var(--text3);margin-bottom:12px;">選擇敵我屬性，接著點地圖標記（無線電回報接觸）：</div>';
-  for (const a of _CONTACT_AFFILIATIONS) {
-    html += `<button data-action="startContactPlace" data-affiliation="${a.aff}" style="${BTN}border-left:4px solid ${a.color};color:var(--text);">${a.label}接觸</button>`;
-  }
-  _deps.openModal?.('📍 敵情/感知標記', html);
-}
-export function _startContactPlace(affiliation) {
-  if (!canAccessMapObjects()) return;  // operator+（與 _startPlace 的指揮層 gate 不同，故不複用）
-  if (_routeDrawState) _cancelRouteDraw();
-  if (_polyDrawState) _cancelPolyDraw();
-  if (_currentMap !== 'outdoor') switchMap('outdoor');
-  _placeState = { kind: 'contact', type: affiliationToCotType(affiliation) };
-  const banner = el('node-place-banner');
-  if (banner) banner.style.display = 'flex';
-  if (el('map-coord-panel')) el('map-coord-panel').style.display = 'none';
-  if (_leafletMap) _leafletMap.getCanvas().style.cursor = 'crosshair';
-}
-
-// P1-16 follow-up：節點/設施放置共用實作（取代原 _startNodePlace/_startInfraPlace、
-// _cancelNodePlace/_cancelInfraPlace、_placeNodeAt/_placeInfraAt 的近重複）。單一 `_placeState`
-// 同時根除「兩個 state 殘留互斥」隱患（原 MED-1）。kind='zone'→_PERM_NODES/node_type；
-// 'infra'→INFRA_TYPES/infra_type。CoT type 與 createEntity 流程兩者一致（a-f-G-I + P1-14 綁 scope）。
-function _startPlace(kind, type) {
-  if (!canUseRealModeControls()) return;  // 限指揮層
-  if (_routeDrawState) _cancelRouteDraw();
-  if (_polyDrawState) _cancelPolyDraw();
-  if (_currentMap !== 'outdoor') switchMap('outdoor');
-  _placeState = { kind, type };
-  const banner = el('node-place-banner');
-  if (banner) banner.style.display = 'flex';
-  if (el('map-coord-panel')) el('map-coord-panel').style.display = 'none';
-  if (_leafletMap) _leafletMap.getCanvas().style.cursor = 'crosshair';
-}
-
-function _cancelPlace() {
-  if (!_placeState) return;
-  _placeState = null;
-  const banner = el('node-place-banner');
-  if (banner) banner.style.display = 'none';
-  if (_leafletMap) _leafletMap.getCanvas().style.cursor = '';
-}
-
-async function _placeAt(lat, lng) {
-  if (!_placeState || !_copStream) return;
-  const { kind, type } = _placeState;
+// P2-34（#220）：在長按座標建立 cop_entity。由長按建立對話框（CreatePopup onCreate）帶
+// 顯式 {kind,type} 呼叫——kind='zone'→node_type／'infra'→infra_type／'contact'→CoT type
+// （P2-30 part 3 手動感知/敵情標記）。CoT type 與 createEntity 一致（a-f-G-I 預設 + P1-14 綁 scope）。
+// RBAC 由建立對話框類別濾 + 後端 cop create 守門（zone/infra=COMMAND_ROLES、contact=WRITE_ROLES）。
+async function _placeAt(lat, lng, opts) {
+  if (!opts || !_copStream) return;
+  const { kind, type } = opts;
   let label, attributes, cotType = 'a-f-G-I';  // zone/infra：友軍設施型 atom（既有行為）
   if (kind === 'zone') {
     label = _PERM_NODES.find((n) => n.node_type === type)?.label || '';
@@ -3073,7 +3025,6 @@ async function _placeAt(lat, lng) {
     return;
   }
   // createEntity 內部 upsert + onChange 自動重繪（_scheduleCopRender），不必手動 render。
-  _cancelPlace();
 }
 export function _cancelEventPin() {}
 export function admUploadMapImage() {}

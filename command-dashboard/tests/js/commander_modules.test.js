@@ -640,11 +640,11 @@ describe('C1-F commander modules', () => {
     expect(mainSource).not.toMatch(/#FF6600/);
     expect(mainSource).toMatch(/if \(!canCreateEvents\(\)\) break;/);
     expect(eventsSource).toMatch(/if \(!canCreateEvents\(\)\) return;/);
-    // P1-10b 步驟 4：長按 popup 改走 maplibre_core onLongPress callback；
-    // canCreateEvents() 守門點在 callback 內（_lpMoved 已封裝進 core，map.js 不再見此變數）
-    expect(mapSource).toMatch(/onLongPress: \(\{ lat, lng \}\) => \{\s+if \(canCreateEvents\(\)\) _openEventPopup\(lat, lng\);/);
-    expect(mapSource).toMatch(/function _openEventPopup\(lat, lng\) {\s+if \(!canCreateEvents\(\)\) return;/);
-    // P1-10b 步驟 9：_evPopupSubmit 簽名變 (typeKey, ctx) — ctx 由 EventPopup 帶來 {lat,lng,reporter}
+    // P2-34（#220）：長按 → 統一建立對話框 _openCreatePopup（取代 _openEventPopup）；
+    // gate 放寬到「可建任何物件」聯集（canAccessMapObjects || canCreateEvents），類別依角色濾。
+    expect(mapSource).toMatch(/onLongPress: \(\{ lat, lng \}\) => \{\s+_openCreatePopup\(lat, lng\);/);
+    expect(mapSource).toMatch(/function _openCreatePopup\(lat, lng\) {\s+if \(!canAccessMapObjects\(\) && !canCreateEvents\(\)\) return;/);
+    // P1-10b 步驟 9：_evPopupSubmit 簽名 (typeKey, ctx) — ctx 由 CreatePopup onCreate 帶來 {lat,lng,reporter}
     expect(mapSource).toMatch(/async function _evPopupSubmit\(typeKey, ctx\) {\s+if \(!canCreateEvents\(\)\) return;/);
     expect(wsSource).toMatch(/canCreateEvents/);
     expect(wsSource).toMatch(/canUseRealModeControls/);
