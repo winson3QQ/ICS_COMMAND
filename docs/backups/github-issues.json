@@ -3063,14 +3063,29 @@
     },
     "body": "## 目標\n\nP1-12 全項落地（ROADMAP Phase 1 最後一項）。規格 SoT：\\`docs/roadmap/p1-key-management.md\\`（2026-06-12 動工修訂版，隨 12a PR 進）。\n\n## 動工前決議（threat_model §8.4，2026-06-12 拍板）\n\n- at-rest **主控 = LUKS 整碟**（獨立 item 另開 issue，本 umbrella 不含）；SQLCipher 退**內層縱深**\n- P1-12a key 階層**必含 \\`disk-v1\\` child**，為 LUKS 統一 FIDO2 unlock 預留（勿碎裂託管）\n- 部署形態定調 **manned C2**：接受開機需人持 FIDO2 token；無人值守 escrow 後路於 LUKS issue 內評估，不阻塞本項\n\n## Reality check（2026-06-12 動工前盤點，留痕）\n\n**已存在（規格 2026-05-28 版未反映）**：\n- \\`backup_service.py\\`：SQLite online backup + gzip + sha256 + atomic + 7 天 retention + Fernet encrypt/decrypt 全套（#41 繼承）\n- \\`scripts/backup_db.py\\` CLI 預設加密（env \\`BACKUP_ENCRYPTION_KEY\\`），systemd \\`ics-backup.timer\\` 每日 03:00\n- \\`routers/backups.py\\`：list / trigger / verify / preview / restore-cmd 五端點 + audit；\\`admin_backups.html\\` 面板；\\`restore_db.py\\` CLI\n- **P1-14 已完成** → L2 archive 觸發點 + manifest exercise metadata 地基現成（規格的 12b+14 bundling 段落作廢）\n\n**缺口**：\n- 12a 全 greenfield（\\`scripts/keymgmt/\\` 不存在）\n- 12b：**API 手動觸發產明文 .db.gz**（CLI 加密、API 沒接 encrypt_file，drift bug）；backup 只含 DB 不含整個 \\`data/\\`；無 manifest；無 L2/L3；無 GUI restore（OP-4）；reset-db 無 confirm body（OP-2）；key 換 HKDF child[0] 需舊 backup 相容\n- 12c 全 greenfield；**Windows 無 SQLCipher wheel（已實測 \\`sqlcipher3-binary\\` no matching distribution）** → 加密整合測試走 CI（ubuntu）\n- \\`docs/security/key-management.md\\` 不存在；threat_model 缺 at-rest 章節\n\n## 子項（序列做，不並行）\n\n子項 issue 編號見下方 comment（本 issue 開立時尚未取號）。\n\n- [ ] P1-12a key 基建\n- [ ] P1-12b backup/restore\n- [ ] P1-12c SQLCipher\n- [ ] 文件：\\`docs/security/key-management.md\\` + threat_model at-rest 章節\n- 硬體驗收尾巴（真 token / 失 token 演練 / Pi benchmark）→ 獨立 issue，**不阻塞本 umbrella 的 code 部分**",
     "closedAt": null,
-    "comments": [],
+    "comments": [
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "子項 issue 已開齊：\n\n- P1-12a key 基建 → #227\n- P1-12b backup/restore → #228\n- P1-12c SQLCipher → #229\n- 硬體驗收尾巴（真 token / 失 token 演練 / Pi benchmark）→ #230\n- 連動（SC7 升優先，非本 umbrella 子項）：LUKS 主控 → #231、§8.5 憑證撤銷 → #232\n\n執行順序：#227 → #228 → #229（序列，不並行）；文件（key-management.md + threat_model at-rest 章節）隨各 PR 進。",
+        "createdAt": "2026-06-11T23:43:22Z",
+        "id": "IC_kwDOSnBjpc8AAAABF09KBQ",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/226#issuecomment-4686039557"
+      }
+    ],
     "createdAt": "2026-06-11T23:41:42Z",
     "labels": [],
     "milestone": null,
     "number": 226,
     "state": "OPEN",
     "title": "P1-12 統一 key management + at-rest 加密 + Backup GUI（umbrella）",
-    "updatedAt": "2026-06-11T23:41:42Z",
+    "updatedAt": "2026-06-11T23:43:22Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/226"
   },
   {
@@ -3132,5 +3147,65 @@
     "title": "P1-12c SQLCipher live DB at-rest 加密：driver 抽象 + 明文→加密 migration + CI 驗證",
     "updatedAt": "2026-06-11T23:42:31Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/229"
+  },
+  {
+    "assignees": [],
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "body": "P1-12（umbrella #226）DoD 中**需實體硬體、無法在 Windows dev session 完成**的三項，carve-out 至此追蹤。12a/12b/12c 的 code + mock 測試不被本 issue 阻塞。\n\n## 待辦\n\n- [ ] **採購 2+ 把 FIDO2 token**（CTAP2 + hmac-secret；YubiKey 5 / SoloKey 等級）\n- [ ] **真 token 整合驗收**（Mac/Linux）：enroll N 把 → unlock 任一把 → child keys 注入 service 全流程 e2e。注意：Windows 上 python-fido2 直走 CTAP HID 需 Administrator，不建議在 Windows 驗\n- [ ] **失去所有 token 演練**：rescue 助記詞紙本 → re-enroll 新 token → 成功解出歷史 backup + DB（DoD 明列）\n- [ ] **Pi 500 SQLCipher 效能 benchmark**：讀寫 latency 不超 +20%（#229 DoD carve-out）\n\n完成後回 #226 勾 DoD 對應項。",
+    "closedAt": null,
+    "comments": [],
+    "createdAt": "2026-06-11T23:43:19Z",
+    "labels": [],
+    "milestone": null,
+    "number": 230,
+    "state": "OPEN",
+    "title": "P1-12 硬體驗收尾巴：真 FIDO2 token 整合 + 失 token 演練 + Pi SQLCipher benchmark",
+    "updatedAt": "2026-06-11T23:43:19Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/230"
+  },
+  {
+    "assignees": [],
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "body": "threat_model §8.4 + SC7 升優先項。**2026-06-12 拍板：LUKS 為同機部署 at-rest 主控必備，SQLCipher（#229）退內層縱深。**\n\n## 為什麼 P1-12 不夠（§8.4 論證）\n\n- TAK Server 與 ICS 同機：SQLCipher 只加密 ICS SQLite，**TAK PostgreSQL 同碟明文** → 偷碟者直接讀 TAK PG 拿同一批敵我位置，繞過 SQLCipher（per-app 加密在同機部署下給假安全感）\n- **mTLS 私鑰明文落地**（icscop-nopass.key / step-ca CA key / TAK keystore）→ 偷碟可冒充 ICS 對 TAK 注入/刪 CoT\n- LUKS 一次涵蓋：ICS SQLite + TAK PG + 憑證私鑰 + log\n\n## Scope\n\n- LUKS 整碟（Linux/Pi）；unlock key = P1-12a key 階層的 **`disk-v1` child（#227 已預留）** → 一次 FIDO2 unlock 開機碟 + app + backup，勿碎裂託管\n- 沿用 ICS_DMAS `initramfs/fido2-luks-hook` 移植，**需 Pi 硬體實機驗證**\n- **無人值守 trade-off 在本 issue 內評估**：manned C2 接受開機摸 token（已拍板）；unattended Pi 停電重啟會卡 → escrow / TPM / 降級方案評估後寫進 key-management.md\n\n## 前置\n\n- P1-12a（#227）merge 後才有 disk-v1 child 可接\n- Pi 硬體到位",
+    "closedAt": null,
+    "comments": [],
+    "createdAt": "2026-06-11T23:43:20Z",
+    "labels": [],
+    "milestone": null,
+    "number": 231,
+    "state": "OPEN",
+    "title": "P1-NN LUKS 整碟加密（threat_model §8.4 主控層）：FIDO2 disk-v1 child 統一 unlock",
+    "updatedAt": "2026-06-11T23:43:20Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/231"
+  },
+  {
+    "assignees": [],
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "body": "threat_model §8.5 + SC7 升優先項（RTF/多機構「人命級」論據）。**與加密無關，P1-12 解不了** — 被擄/失竊場端裝置的 client cert 在 TLS 有效期內仍在信任邊界內，可注入假敵我位置或用 `t-x-d-d` 刪 COP 物件（完整性威脅，對 C2 ≥ 機密性）。\n\n## 已實證現況（2026-06-08 admin UI 實證）\n\n- TAK Server admin GUI 有 `Revoke Selected` 撤銷功能，**但對本部署顯示 \"No Certificates Found\"**：現行 cert 由 `makeCert.sh` 離線簽發（信任鏈通、未經 enrollment 註冊）→ 不是 managed cert，**GUI 撤銷不到**\n- 無 CRL/OCSP、無被擄裝置撤銷 SOP\n\n## Scope（大半是 ops/SOP，工程量小、風險覆蓋大）\n\n- [ ] 場端裝置 cert 改走 **TAK enrollment（:8446）發行** → 進 managed 清單，GUI 可撤銷 + `Show Revoked` 稽核\n- [ ] 或建 **CA 層 CRL**，並驗證 ICS / TAK 的 mTLS 驗證會 honor CRL\n- [ ] **「裝置遺失 → 立即撤銷」操作 SOP** 文件化（撤銷責任在 TAK 管理員，ICS 為下游消費者）\n- [ ] 短 cert TTL + 自動續期策略（連動 #98 drift、P2-15 federation peer cert profile）\n- [ ] ICS 端縱深（來源標註 + 異常偵測：同 uid 位置跳變 / 大量刪除）→ 留 P2-12 / P2-19，本 issue 只記接點",
+    "closedAt": null,
+    "comments": [],
+    "createdAt": "2026-06-11T23:43:21Z",
+    "labels": [],
+    "milestone": null,
+    "number": 232,
+    "state": "OPEN",
+    "title": "憑證撤銷控制缺口（threat_model §8.5）：enrollment 發行切換 + CRL 評估 + 被擄裝置撤銷 SOP",
+    "updatedAt": "2026-06-11T23:43:21Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/232"
   }
 ]
