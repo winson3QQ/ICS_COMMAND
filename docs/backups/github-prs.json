@@ -3424,16 +3424,16 @@
     },
     "baseRefName": "main",
     "body": "## 摘要\n\n入向 GeoChat（CoT `b-t-f`，P2-07 已落 `chats` 表）原本「收得到、看不到」——只在 AAR 回放出現，主 dashboard 無面板、無讀取端點。本 slice 補唯讀顯示路徑 = **P2-12 三面板的「通聯記錄面板」**（panel 2 of 3）。\n\nCloses 部分 #213（b1）。b2/b3 + 欄位盤點(#193) 後置。\n\n## 改了什麼\n\n**後端**\n- `chat_repo.list_chats` — newest-first 取最新窗、三態 exercise scope（int / NULL_SCOPE / None）+ 時間窗，全參數化。\n- `chat_service.build_chat_feed` — `limit+1` 探截斷 + reverse 成顯示升序，回 `{meta:{count,truncated}, chats:[…]}`。\n- `routers/chat.py` `GET /api/chat`（`?from&to&limit&exercise_id`）— `resolve_scope` 綁 active 場。\n- `role_enum`：`/api/chat` → GET `READ_ROLES`（含 observer——通聯屬當前場情境資料，audit/AAR 觀察需看；跨場 PII 由 `resolve_scope` 守門），POST 預留 `COMMAND_ROLES`（#216 出向）。\n\n**前端**\n- `chat_panel.js`：右欄「事件追蹤 ｜ 通聯」tab + 單一時間流 + `[room]` 標籤 + 動態 filter chips（≤1 房間隱藏）+ 7s poll；「事件」頁掛紅圈未讀數；**TAK 停用隱藏 tab**（`cop.js` 派 `tak:conn-state`，同源 `takConnState` 不另判）。\n- message 後端已 `html.escape`，前端 `decodeChatMessage` 還原 5 實體後**經 `textContent` 落 DOM**（無 `innerHTML`，雙重防 XSS）。\n\n## Reviews\n\n- **`/code-review`**：1 confirmed bug 修復 — `routers/chat.py` `_range_bound` 漏 `iso_utc()` 的 Z 正規化，使純日期 `to=YYYY-MM-DD` 界字典序落在 `…ssZ` 之前、漏掉當天最後一秒（自身測試以 `08:00:00Z` 遮住）。已補 Z + 加 `23:59:59Z` 邊界測試。其餘為非阻斷 known-limitation（truncated 未在 UI surface、naive-time 排序、poll-always、`_range_bound`/`_chats` dedup）留待後續。\n- **`/security-review`**：**0 finding**（SQL 全參數化、RBAC 中央 gate + `resolve_scope` server-enforced、所有 DOM sink 為 `textContent`）。\n\n## §8 Verification script\n\n```bash\n# 後端（全套 + 本 slice）\ncd command-dashboard && python -m pytest -q                          # 973 passed, 1 skipped\npython -m pytest tests/api/test_chat_read.py -q                      # 10 passed\n# 前端\nnpx vitest run                                                       # 292 passed（含 chat_panel 13）\n# 品質閘\npython ../scripts/doc_sync_check.py                                  # exit 0\n```\n\n**真機 iTAK dogfood（端到端 human verify）— PASS**：\n1. 啟動 dashboard（帶 `TAK_COT_URL=tls://localhost:8089` + icscop client cert）→ `GET /api/tak/status` `connected:true`。\n2. iTAK 連 TAK Server，發 GeoChat「Hello 3QQ from iTAK」到 All Chat Rooms。\n3. ~7s 內進 `chats` 表 → 右欄「通聯」單流顯示 `[All Chat Rooms] 3QQ form iTAK｜Hello 3QQ from iTAK`。\n4. 多房間（Cyan/DM）→ chips 動態出現、切 chip 過濾正確；escape→decode 顯示正確。\n\n**dogfood 連帶修 2 bug**：\n- 切「通聯」tab 後事件欄縮半截 —— `events.js _resizeEvtList` 在 `#right-events` 隱藏時 `clientHeight=0` → 把列表 maxHeight 釘 50px 殘留。修：隱藏時不量 + 切回重算。\n- chips 單房間時 `全部` 與 TAK 內建「All Chat Rooms」視覺撞臉。修：≤1 房間隱藏整條 chips。\n\n## 移出 b1（後置）\n\nb2 即時 WS · b3 marker 連結（`GeoChat.<uid>` `split('.')[1]` 已實證等於來源 marker uid）· 欄位盤點(#193) · O/C 識別與限可見（演習裁判頻道，待 reality-check 真實 chatroom 名 + 可見模型）。\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n",
-    "closedAt": null,
+    "closedAt": "2026-06-11T14:00:22Z",
     "comments": [],
     "createdAt": "2026-06-11T13:58:10Z",
     "headRefName": "feat/issue-213-geochat-display",
     "labels": [],
-    "mergedAt": null,
+    "mergedAt": "2026-06-11T14:00:22Z",
     "number": 223,
-    "state": "OPEN",
+    "state": "MERGED",
     "title": "feat(tak): P2-12 通聯記錄面板 — GeoChat 唯讀流（#213 b1）",
-    "updatedAt": "2026-06-11T13:58:10Z",
+    "updatedAt": "2026-06-11T14:00:51Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/223"
   }
 ]

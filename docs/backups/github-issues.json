@@ -2850,6 +2850,20 @@
         "minimizedReason": "",
         "reactionGroups": [],
         "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/213#issuecomment-4679136878"
+      },
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## b2（即時 WS push）reality check — 2026-06-11\n\n**結論：GREEN，低成本。重用既有 `CopHub` + `/ws/updates`，多工一個 `chat` op，不開新 WS。**\n\n### 既有基建（可直接重用，已讀碼確認）\n- `services/realtime_hub.py` `CopHub`：in-process 單例 WS 廣播中樞；`broadcast(message, exercise_id)` 按 `_Conn.wants(exercise_id)` 過濾推送（死連線就地剔除、容錯不拋）。\n- `routers/cop.py` `/ws/updates`：已驗 session（token 走 `Sec-WebSocket-Protocol`）+ **READ_ROLES** + `resolve_scope` exercise 範圍守門；server→client 單向 push `{op, ...}`。\n- 前端 `static/js/map/cop_stream.js`：`ws.onmessage → _onMessage → switch(msg.op)`（hello / exercise_switched / create / update / delete）+ 指數退避重連。\n\n### 作法（多工既有 WS，不新增 socket）\n1. **後端**：`chat_service.ingest_chat` 寫入後 `await cop_hub.broadcast({\"op\": \"chat\", \"chat\": <row>}, exercise_id=record.exercise_id)`。\n2. **前端**：`cop_stream.js` 加 `case \"chat\":` → `document.dispatchEvent(new CustomEvent(\"chat:new\", {detail: msg.chat}))`；`chat_panel.js` 監聽 → prepend 進 `_chats` + re-render + 未讀計數。\n3. **poll 不全砍**：降為 30–60s safety-net + 重連時 GET `/api/chat` resync（對齊 COP「重連 GET 全量 resync」紀律，WS 不補發歷史）。\n\n### 動工必讀 gotchas（已驗碼）\n1. ⚠️ **`chat_service.ingest_chat` 目前是 sync**（`def`，`cop_service.py:377` 無 `await` 呼叫）→ 改 `async def` + 呼叫端加 `await`。`ingest_cot_event` 本就 async，改動小。\n2. **scope 一致**：broadcast 帶 `exercise_id=record.exercise_id`，`_Conn.wants` 與 entity 同 exact-match（observer/operator 鎖當前場、NULL_SCOPE 收實戰池）→ 與 GET `/api/chat` 的 `resolve_scope` 模型一致，**零新 RBAC 面**。\n3. **RBAC 已對齊**：`/ws/updates` = READ_ROLES（含 observer），與 GET `/api/chat` 同政策 → observer 兩路一致可見。\n4. ⚠️ **前端多工安全**：`op:\"chat\"` 必須在 switch **顯式 `case` 後 return/break，不可落進 entity store**（否則污染作戰圖主資料）。\n5. **broadcast 來源 loop**：ingest 走 :8089 串流背景 task（與 `cop_service._broadcast_cop` entity 廣播同路徑、同 event loop）→ 先例成立，無新並發風險。\n\n### 成本估\n- 後端 ~5 行（async 化 + 1 broadcast）；前端 ~15 行（1 case + 1 listener + poll 降速）；測試 1–2（ingest 觸發 broadcast + scope 過濾），參考 `tests/.../test_cop_ws`。\n\n### 不做\n- 新獨立 chat WS channel（多餘 socket / 多 auth 面 / 多重連邏輯）—— 既有 `/ws/updates` 多工即可。\n\n> 來源：#213 b1 dogfood 後對 `realtime_hub.py` / `routers/cop.py` `/ws/updates` / `cop_stream.js` / `chat_service.py` 讀碼。b1 已落地（[PR #223](https://github.com/winson3QQ/ICS_COMMAND/pull/223)）。\n",
+        "createdAt": "2026-06-11T14:11:33Z",
+        "id": "IC_kwDOSnBjpc8AAAABFwmQbQ",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/213#issuecomment-4681470061"
       }
     ],
     "createdAt": "2026-06-11T07:24:56Z",
@@ -2858,7 +2872,7 @@
     "number": 213,
     "state": "OPEN",
     "title": "入向 TAK 顯示忠實度：client 推什麼就完整顯示（callsign/remarks/GeoChat），declutter 用 map filter 不在 ingest 丟",
-    "updatedAt": "2026-06-11T09:29:37Z",
+    "updatedAt": "2026-06-11T14:11:33Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/213"
   },
   {
