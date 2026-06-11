@@ -34,7 +34,7 @@ import {
   confirmResetDB,
 } from './cop.js';
 import {
-  initChatPanel, switchRightTab, chatFilterRoom,
+  initChatPanel, switchRightTab, chatFilterRoom, chatClearSender,
 } from './chat_panel.js';
 import {
   getSeries, expandSpark, getExpandedSpark, renderSparklines,
@@ -397,6 +397,7 @@ document.addEventListener('click', function (e) {
     // 切回事件即重算列表高（顯示後才量得到 clientHeight；補隱藏期間 window resize 的殘留）。
     case 'switchRightTab':  switchRightTab(btn.dataset.rtab); if (btn.dataset.rtab !== 'chat') _resizeEvtList(); break;
     case 'chatFilterRoom':  chatFilterRoom(btn.dataset.room); break;
+    case 'chatClearSender': chatClearSender(); break;  // #213 b3-1：清除 by-sender 過濾
 
     // ── 演習管理（P1-14 PR-2，取代死掉的實戰/演練切換）──
     case 'openExercisePanel': {

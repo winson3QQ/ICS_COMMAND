@@ -87,10 +87,28 @@ export function mergeLiveChat(chats, chat) {
     (a.t < b.t ? -1 : a.t > b.t ? 1 : Number(a.id) - Number(b.id)));
 }
 
+/** GeoChat 的 sender_uid 是 `GeoChat.<senderUid>.<room>.<id>` → 取中段 senderUid（= 來源 marker uid）。
+ *  **假設 device uid 無 '.'**（TAK 慣例：ANDROID-<serial> / GUID 皆無點；b2 dogfood 實證；含點的
+ *  federated uid 罕見、會被 split 截斷 → 該單位過濾失準，屬已知邊界）。非 GeoChat 格式原樣回傳
+ *  （= 直接拿 sender_uid 當 uid 比對，相容非 iTAK client）。 */
+export function parseSenderUid(senderUid) {
+  if (typeof senderUid !== 'string') return senderUid;
+  return senderUid.startsWith('GeoChat.') ? (senderUid.split('.')[1] || senderUid) : senderUid;
+}
+
+/** by-sender 過濾（b3-1）：以**解析後 uid 精準比對**（uid 唯一）。sender = {uid, callsign}；
+ *  無 sender → 不過濾。**不用 callsign 比對**——callsign 非唯一，兩單位同 callsign 會誤混
+ *  （code-review）；callsign 僅供 sender chip 顯示，不參與匹配。 */
+export function filterChatsBySender(chats, sender) {
+  if (!sender || !sender.uid) return chats || [];
+  return (chats || []).filter(c => parseSenderUid(c.sender_uid) === sender.uid);
+}
+
 // ── 狀態 + DOM（dashboard runtime）──────────────────────────────────────────
 
 let _chats = [];
 let _activeRoom = '__all__';
+let _activeSender = null;   // b3-1：點地圖 TAK marker → {uid, callsign} by-sender 過濾（蓋過 room）
 let _lastSeenId = 0;       // 已讀水位（切到通聯 tab 時更新）
 let _currentTab = 'events'; // 右欄當前分頁（events | chat）
 let _takDisabled = false;
@@ -102,6 +120,7 @@ function _el(id) { return document.getElementById(id); }
 export function initChatPanel() {
   document.addEventListener('tak:conn-state', (e) => _applyTakState(e?.detail?.state));
   document.addEventListener('chat:new', (e) => _onLiveChat(e?.detail)); // b2：WS 即時推播
+  document.addEventListener('map:unitSelected', (e) => _onUnitSelected(e?.detail)); // b3-1：點 marker 過濾
   if (_pollTimer) clearInterval(_pollTimer);
   _pollTimer = setInterval(() => _poll(), POLL_MS);
   _poll();
@@ -174,6 +193,12 @@ function _renderUnread() {
 function _renderChips() {
   const bar = _el('chat-chips');
   if (!bar) return;
+  // b3-1：by-sender 過濾啟用時，顯示可清除的 sender chip（蓋過 room chips，不受 ≤1 房間隱藏影響）。
+  if (_activeSender) {
+    bar.style.display = 'flex';
+    bar.replaceChildren(_senderChip(_activeSender));
+    return;
+  }
   const rooms = distinctRooms(_chats);
   // 若當前選的 room 已不在資料中（時間窗滾動）→ 回退「全部」
   if (_activeRoom !== '__all__' && !rooms.includes(_activeRoom)) _activeRoom = '__all__';
@@ -199,6 +224,16 @@ function _chip(label, room) {
   return el;
 }
 
+/** b3-1：by-sender 過濾 chip（顯示單位 callsign + ✕ 清除）。 */
+function _senderChip(sender) {
+  const el = document.createElement('span');
+  el.className = 'chat-chip active';
+  el.dataset.action = 'chatClearSender';
+  el.textContent = `篩 ${sender.callsign || sender.uid} ✕`;
+  el.title = '清除單位過濾';
+  return el;
+}
+
 /** chip 點擊（main.js data-action 委派進來）。 */
 export function chatFilterRoom(room) {
   _activeRoom = room || '__all__';
@@ -206,15 +241,31 @@ export function chatFilterRoom(room) {
   _renderStream();
 }
 
+/** 點地圖 TAK marker（map:unitSelected，b3-1）→ by-sender 過濾 + 切到通聯。 */
+function _onUnitSelected(detail) {
+  if (!detail?.uid || _takDisabled) return;
+  _activeSender = { uid: detail.uid, callsign: detail.callsign || null };
+  switchRightTab('chat');  // 切到通聯（內部 _renderStream 已吃 _activeSender）
+  _renderChips();          // 顯示可清除的 sender chip
+}
+
+/** 清除 by-sender 過濾（sender chip ✕，main.js data-action）。 */
+export function chatClearSender() {
+  _activeSender = null;
+  _renderChips();
+  _renderStream();
+}
+
 function _renderStream() {
   const stream = _el('chat-stream');
   if (!stream) return;
-  const rows = filterChatsByRoom(_chats, _activeRoom);
+  // b3-1：by-sender 過濾優先（蓋過 room）；否則照 room 過濾。
+  const rows = _activeSender ? filterChatsBySender(_chats, _activeSender) : filterChatsByRoom(_chats, _activeRoom);
   stream.replaceChildren();
   if (!rows.length) {
     const empty = document.createElement('div');
     empty.className = 'chat-empty';
-    empty.textContent = _takDisabled ? 'TAK 未啟用' : '無通聯';
+    empty.textContent = _takDisabled ? 'TAK 未啟用' : (_activeSender ? '此單位無通聯' : '無通聯');
     stream.appendChild(empty);
     return;
   }

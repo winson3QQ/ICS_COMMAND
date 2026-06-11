@@ -1786,6 +1786,7 @@ function _ensureEntityLayers() {
   // 與左拖移動由 _syncContactDragHandles 的 handle 接（handle 蓋住 GPU 符號，layer 事件接不到）。
   map.on('click', 'contact-circle', (e) => _onContactClick(e));
   map.on('click', 'contact-2525-icon', (e) => _onContactClick(e));
+  map.on('click', 'tak-units-icon', (e) => _onTakUnitClick(e));  // #213 b3-1：點 TAK 單位 → 過濾通聯
   map.on('click', 'routes-line-solid', (e) => _onRouteClick(e));
   map.on('click', 'routes-line-dash', (e) => _onRouteClick(e));
   map.on('click', 'routes-line-dotted', (e) => _onRouteClick(e));
@@ -2166,6 +2167,16 @@ function _onInfraClick(e) {
 function _onContactClick(e) {
   if (!canAccessMapObjects()) return;
   _openContactDetail(e.features?.[0]?.properties?.id);
+}
+
+// #213 b3-1：點 TAK 單位 → 派 DOM 事件給 chat_panel 過濾通聯（by-sender）。讀動作不設
+// canAccessMapObjects 守門（通聯顯示是 READ_ROLES）；解耦不直接呼叫 chat 模組。
+function _onTakUnitClick(e) {
+  const props = e.features?.[0]?.properties;
+  if (!props?.id) return;
+  document.dispatchEvent(new CustomEvent('map:unitSelected', {
+    detail: { uid: props.id, callsign: props.label || props.id },
+  }));
 }
 // 開 detail modal（給左鍵 click 與右鍵 menu「編輯註記」共用）。
 export function _openContactDetail(id) {
