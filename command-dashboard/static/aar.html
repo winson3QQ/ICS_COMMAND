@@ -50,6 +50,17 @@
   .aar-msg { padding: 16px 12px; color: var(--text2, #8b949e); font-size: 13px; }
   .aar-step a { color: var(--text, #e6edf3); text-decoration: none; display: block; width: 100%;
     min-height: 44px; display: flex; align-items: center; }
+  /* B2 底部播放列 */
+  #aar-playbar { display: flex; align-items: center; gap: 10px; padding: 6px 12px;
+    border-top: 1px solid var(--border, #30363d); flex: 0 0 auto; }
+  #aar-playbar[hidden] { display: none; }
+  #aar-play-btn { min-width: 44px; min-height: 44px; font-size: 16px; cursor: pointer;
+    background: rgba(63,185,80,.15); color: #3fb950; border: 1px solid #3fb950; border-radius: 6px; }
+  #aar-speed { min-height: 44px; background: var(--surface, #161b22); color: var(--text, #e6edf3);
+    border: 1px solid var(--border, #30363d); border-radius: 6px; font-family: inherit; padding: 0 6px; }
+  #aar-slider { flex: 1 1 auto; accent-color: #3fb950; min-height: 44px; }
+  #aar-clock { font-size: 13px; color: var(--text2, #8b949e); min-width: 76px; text-align: right; }
+
   /* 窄螢幕（iPad 直立以下）：上下疊（地圖上 55% / 面板下） */
   @media (max-width: 900px) {
     #aar-body { flex-direction: column; }
@@ -74,6 +85,17 @@
       <ul id="aar-steps"></ul>
     </div>
   </div>
+  <!-- B2（#201）：底部播放列 — Play mode 虛擬時鐘 + 時間軸 slider -->
+  <footer id="aar-playbar" hidden>
+    <button id="aar-play-btn" title="播放 / 暫停">▶</button>
+    <select id="aar-speed" title="播放速率">
+      <option value="1">1x</option>
+      <option value="2">2x</option>
+      <option value="4">4x</option>
+    </select>
+    <input id="aar-slider" type="range" min="0" max="100" value="0" step="1000">
+    <span id="aar-clock">--:--:--</span>
+  </footer>
 </div>
 <script src="/static/lib/maplibre-gl.js"></script>
 <script src="/static/lib/pmtiles.js"></script>
