@@ -31,6 +31,10 @@ from services import geometry_service
 # DTD/entity，不管整體 size/節點數）。TAK CoT event 典型 <2KB；256KB 已極寬鬆。
 _MAX_COT_BYTES = 256 * 1024
 
+# `/cot/sa` 集合大小上限（P2-14 resync）：整批 `<events>` 比單筆大得多（活 server 2h 窗實測
+# ~55KB/123 events）。16MB 對小窗 resync 極寬鬆，仍擋住惡意/異常巨包的記憶體 DoS。
+_MAX_COT_COLLECTION_BYTES = 16 * 1024 * 1024
+
 
 class CoTParseError(ValueError):
     """CoT XML 解析失敗（格式錯 / 缺必填 / 過大 / 不可信內容被擋）。"""
@@ -143,6 +147,15 @@ def parse_cot_xml(raw: str | bytes) -> CoTEventIn:
     if _localname(root.tag) != "event":
         raise CoTParseError(f"CoT root 應為 <event>，實得 <{_localname(root.tag)}>")
 
+    return _event_from_element(root)
+
+
+def _event_from_element(root) -> CoTEventIn:
+    """已解析的 `<event>` Element → `CoTEventIn`（萃取 point/detail/geometry/archive）。
+
+    從 `parse_cot_xml`（單筆）抽出，供 `parse_cot_events`（`<events>` 集合，P2-14 resync）
+    逐 `<event>` 子元素共用，免 re-serialize round-trip。caller 須先確認 `root` 為 `<event>`。
+    """
     point_el = next((c for c in root if _localname(c.tag) == "point"), None)
     if point_el is None:
         raise CoTParseError("CoT event 缺必填 <point>")
@@ -187,6 +200,55 @@ def parse_cot_xml(raw: str | bytes) -> CoTEventIn:
         raise
     except Exception as exc:  # pydantic ValidationError 等 → 收斂
         raise CoTParseError(f"CoT event 欄位驗證失敗：{exc}") from exc
+
+
+def parse_cot_events(raw: str | bytes) -> list[CoTEventIn]:
+    """解析 Marti `/cot/sa` 的 `<events>` 集合 → list[CoTEventIn]（XXE-safe，P2-14 resync）。
+
+    `GET /Marti/api/cot/sa` 回 `<?xml…?><events><event/>…</events>`（活 5.7 實測，#194）——
+    與 :8089 串流的單筆 `<event>` 不同，需先拆 wrapper 再逐筆萃取。
+
+    best-effort：單筆 `<event>` 解析失敗（缺 point / 欄位錯）只 log.warning 後跳過，不讓
+    一顆壞 event 拖垮整批 resync。整包 XML 格式錯 / root 非 `<events>` 仍 raise。
+
+    Args:
+        raw: `<events>` XML 字串或 bytes（來自受信 mTLS Marti，仍當不可信輸入解析）。
+    Returns:
+        list[CoTEventIn]（可空 list：`<events/>` 空集合或全數跳過）。
+    Raises:
+        CoTParseError: 整包格式錯 / root 非 `<events>` / 超大小上限 / 非 UTF-8。
+    """
+    if isinstance(raw, bytes | bytearray):
+        if len(raw) > _MAX_COT_COLLECTION_BYTES:
+            raise CoTParseError(f"CoT events 超過大小上限（{len(raw)} > {_MAX_COT_COLLECTION_BYTES} bytes）")
+        try:
+            raw = raw.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise CoTParseError("CoT events 非 UTF-8") from exc
+    if not raw or not raw.strip():
+        raise CoTParseError("CoT events 為空")
+    if len(raw) > _MAX_COT_COLLECTION_BYTES:
+        raise CoTParseError(f"CoT events 超過大小上限（{len(raw)} > {_MAX_COT_COLLECTION_BYTES} chars）")
+
+    try:
+        root = _safe_fromstring(raw, forbid_dtd=True, forbid_entities=True, forbid_external=True)
+    except CoTParseError:
+        raise
+    except Exception as exc:  # noqa: BLE001 — defusedxml 各種防禦例外統一收斂為 parse error
+        raise CoTParseError(f"CoT events 解析失敗（含安全防禦攔截）：{exc}") from exc
+
+    if _localname(root.tag) != "events":
+        raise CoTParseError(f"CoT 集合 root 應為 <events>，實得 <{_localname(root.tag)}>")
+
+    events: list[CoTEventIn] = []
+    for child in root:
+        if _localname(child.tag) != "event":
+            continue  # 容忍非 event 子元素（未來 wrapper 擴充），不算錯
+        try:
+            events.append(_event_from_element(child))
+        except CoTParseError as exc:  # 單筆壞不拖垮整批（best-effort）
+            log.warning("tak.resync.event_skipped", uid=child.attrib.get("uid", "?"), error=str(exc))
+    return events
 
 
 # ════════════════════════════════════════════════════════════════════════════

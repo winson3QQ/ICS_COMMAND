@@ -146,37 +146,49 @@ class TakRestClient:
         async with session.get(url, params=params) as resp:
             return resp.status, await resp.text()
 
-    async def get_json(self, path: str, params: dict | None = None):
-        """GET path → 解析 JSON。rate-limit + 指數退避重試（連線錯 / 5xx）。
+    async def get_text(self, path: str, params: dict | None = None) -> str | None:
+        """GET path → 回原始 body 文字。rate-limit + 指數退避重試（連線錯 / 5xx）。
 
-        回傳：解析後 JSON（dict / list）。
-        raise TakRestError：4xx（用戶端錯，不重試）/ 重試耗盡 / JSON 解析失敗。
+        非 JSON 端點用（P2-14 resync 的 `/cot/sa` 回 `<events>` XML）。JSON 端點走 get_json。
+        回傳：body 文字；空 body（204 / 空）回 None。
+        raise TakRestError：4xx（用戶端錯，不重試）/ 重試耗盡。
         """
         last_exc: Exception | None = None
         for attempt in range(self._max_retries):
             await self._rate_limit()
             try:
                 status, text = await self._fetch(path, params)
-            except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
+            except (TimeoutError, aiohttp.ClientError) as exc:
                 last_exc = exc
                 if attempt < self._max_retries - 1:  # 耗盡前最後一次不白等（review #138-1）
                     await _backoff_sleep(attempt)
                 continue
             if status < 300:
-                if not text.strip():  # 204 No Content / 空 body：成功但無內容（review #138-4）
-                    return None
-                try:
-                    return json.loads(text)
-                except json.JSONDecodeError as exc:
-                    raise TakRestError(f"Marti {path} 回應非 JSON：{text[:200]}") from exc
+                return text if text.strip() else None  # 204 / 空 body：成功但無內容（review #138-4）
             if 400 <= status < 500:
-                # 用戶端錯（401 cert 沒權 / 404 端點不對）→ 不重試，立即拋
+                # 用戶端錯（401 cert 沒權 / 404 端點不對）→ 不重試，立即拋。
+                # ★ /cot/sa gotcha：大時間窗回 BAD_REQUEST(400)，與真 auth 拒共用此頁
+                #   （memory tak-marti-authz-model）→ caller 別把 400 一律當 auth 壞，須用小窗。
                 raise TakRestError(f"Marti {path} HTTP {status}（用戶端錯，不重試）：{text[:200]}")
             # 5xx → 暫時性，重試
             last_exc = TakRestError(f"Marti {path} HTTP {status}：{text[:200]}")
             if attempt < self._max_retries - 1:
                 await _backoff_sleep(attempt)
         raise TakRestError(f"Marti {path} 重試 {self._max_retries} 次耗盡") from last_exc
+
+    async def get_json(self, path: str, params: dict | None = None):
+        """GET path → 解析 JSON。rate-limit + 指數退避重試（連線錯 / 5xx）。
+
+        回傳：解析後 JSON（dict / list）；空 body 回 None。
+        raise TakRestError：4xx（用戶端錯，不重試）/ 重試耗盡 / JSON 解析失敗。
+        """
+        text = await self.get_text(path, params)
+        if text is None:
+            return None
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError as exc:
+            raise TakRestError(f"Marti {path} 回應非 JSON：{text[:200]}") from exc
 
     async def poll(
         self,
@@ -206,7 +218,7 @@ class TakRestClient:
                 log.warning("[tak-rest] poll %s 失敗（不中斷）：%s", path, exc)
             try:
                 await asyncio.wait_for(stop_event.wait(), timeout=interval_s)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 pass  # 到 interval → 下一輪
 
     async def close(self) -> None:

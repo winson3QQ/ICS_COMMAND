@@ -86,6 +86,13 @@ async def start() -> bool:
             return False
         _handle = (task, stop_event)
         log.info("[tak] CoT 訂閱背景 task 啟動：%s", config.TAK_COT_URL)
+
+        # P2-14 (C)（#173/#194）：(重)連線後背景補一次 Marti 權威 resync——:8089 串流不重播
+        # 既有靜態標記，重啟/斷線會漏 server 已持久化的 marker。fire-and-forget，失敗只 log
+        # 不影響訂閱（resync_on_connect 內部已吞例外 + 受 TAK_RESYNC_ON_CONNECT 開關）。
+        from services import tak_resync
+
+        asyncio.create_task(tak_resync.resync_on_connect())
         return True
 
 

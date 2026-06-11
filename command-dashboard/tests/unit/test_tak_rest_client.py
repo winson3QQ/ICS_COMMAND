@@ -117,6 +117,39 @@ def test_factory_with_real_certs_builds_client(tmp_path):
     assert isinstance(client, TakRestClient)
 
 
+# ── get_text（非 JSON body，P2-14 resync /cot/sa XML 用）─────────────────────
+
+
+def test_get_text_returns_raw_xml(monkeypatch):
+    # /cot/sa 回 <events> XML → get_text 原樣回，不 JSON 解析（get_json 會炸）
+    xml = "<events><event uid='x'/></events>"
+
+    async def _f(path, params):
+        return 200, xml
+
+    assert _run(_client(monkeypatch, _f).get_text("/cot/sa")) == xml
+
+
+def test_get_text_empty_body_none(monkeypatch):
+    async def _f(path, params):
+        return 204, ""
+
+    assert _run(_client(monkeypatch, _f).get_text("/x")) is None
+
+
+def test_get_text_4xx_no_retry(monkeypatch, no_sleep):
+    # /cot/sa 大窗回 400（與 auth 拒共用此頁）→ 4xx 不重試立即拋
+    calls = {"n": 0}
+
+    async def _f(path, params):
+        calls["n"] += 1
+        return 400, "BAD_REQUEST Invalid Request"
+
+    with pytest.raises(TakRestError):
+        _run(_client(monkeypatch, _f, max_retries=3).get_text("/cot/sa"))
+    assert calls["n"] == 1  # 不重試
+
+
 # ── get_json retry / 狀態碼 ───────────────────────────────────────────────
 
 
@@ -174,6 +207,7 @@ def test_get_json_invalid_json_raises(monkeypatch):
 
 def test_get_json_204_empty_body_returns_none(monkeypatch):
     """204 No Content / 空 body 的 2xx → None（非當成 JSON 解析失敗，review #138-4）。"""
+
     async def _f(path, params):
         return 204, ""
 

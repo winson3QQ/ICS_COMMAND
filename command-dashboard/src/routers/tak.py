@@ -24,8 +24,9 @@ from core.input_safety import validate_no_unsafe_strings
 from repositories import cop_entity_repo
 from repositories._helpers import audit
 from schemas.tak import CoTEventIn, DownlinkCommandIn, TakConnectionToggleIn
-from services import cop_service, tak_downlink, tak_runtime, tak_service
+from services import cop_service, tak_downlink, tak_resync, tak_runtime, tak_service
 from services.exercise_service import current_exercise_id
+from services.tak_rest_client import TakRestError
 
 router = APIRouter(prefix="/api/tak", tags=["TAK"])
 
@@ -146,6 +147,36 @@ async def share_entity_to_tak(uid: str, request: Request):
     # 非-CAS 單語句更新不 bump version（不影響前端樂觀鎖）。
     cop_entity_repo.mark_shared_tak(uid, True)
     return {"ok": True, "uid": uid, "status": "shared"}
+
+
+@router.post("/resync")
+async def resync_from_tak(request: Request):
+    """P2-14 (C)（#194/#173）：Marti 權威 resync —— 拉 `/cot/sa` 快照補 streaming 漏掉的靜態標記。
+
+    :8089 串流不對重連者重播既有 marker → ICS 重啟/斷線後 COP 漏標記。本端點主動拉 server
+    權威快照逐筆補進 cop_entities（**只 upsert 不刪**，見 services/tak_resync 設計註）。
+
+    RBAC = COMMAND_ROLES（role_enum 中央 gate：POST /api/tak/* → COMMAND_ROLES）。讀身分用
+    TAK_MARTI_READ_CERT（truststore 信任即通）。audit-first：先稽核 resync 意圖再執行。
+    未配置 Marti URL/讀 cert → 422（功能停用）；HTTP 拉取失敗 → 503。
+    """
+    operator = request.state.session["username"]
+    if not tak_resync.resync_enabled():
+        raise HTTPException(422, "Marti resync 未配置（缺 TAK_MARTI_URL 或讀 cert）")
+    audit(
+        operator,
+        None,
+        "TAK_RESYNC",
+        "tak",
+        "cot/sa",
+        {"lookback_s": config.TAK_RESYNC_LOOKBACK_S},
+        exercise_id=current_exercise_id(),
+    )
+    try:
+        summary = await tak_resync.run_resync()
+    except TakRestError as e:
+        raise HTTPException(503, f"Marti resync 拉取失敗：{e}") from e
+    return {"ok": True, **summary}
 
 
 @router.get("/status")
