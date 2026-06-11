@@ -2851,5 +2851,25 @@
     "title": "出向 CoT 內容忠實度：ICS→TAK 推標記只填 callsign+remarks，該補 ICS 真有的欄位（team/color/icon/link）",
     "updatedAt": "2026-06-11T07:31:22Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/214"
+  },
+  {
+    "assignees": [],
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "body": "## 缺口\n指揮部目前**無法對現場 TAK 發文字通聯**。`tak_downlink` 只建 marker/geometry/command CoT，**沒有 GeoChat（`b-t-f`）builder**；前端也無 compose 介面。現場端能發 chat 給 ICS（入向 P2-07，落 chats 表），但 **ICS 發不回去**。\n\n## 與既有 issue 的關係（A 方案：獨立開，非塞 #214）\n- **入向**對稱 = P2-07（#129，✅ 收進 chats 表）+ [#213](https://github.com/winson3QQ/ICS_COMMAND/issues/213)（入向 chat **顯示** still missing）。\n- **出向**對稱 = [#214](https://github.com/winson3QQ/ICS_COMMAND/issues/214)（出向 marker 欄位忠實度）。本 issue = 出向的**新能力**（marker fidelity 是補欄位，chat 是全新訊息型別），故獨立。\n- 同主題：ICS 當忠實 TAK citizen（雙向收發）。\n\n## 為何是「新 feature」非「補欄位」\nGeoChat `b-t-f` 與 marker CoT 結構完全不同：`<__chat chatroom senderCallsign>` + `<chatgrp>` + `<link>` 收件人 + `<remarks source>`。需要：\n- 新 `build_geochat_cot()`（`tak_downlink`）\n- **收件人/聊天室路由模型**（全體 / group / 指定 uid）\n- 前端 compose 介面（通聯面板，與 #213 入向顯示同落點）\n- RBAC（誰能發；COMMAND_ROLES？）+ **audit-first**（指揮對外發話須留痕）\n- 內容白名單（沿用 `validate_no_unsafe_strings` + XML escape）\n\n## ROADMAP 對照\n- **無現成 item**（P2-07 只做入向）。可掛在 **P2-12**（TAK UI 面板，通聯介面落點）或新增 P2 子項。\n- 共用後端：`tak_downlink.send_cot`（:8089 streaming-write，已證雙向）。\n- 對稱：#214（出向 marker）、#213（入向 chat 顯示）。\n\n## 工作\n- [ ] `build_geochat_cot()`：組 `b-t-f` CoT（chatroom/sender/收件人 link/remarks）。\n- [ ] 收件人模型：全體（__ANON__）/ group / 指定 uid。\n- [ ] `POST /api/tak/chat`（COMMAND_ROLES + audit-first `TAK_CHAT_SEND` + 內容白名單）。\n- [ ] 前端 compose（與 #213 通聯面板整合：同一面板收+發）。\n- [ ] human verify：ICS 發訊 → 現場 TAK 收到（含發回 ICS 自己 ingest 不重複/不誤分流）。\n\n## 卡點\n不卡 ATAK（iTAK 收 GeoChat 正常）。純後端 builder + 前端面板。",
+    "closedAt": null,
+    "comments": [],
+    "createdAt": "2026-06-11T07:40:05Z",
+    "labels": [],
+    "milestone": null,
+    "number": 216,
+    "state": "OPEN",
+    "title": "出向 GeoChat：ICS→TAK 發文字通聯（新能力，無 builder）— #214 出向半的對稱",
+    "updatedAt": "2026-06-11T07:40:05Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/216"
   }
 ]

@@ -3351,5 +3351,26 @@
     "title": "feat(tak): P2-14 (C) Marti 權威 resync — /cot/sa 補 streaming 漏標記（#194/#173）",
     "updatedAt": "2026-06-11T06:27:23Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/210"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "P2-24 後端（#198）只做了 API；本 PR 補前端尾。\n\n## reality check\n推翻原 ROADMAP「會碰 cop.js=P2-33 領地」顧慮——P2-33a/part-3/P2-33b 皆已 merge，按鈕落點（系統 tab + cop.js 燈邏輯）與 pending 的 P2-33c（map.js `_highlightEvent`/junction 聚合）零重疊；唯一在飛的 TAK 分支 #194 只動後端。\n\n## 落地\n- **後端 additive**：`tak_runtime.is_configured()`（URL+cert/key 齊備；與開關正交，config 屬部署層只消費）+ `/api/tak/status` 補唯讀 `running`/`configured`\n- **系統 tab**（管理員後台·SYSADMIN-only·PIN-gated）加 TAK 開/關 toggle + 唯讀連線狀態行（`admToggleTak`/`_admLoadTakConn`/`_admRenderTakStatus`；POST 後即時重抓燈、用 `running` 顯示「開了但未連線」、網路錯誤 catch 還原 checkbox）\n- **燈號認實化**：抽 `static/js/tak_light_state.js` 零依賴 `takConnState()`/`takLightState()` 分 6 態，**消除舊版「沒 task 在跑卻顯示斷線重連中」謊報**（未備妥→黃非紅、啟動失敗→「啟動失敗」非「重連中」）；admin 狀態行對齊 header stale 狀態\n\n## config 觀念定案\n使用者不設任何 config，「開＝包含 config」（部署時 `issue-tak-certs.sh`+env 備妥），toggle 只消費不暴露 cert——與 **P2-26 L2**（TAK admin console cert/role 管理）為同地兄弟，唯讀診斷狀態即未來接縫。\n\n## 測試 / 驗證\n- 後端 `is_configured` + status 新欄位；vitest `tak_light.test.js` 14 例（`takConnState`/`takLightState` + 向後相容）\n- pytest **940 passed / 1 skip**、vitest **281 passed**、eslint **0**\n- `/code-review` 2 修（網路錯誤回饋 + admin/header stale 對齊）、`/security-review` **0 finding**\n- **活 app 對真 TAK 5.7 container 端到端驗**：connected/running/configured 全 true、四態行為正確\n\n前端 MINOR `frontend-v1.4.0`（CMD_VERSION v1.3.0→v1.4.0）。\n\nCloses #164.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+    "closedAt": "2026-06-11T07:39:47Z",
+    "comments": [],
+    "createdAt": "2026-06-11T07:39:33Z",
+    "headRefName": "feat/issue-164-tak-toggle-frontend",
+    "labels": [],
+    "mergedAt": "2026-06-11T07:39:47Z",
+    "number": 215,
+    "state": "MERGED",
+    "title": "feat(tak): P2-24 前端尾 — 系統 tab TAK runtime 開關 + 燈號認實化（#164）",
+    "updatedAt": "2026-06-11T07:39:47Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/215"
   }
 ]
