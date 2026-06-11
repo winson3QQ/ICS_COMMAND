@@ -3435,5 +3435,26 @@
     "title": "feat(tak): P2-12 通聯記錄面板 — GeoChat 唯讀流（#213 b1）",
     "updatedAt": "2026-06-11T14:00:51Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/223"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "## 摘要\n修 [#222](https://github.com/winson3QQ/ICS_COMMAND/issues/222)：P2-24 的 TAK 連線開關只 gate **入向**訂閱、**出向漏 gate**——關掉 TAK 仍能建立/廣播 TAK 標記到 iTAK。一併修燈號語意 + 補重連 outbound 對帳。\n\n## 改動\n① **後端出向閘** — `push_downlink`/`share_entity_to_tak` audit 前 `effective_enabled()` → 停用回 **409**（不送、不稽核）。\n② **前端類別 + 廣播 gate** — 長按「📍 TAK 標記」類別（原「感知/敵情標記」改名）+ 既有標記廣播按鈕/右鍵選單 gate `_takEnabled`（cop.js `tak:status` 事件餵，僅成功輪詢更新避免閃）。\n③ **燈號 connected=綠** — 「已連線（可收發）」，移除「無入向串流→黃」誤判（`tak_light_state.js` + `auth.js` 鏡像）。\n④ **重連 outbound 對帳** — `reconcile_shared_outbound` + `list_shared_tak_entities` 掛 `subscribe(on_connect=)` 每次 (重)連上觸發（**含 subscribe loop 內部自動重連**，不只 `start()`）→ 斷線期間 shared 標記移動重連後自動補回現場端；gate 同 `effective_enabled`。\n\n## Reviews\n- `/code-review`（high effort）：6 findings 全修——**fail-open 出向閘**（reconcile 原只 gate cert-presence，停用仍推＝洩漏位置）、flicker（transient poll 失敗翻 gate）、廣播按鈕對稱、截斷留痕、stale 註解、test 標籤。\n- `/security-review`：**0 finding**（SQL 參數化、gate 不可繞、新前端字串 static/textContent/`_escapeHtml`、RBAC 先於 409、`entity_to_cot` 全 escape）。\n\n## 測試\n後端全綠（disabled→409、fail-open 守門、on_connect 每次觸發、重連對帳真 DB）+ vitest 281 + pyflakes/eslint 0 + doc_sync ✓。\n\n## §8 Verification（dogfood，活 TAK 5.7 + iTAK）\n1. 開關 ON（燈綠）→ 長按建「TAK 標記」→ 廣播 → iTAK 收到。✅\n2. 開關 OFF → 「TAK 標記」類別消失；廣播既有標記 → 409「TAK 連線已停用」。✅\n3. 開關 OFF→ON：斷線期間移動已分享標記 → ON 後重連對帳自動推新位置到 iTAK。✅\n4. TAK server 關開（subscribe 內部自動重連）→ 對帳觸發（ICS 側）。\n   - **殘留**：iTAK client 斷線恢復須**完整重連**才收得到 ICS 重推（iTAK 限制，非 ICS 側）→ 對齊 [#211](https://github.com/winson3QQ/ICS_COMMAND/issues/211) / ATAK 待驗。\n\nCloses #222\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+    "closedAt": "2026-06-11T15:56:20Z",
+    "comments": [],
+    "createdAt": "2026-06-11T15:49:19Z",
+    "headRefName": "fix/issue-222-tak-outbound-gate",
+    "labels": [],
+    "mergedAt": "2026-06-11T15:56:19Z",
+    "number": 224,
+    "state": "MERGED",
+    "title": "fix(tak): #222 出向受開關閘控 + 燈號 connected=綠 + 重連 outbound 對帳",
+    "updatedAt": "2026-06-11T15:56:20Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/224"
   }
 ]
