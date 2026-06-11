@@ -14,6 +14,7 @@ vi.mock('../../static/js/auth.js', () => ({
 
 import {
   decodeChatMessage, roomLabel, distinctRooms, filterChatsByRoom, countUnread, maxChatId,
+  mergeLiveChat,
 } from '../../static/js/chat_panel.js';
 
 describe('decodeChatMessage — 還原 html.escape 的固定 5 實體（純文字、無 innerHTML）', () => {
@@ -84,5 +85,29 @@ describe('countUnread / maxChatId — 未讀水位（id 單調遞增）', () => 
   test('maxChatId 取最大；空 → fallback', () => {
     expect(maxChatId(chats, 0)).toBe(7);
     expect(maxChatId([], 5)).toBe(5);
+  });
+});
+
+describe('mergeLiveChat — b2 即時通聯併入（去重 + 升序附末端）', () => {
+  test('新 id → 附在末端（最新在下）', () => {
+    const out = mergeLiveChat([{ id: 1 }, { id: 2 }], { id: 3, message: 'x' });
+    expect(out.map(c => c.id)).toEqual([1, 2, 3]);
+  });
+  test('重複 id → 回原陣列參考（不重繪訊號）', () => {
+    const cur = [{ id: 1 }, { id: 2 }];
+    expect(mergeLiveChat(cur, { id: 2 })).toBe(cur);   // 同參考
+  });
+  test('null / 無 id → 原陣列不動', () => {
+    const cur = [{ id: 1 }];
+    expect(mergeLiveChat(cur, null)).toBe(cur);
+    expect(mergeLiveChat(cur, { message: 'no id' })).toBe(cur);
+  });
+  test('空陣列 + 一筆 → 單元素新陣列', () => {
+    expect(mergeLiveChat([], { id: 5 }).map(c => c.id)).toEqual([5]);
+  });
+  test('依 (t,id) 排序：遲到（較舊 t）訊息插到正確位置，不卡末端', () => {
+    const cur = [{ id: 1, t: '2026-06-05T04:00:00Z' }, { id: 2, t: '2026-06-05T04:02:00Z' }];
+    const out = mergeLiveChat(cur, { id: 3, t: '2026-06-05T04:01:00Z' }); // t 介於 1 與 2
+    expect(out.map(c => c.id)).toEqual([1, 3, 2]);
   });
 });

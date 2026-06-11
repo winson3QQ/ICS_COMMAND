@@ -374,7 +374,7 @@ async def ingest_cot_event(event: CoTEventIn) -> dict | None:
     # P2-07（#129）：GeoChat（type b-t-f）分流到 chats 表，不進 cop_entities（作戰圖主表）。
     # 放共用接縫 → :8089 串流（_consume_cot）與 REST push（routers/tak.py）兩條路徑都擋。
     if event.type.startswith("b-t-f"):
-        chat_service.ingest_chat(event)
+        await chat_service.ingest_chat(event)  # b2（#213）：async 化以即時 WS 廣播通聯
         return None
     # TAK 刪除命令（t-x-d-d）：不是 COP 物件，是「移除某 uid」的指令。解出 <link uid> →
     # 軟刪該 entity（墓碑）→ 廣播 op=delete。本身不存進主表。此前誤把 t-x-d-d 當 entity 存
