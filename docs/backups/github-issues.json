@@ -3072,5 +3072,65 @@
     "title": "P1-12 統一 key management + at-rest 加密 + Backup GUI（umbrella）",
     "updatedAt": "2026-06-11T23:41:42Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/226"
+  },
+  {
+    "assignees": [],
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "body": "P1-12 子項 A（umbrella #226）。`scripts/keymgmt/` 全 greenfield。\n\n## Scope\n\n- `enroll_fido2.py`：FIDO2（CTAP2 hmac-secret）註冊 N≥2 token；master key 32B 隨機產生，per-token AES-GCM wrap 存 `master-key.enc`（JSON：credential_id / salt / nonce / wrapped）\n- `unlock_key.py`：任一已註冊 token 解出 master → HKDF 推 child keys → 寫 env file（`/run/ics/keys.env`，0600）供 systemd `EnvironmentFile=` 消費\n- `derive_child.py`：HKDF-SHA256 label-based 衍生 lib（單一收口）\n- **Key 階層**：`child[0]=backup-v1`（Fernet）/ `child[1]=db-v1`（SQLCipher）/ `child[2]=audit-v1` 預留 / **`child[3]=disk-v1`（LUKS unlock，threat_model §8.4 決議）**\n- Rescue：BIP-39 24 字助記詞紙本輸出；由助記詞 re-enroll（失去全部 token 的後路）\n- Env fallback（dev / no-FIDO2 場景）：`ICS_MASTER_KEY` 直供，啟動警示明顯\n- `systemd/ics-command.service` 加 `EnvironmentFile=-/run/ics/keys.env` 接點（`-` = optional，非破壞）\n\n## 測試門檻（本機 Windows 全 mock，不需實體金鑰）\n\n- HKDF RFC 5869 KAT 向量\n- mock backend：多 token 任一可解 / 未註冊 token 拒 / wrap 檔竄改偵測（AESGCM auth fail）/ 助記詞 roundtrip / env fallback\n- pyflakes 0、pytest 全綠\n- **真 token 整合驗收 → 硬體尾巴 issue（不阻塞本項）**\n\n## 依賴（供應鏈，CLAUDE.md 紅線）\n\n- `fido2==2.2.0`（Yubico，BSD-2，非中國）；`cryptography` 已在 requirements\n- BIP-39 english wordlist vendored（bitcoin/bips 上游，public domain）+ sha256 完整性測試",
+    "closedAt": null,
+    "comments": [],
+    "createdAt": "2026-06-11T23:42:29Z",
+    "labels": [],
+    "milestone": null,
+    "number": 227,
+    "state": "OPEN",
+    "title": "P1-12a key management 基建：FIDO2 enroll/unlock + HKDF 階層（含 disk-v1）+ env fallback + mock 測試",
+    "updatedAt": "2026-06-11T23:42:29Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/227"
+  },
+  {
+    "assignees": [],
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "body": "P1-12 子項 B（umbrella #226）。基於既有 backup 基建**擴建**（reality check 見 #226）。\n\n## Scope\n\n- **修 drift bug**：`POST /api/admin/backups` 手動觸發現產**明文** .db.gz（CLI 路徑有加密、API 沒接 `encrypt_file`）→ 統一加密\n- backup 範圍 DB-only → **tar 整個 `data/`**（排除 `data/backups/` 防遞迴）+ manifest（含 exercise metadata，P1-14 地基現成）\n- key 來源 `BACKUP_ENCRYPTION_KEY` env → HKDF `child[0]`（12a 提供）；**舊 backup 仍可解**（legacy key 路徑保留讀）\n- **三層觸發**：L1 手動（既有按鈕）/ L2 `archive` 自動觸發（filename + manifest 帶演習 metadata）/ L3 防呆（`reset-db` 強制先 backup；lifespan shutdown best-effort，30s 放行）\n- **OP-2**：`reset-db` / `reset-exercise` 後端強制 body `confirm: \"RESET\"`（422，不依賴前端 dialog）\n- **GUI Restore**：`POST /api/admin/restore` 上傳 .enc → 解密驗 manifest → 預覽確認 → 自動先存 `pre-restore-{ts}` → 替換 `data/`；active exercise 拒 409；失敗不動 current\n- **OP-4**：`restore-cmd` 端點加「需先停服務」warning，GUI restore 落地後標 deprecated\n- `admin_backups.html` 擴充：restore 上傳 + manifest 預覽 + 確認 checkbox\n\n## 測試門檻\n\n- backup/restore 雙路 admin 200 / operator 403\n- L2 archive 觸發、L3 reset 防呆 + SIGTERM、restore 防呆三態（pre-restore 產生 / active 409 / 解密失敗不動 current）\n- 舊 key backup migration 可解\n- **GUI 人工瀏覽器驗收（Human Verification 里程碑，/verify 時人眼確認）**",
+    "closedAt": null,
+    "comments": [],
+    "createdAt": "2026-06-11T23:42:30Z",
+    "labels": [],
+    "milestone": null,
+    "number": 228,
+    "state": "OPEN",
+    "title": "P1-12b backup/restore：data/ 整包 + manifest + L1/L2/L3 觸發 + GUI restore + OP-2/OP-4 關洞",
+    "updatedAt": "2026-06-11T23:42:30Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/228"
+  },
+  {
+    "assignees": [],
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "body": "P1-12 子項 C（umbrella #226）。\n\n## Scope\n\n- `core/database.py` `get_conn()` 抽 driver（單一收口點，已確認全 repo 連線走這裡）：`ICS_DB_ENCRYPTED=1` → SQLCipher driver + `PRAGMA key`（HKDF `child[1]`，12a 提供）；未設 → 原生 sqlite3（dev / 漸進部署）\n- 明文 → 加密一次性 migration script（`sqlcipher_export`）\n- backup 鏈調整：加密 DB 的 online backup 需先 `PRAGMA key` 才能讀（`backup_service.create_backup` 對齊）\n- threat_model TAK-F 殘餘風險(1)（CoT attributes 明文 at-rest）以本項關閉\n\n## Driver 供應鏈決策（動工時定案，security-review 把關）\n\n- 規格原指名 `pysqlcipher3`：**最後 release 2019，維護幾近停擺**\n- 候選替代 `sqlcipher3`（coleifer / Charles Leifer，美國，活躍維護）；SQLCipher 本體 Zetetic LLC（美國）\n- 兩者供應鏈紅線皆過，維護狀態差異大 → 傾向 `sqlcipher3`\n\n## 平台限制（已實測）\n\n- **Windows 無 wheel**（`sqlcipher3-binary` no matching distribution；`pysqlcipher3` 僅 sdist 需自編 SQLCipher）\n- → 本機（Windows）跑明文模式 + key 注入 mock 測試；**加密整合測試在 CI（ubuntu）跑，merge 前等 CI 綠**\n\n## DoD carve-out\n\n- Pi 500 效能 benchmark（+20% latency 門檻）→ 硬體尾巴 issue（不阻塞本項 merge，threat_model 註記殘留驗證）",
+    "closedAt": null,
+    "comments": [],
+    "createdAt": "2026-06-11T23:42:31Z",
+    "labels": [],
+    "milestone": null,
+    "number": 229,
+    "state": "OPEN",
+    "title": "P1-12c SQLCipher live DB at-rest 加密：driver 抽象 + 明文→加密 migration + CI 驗證",
+    "updatedAt": "2026-06-11T23:42:31Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/229"
   }
 ]
