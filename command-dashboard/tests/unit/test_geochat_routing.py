@@ -132,3 +132,41 @@ def test_non_btf_still_in_cop_entities():
 def test_group_none_when_no_chatroom():
     _ingest(_event(remarks="x", detail={"__chat": {"groupOwner": "false", "senderCallsign": "B"}}))
     assert _chats()[0]["group"] is None   # 非 "false"
+
+
+# ── 8. b2（#213）：b-t-f 寫入後即時 WS 廣播 op=chat（feed 形狀，帶 exercise scope）──
+
+
+def test_btf_broadcasts_chat_op(monkeypatch):
+    """ingest 後 cop_hub.broadcast({op:chat, chat:<feed 形狀>}, exercise_id=...) 被呼叫一次。
+    payload 與 GET /api/chat 同形狀（含 t、不含 raw time）→ 前端同渲染路徑可吃。"""
+    calls = []
+
+    async def _capture(message, exercise_id=None):
+        calls.append((message, exercise_id))
+
+    monkeypatch.setattr(cop_service.cop_hub, "broadcast", _capture)
+    _ingest(_event(remarks="集結點 A", callsign="ALPHA-1",
+                   detail={"__chat": {"chatroom": "All Chat Rooms"}}))
+    assert len(calls) == 1
+    msg, _ex = calls[0]
+    assert msg["op"] == "chat"
+    c = msg["chat"]
+    assert c["message"] == "集結點 A"
+    assert c["callsign"] == "ALPHA-1"
+    assert c["group"] == "All Chat Rooms"
+    assert "t" in c and "time" not in c          # feed 形狀（t = time or received_at），非 raw row
+    assert {"id", "sender_uid", "lat", "lon"} <= set(c)
+
+
+def test_non_btf_does_not_broadcast_chat(monkeypatch):
+    """一般 entity（非 b-t-f）不走 chat 廣播（不誤發 op=chat）。"""
+    chat_calls = []
+
+    async def _capture(message, exercise_id=None):
+        if isinstance(message, dict) and message.get("op") == "chat":
+            chat_calls.append(message)
+
+    monkeypatch.setattr(cop_service.cop_hub, "broadcast", _capture)
+    _ingest(_event(uid="UNIT-9", type="a-f-G-U-C", remarks="x"))
+    assert chat_calls == []

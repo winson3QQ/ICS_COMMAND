@@ -123,6 +123,13 @@ export function createCopStream(deps) {
           document.dispatchEvent(new CustomEvent("exercise:switched"));
         }
         break;
+      case "chat":
+        // #213 b2：通聯即時推播。**不進 entity store**（非作戰圖物件）→ 派 DOM 事件給
+        // chat_panel.js 消費（同 exercise_switched 的解耦模式，避免 cop_stream 依賴 chat 模組）。
+        if (msg.chat && typeof document !== "undefined") {
+          document.dispatchEvent(new CustomEvent("chat:new", { detail: msg.chat }));
+        }
+        break;
       default:
         break;
     }

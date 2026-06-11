@@ -20,7 +20,12 @@ import { authFetch, getToken } from './auth.js';
 // 同 cop.js 慣例：各模組各自定義（auth.js 的 API_BASE 非 export）。typeof 守門讓純函式
 // 能在無 location 的 vitest node 環境被 import（不影響瀏覽器：location 必存在）。
 const API_BASE = typeof location !== 'undefined' ? location.origin : '';
-const POLL_MS = 7000;
+// b2（#213）：即時 WS 推播（chat:new）為主要更新管道；poll 降為 safety-net——補
+// WS 斷線/重連空窗的對帳（重連後一次全量 GET resync，對齊 cop_stream 紀律）。
+const POLL_MS = 30000;
+// 與 poll 的 GET limit 對齊：WS 增量 append 也以此為窗上限，防 poll 間隔內無界增長
+// （兩路對同一窗一致；超出最舊者捨棄，poll 下輪 wholesale replace 亦同窗）。
+const LIVE_CAP = 200;
 
 // ── 純函式（可單測，無 DOM 依賴）─────────────────────────────────────────────
 
@@ -70,6 +75,18 @@ export function maxChatId(chats, fallback = 0) {
   return (chats || []).reduce((m, c) => Math.max(m, Number(c.id) || 0), Number(fallback) || 0);
 }
 
+/** 併一筆即時通聯（b2）：已存在（同 id）→ 原陣列不動；否則附末端（升序，最新在下）。
+ *  去重以防 WS 推播與 poll resync 重複同一筆。回傳新陣列或原陣列（純函式）。 */
+export function mergeLiveChat(chats, chat) {
+  const list = chats || [];
+  if (!chat || chat.id == null) return list;
+  if (list.some(c => Number(c.id) === Number(chat.id))) return list;
+  // 併入後依 (t, id) 排序——對齊 poll 的 ORDER BY t ASC, id ASC：時鐘偏移的遲到訊息
+  // 不會錯位在最末，且 poll 重排後位置一致（兩路同序，不會 poll 後跳位）。
+  return [...list, chat].sort((a, b) =>
+    (a.t < b.t ? -1 : a.t > b.t ? 1 : Number(a.id) - Number(b.id)));
+}
+
 // ── 狀態 + DOM（dashboard runtime）──────────────────────────────────────────
 
 let _chats = [];
@@ -81,12 +98,26 @@ let _pollTimer = null;
 
 function _el(id) { return document.getElementById(id); }
 
-/** 初始化：綁 TAK 狀態事件 + 啟動 poll。data-action 委派在 main.js 全域 listener。 */
+/** 初始化：綁 TAK 狀態 + 即時通聯事件 + 啟動 safety-net poll。data-action 委派在 main.js。 */
 export function initChatPanel() {
   document.addEventListener('tak:conn-state', (e) => _applyTakState(e?.detail?.state));
+  document.addEventListener('chat:new', (e) => _onLiveChat(e?.detail)); // b2：WS 即時推播
   if (_pollTimer) clearInterval(_pollTimer);
   _pollTimer = setInterval(() => _poll(), POLL_MS);
   _poll();
+}
+
+/** WS 即時通聯（chat:new，b2）→ 去重併入 + 重繪。與 poll 同渲染路徑。 */
+function _onLiveChat(chat) {
+  const merged = mergeLiveChat(_chats, chat);
+  if (merged === _chats) return; // 重複（已由 poll 或前一則帶入），不重繪
+  const newRoom = !distinctRooms(_chats).includes(roomLabel(chat?.group)); // 是否帶出新房間
+  _chats = merged;
+  if (_chats.length > LIVE_CAP) _chats = _chats.slice(-LIVE_CAP); // 對齊 poll 窗，防無界增長
+  if (_currentTab === 'chat') _lastSeenId = maxChatId(_chats, _lastSeenId);
+  _renderUnread();
+  if (newRoom) _renderChips();  // 只在房間集合改變時重建 chips（常見情況=既有房間，省 DOM 重建）
+  if (_currentTab === 'chat') _renderStream();
 }
 
 /** 右欄分頁切換（事件追蹤 ｜ 通聯）。切到通聯 → 清未讀水位。 */
