@@ -2811,5 +2811,25 @@
     "title": "畫的區域/線無「推到 TAK」UI — P2-30 出向幾何後端已成、前端只接 contact 未接 zone",
     "updatedAt": "2026-06-11T07:20:31Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/212"
+  },
+  {
+    "assignees": [],
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "body": "## 原則（使用者拍板 2026-06-11）\nICS 是 TAK client 的**忠實顯示端**：**現場 client 推什麼，ICS 就帶什麼、顯示什麼**。要 declutter（畫面太雜）走**既有 map-side filter**（P2-25/#168），**不在 ingest 丟資料**。\n\n## 現況/症狀（已驗）\n1. **TAK marker 不顯示名稱**：資料層**有存** callsign（DB 實證 `3QQ`/`3QQ.`），但 `_takLayer`（2525 milsymbol 框）**只畫符號、不渲染 callsign 文字標籤** → 「連名稱都沒帶」是**顯示層 gap，非 ingest**。\n2. **GeoChat 完全不顯示**：入向 `b-t-f`（P2-07）只做到「收進 `chats` 表」，主 dashboard **無 chat 面板、無 `GET /api/chat`** → 現場通聯收得到、看不到（只在 AAR 回放）。chat 在 CoT 裡多半**掛在來源 marker（sender uid）上** → 應能從該 marker 看到其通聯。\n3. **其他 detail 欄位**（remarks/team/battery…）顯示完整度待盤——client 推的都該看得到。\n\n## declutter 的方式\n用**既有** map-side TAK filter（P2-25/#168，現有維度＝affiliation 四態 + stale，純前端 `setFilter` 不刪資料）做 declutter。需要更多維度（如 type/來源）再擴 filter，**不回頭在 ingest 丟**。\n\n## ⚠️ 安全 caveat（不可誤拆）\ningest 的 **2525 type 白名單（P2-10，`schemas/tak.py`）是 injection / 畸形 CoT 的防線，不是 declutter filter**——它擋的是惡意/壞格式 type，**不擋正常 marker**。本 issue 的「全帶」針對**已接受 marker 的欄位 + 顯示**，**不是**放行任意 CoT。type 白名單維持。\n\n## ROADMAP 對照\n- **P2-07**（#129）：GeoChat 入向資料層 ✅（chats 表）——本 issue 補**顯示**。\n- **P2-12**（TAK UI 面板統一）：callsign 標籤 / 通聯顯示的自然落點。\n- **P2-25 / [#168](https://github.com/winson3QQ/ICS_COMMAND/issues/168)**：map filter＝declutter 落點（不在 ingest 丟）。\n- **P2-10**：type 白名單＝安全線，**維持不動**。\n- 吸收 **[#193](https://github.com/winson3QQ/ICS_COMMAND/issues/193)**（標記詳情與 iTAK 對齊）——同屬「顯示忠實度」。\n\n## 工作（triage，多為前端 + 少量讀取端點）\n- [ ] TAK marker 渲染 **callsign 文字標籤**（對齊 P2-30 contact 的「callsign 下方標籤」做法）。\n- [ ] **GeoChat 顯示**：掛在來源 uid marker 上（點開 marker 看其通聯）和/或通聯面板；補 `GET /api/chat`（RBAC 中央 gate）。\n- [ ] 盤點 marker detail 欄位顯示完整度（remarks 等），缺的補上。\n- [ ] 確認 declutter 全走 map filter；ingest 只做**安全驗證**不丟「正常但不想看」的 marker。\n- [ ] human verify：現場 TAK 推帶名稱 + 通聯的 marker → ICS 完整顯示。\n\n## 關聯\n- 對照 P2-07/P2-12/P2-25/P2-10；吸收 #193。\n- 純前端 + 一個讀取端點，不卡 ATAK（與 #211 無關，這是 iTAK 上就看得到的洞）。",
+    "closedAt": null,
+    "comments": [],
+    "createdAt": "2026-06-11T07:24:56Z",
+    "labels": [],
+    "milestone": null,
+    "number": 213,
+    "state": "OPEN",
+    "title": "入向 TAK 顯示忠實度：client 推什麼就完整顯示（callsign/remarks/GeoChat），declutter 用 map filter 不在 ingest 丟",
+    "updatedAt": "2026-06-11T07:24:56Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/213"
   }
 ]
