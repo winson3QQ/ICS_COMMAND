@@ -207,3 +207,43 @@ def test_events_lat_lon_columns_dropped():
     with get_conn() as conn:
         cols = {row[1] for row in conn.execute("PRAGMA table_info(events)")}
     assert "lat" not in cols and "lon" not in cols
+
+
+# ── P2-33b step ①a：序列化帶入 junction primary event_id（glue 退役地基）──────────
+
+
+class TestPrimaryEventIdSerialization:
+    """get/list cop_entity 頂層 `event_id` 來自 **junction**（非 attributes glue），
+    為前端 `copEntityToEventZone` 改吃 junction-fed event_id 鋪路（#196 step ①a）。"""
+
+    def test_get_carries_junction_primary_event_id(self):
+        from repositories.cop_entity_repo import get_cop_entity
+
+        ev = _mk_event()
+        _mk_marker("evt:p1", kind="event", event_id=ev)
+        event_marker_repo.link_marker(ev, "evt:p1", "primary")
+        assert get_cop_entity("evt:p1")["event_id"] == ev
+
+    def test_list_carries_junction_primary_event_id(self):
+        from repositories.cop_entity_repo import list_cop_entities
+
+        ev = _mk_event()
+        _mk_marker("evt:p2", kind="event", event_id=ev)
+        event_marker_repo.link_marker(ev, "evt:p2", "primary")
+        d = next(e for e in list_cop_entities() if e["uid"] == "evt:p2")
+        assert d["event_id"] == ev
+
+    def test_non_event_entity_has_none(self):
+        from repositories.cop_entity_repo import get_cop_entity
+
+        _mk_marker("zone:z1", kind="zone")  # 無 junction link
+        assert get_cop_entity("zone:z1")["event_id"] is None
+
+    def test_junction_is_source_not_attributes_glue(self):
+        """marker 帶 attributes.event_id glue 但**無 junction link** → 頂層 event_id 仍 None。
+        證明權威來源 = junction，非 attributes（glue 退役後此行為即正解）。"""
+        from repositories.cop_entity_repo import get_cop_entity
+
+        ev = _mk_event()
+        _mk_marker("evt:glueonly", kind="event", event_id=ev)  # 只塞 attributes，不 link
+        assert get_cop_entity("evt:glueonly")["event_id"] is None

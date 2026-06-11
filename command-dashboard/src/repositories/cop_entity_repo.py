@@ -57,10 +57,43 @@ def insert_cop_entity(entity: CoPEntity) -> dict:
     return get_cop_entity(entity.uid)
 
 
+def _primary_event_id(conn, uid: str) -> str | None:
+    """P2-33b（#196）：cop_entity 的 primary 關聯 event_id（`event_markers` junction，唯一權威）。
+
+    取代 `attributes.event_id` JSON glue 當前端讀取來源——前端 `copEntityToEventZone` 改吃此
+    頂層 `event_id`，glue 寫入退役留 step ③。非事件 entity（無 primary link）→ None。
+    """
+    r = conn.execute(
+        "SELECT event_id FROM event_markers WHERE cop_entity_uid = ? AND role = 'primary' LIMIT 1",
+        (uid,),
+    ).fetchone()
+    return r["event_id"] if r else None
+
+
+def _attach_primary_event_ids(conn, entities: list[dict]) -> None:
+    """批次帶入 junction primary event_id（單一查詢，避免 N+1）。就地改 entities。"""
+    uids = [e["uid"] for e in entities if e.get("uid")]
+    if not uids:
+        return
+    qmarks = ",".join("?" * len(uids))
+    rows = conn.execute(
+        # nosec B608 — qmarks 僅為 ? 佔位（依數量產生），uids 全走參數綁定
+        f"SELECT cop_entity_uid, event_id FROM event_markers WHERE role = 'primary' AND cop_entity_uid IN ({qmarks})",
+        uids,
+    ).fetchall()
+    link = {r["cop_entity_uid"]: r["event_id"] for r in rows}
+    for e in entities:
+        e["event_id"] = link.get(e.get("uid"))
+
+
 def get_cop_entity(uid: str) -> dict | None:
     with get_conn() as conn:
         row = conn.execute("SELECT * FROM cop_entities WHERE uid = ?", (uid,)).fetchone()
-        return _row_to_entity_dict(row) if row else None
+        if row is None:
+            return None
+        d = _row_to_entity_dict(row)
+        d["event_id"] = _primary_event_id(conn, uid)  # P2-33b：junction 為權威連結來源
+        return d
 
 
 def list_cop_entities(
@@ -111,7 +144,9 @@ def list_cop_entities(
     params.append(limit)
     with get_conn() as conn:
         rows = conn.execute(sql, params).fetchall()
-        return [_row_to_entity_dict(r) for r in rows]
+        entities = [_row_to_entity_dict(r) for r in rows]
+        _attach_primary_event_ids(conn, entities)  # P2-33b：帶入 junction primary event_id
+        return entities
 
 
 def aggregate_squads(exercise_id=None) -> list[dict]:

@@ -159,7 +159,8 @@ export function createCopStream(deps) {
    * 建立一顆 entity（POST）。body 至少需 { type, lat, lon }，可帶 callsign / attributes。
    * 回傳建立後的 entity（含 server 兜底的 uid / version_clock）；失敗回 null。
    * 本地立即 upsert（WS 廣播也會到，version_clock LWW 冪等不重複）。
-   * map 物件（route/polygon/event）走這條：attributes.kind + vertices/event_id 等由 caller 帶。
+   * map 物件（route/polygon/event）走這條：attributes.kind + vertices 等由 caller 帶；
+   * event 圖釘的 event_id 走**頂層 first-class**（P2-33b，後端建 junction，非 attributes glue）。
    */
   async function createEntity(body = {}) {
     if (!canWrite()) return null;

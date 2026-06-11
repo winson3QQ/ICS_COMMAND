@@ -975,7 +975,10 @@ async function _evPopupSubmit(typeKey, ctx) {
     lon: roundedLng,
     callsign: evDef.label,
     severity: evDef.severity || 'warning',
-    attributes: { kind: 'event', event_id: eventId, event_code: eventCode, event_group: evGroup },
+    // P2-33b：event_id 走**頂層 first-class**（後端 link_marker 建 junction 權威關聯），
+    // 不再塞 attributes（glue 退役）。event_code/group 仍存 attributes（純顯示 metadata）。
+    event_id: eventId,
+    attributes: { kind: 'event', event_code: eventCode, event_group: evGroup },
   });
   if (!created) {
     // 事件已落 DB 但圖釘沒建起來 = orphan event（與舊 rollback 行為對齊：提示重試）
@@ -1019,7 +1022,7 @@ export function findZoneByEventId(eventId) {
   if (!eventId) return null;
   // PR-G1b：事件 zone 已 cutover 進 cop_entities，先查 cop（adapter 還原 zone shape）。
   for (const ent of (_copStream?.getEntitiesByKind('event') || [])) {
-    if (ent.attributes?.event_id === eventId) return copEntityToEventZone(ent);
+    if (ent.event_id === eventId) return copEntityToEventZone(ent);  // P2-33b：頂層 junction event_id
   }
   // 退路：map_config 殘留（節點不帶 event_id，但保險用）。
   if (!_mapConfig) return null;
@@ -2567,7 +2570,7 @@ function _syncEventDragHandles(eventZonesArg, nodeZonesArg) {
       // dragend：① cop 落地位置（PUT + If-Match，會清 dragging）。失敗（409/網路）則 cop 已
       // 採 server 現值（pin 彈回），**不可**再寫 events 表，否則 location_desc 與 pin 分歧。
       const ent = _copStream?.getEntity(id);
-      const eventId = ent?.attributes?.event_id;
+      const eventId = ent?.event_id;  // P2-33b：頂層 junction event_id（非 attributes glue）
       const ok = await _copStream?.updateEntity(id, { lat: latlng.lat, lon: latlng.lng });
       if (!ok) { const _k = ent?.attributes?.kind; _flashMapMsg('✗ ' + (eventId ? '事件' : _k === 'infra' ? '設施' : '節點') + '位置儲存失敗（可能被他人同時修改），請重試'); return; }
       if (eventId) {

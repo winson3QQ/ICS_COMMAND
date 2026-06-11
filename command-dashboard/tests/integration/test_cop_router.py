@@ -279,8 +279,7 @@ def _insert_tak_entity(uid: str = "tak:UNIT-1", lat: float = 24.0, lon: float = 
         conn.execute(
             "INSERT INTO cop_entities (uid,type,time,start,stale,how,lat,lon,source,callsign,version_clock) "
             "VALUES (?,?,?,?,?,?,?,?,'tak','REAL-UNIT',1)",
-            (uid, "a-f-G-U-C", "2026-06-05T04:00:00Z", "2026-06-05T04:00:00Z",
-             "2099-01-01T00:00:00Z", "m-g", lat, lon),
+            (uid, "a-f-G-U-C", "2026-06-05T04:00:00Z", "2026-06-05T04:00:00Z", "2099-01-01T00:00:00Z", "m-g", lat, lon),
         )
     return uid
 
@@ -330,3 +329,53 @@ def test_put_manual_allowed_in_realops(client):
         headers={**h, "If-Match": "1"},
     )
     assert r.status_code == 200, r.text
+
+
+# ── P2-33b：event↔marker first-class 連結（glue 退役）──────────────────────────
+
+
+def _mk_event_row():
+    from repositories.event_repo import create_event
+
+    return create_event(
+        {
+            "reported_by_unit": "command",
+            "event_type": "fire",
+            "description": "x",
+            "operator_name": "admin",
+            "severity": "warning",
+        }
+    )["id"]
+
+
+def test_event_pin_links_junction_via_first_class_event_id(client):
+    """POST cop entity 帶**頂層** event_id → 後端 link_marker 建 junction、序列化回頂層
+    event_id、且 **attributes 不存 event_id**（glue 退役，#196 step ③）。"""
+    from repositories.event_marker_repo import get_events_for_marker
+
+    h = _login(client)
+    ev = _mk_event_row()
+    ent = _create(client, h, event_id=ev, attributes={"kind": "event", "event_code": "EV-001"})
+    assert ent["event_id"] == ev  # 序列化帶頂層 junction event_id（廣播/回應皆然）
+    assert "event_id" not in (ent.get("attributes") or {})  # glue 未入 DB attributes
+    assert [e["id"] for e in get_events_for_marker(ent["uid"])] == [ev]  # junction 已建
+
+
+def test_event_pin_back_compat_attributes_event_id(client):
+    """back-compat：舊 / 快取 client 仍把 event_id 放 attributes → 後端 fallback 取之、
+    junction 照建、頂層 event_id 照回（過渡期不破）。"""
+    from repositories.event_marker_repo import get_events_for_marker
+
+    h = _login(client)
+    ev = _mk_event_row()
+    ent = _create(client, h, attributes={"kind": "event", "event_id": ev, "event_code": "EV-002"})
+    assert ent["event_id"] == ev
+    assert [e["id"] for e in get_events_for_marker(ent["uid"])] == [ev]
+
+
+def test_event_pin_forged_event_id_orphans_not_500(client):
+    """不存在的 event_id（FK 撞 IntegrityError）→ best-effort：圖釘照建（201）但 event_id=None
+    （orphan）、不噴 500、**不反射 forged 值**（review 硬化：link 失敗不 set created.event_id）。"""
+    h = _login(client)
+    ent = _create(client, h, event_id="no-such-event", attributes={"kind": "event"})
+    assert ent["event_id"] is None
