@@ -2602,6 +2602,20 @@
         "minimizedReason": "",
         "reactionGroups": [],
         "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/194#issuecomment-4677798265"
+      },
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## ⚠️ Caveat：本 issue 的「(A) 可靠刪除不可解」結論 = iTAK(iOS) only\n\n複盤發現：本 issue + #161 的所有 client 行為 dogfood（Mission `REMOVE_CONTENT`、t-x-d-d、DELETE mission 都不清地圖 marker）**全在 iTAK(iOS)** 實測。**ATAK(Android) 從未測過**。\n\niTAK 是輕量 client；ATAK 是參考級全功能 client，歷來對 Mission/DataSync 支援最完整，**很可能 honor server 端刪除信號**。因此：\n\n- **「(A) 可靠刪除不可解」應讀作「iTAK 上不可解」，非 TAK 通則。** ATAK 上可能根本能刪。\n- 待 **ATAK(Android) dogfood**（→ #211）確認或推翻後才定案。\n\n**不受影響**：(C) 權威 resync（PR #210）是純讀 `/cot/sa`，與 client 渲染無關，結論不變。",
+        "createdAt": "2026-06-11T06:50:50Z",
+        "id": "IC_kwDOSnBjpc8AAAABFtPPpw",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/194#issuecomment-4677947303"
       }
     ],
     "createdAt": "2026-06-10T08:46:50Z",
@@ -2610,7 +2624,7 @@
     "number": 194,
     "state": "CLOSED",
     "title": "Marti 權威 resync：ICS 顯示漏掉的 iTAK streaming 標記（P2-14）",
-    "updatedAt": "2026-06-11T06:27:24Z",
+    "updatedAt": "2026-06-11T06:50:50Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/194"
   },
   {
