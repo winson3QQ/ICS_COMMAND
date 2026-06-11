@@ -3052,5 +3052,25 @@
     "title": "TAK 出向未受開關閘控：關閉後仍能廣播到 iTAK + 燈號誤把「無入向串流」當降級",
     "updatedAt": "2026-06-11T15:56:21Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/222"
+  },
+  {
+    "assignees": [],
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "body": "## 目標\n\nP1-12 全項落地（ROADMAP Phase 1 最後一項）。規格 SoT：\\`docs/roadmap/p1-key-management.md\\`（2026-06-12 動工修訂版，隨 12a PR 進）。\n\n## 動工前決議（threat_model §8.4，2026-06-12 拍板）\n\n- at-rest **主控 = LUKS 整碟**（獨立 item 另開 issue，本 umbrella 不含）；SQLCipher 退**內層縱深**\n- P1-12a key 階層**必含 \\`disk-v1\\` child**，為 LUKS 統一 FIDO2 unlock 預留（勿碎裂託管）\n- 部署形態定調 **manned C2**：接受開機需人持 FIDO2 token；無人值守 escrow 後路於 LUKS issue 內評估，不阻塞本項\n\n## Reality check（2026-06-12 動工前盤點，留痕）\n\n**已存在（規格 2026-05-28 版未反映）**：\n- \\`backup_service.py\\`：SQLite online backup + gzip + sha256 + atomic + 7 天 retention + Fernet encrypt/decrypt 全套（#41 繼承）\n- \\`scripts/backup_db.py\\` CLI 預設加密（env \\`BACKUP_ENCRYPTION_KEY\\`），systemd \\`ics-backup.timer\\` 每日 03:00\n- \\`routers/backups.py\\`：list / trigger / verify / preview / restore-cmd 五端點 + audit；\\`admin_backups.html\\` 面板；\\`restore_db.py\\` CLI\n- **P1-14 已完成** → L2 archive 觸發點 + manifest exercise metadata 地基現成（規格的 12b+14 bundling 段落作廢）\n\n**缺口**：\n- 12a 全 greenfield（\\`scripts/keymgmt/\\` 不存在）\n- 12b：**API 手動觸發產明文 .db.gz**（CLI 加密、API 沒接 encrypt_file，drift bug）；backup 只含 DB 不含整個 \\`data/\\`；無 manifest；無 L2/L3；無 GUI restore（OP-4）；reset-db 無 confirm body（OP-2）；key 換 HKDF child[0] 需舊 backup 相容\n- 12c 全 greenfield；**Windows 無 SQLCipher wheel（已實測 \\`sqlcipher3-binary\\` no matching distribution）** → 加密整合測試走 CI（ubuntu）\n- \\`docs/security/key-management.md\\` 不存在；threat_model 缺 at-rest 章節\n\n## 子項（序列做，不並行）\n\n子項 issue 編號見下方 comment（本 issue 開立時尚未取號）。\n\n- [ ] P1-12a key 基建\n- [ ] P1-12b backup/restore\n- [ ] P1-12c SQLCipher\n- [ ] 文件：\\`docs/security/key-management.md\\` + threat_model at-rest 章節\n- 硬體驗收尾巴（真 token / 失 token 演練 / Pi benchmark）→ 獨立 issue，**不阻塞本 umbrella 的 code 部分**",
+    "closedAt": null,
+    "comments": [],
+    "createdAt": "2026-06-11T23:41:42Z",
+    "labels": [],
+    "milestone": null,
+    "number": 226,
+    "state": "OPEN",
+    "title": "P1-12 統一 key management + at-rest 加密 + Backup GUI（umbrella）",
+    "updatedAt": "2026-06-11T23:41:42Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/226"
   }
 ]
