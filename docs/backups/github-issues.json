@@ -2836,6 +2836,20 @@
         "minimizedReason": "",
         "reactionGroups": [],
         "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/213#issuecomment-4678447773"
+      },
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "# (b) GeoChat 顯示 — 完整設計規格（reality check + UI 決策，2026-06-11）\n\n## 0. GeoChat 是什麼\nTAK client 的「文字聊天」（CoT `b-t-f`）。含**聊天室群播**（全體 `All Chat Rooms` / 隊伍頻道 / O/C）+ **點對點 DM**；每則帶 `<point>` 發訊位置（「Geo」）。`<__chat chatroom senderCallsign>` + `<remarks>` 訊息 + uid `GeoChat.<senderUID>.<room>.<id>`。\n\n## 1. Reality check（已驗）\n- **無顯示**：`chat_repo` 只有 `insert_chat`、主 dashboard 無 chat 面板、無 `GET /api/chat`。\n- **無即時推送**：`ingest_chat` 不廣播 → P2-07 只做「存」沒做「送」→ live 需 poll 或新 WS。\n- **訊息已 escape**：`chat_service:30` `html.escape`（規格紅線，fixture 埋 `<script>` 測它）→ 前端純文字渲染、不 innerHTML 反解。\n- **可重用**：`timeline_service._chats(conn, exercise_id, since, until, cap)` 已是 exercise-scoped chat list；`aar/replay_engine.js` 有 chat 渲染先例。\n- **更正先前 caveat**：sender marker uid **嵌在 GeoChat uid 裡可解析**（split('.')[1]）+ `senderCallsign` → marker 連結**可行**（衍生連結，非 FK）。\n\n## 2. UI 放置（拍板）\n- **右欄頂層 tab：`事件追蹤 ｜ 通聯`** 二選一（右欄已滿＝事件 flex6 + 裁示 flex4，不另塞；右欄本就用 tab 慣例）。通聯頁內**依聊天室分子 tab**（全體/隊伍/O/C/DM）。\n- **待裁示維持底部常駐**（指揮動作，不收進 tab）。\n- 在「事件」頁時，**通聯 tab 掛未讀數**。\n- **TAK 停用 → 通聯 tab 整個隱藏**，跟 header TAK 燈同源（`takConnState()` 單一真相，不另寫判斷；對齊 #164 燈號不謊報紀律）。\n- 取捨：事件/通聯不能同時看（tab 互斥）；未讀數提醒可接受。真要並看才回頭考慮浮動 dock。\n\n## 3. 與地圖 marker 連結（雙向）\n- **點訊息 → 跳地圖 + highlight**：**沿用既有「長按事件」機制**（`map:highlightEvent` → flyTo + 綠 pulse halo），**不造新操作認知**。\n  - 小前提：`_highlightEvent`（map.js:1972）現綁 `zones` source + `event_id`；TAK marker 在 `tak-units` source 用 uid → 需**泛化成 source-agnostic `_highlightEntity(uid)`**，事件欄與 chat 共發 `map:highlightEntity`。順手讓所有地圖物件共用一套 highlight（generalize 非特例）。\n- **點 marker → 過濾該單位通聯**（callsign / 解析 sender uid）。\n- 語意＝「這句話從哪個單位/哪裡發的」，非「掛在某顆 marker」（聊天室廣播有發訊者、收件是房間）。\n\n## 4. 分刀\n| 刀 | 後端 | 前端 |\n|---|---|---|\n| **b1 唯讀面板（MVP）** | `GET /api/chat`（重用/泛化 `_chats`，current-exercise scope，READ_ROLES）| 右欄通聯 tab + 聊天室子 tab + 訊息列（escaped）+ poll |\n| **b2 即時** | `ingest_chat` 加 WS 廣播（仿 `cop_hub`）| poll → WS 推 |\n| **b3 marker 連結** | 解析 GeoChat uid 取 sender uid | `_highlightEvent`→`_highlightEntity` 泛化 + 點訊息跳轉 + 點 marker 過濾 |\n\n→ **b1 解「看不到通聯」**；b2/b3 體驗升級。\n\n## 5. 待拍板\n1. 未讀只標數字，還是新訊在地圖發訊處也閃？\n2. **O/C 注入訊息**（`how=h-g-i-g-o` / simulated）通聯裡特別標（演習時 O/C 對學員發話，指揮要分得出腳本注入 vs 真現場）。\n3. 聊天室分子 tab vs 單流 + 標籤。\n\n## 關聯\nP2-07（chat 入向資料層 ✅）、P2-12（TAK UI 面板）、P2-25（map filter）、P2-10（type 白名單＝安全線）、#216（出向 GeoChat，同面板輸入框）、#217（COP 一致性）。對稱 #214（出向忠實度）。",
+        "createdAt": "2026-06-11T09:29:37Z",
+        "id": "IC_kwDOSnBjpc8AAAABFuX2bg",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/213#issuecomment-4679136878"
       }
     ],
     "createdAt": "2026-06-11T07:24:56Z",
@@ -2844,7 +2858,7 @@
     "number": 213,
     "state": "OPEN",
     "title": "入向 TAK 顯示忠實度：client 推什麼就完整顯示（callsign/remarks/GeoChat），declutter 用 map filter 不在 ingest 丟",
-    "updatedAt": "2026-06-11T08:01:43Z",
+    "updatedAt": "2026-06-11T09:29:37Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/213"
   },
   {
