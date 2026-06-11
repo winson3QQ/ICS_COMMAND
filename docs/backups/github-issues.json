@@ -2545,7 +2545,7 @@
       "name": ""
     },
     "body": "P2-30 part 3 dogfood 浮出：iTAK 送的標記（source=tak，如 3QQ）在 ICS 重連 / DB 清空後**不重新顯示**——streaming 不重播既有靜態標記。\n\n實證（#192 期間）：TAK server `<repository>` 持久化一切、`<latestSA>` 只對**新連線**補發；ICS 既有連線 reconnect 不補既有標記 → COP 漏標記。\n\n工作（= P2-14 核心，#173 衍生）：\n- Marti 權威 resync：`GET /Marti/api/cot/sa`（或 `/cot/search`）拉現有 SA → ingest 進 cop_entities，補 streaming 漏掉的既有標記。\n- cert 沿用 `tak-server-marti-cert-not-oauth`（:8443 mTLS，與 part 3 實驗用同一張）。\n\n依賴/關聯：P2-14（Mission/DataSync）、#173（reconnect 漏靜態標記）。memory `tak-streaming-archive-stale-vs-mission`、strategy §4b。",
-    "closedAt": null,
+    "closedAt": "2026-06-11T06:27:24Z",
     "comments": [
       {
         "author": {
@@ -2608,9 +2608,9 @@
     "labels": [],
     "milestone": null,
     "number": 194,
-    "state": "OPEN",
+    "state": "CLOSED",
     "title": "Marti 權威 resync：ICS 顯示漏掉的 iTAK streaming 標記（P2-14）",
-    "updatedAt": "2026-06-11T06:26:45Z",
+    "updatedAt": "2026-06-11T06:27:24Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/194"
   },
   {
