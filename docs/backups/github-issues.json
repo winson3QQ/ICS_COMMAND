@@ -2574,6 +2574,20 @@
         "minimizedReason": "",
         "reactionGroups": [],
         "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/194#issuecomment-4677048174"
+      },
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## Reality check + (C) resync 實作落地（PR #210）\n\n動工前對活 TAK 5.7 做 reality check，確認路徑成立並把 spec 自述的「復用既有管線」校正到實況。\n\n### 前提成立（實測級，非讀 spec）\n- `GET /Marti/api/cot/sa?start=&end=` 對活 5.7 回真 CoT（讀只需 truststore-trusted cert，毋須 register、不卡 mission write gate）。\n- REST client 骨架（retry/rate-limit/poll）、`ingest_cot_event` 接縫、`current_exercise_id` 場域歸屬、前端 `resync` 廣播機制皆現成可復用。\n\n### Reality check 5 gap（動工發現，已落地對照）\n1. **格式斷層**：`/cot/sa` 回 `<events>` **XML 集合**（小寫 wrapper，實測確認），但 `TakRestClient` 只有 `get_json`、`parse_cot_xml` 只吃單一 `<event>` root → 補 `get_text` + `parse_cot_events`（拆集合、單筆壞跳過、XXE 同防）。**這是純新工，非「接上去就好」。**\n2. **時間窗 gotcha**：大窗（實測 40 天）回 `BAD_REQUEST(400)`，且 400 與真 auth 拒**共用同一頁** → 用小窗（預設 2h known-good）+ 4xx 不重試 + 程式碼註解警示，避免誤判成 auth 壞。\n3. **bbox 非必填**：實測帶/不帶 bbox 回傳 **HTTP 200 且 size 完全相同**（49927B）→ resync 省略 bbox，不算場域框。\n4. **只 upsert、不刪**：resync 拿的是 server SA **正集**，**絕不**依「不在快照中」反推刪本地 entity——iTAK 刪除根本不傳到 server（client 硬限制，本 issue 前述 dogfood），server 也不知誰被刪；硬對帳會誤殺 `manual:`/`command` 源。`ingest_cot_event` 天然 upsert-only，並加測試 `test_resync_only_upserts_never_deletes` 鎖死。\n5. **(B) 安全網**：archived 持久 entity 無總量上限，resync 週期灌入會放大無界成長 → 明確 **descope 到下一刀**（`PERSIST_MAX_AGE`/上限），建議緊接。\n\n### 一個值得留痕的發現\n`/cot/sa` 回的是**時間窗 SA 歷史**（同 uid 多筆位置序列，實測 62 筆全同一裝置），非去重的「當前態」。`ingest_cot_event` 順序守門會收斂到最新位置、亂序的算 `skipped`（非錯），並順帶**回填軌跡**——對本 issue 的靜態標記重畫正確，對 AAR 軌跡完整性是 bonus。\n\n### 端到端驗證\n真實代碼路徑 `build_tak_rest_client → /cot/sa → parse_cot_events` 對活 TAK 5.7：49927 bytes → **62 events 解析成功**（真 iTAK「3QQ」PLI）。全套測試 **960 passed, 1 skipped**。\n\n→ 實作見 PR #210（待 `/verify` `/code-review` `/security-review`）。",
+        "createdAt": "2026-06-11T05:58:32Z",
+        "id": "IC_kwDOSnBjpc8AAAABFs8YQw",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/194#issuecomment-4677638211"
       }
     ],
     "createdAt": "2026-06-10T08:46:50Z",
@@ -2582,7 +2596,7 @@
     "number": 194,
     "state": "OPEN",
     "title": "Marti 權威 resync：ICS 顯示漏掉的 iTAK streaming 標記（P2-14）",
-    "updatedAt": "2026-06-11T03:58:14Z",
+    "updatedAt": "2026-06-11T05:58:32Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/194"
   },
   {
