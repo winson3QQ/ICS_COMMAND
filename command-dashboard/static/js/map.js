@@ -1211,11 +1211,30 @@ function _ensureEntityLayers() {
           'icon-image': ['get', 'iconId'],
           'icon-allow-overlap': true,
           'icon-ignore-placement': true,
+          // #213a：callsign 文字標籤掛 2525 框下方（feature.label = callsign || uid，_renderTakUnits 已填，
+          // 先前只畫 icon、label 帶著未用 → 現場/TAK 單位地圖上看不到名稱）。對齊 contact-callsign-label
+          // 同款：top 錨點 + 下移一行；text-optional → 標籤碰撞時可省、但 2525 符號永不被擠掉。
+          'text-field': ['get', 'label'],
+          'text-font': ['Noto Sans Regular'],
+          'text-size': 11,
+          'text-anchor': 'top',
+          'text-offset': [0, 1.4],
+          'text-allow-overlap': false,
+          'text-optional': true,
         },
         paint: {
           // #161：非 archived 過 CoT stale → 變灰（0.4）的視覺提示（archived 持久不灰，見 _isAging）；
           // 對齊 zones 層 stale 視覺。實際移除由 backend list_cop_entities 依 stale 過濾（非前端窗口）。
           'icon-opacity': [
+            'case',
+            ['==', ['coalesce', ['get', 'stale'], false], true], 0.4,
+            1,
+          ],
+          'text-color': '#ffffff',
+          'text-halo-color': '#000000',
+          'text-halo-width': 1.2,
+          // 過 stale 的單位連 callsign 標籤一起轉淡（與 icon-opacity 同步）。
+          'text-opacity': [
             'case',
             ['==', ['coalesce', ['get', 'stale'], false], true], 0.4,
             1,
