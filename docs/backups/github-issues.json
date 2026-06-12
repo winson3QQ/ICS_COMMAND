@@ -2525,7 +2525,7 @@
       "name": ""
     },
     "body": "P2-30 part 3 dogfood 浮出：點 ICS 地圖上的 contact 標記，detail 顯示應與 iTAK 點同一標記時一致。\n\n背景：part 3 已讓 ICS 廣播的 CoT remarks 帶 `source: ICS`（#192），iTAK 點開可辨來源。反向缺口 = ICS 端 detail modal 與 iTAK marker tap 的欄位/行為不一致。\n\n工作：\n- ICS contact detail modal 對齊 iTAK marker tap 的顯示（type/2525 標示、callsign、remark 含 source、座標 MGRS/經緯、affiliation）。\n- 確認雙向顯示一致（同一顆標記在 ICS 與 iTAK 看到的核心資訊相同）。\n\n來源：#180 part 3 dogfood（#192）。屬 P2-12 TAK UI 面板統一範疇。",
-    "closedAt": null,
+    "closedAt": "2026-06-12T04:10:47Z",
     "comments": [
       {
         "author": {
@@ -2540,15 +2540,29 @@
         "minimizedReason": "",
         "reactionGroups": [],
         "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/193#issuecomment-4686746463"
+      },
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "@\n完成於 PR #238（squash `6218406`）。\n\n**落地內容**：marker 互動統一為**點=詳情、長按=篩通聯**（感測層操作一致，不分誰放的 marker）。\n- TAK 單位 click → 唯讀詳情 modal（敵我態 / type(2525 grammar) / callsign / 座標(MGRS+經緯) / 備註），對齊 iTAK marker tap。TAK 為外部來源故唯讀，所有 READ_ROLES 可看。\n- `source: ICS` 經 #192 外推時寫入 remarks，詳情「備註」列即可見。\n- 長按分流走 `maplibre_core` onLongPress 帶螢幕 point → `queryRenderedFeatures` 命中 `tak-units-icon` → 篩該單位通聯；命中空地 → 建立對話框。\n\n**品質閘**：`/code-review` 修 2（座標列 lat/lon 成對守門、`_MARKER_LONGPRESS_LAYERS` 收斂 TAK-only）+ `/security-review` 0（modal title 走 textContent sink、body 全跳脫）。前端 311 / doc_sync 綠。**真機 Mac+iTAK dogfood human verify PASS**。\n\n**後置（非本題）**：contact 長按=篩通聯 / O/C 識別與限可見 / chat 斷線 backfill。\n@",
+        "createdAt": "2026-06-12T04:10:46Z",
+        "id": "IC_kwDOSnBjpc8AAAABF2Nz2Q",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/193#issuecomment-4687360985"
       }
     ],
     "createdAt": "2026-06-10T08:46:49Z",
     "labels": [],
     "milestone": null,
     "number": 193,
-    "state": "OPEN",
+    "state": "CLOSED",
     "title": "ICS 標記詳情與 iTAK 對齊（點標記顯示一致 + source: ICS）",
-    "updatedAt": "2026-06-12T02:18:55Z",
+    "updatedAt": "2026-06-12T04:10:47Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/193"
   },
   {
