@@ -111,12 +111,40 @@ def test_read_backfills_source_from_seed(tmp_path: Path):
     assert got["events"][0]["label"] == "爆改"      # runtime 其他值不被覆蓋
 
 
+def test_read_backfills_regime_from_seed(tmp_path: Path):
+    """舊 runtime 缺 regime → 依 key 從 seed 回填（regime 為 seed-authoritative 事實，#241）。"""
+    seed = tmp_path / "seed.json"
+    runtime = tmp_path / "runtime.json"
+    seed.write_text(json.dumps({
+        "version": 1, "groups": [{"key": "security", "label": "安全"}],
+        "events": [{"key": "drone", "label": "機", "group": "security",
+                    "severity": "critical", "cot_type": "a-h-A", "regime": "military"}],
+    }))
+    runtime.write_text(json.dumps({  # runtime 無 regime（regime 欄加入前建立）
+        "version": 1, "groups": [{"key": "security", "label": "安全"}],
+        "events": [{"key": "drone", "label": "機改", "group": "security",
+                    "severity": "critical", "cot_type": "a-h-A"}],
+    }))
+    got = event_taxonomy_store.read(path=runtime, seed=seed)
+    assert got["events"][0]["regime"] == "military"  # 回填
+    assert got["events"][0]["label"] == "機改"        # runtime 其他值不被覆蓋
+
+
 def test_read_backfill_does_not_override_existing_source(tmp_path: Path):
     seed = tmp_path / "seed.json"
     runtime = tmp_path / "runtime.json"
     seed.write_text(json.dumps({"version": 1, "groups": [], "events": [{"key": "x", "source": "napsg"}]}))
     runtime.write_text(json.dumps({"version": 1, "groups": [], "events": [{"key": "x", "source": "ics"}]}))
     assert event_taxonomy_store.read(path=runtime, seed=seed)["events"][0]["source"] == "ics"
+
+
+def test_read_backfill_does_not_override_existing_regime(tmp_path: Path):
+    """#241：通用化回填對 regime 同樣只補缺、不覆蓋既有（runtime 自訂值優先）。"""
+    seed = tmp_path / "seed.json"
+    runtime = tmp_path / "runtime.json"
+    seed.write_text(json.dumps({"version": 1, "groups": [], "events": [{"key": "x", "regime": "military"}]}))
+    runtime.write_text(json.dumps({"version": 1, "groups": [], "events": [{"key": "x", "regime": "civil"}]}))
+    assert event_taxonomy_store.read(path=runtime, seed=seed)["events"][0]["regime"] == "civil"
 
 
 # ── write_atomic() ──────────────────────────────────────────
@@ -139,10 +167,14 @@ def test_factory_seed_is_valid_and_complete():
     valid_sev = {"critical", "warning", "info"}
     keys = set()
     for ev in body["events"]:
-        for field in ("key", "label", "group", "icon", "abbr", "severity", "cot_type"):
+        for field in ("key", "label", "group", "icon", "abbr", "severity", "cot_type", "regime"):
             assert field in ev, f"{ev.get('key')} 缺欄位 {field}"
         assert ev["severity"] in valid_sev, f"{ev['key']} severity 非法：{ev['severity']}"
         assert ev["group"] in groups, f"{ev['key']} 指向不存在群組 {ev['group']}"
         assert ev["key"] not in keys, f"重複 key：{ev['key']}"
         keys.add(ev["key"])
         assert ev.get("source") in {"napsg", "ics"}, f"{ev['key']} source 非法：{ev.get('source')}"
+        # 2026-06-12 regime 軸（#241）：每事件必帶合法 regime（civil/alert/military）。
+        assert ev.get("regime") in {"civil", "alert", "military"}, (
+            f"{ev['key']} regime 非法：{ev.get('regime')}"
+        )

@@ -27,6 +27,10 @@ SEVERITIES = frozenset({"critical", "warning", "info"})
 # 定義來源（provenance）：napsg=有外部標準對應（NAPSG/2525/IPAWS/USAR 等），ics=ICS 運作自訂。
 # 可選欄位（舊資料無此欄相容）；編輯器以 NAPSG/ICS 呈現「事件型別是哪個標準定義的」。
 SOURCES = frozenset({"napsg", "ics"})
+# regime（2026-06-12 定案）：marker 視覺規制軸，與 cot_type（TAK degrade 身分證）解耦。
+# civil=NAPSG ◆ 危害 / alert=NAPSG ▲ 公眾警報 / military=2525 敵我框。可選（舊資料無此欄
+# → render 缺省 civil）。詳 docs/design/classification-crosswalk.md〈2026-06-12 regime 軸定案〉。
+REGIMES = frozenset({"civil", "alert", "military"})
 _KEY_RE = re.compile(r"^[a-z0-9_]+$")
 # regex 允許底線 → __proto__/constructor/prototype 會通過格式檢查；後端一併擋（縱深防禦，
 # 不只靠前端 applyTaxonomy/_bakeGlyphs 的 guard）。security review #76 MED。
@@ -101,6 +105,10 @@ def validate_taxonomy(body: Any, previous: Any = None) -> None:
             raise ValueError(f"event {k} 缺 cot_type（TAK 互通必填，預設 a-u-G）")
         if "source" in e and e["source"] not in SOURCES:
             raise ValueError(f"event {k} 的 source 非法：{e.get('source')!r}（限 napsg / ics）")
+        if "regime" in e and e["regime"] not in REGIMES:
+            raise ValueError(
+                f"event {k} 的 regime 非法：{e.get('regime')!r}（限 civil / alert / military）"
+            )
         if "deleted" in e and not isinstance(e["deleted"], bool):
             raise ValueError(f"event {k} 的 deleted 需為 bool")
 
