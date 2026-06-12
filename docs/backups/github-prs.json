@@ -3552,6 +3552,20 @@
         "minimizedReason": "",
         "reactionGroups": [],
         "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/234#issuecomment-4686208779"
+      },
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## /security-review 結果\n\n**無 HIGH / MEDIUM 安全破口（confidence ≥ 8）。** sub-task 深入審 FIDO2 → HKDF → AES-GCM 金鑰管線，密碼學構造確認健全，無 finding 達回報門檻。\n\n### 審過確認無虞\n\n- **HKDF**：`salt=None` 為 RFC 5869 zero-salt 正解；`INFO_PREFIX` domain separation；master 限 32 bytes（KAT 釘住）\n- **AES-256-GCM nonce 唯一性**：每次 wrap `secrets.token_bytes(12)` 新 nonce，各 token 各自 wrap_key，無同 key nonce 重用\n- **AAD 綁定**：`aad=credential_id` 擋跨 entry 替換；竄改→InvalidTag/ValueError→KeyStoreError；錯 token→認證解密失敗不吐垃圾 master\n- **亂數**：全程 `secrets`，無 `random` 誤用\n- **BIP-39**：checksum 標準正確；wordlist sha256 釘官方 bitcoin/bips，載入時強制\n- **機敏外洩**：除刻意的 `--show-rescue` 終端印出，無任何路徑印/log master / child keys / wrap keys / mnemonic；錯誤訊息只帶長度/label/path\n- **反序列化/注入**：純 `json.loads`，無 pickle/yaml/eval；無 subprocess/shell\n\n### 審過但不報（依排除規則）\n\n- `request_uv → True`：本地 CTAP2 client 互動，UV 由 token 硬體強制，非此處削弱（真機 → #230）\n- `--store`/`--output`/`ICS_MASTER_KEY`：trusted operator/env 輸入（fallback 另有 stderr 警示 + 32-byte hex 驗證）\n- Windows chmod 0600 跳過：at-rest 檔權限明確 out of scope，且已警示\n\n---\n\n## 三連 review 收尾\n\n- `/verify`（§8 Steps 1-4）：VERIFY-PASS（含實跑抓到 cp950 bug 並修）\n- `/code-review`（high）：4 CONFIRMED（fido2 API ×3 + unlock 迴圈韌性）已修 + cleanup 收口\n- `/security-review`：無 HIGH/MED\n\ndoc_sync_check passed。本機 pytest 全綠（21 keymgmt + 1004 全套）；等 CI 綠 + 你 merge 指示。真 token 驗收 → #230。",
+        "createdAt": "2026-06-12T00:20:04Z",
+        "id": "IC_kwDOSnBjpc8AAAABF1IgHA",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/234#issuecomment-4686225436"
       }
     ],
     "createdAt": "2026-06-12T00:03:06Z",
@@ -3561,7 +3575,7 @@
     "number": 234,
     "state": "OPEN",
     "title": "feat(keymgmt): P1-12a FIDO2 enroll/unlock + HKDF 階層（含 disk-v1）+ mock 測試",
-    "updatedAt": "2026-06-12T00:17:25Z",
+    "updatedAt": "2026-06-12T00:20:04Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/234"
   }
 ]
