@@ -55,6 +55,10 @@ def read_mnemonic_interactive() -> bytes:
 
 
 def main() -> int:
+    if sys.platform == "win32":
+        # console codepage 缺字以 ? 取代 — 輸出不准炸掉已完成的操作
+        sys.stdout.reconfigure(errors="replace")
+        sys.stderr.reconfigure(errors="replace")
     ap = argparse.ArgumentParser(description="FIDO2 token enroll（P1-12a）")
     ap.add_argument("--store", type=Path, required=True, help="master-key.enc 輸出路徑")
     ap.add_argument("--tokens", type=int, default=2, help="註冊把數（建議 ≥2：主 + 備援）")

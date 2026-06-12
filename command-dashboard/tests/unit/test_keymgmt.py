@@ -195,6 +195,31 @@ def test_tampered_store_detected(tmp_path):
     assert got == master
 
 
+def test_corrupted_nonce_field_raises_keystoreerror_not_valueerror():
+    """nonce 長度損毀時 AESGCM 拋 ValueError（非 InvalidTag）—
+    必須包成 KeyStoreError，否則穿透 unlock() 逐 entry 迴圈、壞一筆毀全部。"""
+    master = secrets.token_bytes(MASTER_LEN)
+    tok = MockToken()
+    [entry] = enroll_tokens(master, MockBackend(tok), ["t"], pin=None)
+    bad = keystore.TokenEntry(
+        label=entry.label,
+        credential_id=entry.credential_id,
+        salt=entry.salt,
+        nonce=b"x",  # 非法長度
+        wrapped=entry.wrapped,
+    )
+    with pytest.raises(keystore.KeyStoreError):
+        keystore.unlock([bad], MockBackend(tok), pin=None)
+
+
+def test_env_map_labels_registered_in_known_labels():
+    """ENV_MAP 是 KNOWN_LABELS 的子集 — label 註冊表單一來源（review 收口）。"""
+    from keymgmt.derive_child import KNOWN_LABELS
+    from keymgmt.unlock_key import ENV_MAP
+
+    assert set(ENV_MAP) <= set(KNOWN_LABELS)
+
+
 def test_store_load_validates(tmp_path):
     p = tmp_path / "master-key.enc"
     with pytest.raises(keystore.KeyStoreError, match="不存在"):

@@ -72,12 +72,16 @@ def wrap_master(master: bytes, wrap_key: bytes, credential_id: bytes) -> tuple[b
 
 
 def unwrap_master(entry: TokenEntry, wrap_key: bytes) -> bytes:
-    """以 wrap_key 解出 master。竄改 / key 不對 → KeyStoreError。"""
+    """以 wrap_key 解出 master。竄改 / key 不對 / 欄位損毀 → KeyStoreError。
+
+    ValueError 也要接：nonce/key 長度損毀時 AESGCM 拋 ValueError 而非
+    InvalidTag — 不接的話會穿透 unlock() 的逐 entry 迴圈，壞一筆毀全部。
+    """
     try:
         return AESGCM(wrap_key).decrypt(entry.nonce, entry.wrapped, entry.credential_id)
-    except InvalidTag as e:
+    except (InvalidTag, ValueError) as e:
         raise KeyStoreError(
-            f"entry「{entry.label}」解鎖失敗 — wrap key 不符或檔案被竄改"
+            f"entry「{entry.label}」解鎖失敗 — wrap key 不符、欄位損毀或檔案被竄改"
         ) from e
 
 
@@ -100,14 +104,22 @@ def build_store(master: bytes, entries: list[TokenEntry], rp_id: str) -> dict:
     }
 
 
-def save_store(path: Path, store: dict) -> None:
-    """atomic write + 0600（Windows dev 跳過 chmod，與 core/database.py 同慣例）。"""
+def atomic_write_private(path: Path, text: str) -> None:
+    """atomic write + 0600 的單一收口（keystore 與 unlock_key env file 共用）。
+
+    Windows 無 POSIX chmod，跳過（與 core/database.py 同慣例）— 機敏檔在
+    Windows dev 無權限保護，呼叫端負責警示。
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(json.dumps(store, ensure_ascii=False, indent=2), encoding="utf-8")
+    tmp.write_text(text, encoding="utf-8")
     if sys.platform != "win32":
         os.chmod(tmp, 0o600)
     tmp.replace(path)
+
+
+def save_store(path: Path, store: dict) -> None:
+    atomic_write_private(path, json.dumps(store, ensure_ascii=False, indent=2))
 
 
 def load_store(path: Path) -> tuple[dict, list[TokenEntry]]:

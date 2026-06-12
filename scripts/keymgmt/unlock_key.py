@@ -32,15 +32,25 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from keymgmt import keystore  # noqa: E402
 from keymgmt.backends import KeyBackendError, RealFido2Backend  # noqa: E402
-from keymgmt.derive_child import MASTER_LEN, derive_child, fernet_key, hex_key  # noqa: E402
+from keymgmt.derive_child import (  # noqa: E402
+    KNOWN_LABELS,
+    MASTER_LEN,
+    derive_child,
+    fernet_key,
+    hex_key,
+)
 
 ENV_FALLBACK_VAR = "ICS_MASTER_KEY"
 
-# label → (env var 名, 編碼函式)
+# label → (env var 名, 編碼函式)。label 註冊表的單一來源是
+# derive_child.KNOWN_LABELS，這裡只是「哪些要出 env file」的子集。
 ENV_MAP = {
     "backup-v1": ("BACKUP_KEY", fernet_key),
     "db-v1": ("DB_KEY", hex_key),
 }
+_unregistered = set(ENV_MAP) - set(KNOWN_LABELS)
+if _unregistered:
+    raise RuntimeError(f"ENV_MAP label 未註冊於 derive_child.KNOWN_LABELS：{_unregistered}")
 DEFAULT_LABELS = ("backup-v1", "db-v1")
 
 
@@ -70,16 +80,19 @@ def render_env_file(master: bytes, labels: tuple[str, ...] = DEFAULT_LABELS) -> 
 
 
 def write_env_file(master: bytes, output: Path, labels: tuple[str, ...] = DEFAULT_LABELS) -> None:
-    """atomic write + 0600（同 keystore.save_store 慣例）。"""
-    output.parent.mkdir(parents=True, exist_ok=True)
-    tmp = output.with_suffix(output.suffix + ".tmp")
-    tmp.write_text(render_env_file(master, labels), encoding="utf-8")
-    if sys.platform != "win32":
-        os.chmod(tmp, 0o600)
-    tmp.replace(output)
+    keystore.atomic_write_private(output, render_env_file(master, labels))
+
+
+def _console_safe() -> None:
+    """Windows console codepage（cp950/cp1252…）缺字時以 ? 取代 —
+    輸出訊息不准炸掉已完成的寫檔操作（深層修法，ASCII 標記為第二層保險）。"""
+    if sys.platform == "win32":
+        sys.stdout.reconfigure(errors="replace")
+        sys.stderr.reconfigure(errors="replace")
 
 
 def main() -> int:
+    _console_safe()
     ap = argparse.ArgumentParser(description="FIDO2 解鎖 → child keys → env file（P1-12a）")
     ap.add_argument("--store", type=Path, help="master-key.enc 路徑（FIDO2 模式必填）")
     ap.add_argument("--output", type=Path, required=True, help="env file 輸出路徑")
@@ -118,7 +131,11 @@ def main() -> int:
             return 1
 
     write_env_file(master, args.output, labels)
-    print(f"[OK] child keys（{', '.join(labels)}）已寫入 {args.output}（0600）")
+    if sys.platform == "win32":
+        print("[WARN] Windows 無 POSIX 0600 — env file 不受檔案權限保護，僅限 dev 場景", file=sys.stderr)
+        print(f"[OK] child keys（{', '.join(labels)}）已寫入 {args.output}")
+    else:
+        print(f"[OK] child keys（{', '.join(labels)}）已寫入 {args.output}（0600）")
     return 0
 
 

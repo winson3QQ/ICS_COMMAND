@@ -80,10 +80,11 @@ class RealFido2Backend:
                 "extensions": {"hmacCreateSecret": True},
             }
         )
-        ext = result.extension_results or {}
+        # fido2 2.2.0 實證：欄位為 client_extension_results；attestation 在 response 下
+        ext = result.client_extension_results or {}
         if not ext.get("hmacCreateSecret"):
             raise KeyBackendError("token 不支援 hmac-secret extension（需 CTAP2，如 YubiKey 5）")
-        cred = result.attestation_object.auth_data.credential_data
+        cred = result.response.attestation_object.auth_data.credential_data
         if cred is None:
             raise KeyBackendError("token 未回傳 credential data")
         return bytes(cred.credential_id)
@@ -102,7 +103,7 @@ class RealFido2Backend:
             ).get_response(0)
         except Exception as e:  # fido2 例外族系於真機驗收（#230）時收斂
             raise KeyBackendError(f"hmac-secret 取得失敗：{e}") from e
-        ext = result.extension_results or {}
+        ext = result.client_extension_results or {}
         output = ext.get("hmacGetSecret", {}).get("output1")
         if not output:
             raise KeyBackendError("token 未回傳 hmac-secret 輸出（憑證可能非本 token 所有）")
