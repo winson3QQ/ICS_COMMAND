@@ -386,11 +386,18 @@ describe('zoneToNodeFeature', () => {
     expect(zoneToNodeFeature({ lat: NaN, lng: 0 }, {})).toBeNull();
   });
 
-  test('預設值：color=#888 / abbr=? / severity=info', () => {
+  test('預設值：color=#888 / abbr=? / severity=info / regime=civil', () => {
     const f = zoneToNodeFeature({ lat: 0, lng: 0 });
     expect(f.properties.color).toBe('#8b949e');
     expect(f.properties.abbr).toBe('?');
     expect(f.properties.severity).toBe('info');
+    expect(f.properties.regime).toBe('civil');  // 乙-2a（#243）：缺省 civil（◆）
+  });
+
+  test('乙-2a（#243）：opts.regime 帶上 properties（驅動 ◆/▲ 外框）', () => {
+    expect(zoneToNodeFeature({ lat: 0, lng: 0 }, { regime: 'alert' }).properties.regime).toBe('alert');
+    expect(zoneToNodeFeature({ lat: 0, lng: 0 }, { regime: 'military' }).properties.regime).toBe('military');
+    expect(zoneToNodeFeature({ lat: 0, lng: 0 }, {}).properties.regime).toBe('civil');
   });
 
   test('label fallback：label → event_code → id → ""', () => {

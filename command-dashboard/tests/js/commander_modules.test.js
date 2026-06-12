@@ -228,10 +228,13 @@ describe('C1-F commander modules', () => {
     // #110/§8：_SEV_COLORS 由寫死 hex 改讀 ds-tokens（cssVar 橋接，fallback=同值 NAPSG 色）
     expect(mapSrc).toMatch(/critical: cssVar\('--severity-critical', '#FF181E'\)/);
     expect(mapSrc).toMatch(/id: 'zones-event'/);             // 事件 diamond 層
-    expect(mapSrc).toMatch(/'icon-image': 'zone-diamond'/);
+    // 乙-2a（#243）：zones-event icon-image 改 regime-driven（alert→▲、其餘→◆）
+    expect(mapSrc).toMatch(/'icon-image': \['match', \['get', 'regime'\], 'alert', 'zone-triangle', 'zone-diamond'\]/);
     expect(mapSrc).toMatch(/id: 'zones-crit-pulse'/);        // critical 脈動層
     expect(mapSrc).toMatch(/bakeDiamondSdf\(map, 'zone-diamond'\)/);
+    expect(mapSrc).toMatch(/bakeTriangleSdf\(map, 'zone-triangle'\)/);  // 乙-2a：▲ alert
     expect(file('static/js/map/entity_layer.js')).toMatch(/export function bakeDiamondSdf/);
+    expect(file('static/js/map/entity_layer.js')).toMatch(/export function bakeTriangleSdf/);
   });
 
   test('p2_05b_type_palette_uses_design_tokens', async () => {
