@@ -37,33 +37,33 @@ function _esc(s) {
 // ══════════════════════════════════════════════════════════════
 export const NAPSG_EVENTS = {
   // ── 安全威脅 ──────────────────────────────────────────────────
-  explosive:    { label: '疑似爆裂物', group: 'security', icon: 'explosive', abbr: '爆', defaultAssigned: 'forward',  severity: 'critical' },
-  drone:        { label: '無人機威脅', group: 'security', icon: 'drone',     abbr: '機', defaultAssigned: 'security', severity: 'critical' },
-  violent:      { label: '暴力事件',   group: 'security', icon: 'shield',    abbr: '暴', defaultAssigned: 'security', severity: 'critical' },
-  unknown_person:{ label: '不明人士',  group: 'security', icon: 'eye',       abbr: '人', defaultAssigned: 'security', severity: 'warning'  },
-  perimeter:    { label: '管制區異常', group: 'security', icon: 'shield',    abbr: '域', defaultAssigned: 'security', severity: 'warning'  },
-  crowd:        { label: '秩序問題',   group: 'security', icon: 'shield',    abbr: '眾', defaultAssigned: 'security', severity: 'warning'  },
+  explosive:    { label: '疑似爆裂物', group: 'security', icon: 'explosive', abbr: '爆', defaultAssigned: 'forward',  severity: 'critical', regime: 'civil' },
+  drone:        { label: '無人機威脅', group: 'security', icon: 'drone',     abbr: '機', defaultAssigned: 'security', severity: 'critical', regime: 'military' },
+  violent:      { label: '暴力事件',   group: 'security', icon: 'shield',    abbr: '暴', defaultAssigned: 'security', severity: 'critical', regime: 'civil' },
+  unknown_person:{ label: '不明人士',  group: 'security', icon: 'eye',       abbr: '人', defaultAssigned: 'security', severity: 'warning', regime: 'military'  },
+  perimeter:    { label: '管制區異常', group: 'security', icon: 'shield',    abbr: '域', defaultAssigned: 'security', severity: 'warning', regime: 'civil'  },
+  crowd:        { label: '秩序問題',   group: 'security', icon: 'shield',    abbr: '眾', defaultAssigned: 'security', severity: 'warning', regime: 'civil'  },
   // ── 搜救行動 ──────────────────────────────────────────────────
-  rescue:       { label: '受困救援',   group: 'rescue',   icon: 'run',       abbr: '救', defaultAssigned: 'forward',  severity: 'warning'  },
-  qrf:          { label: 'QRF 出動',   group: 'rescue',   icon: 'run',       abbr: 'QR', defaultAssigned: 'forward',  severity: 'warning'  },
+  rescue:       { label: '受困救援',   group: 'rescue',   icon: 'run',       abbr: '救', defaultAssigned: 'forward',  severity: 'warning', regime: 'civil'  },
+  qrf:          { label: 'QRF 出動',   group: 'rescue',   icon: 'run',       abbr: 'QR', defaultAssigned: 'forward',  severity: 'warning', regime: 'military'  },
   // ── 醫療緊急 ──────────────────────────────────────────────────
-  mci:          { label: '大量傷亡',   group: 'medical',  icon: 'event',     abbr: 'MCI', defaultAssigned: 'medical', severity: 'critical' },
-  emergency:    { label: '緊急病症',   group: 'medical',  icon: 'event',     abbr: '急', defaultAssigned: 'medical',  severity: 'critical' },
-  infectious:   { label: '傳染疑慮',   group: 'medical',  icon: 'event',     abbr: '疫', defaultAssigned: 'medical',  severity: 'warning'  },
+  mci:          { label: '大量傷亡',   group: 'medical',  icon: 'event',     abbr: 'MCI', defaultAssigned: 'medical', severity: 'critical', regime: 'civil' },
+  emergency:    { label: '緊急病症',   group: 'medical',  icon: 'event',     abbr: '急', defaultAssigned: 'medical',  severity: 'critical', regime: 'civil' },
+  infectious:   { label: '傳染疑慮',   group: 'medical',  icon: 'event',     abbr: '疫', defaultAssigned: 'medical',  severity: 'warning', regime: 'civil'  },
   // ── 收容照護 ──────────────────────────────────────────────────
-  capacity:     { label: '量能超載',   group: 'care',     icon: 'event',     abbr: '滿', defaultAssigned: null,       severity: 'warning'  },
-  isolation:    { label: '隔離事件',   group: 'care',     icon: 'shield',    abbr: '隔', defaultAssigned: 'shelter',  severity: 'warning'  },
-  person_need:  { label: '人員狀況',   group: 'care',     icon: 'person',    abbr: '護', defaultAssigned: 'shelter',  severity: 'info'     },
+  capacity:     { label: '量能超載',   group: 'care',     icon: 'event',     abbr: '滿', defaultAssigned: null,       severity: 'warning', regime: 'civil'  },
+  isolation:    { label: '隔離事件',   group: 'care',     icon: 'shield',    abbr: '隔', defaultAssigned: 'shelter',  severity: 'warning', regime: 'civil'  },
+  person_need:  { label: '人員狀況',   group: 'care',     icon: 'person',    abbr: '護', defaultAssigned: 'shelter',  severity: 'info', regime: 'civil'     },
   // ── 基礎設施 ──────────────────────────────────────────────────
-  comm_fail:    { label: '通訊異常',   group: 'infra',    icon: 'event',     abbr: '訊', defaultAssigned: 'command',  severity: 'warning'  },
-  facility:     { label: '設施異常',   group: 'infra',    icon: 'event',     abbr: '設', defaultAssigned: 'command',  severity: 'info'     },
-  equipment:    { label: '設備故障',   group: 'infra',    icon: 'event',     abbr: '器', defaultAssigned: 'command',  severity: 'info'     },
+  comm_fail:    { label: '通訊異常',   group: 'infra',    icon: 'event',     abbr: '訊', defaultAssigned: 'command',  severity: 'warning', regime: 'civil'  },
+  facility:     { label: '設施異常',   group: 'infra',    icon: 'event',     abbr: '設', defaultAssigned: 'command',  severity: 'info', regime: 'civil'     },
+  equipment:    { label: '設備故障',   group: 'infra',    icon: 'event',     abbr: '器', defaultAssigned: 'command',  severity: 'info', regime: 'civil'     },
   // ── 行動管理 ──────────────────────────────────────────────────
-  evacuation:   { label: '撤離',       group: 'ops',      icon: 'run',       abbr: '疏', defaultAssigned: 'command',  severity: 'warning'  },
-  resource:     { label: '資源調度',   group: 'ops',      icon: 'event',     abbr: '物', defaultAssigned: 'command',  severity: 'info'     },
-  situation:    { label: '現場變化',   group: 'ops',      icon: 'event',     abbr: '況', defaultAssigned: null,        severity: 'info'     },
-  hazard:       { label: '危害回報',   group: 'ops',      icon: 'event',     abbr: '危', defaultAssigned: null,        severity: 'info'     },
-  other:        { label: '其他',       group: 'ops',      icon: 'event',     abbr: '他', defaultAssigned: null,        severity: 'info'     },
+  evacuation:   { label: '撤離',       group: 'ops',      icon: 'run',       abbr: '疏', defaultAssigned: 'command',  severity: 'warning', regime: 'alert'  },
+  resource:     { label: '資源調度',   group: 'ops',      icon: 'event',     abbr: '物', defaultAssigned: 'command',  severity: 'info', regime: 'civil'     },
+  situation:    { label: '現場變化',   group: 'ops',      icon: 'event',     abbr: '況', defaultAssigned: null,        severity: 'info', regime: 'civil'     },
+  hazard:       { label: '危害回報',   group: 'ops',      icon: 'event',     abbr: '危', defaultAssigned: null,        severity: 'info', regime: 'civil'     },
+  other:        { label: '其他',       group: 'ops',      icon: 'event',     abbr: '他', defaultAssigned: null,        severity: 'info', regime: 'civil'     },
 };
 
 export const NAPSG_GROUPS = {

@@ -36,6 +36,16 @@ def test_source_optional_and_enum():
     validate_taxonomy(b)                       # napsg / ics 皆合法
 
 
+def test_regime_optional_and_enum():
+    b = _ok()
+    validate_taxonomy(b)                       # 無 regime（可選，向後相容；render 缺省 civil）
+    b["events"][0]["regime"] = "civil"
+    b["events"][1]["regime"] = "alert"
+    validate_taxonomy(b)                       # civil / alert / military 皆合法
+    b["events"][0]["regime"] = "military"
+    validate_taxonomy(b)
+
+
 @pytest.mark.parametrize("mutate, frag", [
     (lambda b: b.pop("events"), "groups[] 與 events[]"),
     (lambda b: b["events"][0].__setitem__("severity", "bogus"), "severity"),
@@ -48,6 +58,7 @@ def test_source_optional_and_enum():
     (lambda b: b["groups"][0].__setitem__("label", "  "), "缺 label"),
     (lambda b: b["events"][0].__setitem__("deleted", "yes"), "deleted 需為 bool"),
     (lambda b: b["events"][0].__setitem__("source", "bogus"), "source 非法"),
+    (lambda b: b["events"][0].__setitem__("regime", "bogus"), "regime 非法"),
 ])
 def test_schema_violations_raise(mutate, frag):
     body = _ok()

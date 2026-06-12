@@ -125,6 +125,7 @@
 | **resource** 資源調度 | **移出事件** → 後勤/任務層 | — | t | tasking 非現場 incident → 暫掛下行 tasking 層（P2-13），soft-delete 出事件 taxonomy |
 
 **統計**：16 civil ◆ + 3 military 2525（drone/unknown_person/qrf）+ 1 alert ▲（evacuation）+ 2 移出（perimeter/resource）。
+> **#241 實作現況**：perimeter/resource **移出目的地（polygon 異常態 / tasking 層）尚未建** → seed 暫填 `regime: civil` **佔位、未 soft-delete**（避免提前砍能力）；故現 seed 為 **18 civil**（含 2 佔位）。移出待目的地落地後再執行。
 **敵我可變**（§7-1 落定）= **drone / unknown_person**（EventPopup 加 affiliation segment）；其餘型別敵我由型別固定帶。
 
 **落地影響（實作清單，未做）**：① taxonomy schema 加 `regime` 欄 + #66 validator + seed 預設；② seed 依上表填

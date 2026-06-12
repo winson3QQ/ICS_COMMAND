@@ -125,9 +125,9 @@ severity / 處理組欄改 `<select>`（防自由文字打錯靜默竄改）。
 **唯讀 badge**（NAPSG/ICS）呈現「此型別是哪個標準定義的」，讓 user 看懂哪些可對接、哪些是自訂。
 **唯讀理由**：source 是事實屬性（型別是否有外部標準定義），非 user 可任意宣稱（不能把 QRF 改標成 NAPSG）；
 由 seed/taxonomy 定，存檔時靠 `_buildTaxonomyBody` 的 spread 保留原值，不經表單。
-**回填**：舊 runtime（source 欄加入前建立）缺此欄 → GET 時 `event_taxonomy_store._backfill_source`
+**回填**：舊 runtime（source 欄加入前建立）缺此欄 → GET 時 `event_taxonomy_store._backfill_seed_facts`
 依 key 從 seed 補（seed = source SoT），免每台重建 runtime；存檔後隨整包寫回持久化。前端 badge
-缺值一律歸 ICS（其餘皆 ICS）。
+缺值一律歸 ICS（其餘皆 ICS）。<br>（#241：此回填已通用化為 `source` + `regime` 兩個 seed-authoritative 事實欄。）
 - **napsg**（11，有外部標準對應：NAPSG / MIL-STD-2525 / FEMA IPAWS / USAR）：
   explosive · drone · violent · mci · emergency · infectious · hazard · evacuation · comm_fail · facility · rescue
 - **ics**（11，ICS/NIMS 運作自訂，無外部符號標準）：
