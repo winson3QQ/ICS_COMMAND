@@ -3296,5 +3296,25 @@
     "title": "feat(map): P2-33c — event↔marker N:1 即時聚合 + B2 概念降級（marker-first 脊椎）",
     "updatedAt": "2026-06-12T07:20:04Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/240"
+  },
+  {
+    "assignees": [],
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "body": "@\n## 背景\n\n2026-06-12 逐符號定案的 **regime 軸**（civil ◆ / alert ▲ / military 2525；視覺 regime 與 cot_type 解耦）需落地進 taxonomy。決定記於 `command-dashboard/docs/design/classification-crosswalk.md`〈§3 後 · 2026-06-12 regime 軸定案〉，但**尚未進 code**（taxonomy 無 `regime` 欄、render 不讀）。\n\n這是 **#240 刀 0（B2 降級）** 與 **P2-29（角色/分層視圖）** 的前置：降級後 sighting marker 要吃 regime + 觀察類型，先把「衣服」備好。\n\n## reality check（origin/main）\n- 兩份 taxonomy 來源要同步：後端 `event_taxonomy.seed.json`（runtime SoT）+ 前端 `events.js:38 NAPSG_EVENTS`（離線/登入前 fallback）。\n- 事件目前**全渲染 ◆**（`entity_layer.js:298` 唯一事件形狀）→ regime 驅動的 ▲/2525 是真的 render 變更。\n- validator `event_taxonomy_validate.py` 已有 `source`/`cot_type` optional 欄先例，regime 比照加。\n\n## Scope\n\n### 乙-1 — 資料地基（本 issue 主體，additive/安全）\n- `event_taxonomy.seed.json`：22 事件加 `regime`（依定案表）。perimeter/resource **暫不 soft-delete**（移出目的地 polygon/tasking 層尚未存在，先填 regime + 留 move-out 註記，避免提前砍能力）。\n- `events.js NAPSG_EVENTS` 前端 fallback：同步加 `regime`。\n- `event_taxonomy_validate.py`：`regime` optional，enum `{civil, alert, military}`，缺省 `civil`；非法值 400。\n- 測試：seed 載入帶 regime / validator 收 regime / 非法 regime 拒。\n- **無 render 變更** → 行為不變（仍全 ◆）。\n\n### 乙-2 — render 收斂（後續 PR）\n- `entity_layer` 依 `regime` 分流外框：civil→◆、alert→▲、military→2525（milsymbol）。\n- 與 #66 C2 glyph + milsymbol（P2-05）重疊，另刀。\n\n## 依賴\n- 解鎖 #240 刀 0（降級 marker 吃 regime）。\n- 觀察類型 vs 事件分類兩軸的正式拆分留 #240 N:1。\n\n## Out of scope\n- perimeter/resource 真正移出（待 polygon 異常態 / tasking 層）。\n- render 收斂（乙-2）。\n@",
+    "closedAt": null,
+    "comments": [],
+    "createdAt": "2026-06-12T07:28:44Z",
+    "labels": [],
+    "milestone": null,
+    "number": 241,
+    "state": "OPEN",
+    "title": "feat(taxonomy): regime 欄落地（symbology regime 軸；#240 刀0 + P2-29 前置）",
+    "updatedAt": "2026-06-12T07:28:44Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/241"
   }
 ]
