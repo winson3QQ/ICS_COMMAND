@@ -3613,5 +3613,26 @@
     "title": "feat(backup): P1-12b 整包 data/ 加密備份 + GUI 還原 + 三層觸發 + OP-2/OP-4",
     "updatedAt": "2026-06-12T00:55:59Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/235"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "## 摘要\n\n統一所有地圖 marker 的操作（架構上皆「**感測層**」實體，不因誰放的而異）：**點一下 → 詳情、長按 → 篩該單位通聯**。並補 TAK 單位的詳情視窗（對齊 iTAK marker tap，#193 主體）。純前端。\n\n> ⏳ **待 human verify 後 merge**（提交者在 Mac 實機驗）。\n\n## 改了什麼\n- **`maplibre_core.js`**：`onLongPress` 帶螢幕 `point` 供 caller 分流。\n- **`map.js` 長按分流閘**：`onLongPress` 用 `queryRenderedFeatures(point, marker層)` —— 命中 marker → 派 `map:unitSelected`（篩通聯）；空地 → `_openCreatePopup`（建立，**原行為 + RBAC gate 不變**）。**修 reality-check 確認的破口**：舊機制只排除 DOM `.maplibregl-marker`，長按 GPU 符號 marker（TAK）會誤彈建立對話框。\n- **`map.js` TAK click→詳情**：`_onTakUnitClick` 從 b3-1 的「篩通聯」改「開唯讀詳情」`_openTakUnitDetail`（敵我態 / type(2525) / callsign / 座標 MGRS+經緯 / 備註含 source，`_escapeHtml`）。唯讀（TAK 外部來源、ICS 不改）。\n- **contact**：click=詳情**不變**（本就一致）；**contact 長按=篩 deferred**（拖曳 handle 攔 press + contact 多無通聯 → 低價值，留痕）。\n\n## 互動對照（統一後）\n| 動作 | TAK 單位 | contact（你放的）| 空地 |\n|---|---|---|---|\n| 點一下 | 詳情（新）| 詳情（不變）| — |\n| 長按 | 篩通聯（新）| （拖曳 handle，deferred）| 建立對話框（不變）|\n\n## §8 Verification\n```bash\ncd command-dashboard && npx vitest run   # 311 passed（commander_modules onLongPress 斷言更新）\npython ../scripts/doc_sync_check.py      # exit 0\n```\n**Human verify（待實機）**：① 點 TAK marker → 跳詳情視窗（敵我態/type/callsign/座標/備註）。② 長按 TAK marker → 右欄通聯篩到該單位。③ 長按空地 → 建立對話框（不變）。④ 觀察員長按空地不彈（RBAC 不破）。⑤ 點 contact → 詳情（不變）。\n\n## Reviews\n待 human verify 後跑 `/code-review` + `/security-review` 再 merge。\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n",
+    "closedAt": null,
+    "comments": [],
+    "createdAt": "2026-06-12T02:40:34Z",
+    "headRefName": "feat/issue-193-marker-detail",
+    "labels": [],
+    "mergedAt": null,
+    "number": 238,
+    "state": "OPEN",
+    "title": "feat(map): #193 marker 詳情統一 — 點=詳情、長按=篩通聯（TAK 詳情 + 長按閘）",
+    "updatedAt": "2026-06-12T02:59:38Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/238"
   }
 ]
