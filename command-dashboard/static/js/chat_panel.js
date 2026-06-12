@@ -257,18 +257,37 @@ export function chatClearSender() {
   _renderStream();
 }
 
-/** 點訊息（b3-2，main.js data-action）→ 派 chat:locateSender 給 map.js 定位發訊單位。
- *  map.js 找得到座標 → flyTo+pulse；找不到 → 回派 map:senderNotLocated → fallback by-sender。 */
-export function chatLocateSender(ds) {
+// b3-2：訊息**長按**（press-and-hold 600ms，對齊 events.js `_evtCardDown/_evtCardUp`）。
+// 按住達門檻 → 派 chat:locateSender（map flyTo + 閃泡泡，持續）；放開 → chat:unlocateSender（收泡泡）。
+let _chatLpTimer = null;
+let _chatLpActive = false;
+
+/** 訊息列 pointerdown（main.js 全域 pointer 委派）→ 起長按計時。 */
+export function chatRowDown(ds) {
   if (!ds?.senderUid) return;
-  document.dispatchEvent(new CustomEvent('chat:locateSender', {
-    detail: {
-      uid: ds.senderUid,
-      callsign: ds.callsign || null,
-      lat: ds.lat !== '' ? Number(ds.lat) : null,
-      lon: ds.lon !== '' ? Number(ds.lon) : null,
-    },
-  }));
+  _chatLpActive = false;
+  if (_chatLpTimer) clearTimeout(_chatLpTimer);
+  _chatLpTimer = setTimeout(() => {
+    _chatLpTimer = null;
+    _chatLpActive = true;
+    document.dispatchEvent(new CustomEvent('chat:locateSender', {
+      detail: {
+        uid: ds.senderUid,
+        callsign: ds.callsign || null,
+        lat: ds.lat !== '' ? Number(ds.lat) : null,
+        lon: ds.lon !== '' ? Number(ds.lon) : null,
+      },
+    }));
+  }, 600);
+}
+
+/** 訊息列 pointerup/leave（main.js 全域）→ 取消未達門檻的計時；已 highlight → 收泡泡。 */
+export function chatRowUp() {
+  if (_chatLpTimer) { clearTimeout(_chatLpTimer); _chatLpTimer = null; }
+  if (_chatLpActive) {
+    document.dispatchEvent(new CustomEvent('chat:unlocateSender'));
+    _chatLpActive = false;
+  }
 }
 
 function _renderStream() {
@@ -291,9 +310,8 @@ function _renderStream() {
 function _row(c) {
   const row = document.createElement('div');
   row.className = 'chat-row';
-  // b3-2：點訊息 → 定位發訊單位（map.js 處理 flyTo+pulse，無座標回 fallback by-sender）。
-  // 帶解析後 sender uid + chat 自帶座標（marker 不在 COP 時的退路座標）。
-  row.dataset.action = 'chatLocateSender';
+  // b3-2：**長按**訊息 → 定位發訊單位（對齊事件卡長按；map.js 按住閃對話泡泡、放開收，
+  // 無座標回 fallback by-sender）。長按由 main.js 全域 pointer 監聽認 `.chat-row` + 下列 data。
   row.dataset.senderUid = parseSenderUid(c.sender_uid) || '';
   row.dataset.callsign = c.callsign || '';
   row.dataset.lat = c.lat == null ? '' : String(c.lat);
