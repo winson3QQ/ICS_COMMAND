@@ -664,6 +664,7 @@ function _isAging(e) {
 }
 
 let _takRenderSeq = 0;
+let _zoneRenderSeq = 0;  // 乙-2b（#243）：_renderZones 軍用 milsymbol async bake 的最新輪守衛
 function _renderTakUnits() {
   if (!_takLayer) return;
   _takLayer.setVisible(_layerVis.tak);          // P2-25：TAK 單位圖層總開關
@@ -1680,9 +1681,13 @@ function _ensureEntityLayers() {
       // （白天深 / 夜間白，由 _applyOverlayThemeContrast 翻）。外露的 size 差 = 框粗，目視對齊圓的 1.5 stroke。
       {
         id: 'zones-event-outline', type: 'symbol',
-        filter: ['==', ['coalesce', ['get', 'is_event'], false], true],
+        // 乙-2b（#243）：military 走 milsymbol 2525（自帶框）→ 排除於 ◆/▲ 外框層，免疊兩層框。
+        filter: ['all',
+          ['==', ['coalesce', ['get', 'is_event'], false], true],
+          ['!=', ['get', 'regime'], 'military'],
+        ],
         layout: {
-          // 乙-2a（#243）：regime='alert'→▲、其餘（civil/military）→◆（military 2525 留乙-2b）。
+          // 乙-2a（#243）：regime='alert'→▲、其餘 civil→◆（military 已被 filter 排除）。
           'icon-image': ['match', ['get', 'regime'], 'alert', 'zone-triangle', 'zone-diamond'],
           'icon-size': 1.32,   // > zones-event 1.1：外露一圈即外框（差越大框越粗）
           'icon-allow-overlap': true,
@@ -1704,8 +1709,12 @@ function _ensureEntityLayers() {
         id: 'zones-event', type: 'symbol',
         filter: ['==', ['coalesce', ['get', 'is_event'], false], true],
         layout: {
-          // 乙-2a（#243）：regime='alert'→▲、其餘（civil/military）→◆（military 2525 留乙-2b）。
-          'icon-image': ['match', ['get', 'regime'], 'alert', 'zone-triangle', 'zone-diamond'],
+          // 乙-2a/2b（#243）：alert→▲、military→milsymbol 2525 框（iconId）、其餘 civil→◆。
+          // icon-color（severity）只 tint SDF ◆/▲；對全彩 milsymbol icon 無效 → 軍用框保留 SIDC 敵我色。
+          'icon-image': ['match', ['get', 'regime'],
+            'military', ['coalesce', ['get', 'iconId'], 'zone-diamond'],
+            'alert', 'zone-triangle',
+            'zone-diamond'],
           'icon-size': 1.1,   // 事件(hazard)為焦點：比節點圓更醒目（外框由下層 zones-event-outline 提供）
           'icon-allow-overlap': true,
           'icon-ignore-placement': true,
@@ -2631,7 +2640,9 @@ function _renderZones(opts = {}) {
     ...(showNodes ? rendered.nodeZones : []),
     ...(showEvents ? rendered.eventZones : []),
   ];
+  const seq = ++_zoneRenderSeq;  // 乙-2b：每輪遞增；async milsymbol bake 回來憑此判最新輪（防拖曳 stale 蓋位）
   const features = [];
+  const milSidcs = new Set();    // 乙-2b：軍用事件依 SIDC dedupe bake
   for (const zone of zones) {
     if (zone.lat == null || zone.lng == null) continue;
     const isEvent = !!(zone.event_id || zone.event_code);
@@ -2691,10 +2702,29 @@ function _renderZones(opts = {}) {
     // 依 event_type 查 _EVENT_TYPES（runtime SoT），缺/孤兒 → civil（◆）。branch 依 regime
     // 非 kind='event' → survives #240 刀0（kind→sighting）。
     const regime = (isEvent && evType && _EVENT_TYPES[evType]?.regime) || 'civil';
-    const feat = zoneToNodeFeature(zone, { color, abbr, severity, stale, is_orphan: isOrphan, fg, fg_glyph, regime });
+
+    // 乙-2b（#243）：military → milsymbol 2525 框（**同 _zoneLayer，只換 icon-image**）。
+    // 由 cot_type 生 SIDC → iconId；zones-event 層 icon-image 對 military 吃 iconId。
+    // 物理關鍵：icon-color（severity）**只 tint SDF ◆/▲**，對全彩 milsymbol icon 無效 →
+    // severity halo/critical pulse/click/drag 全因「同源同層」自動保留。烤不出（非 atom）→ 退 ◆。
+    // branch 依 regime 非 kind → survives #240 刀0（kind→sighting）。
+    let iconId = null;
+    let renderRegime = regime;
+    if (regime === 'military') {
+      const sidc = cotToSidc(_EVENT_TYPES[evType]?.cot_type);
+      if (sidc) { iconId = 'mil-' + sidc; milSidcs.add(sidc); }
+      else { renderRegime = 'civil'; }  // 烤不出 SIDC → 退 ◆（避免 icon-image 找不到 → invisible）
+    }
+    const feat = zoneToNodeFeature(zone, { color, abbr, severity, stale, is_orphan: isOrphan, fg, fg_glyph, regime: renderRegime, iconId });
     if (feat) features.push(feat);
   }
   _zoneLayer.update(features);
+  // 乙-2b：async 烤軍用 SIDC（對齊 _renderTakUnits）；完成後若本輪仍最新 → re-update 顯框。
+  const _bakeMap = _getMap();
+  if (_bakeMap && milSidcs.size) {
+    Promise.all([...milSidcs].map((s) => bakeMilSymbol(_bakeMap, s)))
+      .then((rs) => { if (rs.some(Boolean) && _zoneLayer && seq === _zoneRenderSeq) _zoneLayer.update(features); });
+  }
   // P1-10d：只有 critical 事件會有 severity==='critical'（節點預設 'warning'）→ 用來 gate 脈動 RAF。
   _critPulseHas = features.some((f) => f.properties && f.properties.severity === 'critical');
   _updateCritPulse();

@@ -454,8 +454,11 @@ export function zoneToNodeFeature(zone, opts = {}) {
       is_event: !!(zone.event_id || zone.event_code),
       is_orphan: !!opts.is_orphan,
       // 乙-2a（#243）：視覺規制（civil/alert/military），驅動 zones-event 層外框形狀
-      // （alert→▲、其餘→◆；military 2525 留乙-2b）。缺省 civil（◆）。
+      // （alert→▲、其餘→◆）。缺省 civil（◆）。
       regime: opts.regime ?? 'civil',
+      // 乙-2b（#243）：regime='military' 時的 milsymbol 2525 框 icon id（'mil-<SIDC>'）。
+      // zones-event 層 icon-image 對 military 吃此值；非 military / 烤不出 → null（走 ◆/▲）。
+      iconId: opts.iconId ?? null,
       severity: opts.severity ?? 'info',
       stale: !!opts.stale,
       // P1-10d 正式 icon：前景圖示 id（有 NAPSG 象形用 glyph，否則 abbr）+ 是否為 glyph（控 icon-size）。

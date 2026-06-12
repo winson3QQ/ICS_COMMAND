@@ -400,6 +400,11 @@ describe('zoneToNodeFeature', () => {
     expect(zoneToNodeFeature({ lat: 0, lng: 0 }, {}).properties.regime).toBe('civil');
   });
 
+  test('乙-2b（#243）：opts.iconId 帶上 properties（military milsymbol 2525 框 id）', () => {
+    expect(zoneToNodeFeature({ lat: 0, lng: 0 }, { iconId: 'mil-SHAP-----------' }).properties.iconId).toBe('mil-SHAP-----------');
+    expect(zoneToNodeFeature({ lat: 0, lng: 0 }, {}).properties.iconId).toBeNull();  // 非 military → null（走 ◆/▲）
+  });
+
   test('label fallback：label → event_code → id → ""', () => {
     expect(zoneToNodeFeature({ lat: 0, lng: 0, label: 'L' }).properties.label).toBe('L');
     expect(zoneToNodeFeature({ lat: 0, lng: 0, event_code: 'EC' }).properties.label).toBe('EC');
