@@ -642,7 +642,10 @@ describe('C1-F commander modules', () => {
     expect(eventsSource).toMatch(/if \(!canCreateEvents\(\)\) return;/);
     // P2-34（#220）：長按 → 統一建立對話框 _openCreatePopup（取代 _openEventPopup）；
     // gate 放寬到「可建任何物件」聯集（canAccessMapObjects || canCreateEvents），類別依角色濾。
-    expect(mapSource).toMatch(/onLongPress: \(\{ lat, lng \}\) => \{\s+_openCreatePopup\(lat, lng\);/);
+    // #193：長按改帶 point 分流（命中 marker→篩通聯、空地→建立），故 onLongPress 簽名 +point，
+    // 建立仍走 _openCreatePopup(lat, lng)（空地分支）。
+    expect(mapSource).toMatch(/onLongPress: \(\{ lat, lng, point \}\) => \{/);
+    expect(mapSource).toMatch(/_openCreatePopup\(lat, lng\);/);
     expect(mapSource).toMatch(/function _openCreatePopup\(lat, lng\) {\s+if \(!canAccessMapObjects\(\) && !canCreateEvents\(\)\) return;/);
     // P1-10b 步驟 9：_evPopupSubmit 簽名 (typeKey, ctx) — ctx 由 CreatePopup onCreate 帶來 {lat,lng,reporter}
     expect(mapSource).toMatch(/async function _evPopupSubmit\(typeKey, ctx\) {\s+if \(!canCreateEvents\(\)\) return;/);

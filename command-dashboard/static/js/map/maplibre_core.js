@@ -204,9 +204,10 @@ export function initMaplibre(containerId, callbacks = {}) {
     lpMoved = false;
     if (lpTimer) { clearTimeout(lpTimer); lpTimer = null; }
     const latlng = { lat: e.lngLat.lat, lng: e.lngLat.lng };
+    const point = e.point;  // #193：螢幕點供 caller queryRenderedFeatures 分流（長按 marker vs 空地）
     lpTimer = setTimeout(() => {
       lpTimer = null;
-      if (!lpMoved && callbacks.onLongPress) callbacks.onLongPress(latlng);
+      if (!lpMoved && callbacks.onLongPress) callbacks.onLongPress({ lat: latlng.lat, lng: latlng.lng, point });
     }, LONG_PRESS_MS);
   });
   const cancelLp = () => {
@@ -228,13 +229,14 @@ export function initMaplibre(containerId, callbacks = {}) {
     if (ev.target.closest?.('.maplibregl-marker')) return;
     const t = ev.touches[0];
     const rect = _map.getCanvas().getBoundingClientRect();
-    const ll = _map.unproject([t.clientX - rect.left, t.clientY - rect.top]);
+    const px = [t.clientX - rect.left, t.clientY - rect.top];
+    const ll = _map.unproject(px);
     lpTouchOrigin = { x: t.clientX, y: t.clientY };
     lpMoved = false;
     if (lpTimer) { clearTimeout(lpTimer); lpTimer = null; }
     lpTimer = setTimeout(() => {
       lpTimer = null;
-      if (!lpMoved && callbacks.onLongPress) callbacks.onLongPress({ lat: ll.lat, lng: ll.lng });
+      if (!lpMoved && callbacks.onLongPress) callbacks.onLongPress({ lat: ll.lat, lng: ll.lng, point: px });
     }, LONG_PRESS_MS);
   }, { passive: true });
   _map.getCanvas().addEventListener('touchmove', (ev) => {
