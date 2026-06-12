@@ -48,6 +48,7 @@ import {
   bakeTextSdf,
   bakeArrowSdf,
   bakeDiamondSdf,
+  bakeTriangleSdf,
   bakeSvgIcon,
   bakeMilSymbol,
   pickForeground,
@@ -1482,6 +1483,7 @@ function _ensureEntityLayers() {
   _bakeZoneIcons(map);  // P1-16 視覺收尾：節點白色象形（shelter 屋 / medical 十字，非同步 bake 完自重繪）
   bakeArrowSdf(map, 'route-arrow');
   bakeDiamondSdf(map, 'zone-diamond');  // P1-10d：事件 ◆ hazard 形狀
+  bakeTriangleSdf(map, 'zone-triangle');  // 乙-2a（#243）：regime='alert' ▲ 公眾警報形狀
 
   // Routes — line（solid/dash 拆兩 layer）+ arrow symbol-on-line（step 7 階段 3a）
   _routeLayer = new EntityLayer(map, 'routes', {
@@ -1680,7 +1682,8 @@ function _ensureEntityLayers() {
         id: 'zones-event-outline', type: 'symbol',
         filter: ['==', ['coalesce', ['get', 'is_event'], false], true],
         layout: {
-          'icon-image': 'zone-diamond',
+          // 乙-2a（#243）：regime='alert'→▲、其餘（civil/military）→◆（military 2525 留乙-2b）。
+          'icon-image': ['match', ['get', 'regime'], 'alert', 'zone-triangle', 'zone-diamond'],
           'icon-size': 1.32,   // > zones-event 1.1：外露一圈即外框（差越大框越粗）
           'icon-allow-overlap': true,
           'icon-ignore-placement': true,
@@ -1701,7 +1704,8 @@ function _ensureEntityLayers() {
         id: 'zones-event', type: 'symbol',
         filter: ['==', ['coalesce', ['get', 'is_event'], false], true],
         layout: {
-          'icon-image': 'zone-diamond',
+          // 乙-2a（#243）：regime='alert'→▲、其餘（civil/military）→◆（military 2525 留乙-2b）。
+          'icon-image': ['match', ['get', 'regime'], 'alert', 'zone-triangle', 'zone-diamond'],
           'icon-size': 1.1,   // 事件(hazard)為焦點：比節點圓更醒目（外框由下層 zones-event-outline 提供）
           'icon-allow-overlap': true,
           'icon-ignore-placement': true,
@@ -2683,7 +2687,11 @@ function _renderZones(opts = {}) {
       && _map?.hasImage?.('napsg-glyph-' + evType));
     const { fg, fg_glyph } = pickForeground({ isEvent, evType, abbr, hasGlyph: _hasGlyph });
 
-    const feat = zoneToNodeFeature(zone, { color, abbr, severity, stale, is_orphan: isOrphan, fg, fg_glyph });
+    // 乙-2a（#243）：視覺規制（taxonomy regime 軸；#241）→ 驅動外框 ◆/▲（military 2525 留乙-2b）。
+    // 依 event_type 查 _EVENT_TYPES（runtime SoT），缺/孤兒 → civil（◆）。branch 依 regime
+    // 非 kind='event' → survives #240 刀0（kind→sighting）。
+    const regime = (isEvent && evType && _EVENT_TYPES[evType]?.regime) || 'civil';
+    const feat = zoneToNodeFeature(zone, { color, abbr, severity, stale, is_orphan: isOrphan, fg, fg_glyph, regime });
     if (feat) features.push(feat);
   }
   _zoneLayer.update(features);

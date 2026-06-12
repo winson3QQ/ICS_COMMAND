@@ -321,6 +321,38 @@ export function bakeDiamondSdf(map, id, opts = {}) {
 }
 
 /**
+ * Triangle (▲) SDF — 乙-2a（#243）：regime='alert' 公眾警報的 NAPSG ▲ 形狀。
+ * 與 diamond 同為實心 alpha mask（icon-color 填 severity 色、外框走下層墊大三角）。
+ * **形心置中**：頂點朝上的三角形心在 1/3 高處，故依 centroid=(m,m) 反推頂點，確保 icon
+ * 錨在格心時 ▲ 視覺壓在點上（非偏移）。zones-event(-outline) 層 icon-image 依 regime 切換。
+ */
+export function bakeTriangleSdf(map, id, opts = {}) {
+  if (map.hasImage?.(id)) return;
+  const size = opts.size ?? 44;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, size, size);
+  ctx.fillStyle = '#ffffff';
+  const m = size / 2;
+  const pad = 2;
+  // **等邊三角形**（base = 2w、height = √3·w，比例 0.866，非先前 squat 的 0.67）+ **形心置中**：
+  // 依 centroid=(m,m) 反推 apexY/baseY，等邊取最大內接（留 pad），確保壓在點上且比例正確。
+  const w = 0.866 * (m - pad);     // 底邊半寬
+  const h = 1.732 * w;             // 高 = √3·半寬
+  const apexY = m - (2 * h) / 3;   // 頂點（形心上方 2/3 高）
+  const baseY = m + h / 3;         // 底邊（形心下方 1/3 高）
+  ctx.beginPath();
+  ctx.moveTo(m, apexY);           // 上頂點
+  ctx.lineTo(m + w, baseY);       // 右下
+  ctx.lineTo(m - w, baseY);       // 左下
+  ctx.closePath();
+  ctx.fill();
+  map.addImage(id, ctx.getImageData(0, 0, size, size), { sdf: true, pixelRatio: 2 });
+}
+
+/**
  * SVG → 白色 RGBA icon（**非 SDF**）— P1-10d 事件 NAPSG 象形 glyph。
  *
  * 為何非 SDF：象形固定白色（貼在 severity 色 ◆ 上），不需 icon-color tint；且 SDF shader
@@ -421,6 +453,9 @@ export function zoneToNodeFeature(zone, opts = {}) {
       abbr: opts.abbr ?? '?',
       is_event: !!(zone.event_id || zone.event_code),
       is_orphan: !!opts.is_orphan,
+      // 乙-2a（#243）：視覺規制（civil/alert/military），驅動 zones-event 層外框形狀
+      // （alert→▲、其餘→◆；military 2525 留乙-2b）。缺省 civil（◆）。
+      regime: opts.regime ?? 'civil',
       severity: opts.severity ?? 'info',
       stale: !!opts.stale,
       // P1-10d 正式 icon：前景圖示 id（有 NAPSG 象形用 glyph，否則 abbr）+ 是否為 glyph（控 icon-size）。
