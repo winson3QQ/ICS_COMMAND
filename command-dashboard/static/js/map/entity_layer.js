@@ -336,14 +336,17 @@ export function bakeTriangleSdf(map, id, opts = {}) {
   ctx.clearRect(0, 0, size, size);
   ctx.fillStyle = '#ffffff';
   const m = size / 2;
-  const pad = 4;
-  const apexY = pad + 2;            // 頂點（上）
-  const baseY = (3 * m - apexY) / 2; // 底邊 y → 形心 (apexY + 2·baseY)/3 = m
-  const bw = m - pad;              // 底邊半寬
+  const pad = 2;
+  // **等邊三角形**（base = 2w、height = √3·w，比例 0.866，非先前 squat 的 0.67）+ **形心置中**：
+  // 依 centroid=(m,m) 反推 apexY/baseY，等邊取最大內接（留 pad），確保壓在點上且比例正確。
+  const w = 0.866 * (m - pad);     // 底邊半寬
+  const h = 1.732 * w;             // 高 = √3·半寬
+  const apexY = m - (2 * h) / 3;   // 頂點（形心上方 2/3 高）
+  const baseY = m + h / 3;         // 底邊（形心下方 1/3 高）
   ctx.beginPath();
   ctx.moveTo(m, apexY);           // 上頂點
-  ctx.lineTo(m + bw, baseY);      // 右下
-  ctx.lineTo(m - bw, baseY);      // 左下
+  ctx.lineTo(m + w, baseY);       // 右下
+  ctx.lineTo(m - w, baseY);       // 左下
   ctx.closePath();
   ctx.fill();
   map.addImage(id, ctx.getImageData(0, 0, size, size), { sdf: true, pixelRatio: 2 });
