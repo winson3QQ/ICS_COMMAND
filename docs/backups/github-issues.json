@@ -3316,5 +3316,25 @@
     "title": "feat(taxonomy): regime 欄落地（symbology regime 軸；#240 刀0 + P2-29 前置）",
     "updatedAt": "2026-06-12T07:57:10Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/241"
+  },
+  {
+    "assignees": [],
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "body": "@\n## 背景\n#241 已把 `regime`（civil/alert/military）落地 taxonomy（資料層）。本 issue = render 收斂：事件地圖外框依 regime 分流 **civil ◆ / alert ▲ / military 2525**，取代今天全 ◆。\n\n## reality check（origin/main）\n- **regime 資料已可取**：`_renderZones`（map.js:2513）已解出 `evType = ev.event_type` → `_EVENT_TYPES[evType].regime` 現成可讀，**無需 schema/threading**。\n- 事件 ◆：`_renderZones` → `zoneToNodeFeature` → MapLibre `zones-event` 層 → `zone-diamond` SDF（`bakeDiamondSdf` @ entity_layer.js:302）、`icon-color=severity`。\n- TAK 2525 走**另一條**管線：`_renderTakUnits` → `cotToSidc` → `bakeMilSymbol`（async）→ `tak-units-icon` 層。\n- **無 ▲ 三角 SDF**。\n- **altitude**：branch 放 `_renderZones` 依 `zone.regime`（非 `kind===event`）→ survives #240 刀0（kind→sighting）。\n\n## Scope（兩刀）\n\n### 乙-2a — ▲ alert + regime 分流地基（小，先做）\n- 加 `bakeTriangleSdf`（鏡像 `bakeDiamondSdf`）+ bake 點。\n- `zones-event` 層 `icon-image` 改 data-driven：`regime===alert→zone-triangle`、否則 `zone-diamond`（military 暫 fallback ◆，留 b）。\n- `_renderZones` 解 `regime` 帶上 feature property。\n- evacuation → ▲（唯一 alert）。civil 18 不變。\n- 測試：triangle SDF bake + regime property + icon-image 分流。\n\n### 乙-2b — military → 2525（中，後做）\n- `_renderZones` 對 `regime===military` 走 `cotToSidc(_EVENT_TYPES[evType].cot_type)` → `bakeMilSymbol`（async + seq guard）→ 新 `zones-military` 層。\n- drone / unknown_person / qrf → 2525 框。\n- 與 `_renderTakUnits` milsymbol bake 共用基建。\n\n## Out of scope\n- #240 刀0 B2 降級（kind→sighting）— 獨立，本 issue render 依 regime 即 forward-compatible。\n- perimeter/resource 移出（待目的地）。\n\n## Human verify\nevacuation 出 ▲、drone/不明/QRF 出 2525 框（乙-2b 後），其餘仍 ◆。\n@",
+    "closedAt": null,
+    "comments": [],
+    "createdAt": "2026-06-12T08:55:34Z",
+    "labels": [],
+    "milestone": null,
+    "number": 243,
+    "state": "OPEN",
+    "title": "feat(map): 乙-2 render 收斂 — 事件依 regime 渲染 ◆/▲/2525（#241 後續）",
+    "updatedAt": "2026-06-12T08:55:34Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/243"
   }
 ]
