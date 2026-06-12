@@ -67,6 +67,7 @@ import {
   utmToLatLng as _utmToLatLng,
   parseWgs84 as _parseWgs84,
   MgrsGrid,
+  pickLocateCoords,
 } from './map/coord_tools.js';
 // P1-17（issue #88）永久設施公開資料底圖層 — 獨立 facilities 層，**不碰既有層**。
 import {
@@ -1786,6 +1787,7 @@ function _ensureEntityLayers() {
   // 與左拖移動由 _syncContactDragHandles 的 handle 接（handle 蓋住 GPU 符號，layer 事件接不到）。
   map.on('click', 'contact-circle', (e) => _onContactClick(e));
   map.on('click', 'contact-2525-icon', (e) => _onContactClick(e));
+  map.on('click', 'tak-units-icon', (e) => _onTakUnitClick(e));  // #213 b3-1：點 TAK 單位 → 過濾通聯
   map.on('click', 'routes-line-solid', (e) => _onRouteClick(e));
   map.on('click', 'routes-line-dash', (e) => _onRouteClick(e));
   map.on('click', 'routes-line-dotted', (e) => _onRouteClick(e));
@@ -1908,6 +1910,10 @@ function _ensureEntityLayers() {
   document.addEventListener('map:unhighlightEvent', () => {
     _unhighlightEvent();
   });
+  // #213 b3-2：長按通聯訊息 → 跳地圖到發訊單位 + 閃對話泡泡（按住持續，對齊事件卡長按）。
+  // 無座標 → 回派 fallback by-sender。release → 收泡泡。
+  document.addEventListener('chat:locateSender', (e) => _locateSender(e.detail));
+  document.addEventListener('chat:unlocateSender', () => _hideSenderBubble());
 
   _updateCritPulse();
   _entityLayersInstalled = true;
@@ -1993,6 +1999,49 @@ function _startHighlightPulse(map, zoneId) {
     _highlightPulseRaf = requestAnimationFrame(loop);
   };
   _highlightPulseRaf = requestAnimationFrame(loop);
+}
+
+// ── #213 b3-2：點通聯訊息 → 定位發訊單位（flyTo + 點位 pulse），無座標 → fallback ─────
+
+let _senderBubble = null;
+
+function _locateSender(detail) {
+  if (!detail?.uid) return;
+  const map = _getMap();
+  const ent = _copStream?.getEntity(detail.uid);
+  const coords = map ? pickLocateCoords(ent, detail) : null;
+  if (coords) {
+    map.flyTo({ center: coords, zoom: Math.max(map.getZoom?.() || 0, 14), duration: 600, essential: true });
+    _showSenderBubble(map, coords[0], coords[1]);
+  } else {
+    // 找不到座標（單位不在 COP + chat 無 point）**或地圖未就緒** → 回派 chat_panel 做
+    // by-sender 過濾（fallback 不依賴地圖，map 為 null 也要派，否則長按訊息靜默無反應）。
+    document.dispatchEvent(new CustomEvent('map:senderNotLocated', {
+      detail: { uid: detail.uid, callsign: detail.callsign },
+    }));
+  }
+}
+
+/** 長按通聯 → 在發訊單位上閃對話泡泡（💬，持續到放開，對齊事件卡長按 highlight 行為；
+ *  視覺用泡泡圖區隔事件的綠圈）。HTML maplibregl.Marker + CSS flash 動畫。 */
+function _showSenderBubble(map, lng, lat) {
+  _hideSenderBubble();
+  if (!window.maplibregl) return;
+  // 外層 el 由 maplibregl.Marker 以 transform:translate 定位 → 動畫(scale)必須做在**內層**
+  // span，否則 keyframe 的 transform 會蓋掉定位 translate，泡泡掉回左上角 (0,0)。
+  const el = document.createElement('div');
+  el.className = 'sender-locate-bubble';
+  const inner = document.createElement('span');
+  inner.textContent = '💬';
+  el.appendChild(inner);
+  // anchor bottom-left + 右上 offset → 泡泡掛在發訊單位 marker 的右上角（像通知小圖示）。
+  _senderBubble = new window.maplibregl.Marker({ element: el, anchor: 'bottom-left', offset: [8, -8] })
+    .setLngLat([lng, lat]).addTo(map);
+}
+
+/** 放開長按（chat:unlocateSender）→ 收泡泡。 */
+function _hideSenderBubble() {
+  if (_senderBubble) { _senderBubble.remove(); _senderBubble = null; }
 }
 
 /**
@@ -2166,6 +2215,16 @@ function _onInfraClick(e) {
 function _onContactClick(e) {
   if (!canAccessMapObjects()) return;
   _openContactDetail(e.features?.[0]?.properties?.id);
+}
+
+// #213 b3-1：點 TAK 單位 → 派 DOM 事件給 chat_panel 過濾通聯（by-sender）。讀動作不設
+// canAccessMapObjects 守門（通聯顯示是 READ_ROLES）；解耦不直接呼叫 chat 模組。
+function _onTakUnitClick(e) {
+  const props = e.features?.[0]?.properties;
+  if (!props?.id) return;
+  document.dispatchEvent(new CustomEvent('map:unitSelected', {
+    detail: { uid: props.id, callsign: props.label || props.id },
+  }));
 }
 // 開 detail modal（給左鍵 click 與右鍵 menu「編輯註記」共用）。
 export function _openContactDetail(id) {

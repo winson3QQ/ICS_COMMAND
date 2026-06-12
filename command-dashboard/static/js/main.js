@@ -34,7 +34,7 @@ import {
   confirmResetDB,
 } from './cop.js';
 import {
-  initChatPanel, switchRightTab, chatFilterRoom,
+  initChatPanel, switchRightTab, chatFilterRoom, chatClearSender, chatRowDown, chatRowUp,
 } from './chat_panel.js';
 import {
   getSeries, expandSpark, getExpandedSpark, renderSparklines,
@@ -397,6 +397,7 @@ document.addEventListener('click', function (e) {
     // 切回事件即重算列表高（顯示後才量得到 clientHeight；補隱藏期間 window resize 的殘留）。
     case 'switchRightTab':  switchRightTab(btn.dataset.rtab); if (btn.dataset.rtab !== 'chat') _resizeEvtList(); break;
     case 'chatFilterRoom':  chatFilterRoom(btn.dataset.room); break;
+    case 'chatClearSender': chatClearSender(); break;  // #213 b3-1：清除 by-sender 過濾
 
     // ── 演習管理（P1-14 PR-2，取代死掉的實戰/演練切換）──
     case 'openExercisePanel': {
@@ -463,18 +464,20 @@ document.addEventListener('click', function (e) {
   }
 }, { capture: false });
 
-// ── 長按事件卡片（mousedown / touchstart）──
-document.addEventListener('mousedown', function (e) {
+// ── 長按事件卡片 + 通聯訊息（mousedown / touchstart）──
+// #213 b3-2：通聯訊息列（.chat-row）長按 = 定位發訊單位，與事件卡長按同一套 pointer 機制。
+function _longpressDown(e) {
   const card = e.target.closest('[data-longpress-id]');
-  if (card) _evtCardDown(card.dataset.longpressId);
-});
-document.addEventListener('mouseup', _evtCardUp);
-document.addEventListener('mouseleave', _evtCardUp);
-document.addEventListener('touchstart', function (e) {
-  const card = e.target.closest('[data-longpress-id]');
-  if (card) _evtCardDown(card.dataset.longpressId);
-}, { passive: true });
-document.addEventListener('touchend', _evtCardUp);
+  if (card) { _evtCardDown(card.dataset.longpressId); return; }
+  const row = e.target.closest('.chat-row');
+  if (row?.dataset.senderUid) chatRowDown(row.dataset);
+}
+function _longpressUp() { _evtCardUp(); chatRowUp(); }
+document.addEventListener('mousedown', _longpressDown);
+document.addEventListener('mouseup', _longpressUp);
+document.addEventListener('mouseleave', _longpressUp);
+document.addEventListener('touchstart', _longpressDown, { passive: true });
+document.addEventListener('touchend', _longpressUp);
 
 // ── change 事件（select）──
 document.addEventListener('change', function (e) {

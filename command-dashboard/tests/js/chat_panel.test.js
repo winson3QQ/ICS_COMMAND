@@ -14,7 +14,7 @@ vi.mock('../../static/js/auth.js', () => ({
 
 import {
   decodeChatMessage, roomLabel, distinctRooms, filterChatsByRoom, countUnread, maxChatId,
-  mergeLiveChat,
+  mergeLiveChat, parseSenderUid, filterChatsBySender,
 } from '../../static/js/chat_panel.js';
 
 describe('decodeChatMessage — 還原 html.escape 的固定 5 實體（純文字、無 innerHTML）', () => {
@@ -109,5 +109,37 @@ describe('mergeLiveChat — b2 即時通聯併入（去重 + 升序附末端）'
     const cur = [{ id: 1, t: '2026-06-05T04:00:00Z' }, { id: 2, t: '2026-06-05T04:02:00Z' }];
     const out = mergeLiveChat(cur, { id: 3, t: '2026-06-05T04:01:00Z' }); // t 介於 1 與 2
     expect(out.map(c => c.id)).toEqual([1, 3, 2]);
+  });
+});
+
+describe('parseSenderUid — GeoChat.<uid>.<room>.<id> → marker uid（b3-1）', () => {
+  test('GeoChat 格式取中段 senderUid', () => {
+    expect(parseSenderUid('GeoChat.AC4B3A0B-E4DE.All Chat Rooms.abc123')).toBe('AC4B3A0B-E4DE');
+  });
+  test('非 GeoChat 格式原樣回傳', () => {
+    expect(parseSenderUid('ANDROID-359975090666199')).toBe('ANDROID-359975090666199');
+  });
+  test('非字串原樣（防禦）', () => {
+    expect(parseSenderUid(null)).toBe(null);
+    expect(parseSenderUid(undefined)).toBe(undefined);
+  });
+});
+
+describe('filterChatsBySender — by-sender 過濾（uid 精準比對，b3-1）', () => {
+  const chats = [
+    { id: 1, sender_uid: 'GeoChat.UNIT-A.All Chat Rooms.x1', callsign: 'ALPHA' },
+    { id: 2, sender_uid: 'GeoChat.UNIT-B.Alpha.x2', callsign: 'BRAVO' },
+    { id: 3, sender_uid: 'UNIT-A', callsign: 'ALPHA' },  // 非 GeoChat 格式但同 uid
+  ];
+  test('依解析 uid 比對（含非 GeoChat 格式的同 uid）', () => {
+    expect(filterChatsBySender(chats, { uid: 'UNIT-A' }).map(c => c.id)).toEqual([1, 3]);
+  });
+  test('callsign 不參與比對（uid 不符即不命中，避免同 callsign 跨單位誤混）', () => {
+    // id 1、3 callsign=ALPHA，但 uid 不是 NOPE → 不該命中
+    expect(filterChatsBySender(chats, { uid: 'NOPE', callsign: 'ALPHA' })).toHaveLength(0);
+  });
+  test('無 sender → 不過濾', () => {
+    expect(filterChatsBySender(chats, null)).toHaveLength(3);
+    expect(filterChatsBySender(chats, {})).toHaveLength(3);
   });
 });

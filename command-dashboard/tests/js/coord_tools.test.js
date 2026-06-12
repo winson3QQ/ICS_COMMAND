@@ -24,6 +24,7 @@ import {
   utmZoneFromLng,
   latBandFromLat,
   computeGzdFeatures,
+  pickLocateCoords,
 } from '../../static/js/map/coord_tools.js';
 
 describe('latlngToUtm / utmToLatLng round-trip', () => {
@@ -537,5 +538,28 @@ describe('#56 MGRS 多 zone + GZD', () => {
       .filter((f) => f.geometry.type === 'LineString')
       .flatMap((f) => f.geometry.coordinates.map((c) => c[0]));
     expect(Math.max(...lngs) - Math.min(...lngs)).toBeGreaterThan(5); // 跨 >5° 證明非只畫中心 zone
+  });
+});
+
+describe('pickLocateCoords — #213 b3-2 定位座標選取', () => {
+  it('entity 現位優先（回 [lng,lat]）', () => {
+    expect(pickLocateCoords({ lat: 24.8, lon: 121.0 }, { lat: 25, lon: 121.5 })).toEqual([121.0, 24.8]);
+  });
+  it('entity 無座標 → 退 fallback（chat 自帶）', () => {
+    expect(pickLocateCoords(null, { lat: 25, lon: 121.5 })).toEqual([121.5, 25]);
+    expect(pickLocateCoords({ lat: null, lon: null }, { lat: 25, lon: 121.5 })).toEqual([121.5, 25]);
+  });
+  it('0,0 哨兵（無 point）→ null', () => {
+    expect(pickLocateCoords({ lat: 0, lon: 0 }, null)).toBeNull();
+  });
+  it('赤道 lat=0 但 lon≠0 → 有效（非 0,0）', () => {
+    expect(pickLocateCoords({ lat: 0, lon: 121 }, null)).toEqual([121, 0]);
+  });
+  it('非有限（NaN/字串垃圾）→ 跳過', () => {
+    expect(pickLocateCoords({ lat: 'x', lon: 'y' }, null)).toBeNull();
+    expect(pickLocateCoords({ lat: '24.8', lon: '121' }, null)).toEqual([121, 24.8]); // 數字字串可接受
+  });
+  it('兩者皆無 → null', () => {
+    expect(pickLocateCoords(null, null)).toBeNull();
   });
 });

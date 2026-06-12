@@ -308,6 +308,18 @@ export function computeGzdFeatures(west, east, south, north) {
   return feats;
 }
 
+/** #213 b3-2：取定位座標 —— entity 現位（cop_entity）優先，否則 fallback（chat 自帶 point）；
+ *  0,0（無 point 哨兵）/ 非有限 → 視為無座標。回 `[lng, lat]` 或 null。 */
+export function pickLocateCoords(entity, fallback) {
+  for (const c of [entity, fallback]) {
+    if (!c) continue;
+    const lat = Number(c.lat);
+    const lon = Number(c.lon);
+    if (Number.isFinite(lat) && Number.isFinite(lon) && !(lat === 0 && lon === 0)) return [lon, lat];
+  }
+  return null;
+}
+
 // ── MgrsGrid 渲染 class ──────────────────────────────────────
 
 const EMPTY_FC = Object.freeze({ type: 'FeatureCollection', features: [] });

@@ -403,7 +403,14 @@ body{position:fixed;inset:0;}
 .chat-chip{cursor:pointer;font-size:9px;color:var(--text3);padding:1px 7px;border-radius:10px;border:1px solid var(--border);transition:all .15s;}
 .chat-chip.active{color:var(--text);background:rgba(255,255,255,.12);border-color:var(--text3);}
 .chat-empty{color:var(--text3);font-size:11px;padding:6px 2px;}
-.chat-row{padding:4px 4px 5px;border-bottom:1px solid rgba(255,255,255,.04);}
+.chat-row{padding:4px 4px 5px;border-bottom:1px solid rgba(255,255,255,.04);cursor:pointer;}/* b3-2：長按訊息定位發訊單位 */
+.chat-row:hover{background:rgba(255,255,255,.05);}
+/* b3-2：長按通聯 → 地圖發訊單位上閃對話泡泡（按住持續，放開收）。
+   ⚠️ 動畫做在內層 span：外層由 maplibregl.Marker 用 transform:translate 定位，
+   若在外層做 transform 動畫會蓋掉定位 → 泡泡掉左上角。 */
+.sender-locate-bubble{font-size:24px;line-height:1;pointer-events:none;}
+.sender-locate-bubble span{display:block;filter:drop-shadow(0 1px 2px rgba(0,0,0,.65));animation:senderBubbleFlash .7s ease-in-out infinite;}
+@keyframes senderBubbleFlash{0%,100%{opacity:.4;transform:scale(.85);}50%{opacity:1;transform:scale(1.12);}}
 .chat-row-head{display:flex;align-items:baseline;gap:5px;margin-bottom:1px;}
 .chat-room-tag{color:var(--cyan,#4fd1c5);font-size:8px;font-weight:700;flex-shrink:0;}
 .chat-who{color:var(--text2);font-size:9px;font-weight:600;flex-shrink:0;}
