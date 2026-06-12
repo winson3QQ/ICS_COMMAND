@@ -179,6 +179,11 @@ master key（32 bytes，僅 process memory；落盤＝/etc/ics/master-key.enc，
 > ② **L3↔L4 = 感知層/事故層分水嶺，也是 TAK 能力天花板**——L3 以下（含軌跡、變更稽核）TAK 都會，L4 起（severity/狀態/結案/跨源聚合）TAK 結構上沒有，是「Incident **Command**」的字面本體；
 > ③ **L4「不外流」= 安全邊界**，出向只有 L3 感知標記（雙向）與 L4 衍生的下行 tasking（P2-13）兩個閘。
 
+> **⚠ 易踩紅線：TAK Mission / DataSync（「任務包」）是 L3，不是 L4。**
+> Mission/DataSync = **L3 感知層的「持久 + 權威 + 可靠刪除」版本**（vs :8089 串流的即時短暫；`tak-use-cases-config.md` 定「即時 SA 用串流、耐久共享用 mission」）。ICS 接它的路徑 = P2-14 `datasync_service` 把 mission geometry 灌進 **`cop_entities`（L3 表），非 `events`（L4 表）**。
+> 兩個誤認陷阱：① 用例文件說的「事件圖走 Mission」指**一組可分享的態勢疊層**（火線/管制區/IAP），**非** ICS 的 event 工作流物件（報→事→決→行→結案）；② Mission 也「聚合」一堆 marker，表面像 L4 的 N:1，但 **Mission 聚合為了耐久共享（仍外流、雙向）→ L3**，**L4 event 聚合為了問責（不外流）**——語意相反。**把 event 推上 Mission = 直接踩破「L4 不外流」**。
+> 正解：TAK 給到 L3 持久化（Mission）就到頂；ICS 在其上才疊「有狀態、會結案、不外傳」的 L4 事件。（另：.zip **Data Package** 是 L0/L1 節點整備物——底圖/憑證/連線設定——離 L4 更遠。）
+
 ## 兩層 + 「來源無感」原則
 
 | | **感知層（COP 標記）** | **事故層（事件 / 決策 / 行動）** |
