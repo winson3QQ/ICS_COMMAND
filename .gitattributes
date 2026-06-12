@@ -10,3 +10,7 @@
 # PMTiles / 圖磚為二進位（且 gitignored），明確標記避免 EOL 處理
 *.pmtiles binary
 *.mbtiles binary
+
+# P1-12a (#227)：BIP-39 wordlist 完整性由 sha256 釘住（keymgmt/mnemonic.py），
+# EOL 轉換會改變 hash → 鎖 LF 不准動
+scripts/keymgmt/wordlist_english.txt text eol=lf
