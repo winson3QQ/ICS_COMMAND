@@ -4,6 +4,23 @@
 
 ---
 
+## 2026-06-12 動工修訂（reality check，issue #226）
+
+動工前盤 code，以下修正以本段為準（原文保留不改，歷史事實）：
+
+| 原文 | 修正 |
+|---|---|
+| 12b「backup_service.py 擴張」從零建的口吻 | **既有資產比規格多**：`backup_service.py` 已有 Fernet encrypt/decrypt 全套 + online backup + retention（#41 繼承）；`scripts/backup_db.py` CLI 預設加密 + systemd timer；`routers/backups.py` 五端點 + `admin_backups.html` 面板 + `restore_db.py` 已在。12b 是**擴建**不是新建 |
+| —（規格未記載） | **發現 drift bug**：`POST /api/admin/backups` 手動觸發產**明文** .db.gz（API 沒接 `encrypt_file`，CLI 路徑才有加密）→ 12b 必修（#228） |
+| 「Bundling 決策：P1-12b+14 合併」 | **作廢** — P1-14 已先完成（#91/#96/#97）。L2 archive 觸發點、manifest exercise metadata 地基現成，12b 直接掛 |
+| 12c 指名 `pysqlcipher3` | 最後 release 2019、維護幾近停擺 → **傾向改用 `sqlcipher3`**（coleifer，美國，活躍）；動工時 security-review 定案（#229）。**Windows 無 wheel（已實測）** → 本機跑明文模式 + mock，加密整合測試走 CI（ubuntu） |
+| DoD「真 token integration（本機驗收真 token）」「失去所有 token 演練」「Pi 500 benchmark」 | **硬體 carve-out → issue #230**，不阻塞 12a/12b/12c 的 code + mock 測試 merge |
+| key 階層三 child | **加 `child[3] = disk-v1`**（threat_model §8.4 拍板，LUKS #231 消費） |
+
+**Issue 對照**：umbrella [#226](https://github.com/winson3QQ/ICS_COMMAND/issues/226)・12a [#227](https://github.com/winson3QQ/ICS_COMMAND/issues/227)・12b [#228](https://github.com/winson3QQ/ICS_COMMAND/issues/228)・12c [#229](https://github.com/winson3QQ/ICS_COMMAND/issues/229)・硬體尾巴 [#230](https://github.com/winson3QQ/ICS_COMMAND/issues/230)・LUKS [#231](https://github.com/winson3QQ/ICS_COMMAND/issues/231)・憑證撤銷 [#232](https://github.com/winson3QQ/ICS_COMMAND/issues/232)
+
+---
+
 源於 P1-09 dogfood：當前 backup 機制（cron-style + env file 存 raw key）有 gap；加上 live DB at-rest 完全沒加密。**單獨修任一塊都會引入兩套 key management，所以統一設計**。
 
 ## 架構：分層 key derivation
@@ -17,8 +34,11 @@ master key (32 bytes，僅 process memory)
      ▼
      ├── child[0] = "backup-v1"   → Fernet key（backup_db.py 用）
      ├── child[1] = "db-v1"       → SQLCipher key（live DB 加密）
-     └── child[2..] = 未來用（audit log signing、session token 簽章）
+     ├── child[2] = "audit-v1"    → 預留（audit log signing、session token 簽章）
+     └── child[3] = "disk-v1"     → LUKS unlock key（threat_model §8.4 決議，issue #231 消費）
 ```
+
+> **[2026-06-12 §8.4 回饋]** `disk-v1` child 為同機部署統一金鑰託管的必要預留：LUKS 整碟（主控，#231）與 app/backup 共用同一次 FIDO2 unlock，勿碎裂託管。
 
 - **單一 unlock 流程**：服務啟動時 prompt FIDO2 一次，所有 key 推導出來
 - **單一 enroll 流程**：operator 一次註冊 2+ token，所有用途共享
