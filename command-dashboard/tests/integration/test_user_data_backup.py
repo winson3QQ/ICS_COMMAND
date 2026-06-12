@@ -131,6 +131,33 @@ def test_manifest_carries_exercise_metadata(key, tmp_path):
     assert manifest["trigger"] == "archive"
 
 
+def test_manifest_preserves_crafted_exercise_name(key, tmp_path):
+    """manifest 的 exercise.name 原樣保存（後端不改），前端負責跳脫 — 確認資料不被吞。"""
+    data = tmp_path / "data"
+    _seed_data(data)
+    ex = {"id": 1, "name": "<script>x</script>颱風", "type": "ttx", "status": "archived"}
+    res = uds.create_backup(data, data / "backups", trigger="archive", exercise=ex)
+    assert uds.read_manifest(res.path)["exercise"]["name"] == "<script>x</script>颱風"
+
+
+def test_read_manifest_decrypts_once(key, tmp_path, monkeypatch):
+    """restore_backup 解密一次（read_manifest 與解壓共用 plaintext）。"""
+    data = tmp_path / "data"
+    _seed_data(data)
+    backup_dir = data / "backups"
+    res = uds.create_backup(data, backup_dir)
+    calls = {"n": 0}
+    orig = uds._decrypt
+
+    def counting(ct):
+        calls["n"] += 1
+        return orig(ct)
+
+    monkeypatch.setattr(uds, "_decrypt", counting)
+    uds.restore_backup(res.path, data, backup_dir, pre_restore=False)
+    assert calls["n"] == 1, f"預期解密 1 次，實得 {calls['n']}"
+
+
 def test_path_traversal_rejected(key, tmp_path, monkeypatch):
     """偽造含 ../ 逃逸路徑的 archive 還原時被拒（current 不動）。"""
     import gzip

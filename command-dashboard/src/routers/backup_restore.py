@@ -128,9 +128,12 @@ async def restore_user_data(request: Request, file: UploadFile = File(...)):
         tf.write(content)
     try:
         result = uds.restore_backup(tmp_path, DATA_DIR, BACKUP_DIR)
-    except ValueError as e:  # 解密 / manifest / 結構錯 → current 未動
+    except ValueError as e:  # 解密 / manifest / 結構錯 → current 未動（422）
         audit(sess["username"], None, "user_data_restore_failed", "system", filename, {"error": str(e)})
         raise HTTPException(422, f"還原失敗（current 未變動）：{e}") from e
+    except RuntimeError as e:  # wipe 後 copy 中斷 → current 可能不完整（500，pre-restore 可救）
+        audit(sess["username"], None, "user_data_restore_interrupted", "system", filename, {"error": str(e)})
+        raise HTTPException(500, str(e)) from e
     finally:
         tmp_path.unlink(missing_ok=True)
 

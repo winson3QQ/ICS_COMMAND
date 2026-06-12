@@ -193,13 +193,8 @@ def create_backup(
     )
 
 
-def read_manifest(backup_path: Path) -> dict:
-    """解密讀 MANIFEST.json（不解整包，restore 前預覽用）。
-
-    驗 schema 欄位，異常 → ValueError（前端顯示「非本系統 backup」）。
-    """
-    ciphertext = backup_path.read_bytes()
-    plaintext = _decrypt(ciphertext)
+def _manifest_from_plaintext(plaintext: bytes) -> dict:
+    """從已解密的 tar.gz bytes 讀 MANIFEST.json + 驗 schema。"""
     with gzip.GzipFile(fileobj=io.BytesIO(plaintext), mode="rb") as gz:
         with tarfile.open(fileobj=gz, mode="r") as tar:
             try:
@@ -213,6 +208,14 @@ def read_manifest(backup_path: Path) -> dict:
     if manifest.get("schema") != MANIFEST_SCHEMA:
         raise ValueError(f"manifest schema 不符：{manifest.get('schema')}")
     return manifest
+
+
+def read_manifest(backup_path: Path) -> dict:
+    """解密讀 MANIFEST.json（不解整包，restore 前預覽用）。
+
+    驗 schema 欄位，異常 → ValueError（前端顯示「非本系統 backup」）。
+    """
+    return _manifest_from_plaintext(_decrypt(backup_path.read_bytes()))
 
 
 def _safe_extract(tar: tarfile.TarFile, dest: Path) -> None:
@@ -239,7 +242,9 @@ def restore_backup(
     流程：解密驗 manifest → （pre_restore）先備份當前為 pre-restore-{ts}
     → 解到 temp → 替換 data/ 下非 backups/ 的內容 → 回 manifest + restart 提示。
     """
-    manifest = read_manifest(backup_path)  # 解密 + schema 驗證（失敗即止，不動 current）
+    # 解密一次，manifest 與解壓共用同份 plaintext（避免重複解密）
+    plaintext = _decrypt(backup_path.read_bytes())
+    manifest = _manifest_from_plaintext(plaintext)  # schema 驗證；失敗即止，不動 current
 
     pre_restore_path: Path | None = None
     if pre_restore and data_dir.exists() and _iter_data_files(data_dir):
@@ -248,7 +253,6 @@ def restore_backup(
         )
         pre_restore_path = pre.path
 
-    plaintext = _decrypt(backup_path.read_bytes())
     with tempfile.TemporaryDirectory(prefix="ics-restore-") as td:
         tmp = Path(td)
         with gzip.GzipFile(fileobj=io.BytesIO(plaintext), mode="rb") as gz:
@@ -258,21 +262,28 @@ def restore_backup(
         if not extracted.exists():
             raise ValueError("backup 內無 data/ — 結構不符，已中止（current 未動）")
 
-        # 替換 data/ 下非 backups/ 的內容（backups/ 保留：含剛產生的 pre-restore）
+        # 替換 data/ 下非 backups/ 的內容（backups/ 保留：含剛產生的 pre-restore）。
+        # 解壓已完成、temp 內容已驗證在手 → wipe 才開始（縮短風險窗）。wipe 後若 copy
+        # 失敗，data/ 會不完整 → 拋帶 pre-restore 名的錯，明示自動備份可救回（非靜默半毀）。
         data_dir.mkdir(parents=True, exist_ok=True)
-        for child in data_dir.iterdir():
-            if child.name == BACKUP_SUBDIR:
-                continue
-            if child.is_dir():
-                shutil.rmtree(child)
-            else:
-                child.unlink()
-        for child in extracted.iterdir():
-            dest = data_dir / child.name
-            if child.is_dir():
-                shutil.copytree(child, dest)
-            else:
-                shutil.copy2(child, dest)
+        try:
+            for child in data_dir.iterdir():
+                if child.name == BACKUP_SUBDIR:
+                    continue
+                if child.is_dir():
+                    shutil.rmtree(child)
+                else:
+                    child.unlink()
+            for child in extracted.iterdir():
+                dest = data_dir / child.name
+                if child.is_dir():
+                    shutil.copytree(child, dest)
+                else:
+                    shutil.copy2(child, dest)
+        except OSError as e:
+            hint = f"（請用 {pre_restore_path.name} 還原）" if pre_restore_path else "（無 pre-restore 可救）"
+            log.error("userdata_restore_interrupted", msg=f"還原中斷，data/ 可能不完整{hint}", exc_info=True)
+            raise RuntimeError(f"還原寫入中斷，data/ 可能不完整 — 請以 pre-restore 備份救回{hint}：{e}") from e
 
     log.info(
         "userdata_restored",

@@ -205,6 +205,13 @@ function fmtBytes(n) {
   return (n / 1024 / 1024).toFixed(1) + " MB";
 }
 
+// HTML 跳脫：manifest 欄位（exercise.name / 檔名 / created_at）經 innerHTML 渲染，
+// 縱深防 XSS（即使來源需 BACKUP_KEY，竄改 / 他源 backup 仍應跳脫）。
+function esc(s) {
+  return String(s == null ? "" : s).replace(/[&<>"']/g, c =>
+    ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
+}
+
 async function loadBackups() {
   pin = document.getElementById("adminPin").value;
   if (!pin) { toast("請輸入 Admin PIN", "error"); return; }
@@ -340,7 +347,7 @@ async function loadUserDataBackups() {
         : '<span class="meta" style="color:#5dd55d">整包</span>';
       const tr = document.createElement("tr");
       tr.innerHTML = `
-        <td style="word-break:break-all">${b.name}</td>
+        <td style="word-break:break-all">${esc(b.name)}</td>
         <td>${kind}</td>
         <td>${fmtBytes(b.size_bytes)}</td>
         <td class="actions"><button class="secondary" onclick="previewManifest('${b.name}')">預覽 manifest</button></td>`;
@@ -360,10 +367,10 @@ async function triggerUserDataBackup() {
 
 function _renderManifest(m) {
   const ex = m.exercise
-    ? `演習：${m.exercise.name}（${m.exercise.type} / ${m.exercise.status}）`
+    ? `演習：${esc(m.exercise.name)}（${esc(m.exercise.type)} / ${esc(m.exercise.status)}）`
     : "演習：（無 — 實戰池 / 系統層）";
-  const files = (m.files || []).map(f => `<li>${f}</li>`).join("");
-  return `<p class="meta">建立時間：${m.created_at}　·　app ${m.app_version}　·　觸發：${m.trigger}</p>
+  const files = (m.files || []).map(f => `<li>${esc(f)}</li>`).join("");
+  return `<p class="meta">建立時間：${esc(m.created_at)}　·　app ${esc(m.app_version)}　·　觸發：${esc(m.trigger)}</p>
     <p class="meta">${ex}　·　共 ${(m.files||[]).length} 檔 / ${fmtBytes(m.total_bytes || 0)}</p>
     <ul class="meta" style="columns:2">${files}</ul>`;
 }
@@ -372,7 +379,7 @@ async function previewManifest(name) {
   try {
     const r = await api(`/api/admin/user-data-backups/${encodeURIComponent(name)}/manifest`);
     document.getElementById("udDetail").innerHTML =
-      `<h4 style="color:#fff;font-size:12px;margin:8px 0">${name}</h4>` + _renderManifest(r.manifest);
+      `<h4 style="color:#fff;font-size:12px;margin:8px 0">${esc(name)}</h4>` + _renderManifest(r.manifest);
   } catch (e) {}
 }
 
@@ -387,7 +394,7 @@ async function doRestore() {
   try {
     const r = await apiForm("/api/admin/restore", fd);
     document.getElementById("udDetail").innerHTML =
-      `<p class="status-ok">✅ 還原完成${r.pre_restore ? `（當前已備份為 <code>${r.pre_restore}</code>）` : ""}</p>
+      `<p class="status-ok">✅ 還原完成${r.pre_restore ? `（當前已備份為 <code>${esc(r.pre_restore)}</code>）` : ""}</p>
        <p class="status-warn">⚠️ 請重啟指揮部服務讓新資料生效（替換了熱 DB）。</p>` + _renderManifest(r.manifest);
     toast("還原完成 — 請重啟服務", "success");
     loadUserDataBackups();

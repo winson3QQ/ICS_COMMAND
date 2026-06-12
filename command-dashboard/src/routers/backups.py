@@ -36,6 +36,7 @@ from services.backup_service import (
     BACKUP_ENCRYPTION_KEY_ENV,
     BACKUP_KEY_ENV,
     DEFAULT_RETAIN_DAYS,
+    _sha256_file,
     cleanup_old_backups,
     create_backup,
     encrypt_file,
@@ -116,12 +117,15 @@ def trigger_backup(request: Request):
         # P1-12b（#228）drift 修正：API 觸發過去產**明文** .db.gz（CLI 路徑才加密）。
         # 有金鑰時一律加密成 .db.gz.enc 並移除明文，與 backup_db.py CLI 一致。
         # 無金鑰（dev/CI）→ 維持明文（無 secret 可保護、且不阻斷開發）。
+        # 用 local 變數（不 mutate dataclass）；加密後 sha256/size 重算對齊「實際落地檔」。
+        out_path, out_size, out_sha = result.path, result.size_bytes, result.sha256
         if os.getenv(BACKUP_KEY_ENV) or os.getenv(BACKUP_ENCRYPTION_KEY_ENV):
             enc_path = result.path.with_suffix(result.path.suffix + ".enc")
             encrypt_file(result.path, enc_path)
             result.path.unlink(missing_ok=True)
-            result.path = enc_path
-            result.size_bytes = enc_path.stat().st_size
+            out_path = enc_path
+            out_size = enc_path.stat().st_size
+            out_sha = _sha256_file(enc_path)
     except Exception as e:
         audit(
             "admin",
@@ -138,10 +142,10 @@ def trigger_backup(request: Request):
         None,
         "backup_created",
         "system",
-        result.path.name,
+        out_path.name,
         {
-            "size_bytes": result.size_bytes,
-            "sha256": result.sha256,
+            "size_bytes": out_size,
+            "sha256": out_sha,
             "duration_ms": result.duration_ms,
             "trigger": "manual",
         },
@@ -160,7 +164,7 @@ def trigger_backup(request: Request):
         )
 
     # name = timestamp 部分（剝 ics- 前綴 + .db.gz[.enc] 後綴，與 list/_resolve_backup 對齊）
-    _name = result.path.name
+    _name = out_path.name
     if _name.startswith("ics-"):
         _name = _name[4:]
     for _suf in (".db.gz.enc", ".db.gz"):
@@ -169,9 +173,9 @@ def trigger_backup(request: Request):
             break
     return {
         "name": _name,
-        "filename": result.path.name,
-        "size_bytes": result.size_bytes,
-        "sha256": result.sha256,
+        "filename": out_path.name,
+        "size_bytes": out_size,
+        "sha256": out_sha,
         "duration_ms": result.duration_ms,
         "timestamp": result.timestamp.isoformat(),
         "cleanup_deleted": len(deleted),
