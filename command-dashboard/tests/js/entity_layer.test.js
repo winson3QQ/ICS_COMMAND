@@ -578,6 +578,18 @@ describe('copEntityToEventZone adapter（PR-G1b cutover）', () => {
     expect(copEntityToEventZone({ uid: 'x', lat: 1, lon: 2, attributes: { kind: 'event' } })).toBeNull(); // 缺 event_id
     expect(copEntityToEventZone({ uid: 'x', event_id: 'e', attributes: { kind: 'event' } })).toBeNull(); // 缺座標
   });
+
+  test('甲-1b（#240）：kind=sighting 降級後仍認（與 event 同等）', () => {
+    const z = copEntityToEventZone({
+      uid: 'manual:s1', lat: 24.8, lon: 121.0, callsign: '疑似爆裂物',
+      event_id: 'ev-s', attributes: { kind: 'sighting', event_code: 'EV-S', event_type: 'explosive' },
+    });
+    expect(z).not.toBeNull();
+    expect(z.event_id).toBe('ev-s');
+    expect(z.event_type).toBe('explosive');
+    // contact / route 等其他 kind 仍不認（非事件圖釘）
+    expect(copEntityToEventZone({ uid: 'x', lat: 1, lon: 2, event_id: 'e', attributes: { kind: 'contact' } })).toBeNull();
+  });
 });
 
 describe('copEntityToZone adapter（P1-16 on-demand 節點）', () => {

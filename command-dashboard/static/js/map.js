@@ -1041,8 +1041,10 @@ async function _evPopupSubmit(typeKey, ctx) {
     event_id: eventId,
     // 甲-1（#240 刀0）：marker **自帶觀察型別** event_type → 渲染依 marker 自身推 regime/abbr，
     // 不再「查 linked event」借型別。這是「marker 自描述感知原子」的本體（解鎖 N:1：一事件 N marker
-    // 各帶自己的觀察型別）。1:1 下視覺不變。kind 改 sighting + 遷移留甲-1b。
-    attributes: { kind: 'event', event_code: eventCode, event_group: evGroup, event_type: typeKey },
+    // 各帶自己的觀察型別）。
+    // 甲-1b：kind = **'sighting'**（感知層原子，非 L4 'event'）；事件經 junction 聚合此標記。
+    // 既有 'event' 由 m027 一次性改名；前端 guard 同時認 event+sighting（遷移前後不掉視覺）。
+    attributes: { kind: 'sighting', event_code: eventCode, event_group: evGroup, event_type: typeKey },
   });
   if (!created) {
     // 事件已落 DB 但圖釘沒建起來 = orphan event（與舊 rollback 行為對齊：提示重試）
@@ -1085,7 +1087,8 @@ export function renderIcon(icon) {
 export function findZoneByEventId(eventId) {
   if (!eventId) return null;
   // PR-G1b：事件 zone 已 cutover 進 cop_entities，先查 cop（adapter 還原 zone shape）。
-  for (const ent of (_copStream?.getEntitiesByKind('event') || [])) {
+  // 甲-1b（#240）：kind 'event'→'sighting' 降級 → 查兩者（遷移後僅 sighting，'event' 段為空、零成本）。
+  for (const ent of [...(_copStream?.getEntitiesByKind('sighting') || []), ...(_copStream?.getEntitiesByKind('event') || [])]) {
     if (ent.event_id === eventId) return copEntityToEventZone(ent);  // P2-33b：頂層 junction event_id
   }
   // 退路：map_config 殘留（節點不帶 event_id，但保險用）。
@@ -2094,7 +2097,8 @@ function _hideSenderBubble() {
 function _allRenderedZones() {
   // P1-16 cutover：節點不再從 map_config 讀，改 on-demand cop_entities（attributes.kind='zone'）。
   const nodeZones = (_copStream?.getEntitiesByKind('zone') || []).map(copEntityToZone).filter(Boolean);
-  const eventZones = (_copStream?.getEntitiesByKind('event') || [])
+  // 甲-1b（#240）：事件圖釘降級 kind 'event'→'sighting' → 查兩者（遷移後僅 sighting，'event' 段空）。
+  const eventZones = [...(_copStream?.getEntitiesByKind('sighting') || []), ...(_copStream?.getEntitiesByKind('event') || [])]
     .map(copEntityToEventZone)
     .filter(Boolean);
   return { nodeZones, eventZones, all: [...nodeZones, ...eventZones] };

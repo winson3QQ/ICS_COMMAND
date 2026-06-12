@@ -696,7 +696,9 @@ export function copEntityToEventZone(entity) {
   if (entity == null) return null;
   const attrs = entity.attributes || {};
   // P2-33b：event_id 改吃**頂層**（junction 權威），不再讀 attributes.event_id glue。
-  if (attrs.kind !== 'event' || !entity.event_id) return null;
+  // 甲-1b（#240 刀0）：kind 'event'→'sighting' 降級。**同時認兩者**（m027 遷移前後皆不掉視覺；
+  // 'event'=舊/未遷、'sighting'=新建/已遷）。判事件性靠 event_id（junction），非 kind 字串。
+  if ((attrs.kind !== 'event' && attrs.kind !== 'sighting') || !entity.event_id) return null;
   const lat = Number(entity.lat);
   const lng = Number(entity.lon);
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;

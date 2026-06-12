@@ -247,3 +247,21 @@ class TestPrimaryEventIdSerialization:
         ev = _mk_event()
         _mk_marker("evt:glueonly", kind="event", event_id=ev)  # 只塞 attributes，不 link
         assert get_cop_entity("evt:glueonly")["event_id"] is None
+
+
+def test_m027_renames_event_kind_to_sighting():
+    """甲-1b（#240 刀0）：m027 把既有 attributes.kind='event' 改名 'sighting'，其餘欄位不動。"""
+    from core.database import _m027_event_kind_to_sighting
+    from repositories.cop_entity_repo import get_cop_entity
+
+    _mk_marker("evt:m027", kind="event", event_id=None)  # 插舊式 event marker
+    with get_conn() as conn:
+        _m027_event_kind_to_sighting(conn)
+    ent = get_cop_entity("evt:m027")
+    assert ent["attributes"]["kind"] == "sighting"  # 改名
+
+    # 非事件圖釘（zone）不受影響
+    _mk_marker("zone:m027", kind="zone")
+    with get_conn() as conn:
+        _m027_event_kind_to_sighting(conn)
+    assert get_cop_entity("zone:m027")["attributes"]["kind"] == "zone"
