@@ -2034,7 +2034,8 @@ function _showSenderBubble(map, lng, lat) {
   const inner = document.createElement('span');
   inner.textContent = '💬';
   el.appendChild(inner);
-  _senderBubble = new window.maplibregl.Marker({ element: el, anchor: 'bottom' })
+  // anchor bottom-left + 右上 offset → 泡泡掛在發訊單位 marker 的右上角（像通知小圖示）。
+  _senderBubble = new window.maplibregl.Marker({ element: el, anchor: 'bottom-left', offset: [8, -8] })
     .setLngLat([lng, lat]).addTo(map);
 }
 
