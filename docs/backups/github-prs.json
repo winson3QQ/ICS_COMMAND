@@ -3683,5 +3683,26 @@
     "title": "docs(layer): 釐清 TAK Mission/DataSync(任務包)屬 L3 非 L4",
     "updatedAt": "2026-06-12T04:56:13Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/239"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "@\n## What\n2026-06-12 逐符號定案的 **regime 軸**（civil ◆ / alert ▲ / military 2525；視覺 regime 與 cot_type 解耦）落地進 taxonomy **資料層**（乙-1，additive）。Closes #241。\n\n## 改動（9 檔）\n- `event_taxonomy.seed.json` + `events.js NAPSG_EVENTS` fallback：22 事件加 `regime`（military=drone/unknown_person/qrf、alert=evacuation、其餘 18 含 perimeter/resource 佔位=civil；兩源逐一一致）。\n- `event_taxonomy_validate.py`：`REGIMES` enum + optional 驗證（缺省 civil，非法→400），比照 `source`。\n- `event_taxonomy_store.py`：`_backfill_source` → `_backfill_seed_facts`，回填 source + regime（舊 runtime 缺欄從 seed 補、只補缺不覆蓋）。\n- 測試：optional/enum/非法 + seed 完整性 + 回填 + 不覆蓋。\n- docs：crosswalk perimeter/resource 佔位註記、event-symbology-mapping 函式更名、ROADMAP P2-33 開工註記。\n\n## 刻意不做\n**render 不變** → 事件仍全渲染 ◆、**行為零變化**。regime 驅動 ▲/2525 的渲染收斂 = **乙-2** 後續 PR（含 ▲ SDF + milsymbol）。perimeter/resource **未 soft-delete**（移出目的地未建，先 civil 佔位）。\n\n## 為何先做這刀\n**#240 刀0（B2 降級）前置**：event 圖釘降級成 sighting marker 時要吃 regime + 觀察類型，先把資料地基備好。\n\n## 驗證\n`/code-review` 修 2（stale doc ref + regime 回填 override 測試）+ `/security-review` **0**（enum-validated additive、RBAC 不變、無 render sink）。後端全綠（1 skip）/ vitest 311 / doc_sync 綠。\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n@",
+    "closedAt": "2026-06-12T07:57:09Z",
+    "comments": [],
+    "createdAt": "2026-06-12T07:54:54Z",
+    "headRefName": "feat/issue-241-regime-field",
+    "labels": [],
+    "mergedAt": "2026-06-12T07:57:09Z",
+    "number": 242,
+    "state": "MERGED",
+    "title": "feat(taxonomy): regime 欄落地（symbology regime 軸；#240 刀0 + P2-29 前置）",
+    "updatedAt": "2026-06-12T07:57:12Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/242"
   }
 ]
