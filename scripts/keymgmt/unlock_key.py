@@ -91,7 +91,7 @@ def main() -> int:
     master = master_from_env()
     if master is not None:
         print(
-            f"⚠⚠ {ENV_FALLBACK_VAR} fallback 模式 — master 以明文 env 供應，"
+            f"[WARN][WARN] {ENV_FALLBACK_VAR} fallback 模式 — master 以明文 env 供應，"
             "僅限 dev / CI / 無 FIDO2 場景。production 必須走 FIDO2 enroll。",
             file=sys.stderr,
         )
@@ -100,7 +100,7 @@ def main() -> int:
 
         print("請輸入 24 字 rescue 助記詞（空白分隔，單行）：")
         master = mnemonic.decode(input("> ").split())
-        print("⚠ rescue 解鎖成功 — 請儘速 enroll 新 token（enroll_fido2.py --from-mnemonic）", file=sys.stderr)
+        print("[WARN] rescue 解鎖成功 — 請儘速 enroll 新 token（enroll_fido2.py --from-mnemonic）", file=sys.stderr)
     else:
         if not args.store:
             raise SystemExit("FIDO2 模式需 --store（或設 ICS_MASTER_KEY / --from-mnemonic）")
@@ -112,13 +112,13 @@ def main() -> int:
             pin = getpass.getpass("FIDO2 PIN（無則 Enter）：") or None
             input("請插入任一把已註冊 token 後按 Enter …")
             master, label = keystore.unlock(entries, backend, pin)
-            print(f"✔ 以「{label}」解鎖成功")
+            print(f"[OK] 以「{label}」解鎖成功")
         except (keystore.KeyStoreError, KeyBackendError) as e:
-            print(f"✘ {e}", file=sys.stderr)
+            print(f"[FAIL] {e}", file=sys.stderr)
             return 1
 
     write_env_file(master, args.output, labels)
-    print(f"✔ child keys（{', '.join(labels)}）已寫入 {args.output}（0600）")
+    print(f"[OK] child keys（{', '.join(labels)}）已寫入 {args.output}（0600）")
     return 0
 
 

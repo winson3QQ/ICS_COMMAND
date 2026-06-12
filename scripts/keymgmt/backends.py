@@ -54,7 +54,7 @@ class RealFido2Backend:
 
         class _PinUI(ui_cls):  # type: ignore[misc, valid-type]
             def prompt_up(self) -> None:
-                print("👉 請觸碰 token …")
+                print("[!] 請觸碰 token …")
 
             def request_pin(self, permissions, rp_id):
                 return pin

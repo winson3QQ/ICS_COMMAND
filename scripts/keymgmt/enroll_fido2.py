@@ -63,20 +63,20 @@ def main() -> int:
     args = ap.parse_args()
 
     if args.store.exists():
-        print(f"⚠ {args.store} 已存在 — enroll 會整檔覆蓋（舊 token 全部失效）。")
+        print(f"[WARN] {args.store} 已存在 — enroll 會整檔覆蓋（舊 token 全部失效）。")
         if input("確定繼續？輸入 yes：").strip() != "yes":
             return 1
 
     if args.from_mnemonic:
         master = read_mnemonic_interactive()
-        print("✔ 助記詞 checksum 通過，master 已還原。")
+        print("[OK] 助記詞 checksum 通過，master 已還原。")
     else:
         master = secrets.token_bytes(MASTER_LEN)
 
     try:
         backend = RealFido2Backend()
     except KeyBackendError as e:
-        print(f"✘ {e}", file=sys.stderr)
+        print(f"[FAIL] {e}", file=sys.stderr)
         return 1
 
     labels: list[str] = []
@@ -90,12 +90,12 @@ def main() -> int:
         try:
             entries.extend(enroll_tokens(master, backend, [label], pin))
         except KeyBackendError as e:
-            print(f"✘ 「{label}」註冊失敗：{e}", file=sys.stderr)
+            print(f"[FAIL] 「{label}」註冊失敗：{e}", file=sys.stderr)
             return 1
-        print(f"✔ 「{label}」註冊完成")
+        print(f"[OK] 「{label}」註冊完成")
 
     keystore.save_store(args.store, keystore.build_store(master, entries, RP_ID))
-    print(f"✔ keystore 已寫入 {args.store}（{len(entries)} 把 token，任一把可解鎖）")
+    print(f"[OK] keystore 已寫入 {args.store}（{len(entries)} 把 token，任一把可解鎖）")
 
     if args.show_rescue:
         words = mnemonic.encode(master)
