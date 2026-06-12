@@ -153,6 +153,11 @@ const _CONTACT_AFF = {
   neutral: { color: '#2e8b57', abbr: '中' },
   friendly: { color: '#2b6cd9', abbr: '友' },
 };
+
+// #193：長按命中這些 marker 層 → 篩該單位通聯（非建立對話框）。symbol layer（GPU），
+// 故走 onLongPress 的 queryRenderedFeatures 分流（DOM marker 如 contact 拖曳 handle 由
+// maplibre_core 的 .maplibregl-marker 短路另管）。
+const _MARKER_LONGPRESS_LAYERS = ['tak-units-icon', 'contact-2525-icon', 'contact-circle'];
 // P2-25（#163 系列）：TAK 單位（2525 markers）的地圖篩選器——純前端 view filter（不刪資料）。
 // affiliation 對映 affiliationFromCot 的四態；showStale=false 隱藏過 stale 的活追蹤單位。
 const _takFilter = { friendly: true, hostile: true, neutral: true, unknown: true, showStale: true };
@@ -444,8 +449,19 @@ function _initMaplibre() {
       _refreshCoordPanel();
     },
 
-    // 長按地圖（650ms）→ 開啟統一建立對話框（類別→子型；P2-34 #220）
-    onLongPress: ({ lat, lng }) => {
+    // 長按（650ms）→ #193：命中 marker → 篩該單位通聯（map:unitSelected）；命中空地 → 建立對話框。
+    // 用 queryRenderedFeatures 分流，避免長按 marker 也彈出建立對話框（reality check 確認的破口）。
+    onLongPress: ({ lat, lng, point }) => {
+      const m = _getMap();
+      const layers = point && m ? _MARKER_LONGPRESS_LAYERS.filter((l) => m.getLayer(l)) : [];
+      const hit = layers.length ? m.queryRenderedFeatures(point, { layers }) : [];
+      if (hit.length) {
+        const p = hit[0].properties || {};
+        if (p.id) {
+          document.dispatchEvent(new CustomEvent('map:unitSelected', { detail: { uid: p.id, callsign: p.label || p.id } }));
+          return;
+        }
+      }
       _openCreatePopup(lat, lng);
     },
 
@@ -1787,7 +1803,7 @@ function _ensureEntityLayers() {
   // 與左拖移動由 _syncContactDragHandles 的 handle 接（handle 蓋住 GPU 符號，layer 事件接不到）。
   map.on('click', 'contact-circle', (e) => _onContactClick(e));
   map.on('click', 'contact-2525-icon', (e) => _onContactClick(e));
-  map.on('click', 'tak-units-icon', (e) => _onTakUnitClick(e));  // #213 b3-1：點 TAK 單位 → 過濾通聯
+  map.on('click', 'tak-units-icon', (e) => _onTakUnitClick(e));  // #193：點 TAK 單位 → 詳情（長按才篩通聯）
   map.on('click', 'routes-line-solid', (e) => _onRouteClick(e));
   map.on('click', 'routes-line-dash', (e) => _onRouteClick(e));
   map.on('click', 'routes-line-dotted', (e) => _onRouteClick(e));
@@ -2219,12 +2235,30 @@ function _onContactClick(e) {
 
 // #213 b3-1：點 TAK 單位 → 派 DOM 事件給 chat_panel 過濾通聯（by-sender）。讀動作不設
 // canAccessMapObjects 守門（通聯顯示是 READ_ROLES）；解耦不直接呼叫 chat 模組。
+// #193：點 TAK 單位 → 開唯讀詳情（與 contact click→詳情一致）。長按才篩通聯（onLongPress 閘）。
 function _onTakUnitClick(e) {
-  const props = e.features?.[0]?.properties;
-  if (!props?.id) return;
-  document.dispatchEvent(new CustomEvent('map:unitSelected', {
-    detail: { uid: props.id, callsign: props.label || props.id },
-  }));
+  _openTakUnitDetail(e.features?.[0]?.properties?.id);
+}
+
+// #193：TAK 單位唯讀詳情（對齊 iTAK marker tap：敵我態 / type(2525) / callsign / 座標 / 備註）。
+// 唯讀——TAK 為外部來源，ICS 不改（cop PUT 來源守門 manual/command）。所有 READ_ROLES 可看。
+function _openTakUnitDetail(id) {
+  if (!id) return;
+  const ent = _copStream?.getEntity(id);
+  if (!ent) return;
+  const affZh = { friendly: '友軍', hostile: '敵性', neutral: '中立', unknown: '不明' }[affiliationFromCot(ent.type)] || '不明';
+  const ROW = 'display:flex;gap:8px;margin-bottom:6px;font-size:12px;';
+  const K = 'color:var(--text3);flex-shrink:0;min-width:56px;';
+  const V = 'color:var(--text);font-family:var(--mono);word-break:break-word;';
+  const row = (k, vHtml) => vHtml ? `<div style="${ROW}"><span style="${K}">${k}</span><span style="${V}">${vHtml}</span></div>` : '';
+  let body = '';
+  body += row('敵我態', _escapeHtml(affZh));
+  body += row('type', _escapeHtml(ent.type || ''));   // CoT 2525 grammar（如 a-f-G-U-C）
+  body += row('callsign', _escapeHtml(ent.callsign || ''));
+  body += row('座標', ent.lat != null ? _coordValueHTML(ent.lat, ent.lon) : '');  // 數字→安全 HTML（MGRS+經緯）
+  body += row('備註', _escapeHtml(ent.remarks || ''));   // 含 source: ICS（若 #192 外推帶入）
+  body += `<div style="font-size:10px;color:var(--text3);margin-top:8px;">來源：TAK · 唯讀</div>`;
+  _deps.openModal?.(`${affZh}單位 ${ent.callsign || ''}`, body);
 }
 // 開 detail modal（給左鍵 click 與右鍵 menu「編輯註記」共用）。
 export function _openContactDetail(id) {
