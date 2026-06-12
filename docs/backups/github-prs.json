@@ -3477,5 +3477,62 @@
     "title": "feat(tak): P2-12 通聯即時 WS 推播（#213 b2）",
     "updatedAt": "2026-06-11T16:31:53Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/225"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "## 摘要\n\nb3 把**通聯 ↔ 地圖**連起來。本 PR = **b3-1：點地圖 TAK 單位 marker → 右欄通聯切到該單位**（by-sender 過濾）。純前端。#213 b3-1。\n\n> ⏳ **待 human verify 後再 merge** —— 提交者會在另一台機器拉此分支實機點測。\n\n## 改了什麼\n- **map.js**：`tak-units-icon` 加 click handler → 派 `map:unitSelected {uid, callsign}` DOM 事件（解耦，不直接呼叫 chat 模組；讀動作不設編輯權限守門）。\n- **chat_panel.js**：\n  - `parseSenderUid`（`GeoChat.<uid>.<room>.<id>` → uid，b2 dogfood 實證格式；假設 device uid 無 `.`）\n  - `filterChatsBySender`（**uid 精準比對**）\n  - 監聽 `map:unitSelected` → 切通聯 tab + by-sender 過濾 + 可清除「篩 \\<callsign\\> ✕」chip\n- **main.js**：`chatClearSender` data-action\n\n## Reviews\n- **`/code-review`**：修 2 — ① callsign fallback 會把**同 callsign 的不同單位**誤混 → 改 **uid-only 比對**（callsign 僅供 chip 顯示）；② dotted device-uid 邊界 → 註記已知限制（TAK uid 慣例無點）。其餘 3 項為退化輸入/雙渲染 nit，無害。\n- **`/security-review`**：**0**（純 client-side 過濾已授權的 `_chats`、textContent sink、無新端點/資料、`map:unitSelected` 為同源 DOM 事件）。\n\n## §8 Verification\n\n```bash\ncd command-dashboard && npx vitest run     # 305 passed（parseSenderUid/filterChatsBySender +6）\npython ../scripts/doc_sync_check.py        # exit 0\n```\n（純前端，後端 pytest 無 delta。）\n\n**Human verify（待提交者實機）**：起 dashboard + TAK + iTAK → 地圖上點任一 TAK 單位 → 右欄自動切「通聯」、只剩該單位訊息 + 上方「篩 \\<callsign\\> ✕」；點 ✕ 還原。\n\n## 仍後置\nb3-2 點訊息 → 跳地圖 highlight（+ 無座標 fallback by-sender）/ 欄位盤點(#193) / O/C 識別與限可見。\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n",
+    "closedAt": null,
+    "comments": [],
+    "createdAt": "2026-06-11T23:54:05Z",
+    "headRefName": "feat/issue-213-geochat-marker-link",
+    "labels": [],
+    "mergedAt": null,
+    "number": 233,
+    "state": "OPEN",
+    "title": "feat(map): P2-12 通聯↔地圖 b3-1 — 點 TAK 單位過濾通聯（#213 b3-1）",
+    "updatedAt": "2026-06-11T23:55:01Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/233"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "## ROADMAP item\n\nP1-12a — 統一 key management 基礎建設（umbrella #226）\n- Closes #227\n\n## What changed\n\n`scripts/keymgmt/` 全新套件：FIDO2（CTAP2 hmac-secret）enroll/unlock + HKDF-SHA256 label 衍生（`backup-v1`/`db-v1`/`audit-v1` 預留/`disk-v1` LUKS 預留，threat_model §8.4 拍板）+ BIP-39 rescue 助記詞 + `ICS_MASTER_KEY` dev fallback。systemd 加 `EnvironmentFile=-/run/ics/keys.env` 接點（非破壞）。文件：threat_model v0.6 拍板記錄、ROADMAP P1-12 ⏳、規格動工修訂、`docs/security/key-management.md` SOP。\n\n## DoD checklist\n\n- [x] Tests added / updated（19 個 mock 測試：RFC 5869 KAT / 多 token 冗餘 / 竄改偵測 / 助記詞 roundtrip / 失 token 演練協定層 / env fallback）\n- [x] `pytest` green（1004 passed, 1 skipped — skip 為既有）\n- [ ] `npm test` green（無 JS 改動，N/A）\n- [x] 規格書更新（p1-key-management.md 動工修訂 + key-management.md 新建 + threat_model v0.6）\n- [x] ROADMAP item 對應 sub-item 完成（P1-12 標 ⏳ + issue 連結）\n\n## §8 Human Verification Script\n\n```bash\n# Step 1: keymgmt 測試全綠（mock，不需實體金鑰）\ncd command-dashboard && python -m pytest tests/unit/test_keymgmt.py -v\n# 預期：19 passed\n\n# Step 2: pyflakes 乾淨\npython -m pyflakes src/ ../scripts/keymgmt/*.py\n# 預期：無輸出，exit 0\n\n# Step 3: env fallback 全流程 — 解鎖 → 衍生 → env file → Fernet 可用\ncd ..\nexport ICS_MASTER_KEY=$(python -c \"import secrets;print(secrets.token_bytes(32).hex())\")\npython scripts/keymgmt/unlock_key.py --output ./.tmp-keys.env\n# 預期：stderr 出現「⚠⚠ ICS_MASTER_KEY fallback 模式」警示 + ✔ 寫入訊息\npython - <<'PY'\nfrom pathlib import Path\nfrom cryptography.fernet import Fernet\nkv = dict(l.split(\"=\",1) for l in Path(\"./.tmp-keys.env\").read_text().splitlines() if \"=\" in l)\nf = Fernet(kv[\"BACKUP_KEY\"].encode())\nassert f.decrypt(f.encrypt(b\"verify\")) == b\"verify\"\nassert len(bytes.fromhex(kv[\"DB_KEY\"])) == 32\nprint(\"VERIFY OK: BACKUP_KEY Fernet 可用 / DB_KEY 32 bytes hex\")\nPY\n# 預期：VERIFY OK\n\n# Step 4: doc_sync gate\npython scripts/doc_sync_check.py\n# 預期：✓ doc-sync check passed\n```\n\n## Out of scope / known limitations\n\n- **真實 FIDO2 token 路徑未經硬體驗證**（`backends.RealFido2Backend`）— 硬體驗收 + 失 token 實機演練 → #230（已在 code 註記）\n- 12b backup 整合（BACKUP_KEY 消費）→ #228；12c SQLCipher（DB_KEY 消費）→ #229\n- LUKS（disk-v1 消費端）→ #231\n\n## Notes for reviewer\n\n- 供應鏈新 dep：`fido2==2.2.0`（Yubico AB，BSD-2，非中國）；BIP-39 wordlist vendored 自 bitcoin/bips（public domain），sha256 釘在 mnemonic.py + 測試，.gitattributes 鎖 LF 防 EOL 轉換破 hash\n- keystore wrap：AES-256-GCM，aad 綁 credential_id；檔案本身無 token 不可解\n- `derive_child` info 帶 `ics-keymgmt/v1/` 前綴（domain separation，有測試釘住）\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+    "closedAt": null,
+    "comments": [
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## Test / Verification 證據（PROCESS 留痕紀律）\n\n### pytest 完整跑（與 CI 同參數，本機 Windows / Python 3.13.7）\n\n```\n$ cd command-dashboard && python -m pytest --tb=short -q -o addopts=\"\"\n1004 passed, 1 skipped, 3 warnings in 134.06s (0:02:14)\n```\n（1 skipped 與 3 warnings 皆為既有，非本 PR 引入）\n\n### keymgmt 測試（cp950 修正後重跑）\n\n```\n$ python -m pytest command-dashboard/tests/unit/test_keymgmt.py -q\n...................                                                      [100%]\n19 passed\n```\n\n### pyflakes\n\n```\n$ python -m pyflakes command-dashboard/src/ scripts/keymgmt/*.py\n（無輸出）exit=0\n```\n\n### §8 Step 3 — env fallback 全流程（實跑）\n\n```\n$ ICS_MASTER_KEY=<random 64 hex> python scripts/keymgmt/unlock_key.py --output ./.tmp-keys.env\n[WARN][WARN] ICS_MASTER_KEY fallback 模式 — master 以明文 env 供應，僅限 dev / CI / 無 FIDO2 場景。production 必須走 FIDO2 enroll。\n[OK] child keys（backup-v1, db-v1）已寫入 .tmp-keys.env（0600）\nexit=0\nVERIFY OK: BACKUP_KEY Fernet usable / DB_KEY 32 bytes hex\n```\n\n### §8 Step 4 — doc_sync\n\n```\n$ python scripts/doc_sync_check.py\n✓ doc-sync check passed\n```\n\n### Dogfood 副發現（已修在本 PR，commit 1fcf085）\n\n§8 script 首跑抓到真 bug：`unlock_key.py` 最後一行 `print(\"✔ …\")` 在 Windows cp950 console 拋 UnicodeEncodeError → **檔案已寫成功但 exit 1**，會誤導 operator。print 符號改 `[OK]/[WARN]/[FAIL]`。另 `.gitattributes` 鎖 wordlist LF（commit c935e38）— autocrlf 轉換會破壞 sha256 完整性釘。\n\nVERIFY-PASS（§8 Steps 1-4 全過；真 token 路徑 → #230）",
+        "createdAt": "2026-06-12T00:05:33Z",
+        "id": "IC_kwDOSnBjpc8AAAABF1EKng",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/234#issuecomment-4686154398"
+      }
+    ],
+    "createdAt": "2026-06-12T00:03:06Z",
+    "headRefName": "feat/issue-227-p1-12a-keymgmt",
+    "labels": [],
+    "mergedAt": null,
+    "number": 234,
+    "state": "OPEN",
+    "title": "feat(keymgmt): P1-12a FIDO2 enroll/unlock + HKDF 階層（含 disk-v1）+ mock 測試",
+    "updatedAt": "2026-06-12T00:05:35Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/234"
   }
 ]
