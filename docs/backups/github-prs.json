@@ -3566,6 +3566,20 @@
         "minimizedReason": "",
         "reactionGroups": [],
         "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/234#issuecomment-4686225436"
+      },
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## VERIFY-PASS — 跨平台本機驗證（macOS 第二平台）\n\n使用者於另一台 **Mac** session 抓 branch（checkout `feat/issue-228-p1-12b-backup`，含 12a+12b code，HEAD `5f70853`）獨立驗證。本 PR（12a）相關結果：\n\n### Tier 1 — 測試層\n- `pyflakes src/ + scripts/keymgmt/*.py`：無輸出（exit 0）\n- `pytest -q`：**1028 passed / 1 skipped**（與 Windows 1027/2 一致；差異即平台 skip）\n- 1 skip = `tests/unit/test_import_facilities.py:98`（缺 pyproj，維護者匯入依賴、不進 runtime、與本 PR 無關，pre-existing）\n- `doc_sync_check`：passed（exit 0）\n\n### Tier 2 — 12a unlock CLI（env fallback，無實體金鑰）\n- `unlock_key.py --output ./.keys.env`：exit 0；stderr 有 fallback 警示\n- `.keys.env`：含 `BACKUP_KEY` + `DB_KEY`（檔案 0600）\n- 金鑰可用：BACKUP_KEY 過 Fernet encrypt/decrypt 往返、DB_KEY = 32 bytes\n- 清理：`.keys.env` 已 rm，git status 乾淨\n\n未 merge、未碰 GUI。真 FIDO2 token 整合驗收仍 → #230。",
+        "createdAt": "2026-06-12T04:05:58Z",
+        "id": "IC_kwDOSnBjpc8AAAABF2LTmQ",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/234#issuecomment-4687319961"
       }
     ],
     "createdAt": "2026-06-12T00:03:06Z",
@@ -3575,7 +3589,7 @@
     "number": 234,
     "state": "OPEN",
     "title": "feat(keymgmt): P1-12a FIDO2 enroll/unlock + HKDF 階層（含 disk-v1）+ mock 測試",
-    "updatedAt": "2026-06-12T00:20:04Z",
+    "updatedAt": "2026-06-12T04:05:59Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/234"
   },
   {
@@ -3602,6 +3616,20 @@
         "minimizedReason": "",
         "reactionGroups": [],
         "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/235#issuecomment-4686381265"
+      },
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## VERIFY-PASS — 跨平台本機驗證（macOS，補 Windows 缺格）\n\n使用者於另一台 **Mac** session 抓 branch（checkout `feat/issue-228-p1-12b-backup`，HEAD `5f70853`）獨立驗證。\n\n### Tier 1 — 測試層\n- `pyflakes src/ + scripts/keymgmt/*.py`：無輸出（exit 0）\n- `pytest -q`：**1028 passed / 1 skipped**\n- **★ `test_restore_roundtrip`（熱 DB 還原 e2e）在 Mac 由 skip→實跑 PASSED**（`-v` 複驗確認非 skipped）—— 補上 Windows 因檔案鎖跑不了、原僅靠 CI Linux 的那條，現有第二平台本機確認\n- 1 skip = `tests/unit/test_import_facilities.py:98`（缺 pyproj，維護者匯入依賴、不進 runtime、與 backup 無關，pre-existing）\n- `doc_sync_check`：passed（exit 0）\n\n### 涵蓋面\n測試 + CLI 層在 **Windows + macOS 雙平台** 皆綠；restore 熱 DB e2e 在 Mac 實跑通過。\n\n### 尚未驗（獨立里程碑）\n- **§8 Step 3 GUI human-verify**（備份/還原面板瀏覽器驗收）— presentational，待人工點選，未涵蓋於本次。\n- 未 merge。",
+        "createdAt": "2026-06-12T04:06:06Z",
+        "id": "IC_kwDOSnBjpc8AAAABF2LW5w",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/235#issuecomment-4687320807"
       }
     ],
     "createdAt": "2026-06-12T00:46:42Z",
@@ -3611,7 +3639,7 @@
     "number": 235,
     "state": "OPEN",
     "title": "feat(backup): P1-12b 整包 data/ 加密備份 + GUI 還原 + 三層觸發 + OP-2/OP-4",
-    "updatedAt": "2026-06-12T00:55:59Z",
+    "updatedAt": "2026-06-12T04:06:06Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/235"
   },
   {
