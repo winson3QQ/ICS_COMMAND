@@ -89,6 +89,49 @@
 > **本次只修文件**：glyph 本身（vendor SVG + 剝框上白 + 測試）待 **[#66](https://github.com/winson3QQ/ICS_COMMAND/issues/66) C2** 真做時一併處理；
 > perimeter / infectious 為屆時最先可上的 🟢。
 
+### ✅ 2026-06-12 regime 軸定案（22 符號逐一決定；**推翻 §6「cot_type 前綴自動分流」**）
+
+> 使用者 2026-06-12 逐符號審視 cot_type 後的關鍵發現：**「視覺規制」與「cot_type 敵我」是兩條獨立軸**。
+> 反例 = `explosive` 判定要畫**民事危害 ◆**，但它的 cot_type 是 `a-h-G`（敵造）—— 規制**推導不出**自
+> cot_type 前綴。**故 §6「情境由 cot_type 前綴自動分流（a-*→2525 / b-*→NAPSG）」假設失效，本區塊取代之。**
+
+**定案機制**：taxonomy 每事件新增 **`regime` 欄**（`civil` ◆ / `alert` ▲ / `military` 2525），render 管線
+讀 `regime` 決定外框；**`cot_type` 回歸單純當「給 TAK 看的身分證 / degrade hint」，不再參與我方渲染分流**。
+比喻：`regime` = 在我們地圖上穿什麼衣服；`cot_type` = 遞給 TAK 看的身分證。兩張不同的紙、不打架。
+
+| 事件 | regime | 敵我可變 | cot_type（身分證·degrade） | 備註 |
+|---|---|---|---|---|
+| explosive 疑似爆裂物 | **civil ◆** | 否 | a-h-G（保留作 degrade） | 爆炸象形🟢；IED＝危害位置非敵軍單位 |
+| violent 暴力事件 | **civil ◆** | 否 | a-h-G→建議改 a-u-G | 治安事件位置 |
+| crowd 秩序問題 | **civil ◆** | 否 | a-n-G | 🔴 abbr |
+| drone 無人機威脅 | **military 2525**（空） | **是** | a-h-A | 敵對空中威脅；走 P2-05 |
+| unknown_person 不明人士 | **military 2525**（不明） | **是** | a-u-G | 不明主體；走 P2-05 |
+| qrf QRF 出動 | **military 2525**（友） | 否 | a-f-G | 我方應處部隊；與 rescue 分開 |
+| rescue 受困救援 | **civil ◆** | 否 | a-f-G→改非友軍碼 | USAR Victim🟢；傷患≠我方部隊 |
+| mci 大量傷亡 | **civil ◆** | 否 | a-u-G-I | Triage🟡 |
+| emergency 緊急病症 | **civil ◆** | 否 | a-f-G-U-U-M | 醫療🟡 |
+| infectious 傳染疑慮 | **civil ◆** | 否 | a-u-G-I | biohazard🟡ready |
+| capacity 量能超載 | **civil ◆** | 否 | b-r | 🔴；tw_ref NFA 收容 |
+| isolation 隔離事件 | **civil ◆** | 否 | a-u-G-I | 除污🟡 |
+| person_need 人員狀況 | **civil ◆** | 否 | a-f-G | 🔴 |
+| comm_fail 通訊異常 | **civil ◆** | 否 | b-r | 通訊塔🟢 |
+| facility 設施異常 | **civil ◆** | 否 | a-u-G-I | 結構🟢 |
+| equipment 設備故障 | **civil ◆** | 否 | b-r | 🔴 |
+| situation 現場變化 | **civil ◆** | 否 | a-u-G-I | 🔴 抽象 |
+| hazard 危害回報 | **civil ◆** | 否 | a-u-G-I | 通用危害!🟢 |
+| other 其他 | **civil ◆** | 否 | a-u-G | 🟢 |
+| evacuation 撤離 | **alert ▲** | 否 | b-a | 公眾警報🟢；tw_ref NFA |
+| **perimeter** 管制區異常 | **移出事件** → 區域 graphic | — | b-a-g | 本質是「面」→ 歸 §8 polygon「管制區」的**異常態**，soft-delete 出事件 taxonomy |
+| **resource** 資源調度 | **移出事件** → 後勤/任務層 | — | t | tasking 非現場 incident → 暫掛下行 tasking 層（P2-13），soft-delete 出事件 taxonomy |
+
+**統計**：16 civil ◆ + 3 military 2525（drone/unknown_person/qrf）+ 1 alert ▲（evacuation）+ 2 移出（perimeter/resource）。
+**敵我可變**（§7-1 落定）= **drone / unknown_person**（EventPopup 加 affiliation segment）；其餘型別敵我由型別固定帶。
+
+**落地影響（實作清單，未做）**：① taxonomy schema 加 `regime` 欄 + #66 validator + seed 預設；② seed 依上表填
+regime、soft-delete perimeter/resource、修 violent/rescue 的 cot_type 身分證；③ render 管線改讀 `regime`（不看
+cot_type 前綴）→ **TAK marker 與 ICS event 走同一套 §6 文法＝感知層「對齊」本體**；④ cot_type 撞號（6×`a-u-G-I`、
+3×`a-f-G`）只影響外推 TAK 精細度 → 降為 **P2-04** 補 function suffix；⑤ glyph 🟡 視覺 QA = **#66 C2**，與 regime 正交。
+
 ## 4. 台灣現況（2026-06-02 查證）
 
 有平台、**無公開的統一 incident icon 標準**：
@@ -178,14 +221,19 @@
 
 | # | 情境 | 範例事件 | 敵我 | 地圖顯示（框 + 象形 + 嚴重度）| cot_type | 標準 |
 |---|---|---|---|---|---|---|
-| A | 敵對威脅 | 敵無人機、爆裂物、暴力 | 敵 | 2525 敵框（菱形）+ 象形 + critical halo | `a-h-*` | 2525/APP-6 |
+| A | 敵對威脅 | 敵無人機（drone）| 敵 | 2525 敵框（菱形）+ 象形 + critical halo | `a-h-*` | 2525/APP-6 |
 | B | 不明目標 | 不明人士、可疑載具 | 不明 | 2525 不明框（四葉）+ 象形 + severity halo | `a-u-*` | 2525/APP-6 |
 | C | 己方 / 友軍應處 | QRF、受困救援、醫療出動 | 友 | 2525 友框（矩形）+ 象形 + severity halo | `a-f-*` | 2525/APP-6 |
 | D | 公眾警報 | 撤離、就地避難 | （對民眾）| ▲ 三角（IPAWS/NAPSG）+ 象形 + severity | `b-a-*` | NAPSG/IPAWS |
-| E | 民事危害 / 事故 | 設施、通訊、危害回報、傳染、收容超載 | 中立 | ◆ 危害菱形（NAPSG）+ 象形 + severity 色 | `b-r`/`a-u-G-I` | NAPSG incident |
+| E | 民事危害 / 事故 | 設施、通訊、危害回報、傳染、收容超載、**爆裂物、暴力**（2026-06-12 從 A 移入）| 中立 | ◆ 危害菱形（NAPSG）+ 象形 + severity 色 | `b-r`/`a-u-G-I` | NAPSG incident |
 
-A/B/C（有敵我）走 2525 框（milsymbol 吃 `cot_type` 生，P2-05）；D/E（民事）走 NAPSG。情境由 `cot_type`
-前綴（`a-h`/`a-f`/`a-u` vs `b-*`）**自動分流**。
+> ⚠️ 本表「範例事件」欄為情境示意；**每個事件的權威 regime 歸屬以〈§3 後 · 2026-06-12 regime 軸定案〉表為準**（該表逐一定 22 事件；爆裂物/暴力/受困救援等已從 2525 移回 civil ◆）。
+
+A/B/C（有敵我）走 2525 框（milsymbol 吃 `cot_type` 生，P2-05）；D/E（民事）走 NAPSG。~~情境由 `cot_type`
+前綴（`a-h`/`a-f`/`a-u` vs `b-*`）**自動分流**。~~
+> ⚠️ **2026-06-12 推翻**：前綴自動分流假設失效（`explosive`=◆ 卻 `a-h-G`，規制推導不出 cot_type）。
+> 改為**顯式 `regime` 欄**決定規制、`cot_type` 只供 TAK degrade —— 見〈§3 後 · 2026-06-12 regime 軸定案〉。
+> 渲染模型本身（D/E→NAPSG ◆/▲、A/B/C→2525）**不變**，變的只是「規制怎麼判定」。
 
 ### ⚠️ 內部象形（框內那個圖）有兩個來源，別混
 - **民事 D/E（NAPSG ◆/▲）→ 內部用 NAPSG 象形** ←「NAPSG 定義好的 symbol」即此。工作 = **NAPSG 象形字典擴充
@@ -211,7 +259,7 @@ UI：EventPopup 維持「分類 → 型別」下鑽，僅對「敵我可變」�
 
 ## 7. 待決策（殘餘子細項；渲染模型本身已於 §6 ✅ LOCKED）
 
-1. **哪些型別屬「敵我可變」**（需 affiliation segment）：初判 drone / unknown_person /（可疑載具）；其餘固定。待逐一確認。
+1. ✅ **2026-06-12 落定**：「敵我可變」（需 affiliation segment）= **drone / unknown_person**（+ 未來「可疑載具」）；其餘 20 型別敵我由型別固定帶。見〈§3 後 · regime 軸定案〉。
 2. ✅ **milsymbol（2525 框）整合時機 = P2-05**（§6 LOCKED 確認）：A/B/C 的實作主力；落地前 A/B/C 暫用 NAPSG + severity 過渡。
 3. **是否新增 `tw_ref` 欄** + 是否抓 NFA 疏散避難圖例（收容/疏散在地對齊）。
 4. **severity 是否補 Purple=Extreme**（NAPSG 7 級我們用 3）。

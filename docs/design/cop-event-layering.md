@@ -215,6 +215,30 @@ chats(報/通聯)  →  events(事)  →  decisions(決)  →  下行 tasking(�
 
 四者目前**散在四張表、彼此無導航**（缺口 P2-27）。模型要求可從任一節點導航全鏈（看一樁事的「報→事→決→行」完整脈絡）。
 
+## 全生命週期走一遍（感知 → 事件 → 決策 → AAR；2026-06-12 補充）
+
+> 使用者 2026-06-12 把上面各層串成一條端到端「走一遍」並驗證 pattern。本節是那條縱貫線的收斂 + 四點校正；各層細節見前述對應節，不重述。
+
+```
+無線電 → 手動放點 ┐
+                   ├─► 感知層（單一・來源無感）◄──► 互通（雙向共享閘・TAK）
+TAK client → CoT  ┘            │
+                              ▼  N:1 聚合（triage 三態）
+                           事件層（留 ICS・不外流）
+                              ▼
+                      決策 + 行動（下行指令）──↺ 回灌感知層 planned 態
+        回放 + AAR ＝ 橫切全程複盤（timeline / tracks / 指標）
+```
+
+**四點校正（避免把 pattern 讀歪）：**
+
+1. **不是「兩種模式」，是一條感知層匯流**。手動放點與 TAK **不是「無 TAK / 有 TAK」二選一分支**，而是同一感知層的兩個來源（見〈兩層 + 來源無感〉）。**正因同層，操作介面/習慣才自動一致**——不是做兩套去對齊，是設計成一套、來源無感。→ **「兩邊操作應盡量相同」不是 UI 要求，是來源無感 doctrine 的外顯。**
+2. **「無 TAK」的精確框架 = 降級 3-tier**：manual 地板 = Tier 2（TAK 全斷也撐住）、TAK 全通 = Tier 0；系統不硬依賴 TAK。「無線電 → 手動放點」就是這條永遠在的地板。
+3. **N:1 不是線性必經**：triage 三態（升級獨立事件／關聯既有大事件／**留裸標記＝0 事件**）——不是每個感知都變事件（否則回到打地鼠）。看見**協同 N:1** 才是脊椎（founding-why 見 [`cop-marker-event-decoupling.md`](cop-marker-event-decoupling.md) §0）。
+4. **迴圈收口、AAR 是橫切**：行動（下行指令）回灌感知層成 `planned` 態（見〈觀察 vs 指令〉）→ OODA 閉環；AAR 不是末端步驟，是**橫切全程**的複盤。
+
+**操作一致的第一塊地基**：感知層要「來源無感」，手動點與 TAK 點必須**長同一套符號文法 + 同一套互動**（click=詳情、長按=篩通聯）。符號文法的逐符號對齊（◆ civil / ▲ alert / 2525 military 三規制 + 新增 `regime` 軸與 cot_type 解耦、22 事件逐一決定）記於 [`../../command-dashboard/docs/design/classification-crosswalk.md`](../../command-dashboard/docs/design/classification-crosswalk.md)（2026-06-12 決定，§6「cot_type 前綴自動分流」已被推翻、待更新落帳）；互動一致見 [#193](https://github.com/winson3QQ/ICS_COMMAND/issues/193)（marker 詳情統一）。
+
 ## 事件 vs 標記的梳理（核心，使用者 2026-06-09 提）
 
 > **操作流 / 呈現設計 / founding-why 細節（2026-06-10 深化）→ [`cop-marker-event-decoupling.md`](cop-marker-event-decoupling.md)**（降級定義、triage 三態、N:1 多選聚合、長按關聯網、即時全貌視圖、兩 type 軸）。本節為摘要。

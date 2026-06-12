@@ -9,6 +9,11 @@
   severity → **halo/色**、對接 → **`cot_type`**。情境 A–E 由 `cot_type` 前綴自動分流（`a-h`/`a-f`/`a-u`
   走 2525 框；`b-*` 民事走 NAPSG ◆/▲）。**原「全 NAPSG ◆+severity」(Path 1) 已修正** —— 它砍掉敵我，
   「民防含軍事支援任務」不行（敵無人機 vs 友 QRF 會長一樣）。
+- **⚠ 2026-06-12 更正（regime 獨立軸；推翻上條「前綴自動分流」）**：逐符號審 cot_type 後發現「**視覺規制**」與
+  「**cot_type 敵我**」是**兩條獨立軸**（`explosive` 判 civil ◆ 卻 `a-h-G`，規制推導不出前綴）→ 改由 taxonomy
+  新 **`regime` 欄**（civil◆ / alert▲ / military2525）決定渲染、`cot_type` 只當 TAK degrade 身分證。**渲染模型
+  （D/E→NAPSG、A/B/C→2525）不變，變的是判定來源。** 22 符號逐一定案（16 civil◆／drone·unknown_person·qrf
+  military／evacuation ▲／perimeter·resource 移出事件 taxonomy）見 crosswalk〈§3 後 · 2026-06-12 regime 軸定案〉。
 - **✅ 渲染模型 LOCKED（2026-06-02，三模型×極端案例實渲染對照後）**：**民事 D/E = 現狀「單色＋剝框」**
   （我們的 ◆/▲ 框＋severity 色＋框內白色象形）；**敵我 A/B/C = 2525 框**（milsymbol，P2-05）。
   **NAPSG = 象形「來源」非渲染模型**——只借框內象形、剝原生框與色。**剝框＝轉接頭非妥協**：被剝的
@@ -35,8 +40,8 @@
   **#64-3 CSP enforce → 留 P1-10h**。
 
 ## 待決策 / 可接續（crosswalk §7；渲染模型本身已 LOCKED）
-- 殘餘子細項：哪些型別「敵我可變」（需 affiliation segment）；是否新增 `tw_ref` 欄 + 抓 NFA 疏散避難圖例；
-  severity 是否補 Purple=Extreme。（milsymbol→P2-05 已隨 LOCKED 確認。）
+- 殘餘子細項：~~哪些型別「敵我可變」~~（✅ 2026-06-12 定 = drone / unknown_person）；是否新增 `tw_ref` 欄 + 抓
+  NFA 疏散避難圖例；severity 是否補 Purple=Extreme。（milsymbol→P2-05 已隨 LOCKED 確認。）
 - **下一步（模型已 lock 後的直球）**：用 LOCKED 的 audit 標準（🟢/🟡/🔴）＋ `napsg_browser.html`
   跑 **NAPSG×22 型別 audit** → 修正 crosswalk §3、給「可加 N 個 glyph」真實數字 → 再定 glyph 擴充 / #66 C2 範圍。
 - 其他可做：**#66 C2-新增**（後端已放行、純前端）/ **P1-10h CSP**（含 #64-3）/ **P1-16** placement UI（#40）。
