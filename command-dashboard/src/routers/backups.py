@@ -21,6 +21,7 @@ Endpoints：
 from __future__ import annotations
 
 import gzip
+import os
 import shutil
 import sqlite3
 import tempfile
@@ -32,9 +33,12 @@ from core.config import DB_PATH
 from repositories._helpers import audit
 from routers.admin import _check_admin_pin
 from services.backup_service import (
+    BACKUP_ENCRYPTION_KEY_ENV,
+    BACKUP_KEY_ENV,
     DEFAULT_RETAIN_DAYS,
     cleanup_old_backups,
     create_backup,
+    encrypt_file,
     list_backups,
     verify_backup,
 )
@@ -109,6 +113,15 @@ def trigger_backup(request: Request):
         raise HTTPException(404, f"DB 不存在：{DB_PATH_PATH}")
     try:
         result = create_backup(DB_PATH_PATH, BACKUP_DIR)
+        # P1-12b（#228）drift 修正：API 觸發過去產**明文** .db.gz（CLI 路徑才加密）。
+        # 有金鑰時一律加密成 .db.gz.enc 並移除明文，與 backup_db.py CLI 一致。
+        # 無金鑰（dev/CI）→ 維持明文（無 secret 可保護、且不阻斷開發）。
+        if os.getenv(BACKUP_KEY_ENV) or os.getenv(BACKUP_ENCRYPTION_KEY_ENV):
+            enc_path = result.path.with_suffix(result.path.suffix + ".enc")
+            encrypt_file(result.path, enc_path)
+            result.path.unlink(missing_ok=True)
+            result.path = enc_path
+            result.size_bytes = enc_path.stat().st_size
     except Exception as e:
         audit(
             "admin",
@@ -146,8 +159,16 @@ def trigger_backup(request: Request):
             {"deleted_count": len(deleted), "retain_days": DEFAULT_RETAIN_DAYS},
         )
 
+    # name = timestamp 部分（剝 ics- 前綴 + .db.gz[.enc] 後綴，與 list/_resolve_backup 對齊）
+    _name = result.path.name
+    if _name.startswith("ics-"):
+        _name = _name[4:]
+    for _suf in (".db.gz.enc", ".db.gz"):
+        if _name.endswith(_suf):
+            _name = _name[: -len(_suf)]
+            break
     return {
-        "name": result.path.stem.replace("ics-", "").replace(".db", ""),
+        "name": _name,
         "filename": result.path.name,
         "size_bytes": result.size_bytes,
         "sha256": result.sha256,
@@ -273,4 +294,9 @@ def restore_command(name: str, request: Request):
         "target_db": str(DB_PATH_PATH),
         "cli_command": "\n".join(cmd_lines),
         "playbook_ref": "docs/ops/disaster_recovery.md",
+        # P1-12b（#228）OP-4：此端點回傳 CLI 還原指令，系統運行中執行 cp 覆蓋熱 DB
+        # → WAL 不一致風險。GUI 還原（POST /api/admin/restore，整包 data/ + 自動
+        # pre-restore 防呆）已取代此用途；本端點標 deprecated，僅留離線災後相容。
+        "warning": "運行中執行此 CLI 會覆蓋熱 DB（WAL 不一致風險）；務必先停服務。GUI 還原（整包 data/）為建議路徑。",
+        "deprecated": True,
     }

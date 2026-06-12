@@ -66,12 +66,41 @@ async def activate(exercise_id: int, request: Request):
 @router.post("/{exercise_id}/archive")
 async def do_archive(exercise_id: int, request: Request):
     sess = validate_session(request)
-    if not get(exercise_id):
+    ex = get(exercise_id)
+    if not ex:
         raise HTTPException(404, "演練不存在")
     result = archive(exercise_id, sess["username"])
+    # P1-12b（#228）L2：演習歸檔 = 完整狀態 ceremony → 自動整包備份，manifest 帶
+    # 演習 metadata（這個 backup = 演習 X 收尾完整狀態）。best-effort，不擋歸檔。
+    backup_name = await _l2_archive_backup(ex, sess["username"])
+    if backup_name:
+        result = {**result, "backup": backup_name} if isinstance(result, dict) else result
     # 同 activate：歸檔 active 場 → active 變 None（NULL_SCOPE 實戰池），就地 rescope + 廣播（#265）
     await _rescope_and_announce()
     return result
+
+
+async def _l2_archive_backup(exercise: dict, operator: str) -> str | None:
+    """L2 整包備份（best-effort）。無金鑰（dev）→ None；失敗記 audit 不擋歸檔。"""
+    import asyncio
+
+    from core.config import DATA_DIR
+    from services import user_data_backup_service as uds
+
+    if not uds.key_available():
+        return None
+    ex_meta = {k: exercise.get(k) for k in ("id", "name", "type", "status")}
+    try:
+        res = await asyncio.to_thread(
+            uds.create_backup, DATA_DIR, DATA_DIR / "backups", trigger="archive", exercise=ex_meta
+        )
+        audit(operator, None, "user_data_backup_created", "system", res.path.name,
+              {"trigger": "archive", "exercise_id": exercise.get("id")})
+        return res.path.name
+    except Exception:
+        audit(operator, None, "user_data_backup_failed", "system", "data",
+              {"trigger": "archive", "exercise_id": exercise.get("id")})
+        return None
 
 
 @router.delete("/{exercise_id}")

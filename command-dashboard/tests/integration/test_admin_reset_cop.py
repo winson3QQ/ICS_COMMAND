@@ -31,7 +31,7 @@ def test_reset_db_broadcasts_resync_to_ws_clients(client):
     url = "/api/cop/ws/updates"
     with client.websocket_connect(url, subprotocols=["ics-cop-v1", f"ics.session.{tok}"]) as ws:
         assert ws.receive_json()["op"] == "hello"
-        assert client.post("/api/admin/reset-db", headers=h).status_code == 200
+        assert client.post("/api/admin/reset-db", headers=h, json={"confirm": "RESET"}).status_code == 200
         assert ws.receive_json()["op"] == "resync"
 
 
@@ -42,7 +42,7 @@ def test_reset_db_clears_cop_entities(client):
     _create_cop(client, h, uid="manual:rte-a", attributes={"kind": "route", "vertices": [[24.8, 121.0], [24.9, 121.1]]})
     assert len(client.get("/api/cop/entities", headers=h).json()["entities"]) == 2
 
-    r = client.post("/api/admin/reset-db", headers=h)
+    r = client.post("/api/admin/reset-db", headers=h, json={"confirm": "RESET"})
     assert r.status_code == 200, r.text
     assert "cop_entities" in r.json()["cleared_tables"]
     # reset 後 COP 圖釘全清（不留孤兒）
@@ -60,7 +60,7 @@ def test_reset_exercise_clears_only_exercise_scoped_cop(client):
     )
     real = _create_cop(client, h, uid="manual:real-evt", attributes={"kind": "event", "event_id": "real-evt"})
 
-    r = client.post("/api/admin/reset-exercise", headers=h)
+    r = client.post("/api/admin/reset-exercise", headers=h, json={"confirm": "RESET"})
     assert r.status_code == 200, r.text
 
     remaining = client.get("/api/cop/entities", headers=h).json()["entities"]
