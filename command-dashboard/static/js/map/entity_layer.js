@@ -711,6 +711,9 @@ export function copEntityToEventZone(entity) {
     icon: 'event',
     event_id: entity.event_id,
     event_code: attrs.event_code ?? null,
+    // 甲-1（#240 刀0）：marker 自帶觀察型別 → render 依此推 regime/abbr（不再查 linked event 借）。
+    // 舊 marker 無此欄 → null，render fallback 查 event（back-compat）。
+    event_type: attrs.event_type ?? null,
   };
 }
 

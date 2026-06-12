@@ -1039,7 +1039,10 @@ async function _evPopupSubmit(typeKey, ctx) {
     // P2-33b：event_id 走**頂層 first-class**（後端 link_marker 建 junction 權威關聯），
     // 不再塞 attributes（glue 退役）。event_code/group 仍存 attributes（純顯示 metadata）。
     event_id: eventId,
-    attributes: { kind: 'event', event_code: eventCode, event_group: evGroup },
+    // 甲-1（#240 刀0）：marker **自帶觀察型別** event_type → 渲染依 marker 自身推 regime/abbr，
+    // 不再「查 linked event」借型別。這是「marker 自描述感知原子」的本體（解鎖 N:1：一事件 N marker
+    // 各帶自己的觀察型別）。1:1 下視覺不變。kind 改 sighting + 遷移留甲-1b。
+    attributes: { kind: 'event', event_code: eventCode, event_group: evGroup, event_type: typeKey },
   });
   if (!created) {
     // 事件已落 DB 但圖釘沒建起來 = orphan event（與舊 rollback 行為對齊：提示重試）
@@ -2653,7 +2656,10 @@ function _renderZones(opts = {}) {
       const ev = (data.events || []).find((item) => item.id === zone.event_id);
       if (!ev) { severity = 'info'; isOrphan = true; }
       else if (['resolved', 'closed'].includes(ev.status)) continue;
-      else { severity = ev.severity || 'warning'; evType = ev.event_type; }
+      else { severity = ev.severity || 'warning'; }
+      // 甲-1（#240 刀0）：觀察型別 = **marker 自帶 event_type 優先**（自描述感知原子），
+      // 舊 marker 無此欄 → fallback linked event。symbology（regime/abbr/glyph）自此不依賴查 event。
+      evType = zone.event_type || ev?.event_type || null;
     }
 
     // 顏色解析：事件 → SEV；節點 → NODE base，shelter/medical 受 RAG 蓋過

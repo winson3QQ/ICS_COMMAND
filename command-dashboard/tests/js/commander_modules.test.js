@@ -670,6 +670,8 @@ describe('C1-F commander modules', () => {
     // #66 PR-B 解撞名：事件類別走 event_group（建立 attributes + abbr fallback），不再借 node_type；
     // group 權威來源 = event_type 經 taxonomy 推得。
     expect(mapSource).toMatch(/event_group: evGroup/);                 // 建事件 attributes
+    expect(mapSource).toMatch(/event_type: typeKey/);                  // 甲-1（#240）：marker 自帶觀察型別
+    expect(mapSource).toMatch(/evType = zone\.event_type \|\| ev\?\.event_type/);  // render 讀 marker 自身優先
     expect(mapSource).toMatch(/_NAPSG_GROUP_ABBR\[evGroup\]/);         // abbr fallback 用 group 非 node_type
     expect(mapSource).not.toMatch(/_NAPSG_GROUP_ABBR\[zone\.node_type\]/);  // 舊撞名寫法已移除
   });
