@@ -2027,9 +2027,13 @@ function _locateSender(detail) {
 function _showSenderBubble(map, lng, lat) {
   _hideSenderBubble();
   if (!window.maplibregl) return;
+  // 外層 el 由 maplibregl.Marker 以 transform:translate 定位 → 動畫(scale)必須做在**內層**
+  // span，否則 keyframe 的 transform 會蓋掉定位 translate，泡泡掉回左上角 (0,0)。
   const el = document.createElement('div');
   el.className = 'sender-locate-bubble';
-  el.textContent = '💬';
+  const inner = document.createElement('span');
+  inner.textContent = '💬';
+  el.appendChild(inner);
   _senderBubble = new window.maplibregl.Marker({ element: el, anchor: 'bottom' })
     .setLngLat([lng, lat]).addTo(map);
 }
