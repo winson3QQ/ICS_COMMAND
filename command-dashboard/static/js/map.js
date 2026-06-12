@@ -158,6 +158,9 @@ const _CONTACT_AFF = {
 // 故走 onLongPress 的 queryRenderedFeatures 分流（DOM marker 如 contact 拖曳 handle 由
 // maplibre_core 的 .maplibregl-marker 短路另管）。
 const _MARKER_LONGPRESS_LAYERS = ['tak-units-icon', 'contact-2525-icon', 'contact-circle'];
+// #193：長按 marker 觸發篩通聯後，放開會補發一個 maplibre click → 會誤觸 click→詳情。
+// 旗標抑制「長按後那一下 click」（對齊事件卡的 _evtCardDidHighlight）；下次按下/輕點重置。
+let _suppressMarkerClick = false;
 // P2-25（#163 系列）：TAK 單位（2525 markers）的地圖篩選器——純前端 view filter（不刪資料）。
 // affiliation 對映 affiliationFromCot 的四態；showStale=false 隱藏過 stale 的活追蹤單位。
 const _takFilter = { friendly: true, hostile: true, neutral: true, unknown: true, showStale: true };
@@ -458,6 +461,7 @@ function _initMaplibre() {
       if (hit.length) {
         const p = hit[0].properties || {};
         if (p.id) {
+          _suppressMarkerClick = true;  // 抑制放開後補發的 click（否則 detail 也彈）
           document.dispatchEvent(new CustomEvent('map:unitSelected', { detail: { uid: p.id, callsign: p.label || p.id } }));
           return;
         }
@@ -1804,6 +1808,9 @@ function _ensureEntityLayers() {
   map.on('click', 'contact-circle', (e) => _onContactClick(e));
   map.on('click', 'contact-2525-icon', (e) => _onContactClick(e));
   map.on('click', 'tak-units-icon', (e) => _onTakUnitClick(e));  // #193：點 TAK 單位 → 詳情（長按才篩通聯）
+  // #193：新一次按下/輕點 → 清長按抑制旗標（補「長按後拖開無 click」的殘留，防下一下 click 被誤吞）。
+  map.on('mousedown', () => { _suppressMarkerClick = false; });
+  map.getCanvas().addEventListener('touchstart', () => { _suppressMarkerClick = false; }, { passive: true });
   map.on('click', 'routes-line-solid', (e) => _onRouteClick(e));
   map.on('click', 'routes-line-dash', (e) => _onRouteClick(e));
   map.on('click', 'routes-line-dotted', (e) => _onRouteClick(e));
@@ -2237,6 +2244,7 @@ function _onContactClick(e) {
 // canAccessMapObjects 守門（通聯顯示是 READ_ROLES）；解耦不直接呼叫 chat 模組。
 // #193：點 TAK 單位 → 開唯讀詳情（與 contact click→詳情一致）。長按才篩通聯（onLongPress 閘）。
 function _onTakUnitClick(e) {
+  if (_suppressMarkerClick) { _suppressMarkerClick = false; return; }  // 剛長按過 → 吞掉這下 click
   _openTakUnitDetail(e.features?.[0]?.properties?.id);
 }
 
