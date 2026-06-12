@@ -3704,5 +3704,26 @@
     "title": "feat(taxonomy): regime 欄落地（symbology regime 軸；#240 刀0 + P2-29 前置）",
     "updatedAt": "2026-06-12T07:57:12Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/242"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "@\n## What\n#241 regime 軸的 render 收斂第一刀（乙-2a）：事件外框依 taxonomy `regime` 分流 **civil ◆ / alert ▲**（military 2525 留乙-2b）。\n\n## 改動\n- `entity_layer.js`：新 `bakeTriangleSdf`（**等邊·形心置中**，icon 錨格心時壓在點上）；`zoneToNodeFeature` 帶 `regime` property（缺省 civil）。\n- `map.js`：import + bake `zone-triangle`；`zones-event` / `zones-event-outline` 兩層 `icon-image` 改 `[match, [get,regime], alert, zone-triangle, zone-diamond]`；`_renderZones` 解 `regime = _EVENT_TYPES[evType]?.regime` 傳入。\n- 測試：commander_modules 更新 icon-image 斷言 + triangle bake 斷言；entity_layer regime property 測試。\n\n## altitude\nbranch 依 `zone.regime`（非 `kind===event`）→ survives #240 刀0（kind→sighting）。\n\n## 效果\n**evacuation → ▲**（等邊、壓點上）；其餘 18 civil → ◆；**drone/不明/QRF 暫 ◆**（military 2525 是乙-2b）。\n\n## 驗證\n`/code-review` + `/security-review` **0**（純前端、regime enum-sourced 自 taxonomy、無 HTML sink；triangle 幾何/match 表達式/層同心/altitude 全確認）。vitest 312 / eslint 0。**真機 Mac human verify PASS**（撤離出等邊 ▲ 壓點上、爆裂物仍 ◆）。\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n@",
+    "closedAt": "2026-06-12T09:38:24Z",
+    "comments": [],
+    "createdAt": "2026-06-12T09:36:07Z",
+    "headRefName": "feat/issue-243-render-regime",
+    "labels": [],
+    "mergedAt": "2026-06-12T09:38:24Z",
+    "number": 244,
+    "state": "MERGED",
+    "title": "feat(map): 乙-2a 事件依 regime 渲染 ◆/▲（alert→三角）+ regime 分流地基（#243）",
+    "updatedAt": "2026-06-12T09:38:27Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/244"
   }
 ]

@@ -3287,14 +3287,29 @@
     },
     "body": "@\n## 背景 / reality check（2026-06-12，origin/main 實查）\n\nP2-33 拆三刀；**a / b1 已落地**，本 issue = 收尾的 **B2（降級）+ c（N:1 脊椎）**。\n\n| Slice | 狀態 | 證據 |\n|---|---|---|\n| P2-33a 導航鏈唯讀 UI | ✅ #195 `13ab7a3` | `events.js:650+` 消費 `GET /api/events/{id}/chain` |\n| P2-33b **B1** junction 權威 + 前端 cutover | ✅ #208/#196 `21b6040` | 後端序列化帶頂層 `event_id`（`cop_entity_repo._attach_primary_event_ids`）；`entity_layer.js:660` 不再讀 attributes glue；`map.js:1039` 寫頂層 first-class；**glue 寫入已退役**（attributes 只剩 `{kind,event_code,event_group}`，cop.py 僅留防禦性 read-fallback）|\n| P2-33b **B2** 概念降級 | ❌ 未做 | `map.js:1040` 仍 `kind:event`，event 仍有自身圖釘 |\n| P2-33c N:1 即時聚合 | ❌ 未做 | 現前端硬 1:1 |\n\n## founding-why（為何是脊椎非 polish）\n\n演習第一波協同攻擊被當成 N 個孤立事件、指揮部窮於應付、**只有 AAR 才見全貌** → 催生本系統。**marker-first 解耦 + N:1 即時聚合 = 把「只有 AAR 才看得到的協同網」前移到交戰當下。**\n\n## Scope（建議 PR 分刀）\n\n### 刀 0 — B2 概念降級（結構地基，先做）\n- `kind=event` 的 cop_entity 退回**純標記**（kind → `sighting`/`contact`，對齊 P2-30 part-3 詞彙）；event 地圖上**不再有自身圖釘**——地圖看 marker，event 是其上的聚合層（這讓 P2-29 分層視圖才分得乾淨）。\n- `events` row 純靠 junction reference primary 標記。\n- 遷移安全：m021 junction 已 backfill，降級後現有事件預設各自獨立 1:1（case A），行為等價於今天、無資料遺失。\n- ⚠️ **與 regime/symbology 決定（2026-06-12）連動**：降級後 sighting marker 需 `regime` + 觀察類型 → 與 taxonomy 新 `regime` 欄落地協調（見 `command-dashboard/docs/design/classification-crosswalk.md` §3 後「regime 軸定案」）。\n\n### 刀 1 — N:1 聚合操作（寫 junction）\n- 多選聚合：事件 modal「＋關聯標記」→ banner 多選點地圖 → 一次寫 n 筆 junction（首顆 `primary`、其餘 `related`；重用 P1-16 放置 banner idiom）。\n- 標記視角：點標記 →「歸入既有事件 / 升級為新事件」。\n- re-parent（只改 junction、marker 不動）。\n\n### 刀 2 — 呈現（三鐵則：關聯預設隱形 / on-demand 限 active 單一事件 / 清單優先）\n- 長按事件 → 查 junction → 亮「事件 + n 標記」、其餘灰、畫細線、**放開復原**（擴 `_highlightEvent` press/release，瞬時不全域，避免目不暇給）。\n- 事件 modal「關聯標記 (n)」清單點一顆 → flyTo 那一顆。\n\n### 刀 3 — 輔助聚合 + 全貌視圖（founding-why 交付物）\n- 系統提示「時空相近 N 顆可能同一波」→ 人確認即聚合。\n- 即時長出來的事件全貌視圖。\n\n## 硬約束 / 順序\n- **刀 0（降級）先**；其上才長 N:1。\n- 設計 SoT 必讀：`docs/design/cop-marker-event-decoupling.md`（§4 聚合操作 / §5 呈現三鐵則 / §0 founding-why）+ `docs/design/cop-event-layering.md`（L3↔L4 分水嶺）。\n\n## 依賴 / 後續\n- **解鎖 P2-29**（角色 / 分層感知地圖視圖）——「事件層無自身圖釘才分得乾淨」正是刀 0；P2-29 precursor = #219（filter 面板 IA + 角色預設骨架）。\n- regime 欄落地（symbology 線、#66 C2）與刀 0 協調。\n\n## Out of scope\n- P2-29 角色視圖本體（後續，gated on 刀 0）。\n- 出/入向 TAK 忠實度（#213 / #214 / #216）。\n@",
     "closedAt": null,
-    "comments": [],
+    "comments": [
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "@\n## 刀 0（B2 降級）路線定案：甲 — 真大一統（2026-06-12）\n\n使用者選 **甲**：marker 成為**自我描述的感知原子**（自帶觀察型別 + regime，與 TAK marker / 手動 contact 同級）；**事件變疊加層、地圖無自身圖釘**。乙（只改 kind 字串）被否決——marker 仍依附事件、做不了 N:1＝白做。\n\n### Reality check 關鍵發現（origin/main，含 #241/#243）\n- ✅ **地基已備**：`isEvent` 判定早就看 `event_id` 不看 kind（map.js:2648）；regime 渲染依 regime 不依 kind（#241/#243）→ **降級不掉視覺**（先做 regime 的回報在此）。\n- **卡點 = `copEntityToEventZone` 的 `kind===event` 守門**（entity_layer.js:699）。\n- **甲 的本質改動**：marker **自帶觀察型別**（render 從「查 linked event 的 event_type」改成「讀 marker 自己的型別」）＝兩 type 軸**真分家**。\n\n### Blast radius（kind==event 讀寫點）\n| 點 | 動作 |\n|---|---|\n| map.js:1042 createEntity | 寫 `kind:sighting` + 把觀察型別存上 marker |\n| entity_layer.js:699 guard | 接受 sighting + 從 marker 自身型別渲染 |\n| map.js:1085 / 2094 搜尋 | `getEntitiesByKind(sighting)` |\n| cop.py:297 link-on-create | `_kind == sighting` |\n| cop.py:327 audit skip | `_kind != sighting` |\n| database.py | 新 m023 遷移既有 `event`→`sighting` |\n| tests | entity_layer / cop_stream 的 kind 資料 |\n\n### 分刀\n- **甲-1（1:1 降級·不掉視覺）**：marker 自帶觀察型別 + kind=sighting + 上述 blast radius + m023 遷移。**結果＝現有事件外觀/操作不變，但結構上 marker 已自描述**（解鎖 N:1）。\n- **甲-2（N:1 聚合）** = P2-33c：多選聚合 / 升級 / 關聯既有 / re-parent + 長按關聯網 + 全貌視圖。\n- **甲-3（純化）**：severity / 事件分類移到 event 疊加層（marker 純 L3）。\n\n### 待定子決策（甲-1 動工前）\n1. **kind 名**：event-derived → `sighting`（手動敵情仍 `contact`）。\n2. **marker 帶什麼型別**：存 `event_type`（觀察型別）於 attributes，render 讀它推 regime/abbr。\n3. **遷移**：m023 把既有 `event`→`sighting`（含 down）。\n\n### 排序註記\n甲-1 與 **#243 乙-2b（render-regime-b 分支，待 human verify）動同檔** → 建議 **乙-2b 驗 + merge 後，甲-1 off 更新的 main 開工**（避免大結構改動疊在未驗分支上）。\n@",
+        "createdAt": "2026-06-12T10:09:07Z",
+        "id": "IC_kwDOSnBjpc8AAAABF4wXow",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/240#issuecomment-4690024355"
+      }
+    ],
     "createdAt": "2026-06-12T07:20:04Z",
     "labels": [],
     "milestone": null,
     "number": 240,
     "state": "OPEN",
     "title": "feat(map): P2-33c — event↔marker N:1 即時聚合 + B2 概念降級（marker-first 脊椎）",
-    "updatedAt": "2026-06-12T07:20:04Z",
+    "updatedAt": "2026-06-12T10:09:08Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/240"
   },
   {
