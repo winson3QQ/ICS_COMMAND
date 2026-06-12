@@ -1710,17 +1710,17 @@ function _ensureEntityLayers() {
           ],
         },
       },
-      // P1-10d：事件 ◆ diamond（NAPSG hazard 形狀）。icon-color = severity 色。只 render is_event=true。
+      // P1-10d：事件 ◆/▲（civil/alert，NAPSG SDF 形狀）。icon-color = severity 色（**只 tint SDF**）。
+      // 乙-2b 修：military 拆出獨立層（milsymbol 全彩框 + icon-color 會被染 severity 色 → 必須無 icon-color）。
       {
         id: 'zones-event', type: 'symbol',
-        filter: ['==', ['coalesce', ['get', 'is_event'], false], true],
+        filter: ['all',
+          ['==', ['coalesce', ['get', 'is_event'], false], true],
+          ['!=', ['get', 'regime'], 'military'],  // military 走 zones-military-icon（全彩 milsymbol）
+        ],
         layout: {
-          // 乙-2a/2b（#243）：alert→▲、military→milsymbol 2525 框（iconId）、其餘 civil→◆。
-          // icon-color（severity）只 tint SDF ◆/▲；對全彩 milsymbol icon 無效 → 軍用框保留 SIDC 敵我色。
-          'icon-image': ['match', ['get', 'regime'],
-            'military', ['coalesce', ['get', 'iconId'], 'zone-diamond'],
-            'alert', 'zone-triangle',
-            'zone-diamond'],
+          // 乙-2a（#243）：alert→▲、civil→◆。
+          'icon-image': ['match', ['get', 'regime'], 'alert', 'zone-triangle', 'zone-diamond'],
           'icon-size': 1.1,   // 事件(hazard)為焦點：比節點圓更醒目（外框由下層 zones-event-outline 提供）
           'icon-allow-overlap': true,
           'icon-ignore-placement': true,
@@ -1739,6 +1739,33 @@ function _ensureEntityLayers() {
           ],
         },
       },
+      // 乙-2b（#243）：軍用事件 → milsymbol 2525 框（drone/不明/QRF）。**獨立層、不套 icon-color**——
+      // milsymbol 為全彩 RGBA icon，一旦套 icon-color 會被染成 severity 色（QRF 友軍藍 → 變橘）。
+      // 同 `zones` source（halo/critical-pulse/click/drag 因同源同 filter 自動保留）。**無 abbr**
+      // （2525 框自帶敵我語意，疊 abbr 反雜亂；型別細分等 P2-04 框內 function 符號）。
+      {
+        id: 'zones-military-icon', type: 'symbol',
+        filter: ['all',
+          ['==', ['coalesce', ['get', 'is_event'], false], true],
+          ['==', ['get', 'regime'], 'military'],
+        ],
+        layout: {
+          'icon-image': ['get', 'iconId'],   // 'mil-<SIDC>'，async bake 完成才現（同 _renderTakUnits）
+          'icon-size': 1.1,
+          'icon-allow-overlap': true,
+          'icon-ignore-placement': true,
+          'symbol-sort-key': ['case', ['==', ['get', 'severity'], 'critical'], 0, 1],
+        },
+        paint: {
+          // **不設 icon-color**：色彩/框形由 SIDC 內建（對齊 tak-units-icon）。
+          'icon-opacity': [
+            'case',
+            ['boolean', ['feature-state', 'dimmed'], false], 0.15,
+            ['==', ['coalesce', ['get', 'stale'], false], true], 0.55,
+            0.95,
+          ],
+        },
+      },
       // P1-10b 步驟 7 階段 2：abbr 字（白色 SDF 字浮在 circle 上）
       // icon-image 動態組 'napsg-abbr-' + properties.abbr；caller 須確認 abbr 已 bake。
       // SDF + icon-color 白 → 任何 base color 上都可見。
@@ -1748,11 +1775,15 @@ function _ensureEntityLayers() {
         // 故此處 abbr 字要抑制，否則象形跟字疊一起。只排除「節點」（is_event!=true）的
         // shelter/medical；事件（is_event=true，event abbr/glyph 走自己的 fg）不受影響，
         // command/forward/security 節點（仍顯 指/前/安）也不受影響。
-        filter: ['!',
-          ['all',
-            ['!=', ['coalesce', ['get', 'is_event'], false], true],
-            ['in', ['get', 'node_type'], ['literal', ['shelter', 'medical']]],
+        filter: ['all',
+          ['!',
+            ['all',
+              ['!=', ['coalesce', ['get', 'is_event'], false], true],
+              ['in', ['get', 'node_type'], ['literal', ['shelter', 'medical']]],
+            ],
           ],
+          // 乙-2b 修：軍用事件走 milsymbol 2525 框（自帶敵我語意）→ 不疊 abbr，免雜亂。
+          ['!=', ['get', 'regime'], 'military'],
         ],
         layout: {
           // P1-10d 正式 icon：fg = NAPSG 象形（'napsg-glyph-*'）或 abbr（'napsg-abbr-*'）。
@@ -1836,6 +1867,7 @@ function _ensureEntityLayers() {
   map.on('click', 'routes-line-dotted', (e) => _onRouteClick(e));
   map.on('click', 'zones-base', (e) => _onZoneClick(e));
   map.on('click', 'zones-abbr', (e) => _onZoneClick(e));  // abbr 字也可點，跟 base 同 handler
+  map.on('click', 'zones-military-icon', (e) => _onZoneClick(e));  // 乙-2b：軍用 2525 框 → 事件 modal（非 TAK 詳情）
 
   // P1-10e：點到空白（游標下無 polygon/route）→ 取消選中。layer-specific click 先觸發
   // （已 _setSelection），此 general handler 後觸發；queryRenderedFeatures 有命中就不清。
@@ -1854,7 +1886,7 @@ function _ensureEntityLayers() {
   [
     'polygons-fill', 'infra-circle',
     'routes-line-solid', 'routes-line-dash', 'routes-line-dotted',
-    'zones-base', 'zones-abbr',
+    'zones-base', 'zones-abbr', 'zones-military-icon',
   ].forEach((id) => {
     map.on('mouseenter', id, () => { _hoverCount += 1; _setHoverCursor(); });
     map.on('mouseleave', id, () => {

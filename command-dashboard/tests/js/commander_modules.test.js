@@ -235,10 +235,12 @@ describe('C1-F commander modules', () => {
     expect(mapSrc).toMatch(/bakeTriangleSdf\(map, 'zone-triangle'\)/);  // 乙-2a：▲ alert
     expect(file('static/js/map/entity_layer.js')).toMatch(/export function bakeDiamondSdf/);
     expect(file('static/js/map/entity_layer.js')).toMatch(/export function bakeTriangleSdf/);
-    // 乙-2b（#243）：zones-event icon-image 加 military→milsymbol 2525（iconId）分支；
-    // 外框層 filter 排除 military（2525 自帶框）；_renderZones async 烤 SIDC + seq guard。
-    expect(mapSrc).toMatch(/'military', \['coalesce', \['get', 'iconId'\], 'zone-diamond'\]/);
-    expect(mapSrc).toMatch(/\['!=', \['get', 'regime'\], 'military'\]/);  // outline 排除 military
+    // 乙-2b（#243）：military 走**獨立 zones-military-icon 層**（全彩 milsymbol、**不套 icon-color**，
+    // 否則被 severity 染色）；zones-event/outline/abbr filter 排除 military；async 烤 SIDC + seq guard。
+    expect(mapSrc).toMatch(/id: 'zones-military-icon'/);
+    expect(mapSrc).toMatch(/\['==', \['get', 'regime'\], 'military'\]/);   // military 層 filter
+    expect(mapSrc).toMatch(/\['!=', \['get', 'regime'\], 'military'\]/);   // event/outline/abbr 排除 military
+    expect(mapSrc).toMatch(/map\.on\('click', 'zones-military-icon'/);     // 點軍用框 → 事件 modal
     expect(mapSrc).toMatch(/milSidcs\.add\(sidc\)/);
     expect(mapSrc).toMatch(/bakeMilSymbol\(_bakeMap, s\)/);
     expect(mapSrc).toMatch(/seq === _zoneRenderSeq/);  // async bake seq guard
