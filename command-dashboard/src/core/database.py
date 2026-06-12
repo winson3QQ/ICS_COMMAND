@@ -1190,6 +1190,29 @@ def _m026_aar_entries_ref_t_down(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE aar_entries DROP COLUMN ref_t")
 
 
+def _m027_event_kind_to_sighting(conn: sqlite3.Connection) -> None:
+    """#240 刀0（甲-1b）：cop_entities 的 `attributes.kind` 'event' → 'sighting'。
+
+    事件「圖釘」本質是**感知層原子（sighting）**，不該叫 'event'（'event' 是 L4 工作流物件，
+    不該有自己的地圖圖釘）。降級後事件經 `event_markers` junction（#196 已權威）聚合此標記。
+    既有 `kind='event'` 一次性改名；新建走 'sighting'（map.js）。**m021 junction backfill（查
+    kind='event'）為 version 21、早於本遷移，已執行完畢**，故改名不影響其歷史快照。idempotent
+    （只動 kind='event' 列；前端 guard 同時認 event+sighting，遷移前後皆不掉視覺）。
+    """
+    conn.execute(
+        "UPDATE cop_entities SET attributes = json_set(attributes, '$.kind', 'sighting') "
+        "WHERE json_extract(attributes, '$.kind') = 'event'"
+    )
+
+
+def _m027_event_kind_to_sighting_down(conn: sqlite3.Connection) -> None:
+    """rollback：sighting → event（還原本遷移；遷移後新建的 sighting 亦一併還原，回滾語意可接受）。"""
+    conn.execute(
+        "UPDATE cop_entities SET attributes = json_set(attributes, '$.kind', 'event') "
+        "WHERE json_extract(attributes, '$.kind') = 'sighting'"
+    )
+
+
 _MIGRATIONS: list[tuple[int, str, object]] = [
     (1, "events_columns", _m001_events_columns),
     (2, "decisions_columns", _m002_decisions_columns),
@@ -1217,6 +1240,7 @@ _MIGRATIONS: list[tuple[int, str, object]] = [
     (24, "ai_rec_decision_fk", _m024_ai_rec_decision_fk),
     (25, "events_drop_location_zone_id", _m025_events_drop_location_zone_id),
     (26, "aar_entries_ref_t", _m026_aar_entries_ref_t),
+    (27, "event_kind_to_sighting", _m027_event_kind_to_sighting),
 ]
 
 

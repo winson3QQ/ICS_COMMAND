@@ -235,6 +235,15 @@ describe('C1-F commander modules', () => {
     expect(mapSrc).toMatch(/bakeTriangleSdf\(map, 'zone-triangle'\)/);  // 乙-2a：▲ alert
     expect(file('static/js/map/entity_layer.js')).toMatch(/export function bakeDiamondSdf/);
     expect(file('static/js/map/entity_layer.js')).toMatch(/export function bakeTriangleSdf/);
+    // 乙-2b（#243）：military 走**獨立 zones-military-icon 層**（全彩 milsymbol、**不套 icon-color**，
+    // 否則被 severity 染色）；zones-event/outline/abbr filter 排除 military；async 烤 SIDC + seq guard。
+    expect(mapSrc).toMatch(/id: 'zones-military-icon'/);
+    expect(mapSrc).toMatch(/\['==', \['get', 'regime'\], 'military'\]/);   // military 層 filter
+    expect(mapSrc).toMatch(/\['!=', \['get', 'regime'\], 'military'\]/);   // event/outline/abbr 排除 military
+    expect(mapSrc).toMatch(/map\.on\('click', 'zones-military-icon'/);     // 點軍用框 → 事件 modal
+    expect(mapSrc).toMatch(/milSidcs\.add\(sidc\)/);
+    expect(mapSrc).toMatch(/bakeMilSymbol\(_bakeMap, s\)/);
+    expect(mapSrc).toMatch(/seq === _zoneRenderSeq/);  // async bake seq guard
   });
 
   test('p2_05b_type_palette_uses_design_tokens', async () => {
@@ -663,6 +672,8 @@ describe('C1-F commander modules', () => {
     // #66 PR-B 解撞名：事件類別走 event_group（建立 attributes + abbr fallback），不再借 node_type；
     // group 權威來源 = event_type 經 taxonomy 推得。
     expect(mapSource).toMatch(/event_group: evGroup/);                 // 建事件 attributes
+    expect(mapSource).toMatch(/event_type: typeKey/);                  // 甲-1（#240）：marker 自帶觀察型別
+    expect(mapSource).toMatch(/evType = zone\.event_type \|\| ev\?\.event_type/);  // render 讀 marker 自身優先
     expect(mapSource).toMatch(/_NAPSG_GROUP_ABBR\[evGroup\]/);         // abbr fallback 用 group 非 node_type
     expect(mapSource).not.toMatch(/_NAPSG_GROUP_ABBR\[zone\.node_type\]/);  // 舊撞名寫法已移除
   });

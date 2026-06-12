@@ -400,6 +400,11 @@ describe('zoneToNodeFeature', () => {
     expect(zoneToNodeFeature({ lat: 0, lng: 0 }, {}).properties.regime).toBe('civil');
   });
 
+  test('乙-2b（#243）：opts.iconId 帶上 properties（military milsymbol 2525 框 id）', () => {
+    expect(zoneToNodeFeature({ lat: 0, lng: 0 }, { iconId: 'mil-SHAP-----------' }).properties.iconId).toBe('mil-SHAP-----------');
+    expect(zoneToNodeFeature({ lat: 0, lng: 0 }, {}).properties.iconId).toBeNull();  // 非 military → null（走 ◆/▲）
+  });
+
   test('label fallback：label → event_code → id → ""', () => {
     expect(zoneToNodeFeature({ lat: 0, lng: 0, label: 'L' }).properties.label).toBe('L');
     expect(zoneToNodeFeature({ lat: 0, lng: 0, event_code: 'EC' }).properties.label).toBe('EC');
@@ -529,7 +534,7 @@ describe('copEntityToEventZone adapter（PR-G1b cutover）', () => {
       lon: 121.0,
       callsign: '疑似爆裂物',
       event_id: 'ev-123',  // P2-33b：頂層（junction 權威），不再讀 attributes.event_id
-      attributes: { kind: 'event', event_code: 'EV-0529-001', event_group: 'security' },
+      attributes: { kind: 'event', event_code: 'EV-0529-001', event_group: 'security', event_type: 'explosive' },
     };
     const z = copEntityToEventZone(ent);
     expect(z.id).toBe('manual:e1');       // cop uid → zone.id（刪除/回查用）
@@ -540,6 +545,15 @@ describe('copEntityToEventZone adapter（PR-G1b cutover）', () => {
     expect(z.icon).toBe('event');
     expect(z.event_id).toBe('ev-123');
     expect(z.event_code).toBe('EV-0529-001');
+    expect(z.event_type).toBe('explosive');  // 甲-1（#240）：marker 自帶觀察型別 → render 依此推 regime/abbr
+  });
+
+  test('甲-1（#240）：舊 marker 無 attributes.event_type → event_type=null（render fallback 查 event）', () => {
+    const z = copEntityToEventZone({
+      uid: 'manual:e3', lat: 24.8, lon: 121.0, callsign: '舊事件',
+      event_id: 'ev-old', attributes: { kind: 'event', event_code: 'EV-OLD' },
+    });
+    expect(z.event_type).toBeNull();
   });
 
   test('back-compat：舊 entity 用 node_type 存 group → 仍還原成 event_group', () => {
@@ -563,6 +577,18 @@ describe('copEntityToEventZone adapter（PR-G1b cutover）', () => {
     expect(copEntityToEventZone({ uid: 'x', lat: 1, lon: 2, attributes: { kind: 'route', vertices: [] } })).toBeNull();
     expect(copEntityToEventZone({ uid: 'x', lat: 1, lon: 2, attributes: { kind: 'event' } })).toBeNull(); // 缺 event_id
     expect(copEntityToEventZone({ uid: 'x', event_id: 'e', attributes: { kind: 'event' } })).toBeNull(); // 缺座標
+  });
+
+  test('甲-1b（#240）：kind=sighting 降級後仍認（與 event 同等）', () => {
+    const z = copEntityToEventZone({
+      uid: 'manual:s1', lat: 24.8, lon: 121.0, callsign: '疑似爆裂物',
+      event_id: 'ev-s', attributes: { kind: 'sighting', event_code: 'EV-S', event_type: 'explosive' },
+    });
+    expect(z).not.toBeNull();
+    expect(z.event_id).toBe('ev-s');
+    expect(z.event_type).toBe('explosive');
+    // contact / route 等其他 kind 仍不認（非事件圖釘）
+    expect(copEntityToEventZone({ uid: 'x', lat: 1, lon: 2, event_id: 'e', attributes: { kind: 'contact' } })).toBeNull();
   });
 });
 

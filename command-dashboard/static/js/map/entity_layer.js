@@ -454,8 +454,11 @@ export function zoneToNodeFeature(zone, opts = {}) {
       is_event: !!(zone.event_id || zone.event_code),
       is_orphan: !!opts.is_orphan,
       // 乙-2a（#243）：視覺規制（civil/alert/military），驅動 zones-event 層外框形狀
-      // （alert→▲、其餘→◆；military 2525 留乙-2b）。缺省 civil（◆）。
+      // （alert→▲、其餘→◆）。缺省 civil（◆）。
       regime: opts.regime ?? 'civil',
+      // 乙-2b（#243）：regime='military' 時的 milsymbol 2525 框 icon id（'mil-<SIDC>'）。
+      // zones-event 層 icon-image 對 military 吃此值；非 military / 烤不出 → null（走 ◆/▲）。
+      iconId: opts.iconId ?? null,
       severity: opts.severity ?? 'info',
       stale: !!opts.stale,
       // P1-10d 正式 icon：前景圖示 id（有 NAPSG 象形用 glyph，否則 abbr）+ 是否為 glyph（控 icon-size）。
@@ -693,7 +696,9 @@ export function copEntityToEventZone(entity) {
   if (entity == null) return null;
   const attrs = entity.attributes || {};
   // P2-33b：event_id 改吃**頂層**（junction 權威），不再讀 attributes.event_id glue。
-  if (attrs.kind !== 'event' || !entity.event_id) return null;
+  // 甲-1b（#240 刀0）：kind 'event'→'sighting' 降級。**同時認兩者**（m027 遷移前後皆不掉視覺；
+  // 'event'=舊/未遷、'sighting'=新建/已遷）。判事件性靠 event_id（junction），非 kind 字串。
+  if ((attrs.kind !== 'event' && attrs.kind !== 'sighting') || !entity.event_id) return null;
   const lat = Number(entity.lat);
   const lng = Number(entity.lon);
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
@@ -708,6 +713,9 @@ export function copEntityToEventZone(entity) {
     icon: 'event',
     event_id: entity.event_id,
     event_code: attrs.event_code ?? null,
+    // 甲-1（#240 刀0）：marker 自帶觀察型別 → render 依此推 regime/abbr（不再查 linked event 借）。
+    // 舊 marker 無此欄 → null，render fallback 查 event（back-compat）。
+    event_type: attrs.event_type ?? null,
   };
 }
 

@@ -294,7 +294,8 @@ async def create_entity(request: Request, response: Response):
     # best-effort：關聯失敗只 warn 不擋圖釘（圖照樣上 COP）；攔 sqlite3.Error（IntegrityError=event 不存在 +
     # OperationalError=DB locked）——只攔 IntegrityError 則高併發 link 撞 locked 會噴 500、client 重試又撞 409。
     _kind = (created.get("attributes") or {}).get("kind")
-    if _kind == "event" and _event_id:
+    # 甲-1b（#240 刀0）：事件圖釘 kind 'event'→'sighting' 降級 → 認兩者（新建走 sighting）。
+    if _kind in ("event", "sighting") and _event_id:
         # glue 退役後 event 圖釘的 event-ness **唯一**靠此 junction link 成功（前端只認頂層 event_id）。
         # 故對 OperationalError（DB locked，瞬時；get_conn 已有 5s busy timeout 兜底）**重試一次**，
         # 保「event 圖釘必有 event_id」不變式；IntegrityError（event 不存在）不重試＝正解（orphan）。
@@ -322,9 +323,10 @@ async def create_entity(request: Request, response: Response):
                     )
 
     await _broadcast("create", created)
-    # #93：COP 建立 audit。**跳過 event kind**（event_created 已涵蓋，避免同動作雙記）；
+    # #93：COP 建立 audit。**跳過事件圖釘**（event_created 已涵蓋，避免同動作雙記）；
     # zone/route/polygon/infra 等才是真正未被 audit 的地圖物件。
-    if _kind != "event":
+    # 甲-1b（#240）：事件圖釘 kind 'event'→'sighting' → 兩者都跳過 audit。
+    if _kind not in ("event", "sighting"):
         _audit_cop("cop_entity_created", _actor(request), created)
     response.headers["ETag"] = _etag(created["version_clock"])
     return created

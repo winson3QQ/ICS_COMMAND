@@ -72,3 +72,6 @@ _scratch/
 
 # 本機 TAK dev 啟動器（機器專屬憑證路徑，不進版控）
 dev_tak_mac.sh
+
+server.log
+server.log.err
