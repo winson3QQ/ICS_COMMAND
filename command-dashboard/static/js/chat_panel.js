@@ -121,6 +121,7 @@ export function initChatPanel() {
   document.addEventListener('tak:conn-state', (e) => _applyTakState(e?.detail?.state));
   document.addEventListener('chat:new', (e) => _onLiveChat(e?.detail)); // b2：WS 即時推播
   document.addEventListener('map:unitSelected', (e) => _onUnitSelected(e?.detail)); // b3-1：點 marker 過濾
+  document.addEventListener('map:senderNotLocated', (e) => _onUnitSelected(e?.detail)); // b3-2：訊息無座標 → fallback by-sender
   if (_pollTimer) clearInterval(_pollTimer);
   _pollTimer = setInterval(() => _poll(), POLL_MS);
   _poll();
@@ -256,6 +257,20 @@ export function chatClearSender() {
   _renderStream();
 }
 
+/** 點訊息（b3-2，main.js data-action）→ 派 chat:locateSender 給 map.js 定位發訊單位。
+ *  map.js 找得到座標 → flyTo+pulse；找不到 → 回派 map:senderNotLocated → fallback by-sender。 */
+export function chatLocateSender(ds) {
+  if (!ds?.senderUid) return;
+  document.dispatchEvent(new CustomEvent('chat:locateSender', {
+    detail: {
+      uid: ds.senderUid,
+      callsign: ds.callsign || null,
+      lat: ds.lat !== '' ? Number(ds.lat) : null,
+      lon: ds.lon !== '' ? Number(ds.lon) : null,
+    },
+  }));
+}
+
 function _renderStream() {
   const stream = _el('chat-stream');
   if (!stream) return;
@@ -276,6 +291,13 @@ function _renderStream() {
 function _row(c) {
   const row = document.createElement('div');
   row.className = 'chat-row';
+  // b3-2：點訊息 → 定位發訊單位（map.js 處理 flyTo+pulse，無座標回 fallback by-sender）。
+  // 帶解析後 sender uid + chat 自帶座標（marker 不在 COP 時的退路座標）。
+  row.dataset.action = 'chatLocateSender';
+  row.dataset.senderUid = parseSenderUid(c.sender_uid) || '';
+  row.dataset.callsign = c.callsign || '';
+  row.dataset.lat = c.lat == null ? '' : String(c.lat);
+  row.dataset.lon = c.lon == null ? '' : String(c.lon);
 
   const head = document.createElement('div');
   head.className = 'chat-row-head';

@@ -67,6 +67,7 @@ import {
   utmToLatLng as _utmToLatLng,
   parseWgs84 as _parseWgs84,
   MgrsGrid,
+  pickLocateCoords,
 } from './map/coord_tools.js';
 // P1-17（issue #88）永久設施公開資料底圖層 — 獨立 facilities 層，**不碰既有層**。
 import {
@@ -1909,6 +1910,8 @@ function _ensureEntityLayers() {
   document.addEventListener('map:unhighlightEvent', () => {
     _unhighlightEvent();
   });
+  // #213 b3-2：點通聯訊息 → 跳地圖到發訊單位 + point pulse。無座標 → 回派 fallback。
+  document.addEventListener('chat:locateSender', (e) => _locateSender(e.detail));
 
   _updateCritPulse();
   _entityLayersInstalled = true;
@@ -1994,6 +1997,69 @@ function _startHighlightPulse(map, zoneId) {
     _highlightPulseRaf = requestAnimationFrame(loop);
   };
   _highlightPulseRaf = requestAnimationFrame(loop);
+}
+
+// ── #213 b3-2：點通聯訊息 → 定位發訊單位（flyTo + 點位 pulse），無座標 → fallback ─────
+
+let _senderPulseRaf = null;
+
+function _locateSender(detail) {
+  if (!detail?.uid) return;
+  const map = _getMap();
+  const ent = _copStream?.getEntity(detail.uid);
+  const coords = map ? pickLocateCoords(ent, detail) : null;
+  if (coords) {
+    map.flyTo({ center: coords, zoom: Math.max(map.getZoom?.() || 0, 14), duration: 600, essential: true });
+    _pulseAt(map, coords[0], coords[1]);
+  } else {
+    // 找不到座標（單位不在 COP + chat 無 point）**或地圖未就緒** → 回派 chat_panel 做
+    // by-sender 過濾（fallback 不依賴地圖，map 為 null 也要派，否則點訊息靜默無反應）。
+    document.dispatchEvent(new CustomEvent('map:senderNotLocated', {
+      detail: { uid: detail.uid, callsign: detail.callsign },
+    }));
+  }
+}
+
+/** 點位高亮脈動（zones pulse 走多邊形 feature-state，點符號另做）：暫態 circle 環 ~1.8s 後清。 */
+function _pulseAt(map, lng, lat) {
+  if (map.getSource('sender-highlight') == null) {
+    map.addSource('sender-highlight', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+    map.addLayer({
+      id: 'sender-highlight-ring',
+      type: 'circle',
+      source: 'sender-highlight',
+      paint: {
+        'circle-radius': 14,
+        'circle-color': 'rgba(0,0,0,0)',
+        'circle-stroke-color': '#4fd1c5',
+        'circle-stroke-width': 3,
+        'circle-stroke-opacity': 0.85,
+      },
+    });
+  }
+  map.getSource('sender-highlight').setData({
+    type: 'Feature', geometry: { type: 'Point', coordinates: [lng, lat] }, properties: {},
+  });
+  if (_senderPulseRaf) cancelAnimationFrame(_senderPulseRaf);
+  const start = performance.now();
+  const DUR = 1800;
+  const loop = (now) => {
+    try {
+      const tt = (now - start) / DUR;
+      if (tt >= 1) {
+        map.getSource('sender-highlight')?.setData({ type: 'FeatureCollection', features: [] });
+        _senderPulseRaf = null;
+        return;
+      }
+      const phase = (Math.sin(tt * Math.PI * 6) + 1) / 2; // 1.8s 內脈動 3 次
+      map.setPaintProperty('sender-highlight-ring', 'circle-radius', 14 + phase * 20);
+      map.setPaintProperty('sender-highlight-ring', 'circle-stroke-opacity', 0.85 * (1 - tt));
+      _senderPulseRaf = requestAnimationFrame(loop);
+    } catch (_) {
+      _senderPulseRaf = null; // 樣式重載/layer 已移除 → 停
+    }
+  };
+  _senderPulseRaf = requestAnimationFrame(loop);
 }
 
 /**

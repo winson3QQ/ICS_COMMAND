@@ -34,7 +34,7 @@ import {
   confirmResetDB,
 } from './cop.js';
 import {
-  initChatPanel, switchRightTab, chatFilterRoom, chatClearSender,
+  initChatPanel, switchRightTab, chatFilterRoom, chatClearSender, chatLocateSender,
 } from './chat_panel.js';
 import {
   getSeries, expandSpark, getExpandedSpark, renderSparklines,
@@ -398,6 +398,7 @@ document.addEventListener('click', function (e) {
     case 'switchRightTab':  switchRightTab(btn.dataset.rtab); if (btn.dataset.rtab !== 'chat') _resizeEvtList(); break;
     case 'chatFilterRoom':  chatFilterRoom(btn.dataset.room); break;
     case 'chatClearSender': chatClearSender(); break;  // #213 b3-1：清除 by-sender 過濾
+    case 'chatLocateSender': chatLocateSender(btn.dataset); break;  // #213 b3-2：點訊息定位發訊單位
 
     // ── 演習管理（P1-14 PR-2，取代死掉的實戰/演練切換）──
     case 'openExercisePanel': {
