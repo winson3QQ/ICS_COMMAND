@@ -3487,7 +3487,7 @@
     },
     "baseRefName": "main",
     "body": "## 摘要\n\nb3 把**通聯 ↔ 地圖**連起來。本 PR = **b3-1：點地圖 TAK 單位 marker → 右欄通聯切到該單位**（by-sender 過濾）。純前端。#213 b3-1。\n\n> ⏳ **待 human verify 後再 merge** —— 提交者會在另一台機器拉此分支實機點測。\n\n## 改了什麼\n- **map.js**：`tak-units-icon` 加 click handler → 派 `map:unitSelected {uid, callsign}` DOM 事件（解耦，不直接呼叫 chat 模組；讀動作不設編輯權限守門）。\n- **chat_panel.js**：\n  - `parseSenderUid`（`GeoChat.<uid>.<room>.<id>` → uid，b2 dogfood 實證格式；假設 device uid 無 `.`）\n  - `filterChatsBySender`（**uid 精準比對**）\n  - 監聽 `map:unitSelected` → 切通聯 tab + by-sender 過濾 + 可清除「篩 \\<callsign\\> ✕」chip\n- **main.js**：`chatClearSender` data-action\n\n## Reviews\n- **`/code-review`**：修 2 — ① callsign fallback 會把**同 callsign 的不同單位**誤混 → 改 **uid-only 比對**（callsign 僅供 chip 顯示）；② dotted device-uid 邊界 → 註記已知限制（TAK uid 慣例無點）。其餘 3 項為退化輸入/雙渲染 nit，無害。\n- **`/security-review`**：**0**（純 client-side 過濾已授權的 `_chats`、textContent sink、無新端點/資料、`map:unitSelected` 為同源 DOM 事件）。\n\n## §8 Verification\n\n```bash\ncd command-dashboard && npx vitest run     # 305 passed（parseSenderUid/filterChatsBySender +6）\npython ../scripts/doc_sync_check.py        # exit 0\n```\n（純前端，後端 pytest 無 delta。）\n\n**Human verify（待提交者實機）**：起 dashboard + TAK + iTAK → 地圖上點任一 TAK 單位 → 右欄自動切「通聯」、只剩該單位訊息 + 上方「篩 \\<callsign\\> ✕」；點 ✕ 還原。\n\n## 仍後置\nb3-2 點訊息 → 跳地圖 highlight（+ 無座標 fallback by-sender）/ 欄位盤點(#193) / O/C 識別與限可見。\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n",
-    "closedAt": null,
+    "closedAt": "2026-06-12T02:05:59Z",
     "comments": [
       {
         "author": {
@@ -3507,11 +3507,11 @@
     "createdAt": "2026-06-11T23:54:05Z",
     "headRefName": "feat/issue-213-geochat-marker-link",
     "labels": [],
-    "mergedAt": null,
+    "mergedAt": "2026-06-12T02:05:59Z",
     "number": 233,
-    "state": "OPEN",
+    "state": "MERGED",
     "title": "feat(map): P2-12 通聯↔地圖 b3 — 點 marker 過濾 + 點訊息跳地圖（#213 b3-1/b3-2）",
-    "updatedAt": "2026-06-12T01:55:13Z",
+    "updatedAt": "2026-06-12T02:06:22Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/233"
   },
   {

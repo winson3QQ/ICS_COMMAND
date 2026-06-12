@@ -2526,14 +2526,29 @@
     },
     "body": "P2-30 part 3 dogfood 浮出：點 ICS 地圖上的 contact 標記，detail 顯示應與 iTAK 點同一標記時一致。\n\n背景：part 3 已讓 ICS 廣播的 CoT remarks 帶 `source: ICS`（#192），iTAK 點開可辨來源。反向缺口 = ICS 端 detail modal 與 iTAK marker tap 的欄位/行為不一致。\n\n工作：\n- ICS contact detail modal 對齊 iTAK marker tap 的顯示（type/2525 標示、callsign、remark 含 source、座標 MGRS/經緯、affiliation）。\n- 確認雙向顯示一致（同一顆標記在 ICS 與 iTAK 看到的核心資訊相同）。\n\n來源：#180 part 3 dogfood（#192）。屬 P2-12 TAK UI 面板統一範疇。",
     "closedAt": null,
-    "comments": [],
+    "comments": [
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## #193 reality check（2026-06-12，#213 b3 merge 後讀碼）\n\n決定的互動：**長按 TAK marker → 開詳情**，但長按 marker **不可**同時觸發地圖背景長按（建立 CreatePopup）。\n\n### ⚠️ 關鍵問題確認成立\n地圖背景長按在 `static/js/map/maplibre_core.js:194-238`（650ms press timer）。它**只排除 DOM `.maplibregl-marker`，沒呼叫 `queryRenderedFeatures`** → 長按 GPU 渲染的 TAK 符號 marker（`tak-units-icon` 層）時，**CreatePopup 會照樣觸發**。必修。\n\n### 乾淨解法：同一個長按 timer 依命中分流\n在 `maplibre_core` 的 `onLongPress` 觸發前 `queryRenderedFeatures(point, {layers:[marker 層]})`：\n- 命中 marker → 走「marker 詳情」回呼（map.js 依層路由：`tak-units-icon`→TAK 詳情 / contact→contact 詳情）。\n- 沒命中（空地圖）→ 照舊 `_openCreatePopup`。\n\n一個 timer、依按點下面有沒有 marker 分流 → 長按 marker 開詳情、長按空地建立，互不誤觸。（TAK marker 是 GPU 符號、無 DOM，故不能用事件卡的 `data-longpress-id` 那套；queryRenderedFeatures 是對的 hook。）\n\n### 詳情視窗欄位 —— 全齊\n- 範本 = 既有 `_openContactDetail`（map.js:2230）。做 `_openTakUnitDetail`，顯示 iTAK 對齊欄位：**type/2525、callsign、remarks（含 source）、座標（MGRS+經緯）、敵我態**。\n- 欄位全在 cop_entity（callsign/remarks/type/lat/lon）；helper 都有（`cotToSidc`/`affiliationFromCot`/`latlngToMgrs`/`_coordValueHTML`）。\n- **`source: ICS` 非獨立欄位**，是 #192 外推時附在 remarks → 顯示 remarks 即可（iTAK 來的 marker 本無 source:ICS）。\n\n### 互動模型 + 待拍板\n- **TAK marker**：click → 過濾通聯（b3-1，保留）、**長按 → 詳情**（本 issue）。\n- ⚠️ **待拍板**：**contact marker 目前是 click → 詳情**（`_onContactClick`）。TAK 變 click=過濾、長按=詳情 → contact 與 TAK 的 click 行為不一致。是否一起統一（contact 也改長按=詳情），或接受兩者來源不同、行為可不同。\n\n### 規模 / 風險\n`maplibre_core` 分流閘（~15 行）+ map.js `_openTakUnitDetail`（~80-120 行，鏡像 contact modal）。中等、低風險（contact 拖曳 handle 用 `.maplibregl-marker`，不受 queryRenderedFeatures 影響）。純前端。\n\n> 來源：#193（吸收進 #213 工作項 c「欄位盤點」）；b3 merge（PR #233）後對 `maplibre_core.js`/`map.js`/`create_popup.js`/`mil_symbol.js`/`cop_stream.js`/`coord_tools.js` 讀碼。\n",
+        "createdAt": "2026-06-12T02:18:55Z",
+        "id": "IC_kwDOSnBjpc8AAAABF1oTXw",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/193#issuecomment-4686746463"
+      }
+    ],
     "createdAt": "2026-06-10T08:46:49Z",
     "labels": [],
     "milestone": null,
     "number": 193,
     "state": "OPEN",
     "title": "ICS 標記詳情與 iTAK 對齊（點標記顯示一致 + source: ICS）",
-    "updatedAt": "2026-06-10T08:46:49Z",
+    "updatedAt": "2026-06-12T02:18:55Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/193"
   },
   {
