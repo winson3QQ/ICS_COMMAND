@@ -154,10 +154,11 @@ const _CONTACT_AFF = {
   friendly: { color: '#2b6cd9', abbr: '友' },
 };
 
-// #193：長按命中這些 marker 層 → 篩該單位通聯（非建立對話框）。symbol layer（GPU），
-// 故走 onLongPress 的 queryRenderedFeatures 分流（DOM marker 如 contact 拖曳 handle 由
-// maplibre_core 的 .maplibregl-marker 短路另管）。
-const _MARKER_LONGPRESS_LAYERS = ['tak-units-icon', 'contact-2525-icon', 'contact-circle'];
+// #193：長按命中此 symbol layer（GPU）→ 篩該單位通聯（非建立對話框）。走 onLongPress 的
+// queryRenderedFeatures 分流。只列 TAK——本題範圍是 TAK marker 長按=篩通聯；contact 由拖曳
+// handle（.maplibregl-marker）蓋住，長按由 maplibre_core 短路另管，且 _onContactClick 不認
+// _suppressMarkerClick，列進來反而會詳情+篩通聯雙觸發（contact 長按=篩通聯本題未做）。
+const _MARKER_LONGPRESS_LAYERS = ['tak-units-icon'];
 // #193：長按 marker 觸發篩通聯後，放開會補發一個 maplibre click → 會誤觸 click→詳情。
 // 旗標抑制「長按後那一下 click」（對齊事件卡的 _evtCardDidHighlight）；下次按下/輕點重置。
 let _suppressMarkerClick = false;
@@ -2263,7 +2264,7 @@ function _openTakUnitDetail(id) {
   body += row('敵我態', _escapeHtml(affZh));
   body += row('type', _escapeHtml(ent.type || ''));   // CoT 2525 grammar（如 a-f-G-U-C）
   body += row('callsign', _escapeHtml(ent.callsign || ''));
-  body += row('座標', ent.lat != null ? _coordValueHTML(ent.lat, ent.lon) : '');  // 數字→安全 HTML（MGRS+經緯）
+  body += row('座標', (ent.lat != null && ent.lon != null) ? _coordValueHTML(ent.lat, ent.lon) : '');  // 數字→安全 HTML（MGRS+經緯）；lat/lon 成對才渲染
   body += row('備註', _escapeHtml(ent.remarks || ''));   // 含 source: ICS（若 #192 外推帶入）
   body += `<div style="font-size:10px;color:var(--text3);margin-top:8px;">來源：TAK · 唯讀</div>`;
   _deps.openModal?.(`${affZh}單位 ${ent.callsign || ''}`, body);
