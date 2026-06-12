@@ -3577,5 +3577,41 @@
     "title": "feat(keymgmt): P1-12a FIDO2 enroll/unlock + HKDF 階層（含 disk-v1）+ mock 測試",
     "updatedAt": "2026-06-12T00:20:04Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/234"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "feat/issue-227-p1-12a-keymgmt",
+    "body": "## ROADMAP item\n\nP1-12b — 整包 data/ 備份/還原（umbrella #226）\n- Closes #228\n- **Stacked on #234（12a）**：消費 12a 的 `BACKUP_KEY`（HKDF child[0]）。base = `feat/issue-227-p1-12a-keymgmt`；12a merge 後改 base main 並 rebase。\n\n## What changed\n\n整包 `data/`（非 DB-only）加密備份 + GUI 還原。三層觸發（L1 手動 / L2 archive 自動 / L3 reset+shutdown 防呆）、OP-2（reset 強制 confirm）、OP-4（restore-cmd deprecated）、drift bug（API 觸發 DB-only 備份過去產明文）一併修。\n\n## DoD checklist\n\n- [x] Tests added（service 層 7 + API 層 14：role gate / 加密 / manifest / restore 409&422 / OP-2 confirm + RBAC 序 / L2 archive）\n- [x] `pytest` green（1025 passed / 2 skipped）\n- [ ] `npm test`（無 vitest 對應；HTML 為 presentational，待 GUI human-verify）\n- [x] 規格更新（p1-key-management.md 進度段）\n- [ ] ROADMAP tick（P1-12 umbrella，待 12a/b/c 全 merge）\n\n## §8 Human Verification Script\n\n```bash\n# Step 1: 後端測試全綠\ncd command-dashboard && python -m pytest tests/api/test_backup_restore_api.py tests/integration/test_user_data_backup.py -v\n# 預期：全 pass（win32 skip 1：restore 熱 DB e2e）\n\n# Step 2: pyflakes\npython -m pyflakes src/\n# 預期：無輸出\n\n# Step 3（★需 Human 瀏覽器 — GUI 里程碑）:\n#   登入儀表板（sysadmin）→ 同分頁開 /static/admin_backups.html → 登入並載入\n#   (a) 按「立即整包備份」→ 清單出現 userdata-*.tar.gz.enc，「預覽 manifest」顯示檔案清單/演習\n#   (b) 建並 activate 一場演習 → archive → 清單應多一筆 archive-trigger 備份（manifest 帶演習）\n#   (c) 選一個 .tar.gz.enc → 上傳並還原 → 顯示「還原完成 + pre-restore-*」+「需重啟」提示\n#   (d) 有 active 演習時上傳還原 → 應 409「有進行中演習」\n#   (e) reset-db 不帶 confirm → 422；帶 {\"confirm\":\"RESET\"} → 200\n```\n\n## Out of scope / known limitations\n\n- **GUI human-verify 待使用者返回**（Step 3）。restore 熱 DB e2e 在 Windows 因檔案鎖無法跑 → win32 skip，由 CI Linux + service 層測試覆蓋。\n- 整包備份與既有 DB-only 備份（systemd timer）**並存**（附加式，不破壞既有端點/測試）；面板統一為後續。\n- 12c SQLCipher（DB_KEY 消費）→ #229。\n\n## Notes for reviewer\n\n- restore 安全：先 `read_manifest`（解密+schema 驗證）失敗即止不動 current；`_safe_extract` 逐 member 擋 `..`/絕對路徑 + `filter=\"data\"`。\n- OP-2 刻意在 `_check_system_admin` 之後手讀 body（非必填 Pydantic）→ 保留「RBAC 403 先於 body 422」語意（既有 RBAC 測試靠此）。\n- key 來源：encrypt 用 BACKUP_KEY→legacy fallback；decrypt 兩 key 都試（過渡期舊 backup 仍可解）。\n- .gitignore 修了 latent bug：`data/backups/` 錨 repo root，match 不到 `command-dashboard/data/backups/`。\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+    "closedAt": null,
+    "comments": [
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## Review 留痕（/code-review + 安全 finder）\n\n本機跑了 7 角度 finder（scoped 到 12b-only diff vs 12a base）+ 安全 finder，verify 後處置：\n\n### CONFIRMED — 已修（commit 5f70853）\n\n| 位置 | 問題 | 處置 |\n|---|---|---|\n| `user_data_backup_service.restore_backup` | **wipe→copy 非原子**：解壓驗證後才 wipe（風險窗已縮），但 wipe 後 copy 若失敗（disk full / 權限）→ data/ 半毀，docstring「失敗不動 current」在 wipe 後不成立 | try/except OSError → 拋帶 pre-restore 名的 RuntimeError，明示自動備份可救回；router 接 → 500 + audit。真原子 swap 在 Windows 鎖熱 DB 下不可行，pre-restore 為設計救援路徑 |\n| 同檔 restore | **雙重解密**：read_manifest 解一次、解壓再解一次 | 抽 `_manifest_from_plaintext`，解密一次共用 plaintext（+ 測試釘住 1 次）|\n| `backups.trigger_backup` drift | mutate BackupResult dataclass（frozen 化會炸）+ 回傳 sha 是**明文 gz 的 sha**（檔已加密，不一致）| 改 local 變數不 mutate；加密後 sha/size 重算對齊實際 .db.gz.enc |\n| `admin_backups.html` | manifest 欄位（exercise.name 等）經 innerHTML 渲染，**XSS 縱深缺口**（需 BACKUP_KEY 才能植入，但他源/竄改 backup 仍應跳脫）| 加 `esc()` 跳脫所有插值（exercise.name/檔名/created_at/pre_restore）|\n\n### 查證後不修（REFUTED / 已防）\n\n- **manifest 預覽 path-traversal（%2F bypass）**：`_resolve` 的 `\"..\"` 檢查已擋，`..%2F` 解碼後仍含 `..` → 400；測試 `test_manifest_rejects_traversal` 覆蓋且通過。\n- **tar symlink 逃逸**：`extractall(filter=\"data\")` 已拒符號/硬連結 + 絕對路徑，外加逐 member 路徑檢查雙層。\n\n### 驗證\n\n```\npytest 1027 passed / 2 skipped（+2 回歸：crafted exercise.name 原樣保存、restore 僅解密一次）\npyflakes 0 ; doc_sync passed\n```\n\n—— /code-review 完成。/security-review（FIDO2/加密層）已於 12a PR #234 涵蓋金鑰管線；12b 新增面（restore/upload/tar/XSS）由上述安全 finder 審過。GUI human-verify（§8 Step 3）待使用者返回。",
+        "createdAt": "2026-06-12T00:55:59Z",
+        "id": "IC_kwDOSnBjpc8AAAABF1SA0Q",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/235#issuecomment-4686381265"
+      }
+    ],
+    "createdAt": "2026-06-12T00:46:42Z",
+    "headRefName": "feat/issue-228-p1-12b-backup",
+    "labels": [],
+    "mergedAt": null,
+    "number": 235,
+    "state": "OPEN",
+    "title": "feat(backup): P1-12b 整包 data/ 加密備份 + GUI 還原 + 三層觸發 + OP-2/OP-4",
+    "updatedAt": "2026-06-12T00:55:59Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/235"
   }
 ]
