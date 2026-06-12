@@ -3207,5 +3207,25 @@
     "title": "憑證撤銷控制缺口（threat_model §8.5）：enrollment 發行切換 + CRL 評估 + 被擄裝置撤銷 SOP",
     "updatedAt": "2026-06-11T23:43:21Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/232"
+  },
+  {
+    "assignees": [],
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "body": "## 現象（dogfood 2026-06-12）\n真機 iTAK 連上、放一個 marker 廣播 → **ICS 地圖完全看不到**。查證：marker 在 TAK server 上（iTAK→server 正常）、ICS :8089 訂閱也收到了，但 **ingest 時整筆驗證失敗被丟棄**：\n\n```\ntak.cot_parse_failed: CoT event 欄位驗證失敗：1 validation error for CoTEventIn\ncallsign  Value error, callsign 含內容層白名單不允許的字元  input_value='iTAK: A1'\n```\n\n該 marker：`uid=1CF74399-8B66-4DAF-9DD1-401DF3FB6B11 type=a-u-G callsign=\"iTAK: A1\"`。\n\n## 根因\n`schemas/tak.py` 的 **P2-10 內容層白名單**：\n```python\n_CALLSIGN_RE = re.compile(r\"^[\\w \\-./()'+#]{1,128}$\")\n```\n**不允許冒號 `:`**，但 **iTAK 預設自動命名就是「iTAK: A1」**（帶 `:`）。實測：\n\n| callsign | 結果 |\n|---|---|\n| `iTAK: A1`（iTAK 預設） | ❌ 擋掉 |\n| `iTAK:A1` | ❌ 擋掉 |\n| `3QQ` / `ALPHA-1` / `敵情A` | ✅ 通過 |\n\n## 衝擊（為何嚴重）\n1. **任何用 iTAK 預設名的現場單位，在 ICS COP 完全隱形** —— 真實演習/實戰的 COP 殘缺。\n2. **連 GeoChat 也一起沒** —— senderCallsign 同樣是「iTAK: A1」，CoT 驗證在 ingest_chat 前就擋掉 → 該單位的通聯也進不來（連動 #213 b 的 GeoChat 顯示）。\n3. **整筆丟棄**：callsign 一個字元不合 → 連帶位置/類型（COP 命脈）全沒，不只名字。\n4. 規則本身**不一致**：白名單已允許更該防的 `'`（attr/SQL），卻擋無害的 `:`。`:` 在所有 sink 安全（顯示 escape、SQL 參數化、出向 quoteattr）。\n\n## 建議修法（A + B）\n- **A 放寬正則**：加 `:`，並重新評估真實 TAK client 常用字元（空格已允許；可一併檢視 `,` 等）。維持擋真正危險字元（`<>&\"` 等）。\n- **B 不因 callsign 殺整筆**：callsign 不合 → **消毒/截斷後保留 marker**（位置+類型是 COP 命脈），而非丟棄整個單位。一個顯示欄位的瑕疵不該讓單位消失。\n- 兩者一起：涵蓋真實命名 + 可用性優先。\n\n## ROADMAP 對照\n- **P2-10**（內容層 type/callsign 白名單，#157）—— 本 issue = 白名單過嚴的修正。\n- 連動 **#213 (b)**（GeoChat 顯示，同驗證路徑）、threat_model §8（白名單是安全線，但**過嚴造成可用性/COP 完整性損失**，需平衡）。\n- 對稱提醒：type 白名單（`_COT_TYPE_RE`）也可能有類似過嚴問題，一併檢視。\n\n## 驗收\n- iTAK 預設名單位（含 `:` callsign）→ ICS 地圖顯示 + GeoChat 進得來。\n- 注入字元（`<script>` 等）仍被擋/消毒。\n- 負向測試：含 `:`/空格/常見標點的 callsign 通過；危險字元被擋或消毒。",
+    "closedAt": null,
+    "comments": [],
+    "createdAt": "2026-06-12T01:19:31Z",
+    "labels": [],
+    "milestone": null,
+    "number": 236,
+    "state": "OPEN",
+    "title": "P2-10 callsign 白名單過嚴：iTAK 預設名「iTAK: A1」整筆 CoT 被丟 → 單位在 ICS COP 隱形",
+    "updatedAt": "2026-06-12T01:19:31Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/236"
   }
 ]
