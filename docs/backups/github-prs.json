@@ -3767,5 +3767,26 @@
     "title": "fix(tak): callsign 白名單過嚴改淨化非丟棄 — iTAK 預設名單位不再隱形（#236）",
     "updatedAt": "2026-06-13T02:29:12Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/246"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "## 背景\n`_openTakUnitDetail`（#193/#238）原只顯示 5 欄：敵我態 / type / callsign / 座標 / 備註。但 client 推來的這些欄位**早已 ingest 進 `attributes`/頂層、卻沒 surface**——本 dogfood 那整段「3QQaTak 是 ATAK 還 iTAK」provenance 之謎，根因就是 UI 沒顯示平台/來源。\n\n## 改動（純前端，#213 checklist 最後一項「欄位盤點」）\n`_openTakUnitDetail` 補 5 列：\n- **平台＋裝置**：CoT `<takv>` → `iTAK · iPhone` / `ATAK-CIV · SAMSUNG SM-G9810`\n- **來源單位**：CoT `<link>` parent_callsign（**#217 實證**反映「最後廣播者」非必原始建立者）\n- **小隊**：`<__group>` team_color · role\n- **電量**：battery\n- **狀態**：archived 持久\n\n空欄自動隱藏（`row()` 對空值跳過）；外部 CoT 值**全 `_escapeHtml`**（真 XSS 防線在 sink，與既有列一致）。\n\n## 驗證\n- eslint ✓ · **vitest 315 全綠** ✓ · doc_sync ✓\n- **真機 iPad dogfood human verify PASS**：`3QQaTak`→平台 ATAK-CIV·SAMSUNG / 小隊 Cyan·Team Member / 71%；`3QQ itak`→iTAK·iPhone / Magenta / 30%；`atakF1`→來源單位 3QQaTak / 持久（archived）。\n\n## 範圍邊界\ndeclutter / 刪除一致性（ATAK 刪→iTAK 復活的幽靈標記）歸 **#217**，不在本項；本項只負責「忠實顯示已收到的東西」。\n\nrefs #213, #217\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+    "closedAt": "2026-06-13T12:02:16Z",
+    "comments": [],
+    "createdAt": "2026-06-13T12:02:04Z",
+    "headRefName": "feat/issue-213c-marker-detail",
+    "labels": [],
+    "mergedAt": "2026-06-13T12:02:16Z",
+    "number": 247,
+    "state": "MERGED",
+    "title": "feat(map): #213c marker 詳情欄位補全 — 入向顯示忠實度",
+    "updatedAt": "2026-06-13T12:02:59Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/247"
   }
 ]

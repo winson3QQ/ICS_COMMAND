@@ -3379,5 +3379,25 @@
     "title": "feat(map): 乙-2 render 收斂 — 事件依 regime 渲染 ◆/▲/2525（#241 後續）",
     "updatedAt": "2026-06-12T23:59:53Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/243"
+  },
+  {
+    "assignees": [],
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "body": "## 現象（Windows dogfood 2026-06-13，真機 iTAK + ATAK + TAK Server 5.7）\n\n**ICS 只收得到「廣播」GeoChat,收不到「單播/DM」。**\n\n實測(determined via DB ground truth + 即時監看):\n- iTAK **直傳 DM 給 ATAK** → **收件人 ATAK 收到,但 ICS 完全沒收到**(chats 表無此筆)。\n- 廣播(All Chat Rooms / 所有聊天室)兩平台都正常進:`id=12 [ATAK] 'ATAK-TEST-1'`、`id=13 [iTAK] 'iTAK-test-3 broadcast'`。\n- 同窗發的 DM(test-1/test-2 等)一筆都沒進 chats 表;ICS log 無 parse 失敗/drop。\n\n## 根因（標準 TAK 行為,非 ICS bug）\n\nTAK Server 對 GeoChat 路由:\n- **廣播** → 推給所有 :8089 訂閱者 → ICS 收得到。\n- **DM/單播** → **點對點只送指定收件人**(`<__chat>` 目標 uid)→ ICS 訂閱者不是收件人 → server 不把該 CoT 送給 ICS → ICS 看不到、不 ingest。\n\nICS 端程式碼正常:`ingest_cot_event` 的 `b-t-f` 路由 + `chat_service.ingest_chat` + 廣播 + 未讀邏輯全平台無關;問題在「DM 根本沒到 ICS」這一層,在 server 路由,不在 ICS。\n\n## 連帶澄清\n\n本發現回頭解釋了先前「ATAK chat 不跳未讀紅圈」的困惑 —— 當時測的多為 DM,該則壓根沒到 ICS COP(非前端渲染問題)。**未讀/ingest 對 ATAK/iTAK 無平台差異,已逐欄追證。**\n\n## Doctrine 決策（待拍板）\n\n| 立場 | 含意 | 作法 |\n|---|---|---|\n| **A. 接受現況** | 指揮部只見廣播(作戰通聯);DM 為現場單位私訊,不外洩給指揮部(符合最小揭露) | 不動,記為已知特性 + 文件化 |\n| **B. 指揮監督全收** | 指揮部須掌握全部通聯含 DM | ICS 不能靠 :8089 訂閱拿 DM → 走 **TAK Server chat log / Marti 主動拉**（新能力,與 #173 resync 同「ICS 主動查 TAK」思路）,或 server 端設定複製全部 chat 給 ICS |\n\n預設傾向 **A**(安全/隱私合理);若演習/實戰需要指揮部全程通聯掌握,則 B 是明確的新 feature。\n\n## 驗收（若採 B）\n- iTAK→ATAK DM → ICS COP 通聯面板看得到(經 Marti 拉或 server 路由設定)。\n- 廣播行為不退化。\n- RBAC / scope / PII 邊界(DM 可能含敏感內容)需重新評估。\n\n## 關聯\n- **#213**（入向顯示忠實度）—— 不同軸:#213 是「收到的東西要忠實顯示」,本 issue 是「DM 根本沒收到」(coverage 非 display)。\n- **#173 / P2-14**（Marti 權威 resync）—— 若採 B,同一套「ICS 主動查 TAK」主動拉管線。\n- **threat_model §8**（不外流 / 最小揭露）—— A vs B 牽涉揭露邊界。",
+    "closedAt": null,
+    "comments": [],
+    "createdAt": "2026-06-13T12:47:36Z",
+    "labels": [],
+    "milestone": null,
+    "number": 248,
+    "state": "OPEN",
+    "title": "GeoChat DM(單播)不入 ICS COP — 指揮部只見廣播；doctrine: 接受 vs Marti 拉全量",
+    "updatedAt": "2026-06-13T12:47:36Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/248"
   }
 ]
