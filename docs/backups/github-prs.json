@@ -3746,5 +3746,26 @@
     "title": "feat(map): 乙-2b 軍用 2525 框 + 甲-1 marker 自描述/降級（Closes #243, refs #240）",
     "updatedAt": "2026-06-12T23:59:56Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/245"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "## 問題（dogfood 2026-06-12）\n真機 iTAK 連上、放 marker → **ICS 地圖完全看不到**。根因：`schemas/tak.py` 的 P2-10 callsign 白名單（#157）不允許冒號 `:`，但 **iTAK 預設自動命名就是「iTAK: A1」** → `CoTEventIn` 驗證 raise → `parse_cot_xml` 收斂成 `CoTParseError` → 串流消費端把**整筆 CoT 丟棄** → 單位連同位置/類型/GeoChat 在 COP 隱形。\n\n## 修法（issue 建議 A+B）\n- **A**：`:` 入 callsign 白名單（亦容真實 TAK 命名）。\n- **B**：**改「淨化非丟棄」**——新增 `_sanitize_callsign()`：strip 非白名單字元、去頭尾空白、截 128；`str|None` 歸一（空/全空白/全髒 → `None`，但**物件建構成功、單位仍進 COP**）。`CoTEventIn` 與 `DownlinkCommandIn` 兩個 validator 同步。\n\n對齊感測層底線「**marker 不消失**」(#213)。手動建點路徑（`input_safety.py` 硬擋 422）刻意不動 — 互動式輸入該即時退回，機器串流則須淨化避免單位消失。\n\n## Review（高工 code/security review）\n- **Security**：所有 callsign sink 追證 clean — modal 標題 `textContent`、input value `_escapeHtml`、MapLibre `text-field` 純文字、出向 XML `quoteattr()`、SQL 參數化。保留的 `'` `:` `#` 在任一 sink 無法注入。\n- **Correctness**：抓到並修 2 個一行內 micro-bug（空字串回 `\"\"` 非 `None`；`.strip()[:128]` 邊界殘留尾空白 → 改 `.strip()[:128].strip()`）+ 補 `DownlinkCommandIn` 淨化測試缺口。\n\n## 測試\n換掉 `test_bad_callsign_rejected`，新增：淨化非丟棄 / 冒號保留 / 全髒→None / 串流路徑不丟 / 空白歸一 / 截斷邊界不留尾空白 / Downlink 淨化。**全套後端綠、doc_sync 通過**。\n\n## ROADMAP\nP2-10 行附 2026-06-13 #236 後續修正註記。\n\nCloses #236\nrefs #213, P2-10\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+    "closedAt": "2026-06-13T02:28:52Z",
+    "comments": [],
+    "createdAt": "2026-06-13T02:28:40Z",
+    "headRefName": "feat/issue-236-callsign-sanitize",
+    "labels": [],
+    "mergedAt": "2026-06-13T02:28:52Z",
+    "number": 246,
+    "state": "MERGED",
+    "title": "fix(tak): callsign 白名單過嚴改淨化非丟棄 — iTAK 預設名單位不再隱形（#236）",
+    "updatedAt": "2026-06-13T02:28:52Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/246"
   }
 ]
