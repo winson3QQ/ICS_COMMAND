@@ -14,7 +14,7 @@ vi.mock('../../static/js/auth.js', () => ({
 
 import {
   decodeChatMessage, roomLabel, distinctRooms, filterChatsByRoom, countUnread, maxChatId,
-  mergeLiveChat, parseSenderUid, filterChatsBySender,
+  mergeLiveChat, parseSenderUid, filterChatsBySender, clampWatermark,
 } from '../../static/js/chat_panel.js';
 
 describe('decodeChatMessage — 還原 html.escape 的固定 5 實體（純文字、無 innerHTML）', () => {
@@ -149,5 +149,25 @@ describe('filterChatsBySender — by-sender 過濾（uid 精準比對，b3-1）'
   test('無 sender → 不過濾', () => {
     expect(filterChatsBySender(chats, null)).toHaveLength(3);
     expect(filterChatsBySender(chats, {})).toHaveLength(3);
+  });
+});
+
+describe('clampWatermark — #250 fix：stale 高水位夾回（DB rollover）', () => {
+  test('水位高於現有 max（跨 DB / reset）→ 夾回 max（可下降）', () => {
+    // 舊 DB 水位=100，新 DB 只到 50 → 夾回 50，否則新 chat（id≤50）永不算未讀
+    expect(clampWatermark(100, [{ id: 1 }, { id: 50 }])).toBe(50);
+  });
+  test('水位 ≤ 現有 max（正常單調 DB）→ 不動', () => {
+    expect(clampWatermark(50, [{ id: 60 }, { id: 55 }])).toBe(50);
+    expect(clampWatermark(60, [{ id: 60 }])).toBe(60);  // 等於也不夾
+  });
+  test('空 chats → 不夾（無資訊，維持持久水位）', () => {
+    expect(clampWatermark(100, [])).toBe(100);
+    expect(clampWatermark(100, null)).toBe(100);
+  });
+  test('夾回後 countUnread 能正常算新 chat', () => {
+    // 模擬：夾回 50 後，來一筆 id=51 → 應算 1 筆未讀
+    const w = clampWatermark(100, [{ id: 50 }]);
+    expect(countUnread([{ id: 50 }, { id: 51 }], w)).toBe(1);
   });
 });

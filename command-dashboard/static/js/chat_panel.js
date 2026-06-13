@@ -132,6 +132,21 @@ function _setLastSeen(id) {
   _lastSeenId = n;
   try { window.localStorage.setItem(_LASTSEEN_KEY, String(n)); } catch (_) { /* 私密模式等 → 忽略 */ }
 }
+/** #250 fix（純函式，供測試）：persisted 水位 > 現有 chat 最大 id（DB 換/reset；跨副本 DB id
+ *  序列獨立）→ 夾回 max；否則原樣回傳。空 chats 不夾（無資訊）。 */
+export function clampWatermark(lastSeen, chats) {
+  const max = maxChatId(chats, 0);
+  return ((chats || []).length && max < Number(lastSeen || 0)) ? max : Number(lastSeen || 0);
+}
+/** stale 水位防護：夾回後落地 localStorage（**可下降**，與 _setLastSeen 單調不同）。否則新 chat
+ *  （較低 id）`countUnread(id > 水位)` 恆 0、紅圈永不跳（review 抓出 + dogfood 實證）。 */
+function _clampLastSeenIfStale(chats) {
+  const clamped = clampWatermark(_lastSeenId, chats);
+  if (clamped !== _lastSeenId) {
+    _lastSeenId = clamped;
+    try { window.localStorage.setItem(_LASTSEEN_KEY, String(clamped)); } catch (_) { /* 忽略 */ }
+  }
+}
 let _currentTab = 'events'; // 右欄當前分頁（events | chat）
 let _takDisabled = false;
 let _pollTimer = null;
@@ -160,7 +175,9 @@ export function refreshChatNow() {
 function _onLiveChat(chat) {
   const merged = mergeLiveChat(_chats, chat);
   if (merged === _chats) return; // 重複（已由 poll 或前一則帶入），不重繪
-  const newRoom = !distinctRooms(_chats).includes(roomLabel(chat?.group)); // 是否帶出新房間
+  // 是否帶出新房間（→ 才重建 chips）。#250 fix：廣播房併「全部」不成 chip → 不算新房間，
+  // 否則每則廣播都誤判 newRoom=true、多跑一次 _renderChips（無謂 DOM 重建）。
+  const newRoom = !_BROADCAST_ROOMS.has(chat?.group) && !distinctRooms(_chats).includes(roomLabel(chat?.group));
   _chats = merged;
   if (_chats.length > LIVE_CAP) _chats = _chats.slice(-LIVE_CAP); // 對齊 poll 窗，防無界增長
   if (_currentTab === 'chat') _setLastSeen(maxChatId(_chats, _lastSeenId));
@@ -202,6 +219,7 @@ async function _poll() {
     if (!resp.ok) return; // 靜默（含 first-run 423 / 403）；不污染畫面
     const data = await resp.json();
     _chats = Array.isArray(data?.chats) ? data.chats : [];
+    _clampLastSeenIfStale(_chats);  // #250 fix：poll 拿到全量 → 夾掉跨 DB 的 stale 高水位
     if (_currentTab === 'chat') {
       _setLastSeen(maxChatId(_chats, _lastSeenId));
     }
