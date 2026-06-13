@@ -44,15 +44,24 @@ export function decodeChatMessage(s) {
     .replace(/&amp;/g, '&');
 }
 
-/** room 顯示標籤：group 為空（DM / 無房間）→ 「直接」。 */
+// #250：廣播房 locale 別名（ATAK 中文 / iTAK 英文 / 其他 locale 補這裡）。
+// 同一個廣播房不同語言名 → 收斂；且**併入「全部」**（不另立房 chip，廣播訊息歸全部）。
+const _BROADCAST_ROOMS = new Set(['All Chat Rooms', '所有聊天室']);
+
+/** room 顯示標籤：group 為空（DM / 無房間）→ 「直接」；廣播房別名 → 「廣播」（中英收斂）。 */
 export function roomLabel(group) {
-  return group == null || group === '' ? '直接' : group;
+  if (group == null || group === '') return '直接';
+  if (_BROADCAST_ROOMS.has(group)) return '廣播';  // #250：中英 locale 收斂為單一標籤
+  return group;
 }
 
-/** 從通聯陣列取**出現過**的 distinct room（依首次出現序，供動態 chips）。 */
+/** 從通聯陣列取**出現過**的 distinct room（依首次出現序，供動態 chips）。
+ *  #250：廣播房（All Chat Rooms / 所有聊天室）併入「全部」，不另立房 chip——
+ *  避免中英重複 chip + 與「全部」語意撞。廣播訊息仍在串流顯示（inline [廣播] 標籤）。 */
 export function distinctRooms(chats) {
   const seen = [];
   for (const c of chats || []) {
+    if (_BROADCAST_ROOMS.has(c.group)) continue;  // 廣播歸「全部」，不單獨成房 chip
     const label = roomLabel(c.group);
     if (!seen.includes(label)) seen.push(label);
   }
@@ -109,7 +118,20 @@ export function filterChatsBySender(chats, sender) {
 let _chats = [];
 let _activeRoom = '__all__';
 let _activeSender = null;   // b3-1：點地圖 TAK marker → {uid, callsign} by-sender 過濾（蓋過 room）
-let _lastSeenId = 0;       // 已讀水位（切到通聯 tab 時更新）
+// #250：已讀水位持久化——module 變數每次 reload 歸 0 → 重開 session 全變未讀（之前讀過的也算）。
+// 存 localStorage、init 時還原，讓「已讀」跨 reload 保留。
+const _LASTSEEN_KEY = 'ics_chat_lastSeenId';
+function _loadLastSeen() {
+  try { return Number(window.localStorage.getItem(_LASTSEEN_KEY)) || 0; } catch (_) { return 0; }
+}
+let _lastSeenId = _loadLastSeen();   // 已讀水位（跨 reload 持久；localStorage 非 sessionStorage）
+/** 更新已讀水位並落地 localStorage（單調不退）。 */
+function _setLastSeen(id) {
+  const n = Number(id) || 0;
+  if (n <= _lastSeenId) return;
+  _lastSeenId = n;
+  try { window.localStorage.setItem(_LASTSEEN_KEY, String(n)); } catch (_) { /* 私密模式等 → 忽略 */ }
+}
 let _currentTab = 'events'; // 右欄當前分頁（events | chat）
 let _takDisabled = false;
 let _pollTimer = null;
@@ -127,6 +149,13 @@ export function initChatPanel() {
   _poll();
 }
 
+/** #250：登入後（onEnterDashboard）立即補一次 poll——initChatPanel 的首次 _poll 在登入前跑、
+ *  因 !getToken() 早退，原本要等下一個 30s interval 通聯才填（事件 poll() 登入後即跑 → 通聯比事件晚出）。
+ *  本函式讓通聯與事件同步在登入後立即載入。 */
+export function refreshChatNow() {
+  _poll();
+}
+
 /** WS 即時通聯（chat:new，b2）→ 去重併入 + 重繪。與 poll 同渲染路徑。 */
 function _onLiveChat(chat) {
   const merged = mergeLiveChat(_chats, chat);
@@ -134,7 +163,7 @@ function _onLiveChat(chat) {
   const newRoom = !distinctRooms(_chats).includes(roomLabel(chat?.group)); // 是否帶出新房間
   _chats = merged;
   if (_chats.length > LIVE_CAP) _chats = _chats.slice(-LIVE_CAP); // 對齊 poll 窗，防無界增長
-  if (_currentTab === 'chat') _lastSeenId = maxChatId(_chats, _lastSeenId);
+  if (_currentTab === 'chat') _setLastSeen(maxChatId(_chats, _lastSeenId));
   _renderUnread();
   if (newRoom) _renderChips();  // 只在房間集合改變時重建 chips（常見情況=既有房間，省 DOM 重建）
   if (_currentTab === 'chat') _renderStream();
@@ -151,7 +180,7 @@ export function switchRightTab(tab) {
   _el('rtab-events')?.classList.toggle('active', tab !== 'chat');
   _el('rtab-chat')?.classList.toggle('active', tab === 'chat');
   if (tab === 'chat') {
-    _lastSeenId = maxChatId(_chats, _lastSeenId);
+    _setLastSeen(maxChatId(_chats, _lastSeenId));
     _renderUnread();
     _renderStream();
   }
@@ -174,7 +203,7 @@ async function _poll() {
     const data = await resp.json();
     _chats = Array.isArray(data?.chats) ? data.chats : [];
     if (_currentTab === 'chat') {
-      _lastSeenId = maxChatId(_chats, _lastSeenId);
+      _setLastSeen(maxChatId(_chats, _lastSeenId));
     }
     _renderUnread();
     _renderChips();

@@ -35,23 +35,31 @@ describe('decodeChatMessage — 還原 html.escape 的固定 5 實體（純文�
   });
 });
 
-describe('roomLabel — 空 group → 直接（DM）', () => {
+describe('roomLabel — 空 group → 直接（DM）；廣播別名 → 廣播（#250 locale 收斂）', () => {
   test('null / 空字串 → 直接', () => {
     expect(roomLabel(null)).toBe('直接');
     expect(roomLabel('')).toBe('直接');
   });
-  test('有房間名原樣', () => {
-    expect(roomLabel('All Chat Rooms')).toBe('All Chat Rooms');
+  test('廣播房中英 locale 別名 → 廣播（#250）', () => {
+    expect(roomLabel('All Chat Rooms')).toBe('廣播');   // iTAK 英文
+    expect(roomLabel('所有聊天室')).toBe('廣播');         // ATAK 中文
+  });
+  test('DM 房間名（收件人 callsign）原樣', () => {
+    expect(roomLabel('3QQaTak')).toBe('3QQaTak');
   });
 });
 
-describe('distinctRooms — 動態房間（依首次出現序、不寫死清單）', () => {
-  test('去重保序，空 group 歸「直接」', () => {
+describe('distinctRooms — #250：廣播併入「全部」（不另立房 chip）+ locale 收斂', () => {
+  test('廣播房（中英別名）不成 chip；DM 房保序去重', () => {
     const chats = [
       { group: 'All Chat Rooms' }, { group: 'Alpha' },
-      { group: 'All Chat Rooms' }, { group: null },
+      { group: '所有聊天室' }, { group: 'Alpha' }, { group: null },
     ];
-    expect(distinctRooms(chats)).toEqual(['All Chat Rooms', 'Alpha', '直接']);
+    // All Chat Rooms / 所有聊天室 皆併入「全部」→ 不出現；剩 DM 房 Alpha + 直接
+    expect(distinctRooms(chats)).toEqual(['Alpha', '直接']);
+  });
+  test('只有廣播 → 無房 chip（空陣列，chips bar 隱藏）', () => {
+    expect(distinctRooms([{ group: 'All Chat Rooms' }, { group: '所有聊天室' }])).toEqual([]);
   });
   test('空輸入 → 空陣列', () => {
     expect(distinctRooms([])).toEqual([]);
