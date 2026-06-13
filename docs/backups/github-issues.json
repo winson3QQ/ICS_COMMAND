@@ -3010,6 +3010,20 @@
         "minimizedReason": "",
         "reactionGroups": [],
         "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/217#issuecomment-4678845169"
+      },
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## 實測重現：ATAK 刪除 → iTAK 復活 → provenance 被洗（2026-06-13 Windows dogfood）\n\n真機 ATAK-CIV（Samsung S20）+ iTAK（iPhone）同連 TAK Server 5.7，ICS 經 Marti resync 觀測到本 issue 的核心失效模式，附 uid/時間戳：\n\n**序列**\n1. 在 **ATAK** 放標記（如 `atakE1` uid=`a9afbe9f…`、`atakU1` uid=`19246f04…`）→ 原始 producer = ATAK（CoT 帶 ATAK 專屬 `<creator>` + `<link>` 指 `3QQaTak` uid=`ANDROID-2eba33cffad87929`）。\n2. 同步到 iTAK（`3QQ itak` uid=`AC4B3A0B-…`）。\n3. 在 **ATAK 刪除** → **刪除未傳到 iTAK**（client 硬限制，對齊 #194）→ iTAK 仍留著。\n4. iTAK **重新廣播回 server** → server 上版本變「iTAK 重發版」：`link.parent` 被洗成 `3QQ itak`、ATAK 的 `<creator>` 標籤掉失。\n5. ICS resync 拉到的即此「復活＋來源被洗」版本。\n\n**三個確認的結論**\n- **刪除不跨 client 傳播**（#194 前提，親手驗到）。\n- **標記復活**：一 client 刪、另一未收到刪除的 client 會重廣播回來 → 指揮部 COP 殘留幽靈標記。這正是為何 resync 必須 **upsert-only 不刪**（硬對帳跟復活打架，永不收斂）。\n- **provenance 會變**：`link.parent` 反映**最後廣播者**非原始建立者；`creator`（ATAK 專屬）較穩但 iTAK 重發會洗掉它 → 不能單靠 `link` 判來源。\n\n**對 #217 doctrine 的支撐**：declutter / 生命週期一致性**不能**依賴跨 client 的刪除傳播（結構上不可靠）；應走 map-side filter（對齊 #161/#217 結論）+ 指揮部端權威生命週期，而非把現場任一 client 的刪除當權威。\n\n對照樣本 `ATAKN1`（uid=`e5db4379…`，未被刪/復活）仍保有 `<creator>=3QQaTak(ATAK)` → 正常 ATAK provenance，與被洗的 `atakE1/atakU1` 形成對照組。",
+        "createdAt": "2026-06-13T11:40:16Z",
+        "id": "IC_kwDOSnBjpc8AAAABGAwWgQ",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/217#issuecomment-4698412673"
       }
     ],
     "createdAt": "2026-06-11T08:50:36Z",
@@ -3018,7 +3032,7 @@
     "number": 217,
     "state": "OPEN",
     "title": "COP 一致性 doctrine：現場↔指揮部 TAK 物件生命週期須一致（declutter 走 filter，非分歧的 archive/stale）— 重評 #161",
-    "updatedAt": "2026-06-11T08:53:23Z",
+    "updatedAt": "2026-06-13T11:40:16Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/217"
   },
   {
