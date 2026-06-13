@@ -3765,7 +3765,7 @@
     "number": 246,
     "state": "MERGED",
     "title": "fix(tak): callsign 白名單過嚴改淨化非丟棄 — iTAK 預設名單位不再隱形（#236）",
-    "updatedAt": "2026-06-13T02:28:52Z",
+    "updatedAt": "2026-06-13T02:29:12Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/246"
   }
 ]
