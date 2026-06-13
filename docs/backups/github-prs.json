@@ -3809,5 +3809,26 @@
     "title": "fix(tak): #248 GeoChat 收條/ack 空訊息不入 chats",
     "updatedAt": "2026-06-13T13:11:18Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/249"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "dogfood（Windows + iPad）發現的通聯面板 UX 問題，**純前端**三修。\n\n1. **reload 通聯延遲**：`onEnterDashboard` 登入後即 `poll()`（事件即時），但通聯面板靠自身 30s interval、首次成功 poll 要等下一 tick → 通聯比事件晚出。修：登入後立即 `refreshChatNow()`。\n2. **房間 locale 收斂 + 併「全部」**：`All Chat Rooms`（iTAK 英）/`所有聊天室`（ATAK 中）同一廣播房卻兩 chip 又撞「全部」。修：`_BROADCAST_ROOMS` 收斂為「廣播」標籤、`distinctRooms` 併入「全部」（廣播訊息仍顯示 inline [廣播]）。\n3. **已讀水位持久化**：`_lastSeenId` 原每 reload 歸 0 → 重開 session 全變未讀。修：存 `window.localStorage`、init 還原、單調不退。\n\n**驗證**：eslint + vitest **317 綠**（房間收斂測更新 + locale/廣播-only 案）；iPad dogfood (1)(2) PASS、(3) 驗證中。\n\n範圍：未含 #250 的 live-chat 即時性量測（server 端已證即時，待瀏覽器端量）→ `refs` 不 `Closes`。\n\nrefs #250\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+    "closedAt": "2026-06-13T14:01:20Z",
+    "comments": [],
+    "createdAt": "2026-06-13T14:01:07Z",
+    "headRefName": "fix/issue-250-chat-reload-rooms",
+    "labels": [],
+    "mergedAt": "2026-06-13T14:01:20Z",
+    "number": 251,
+    "state": "MERGED",
+    "title": "fix(ui): #250 通聯面板 UX 三修 — reload 延遲 / 房間 locale 收斂 / 已讀持久化",
+    "updatedAt": "2026-06-13T14:01:44Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/251"
   }
 ]

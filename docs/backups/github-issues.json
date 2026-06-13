@@ -3424,14 +3424,29 @@
     },
     "body": "通聯面板（#213 b1-b3）兩個 dogfood（2026-06-13 Windows + iPad）發現的 UX 問題。\n\n## A. chat 顯示延遲（reload 明顯、live 待量）\n\n**現象**：重進 ICS URL 後，通聯比事件晚「好幾秒」才出現；使用者回報 live chat 也感覺延遲（含廣播，非僅 DM）。\n\n**已確定（量測 / 追碼）—— ICS server 端即時，延遲在瀏覽器端**：\n- chat CoT 收到 `received_at − CoT time Δ=0s`（ICS 即時收）。\n- 後端 `chat_service.ingest_chat` insert 後 **inline** `cop_hub.broadcast({op:chat})`。\n- 前端 `cop_stream.js:126` 收到 `op:chat` **立即** `dispatchEvent('chat:new')` → `chat_panel._onLiveChat`。\n- → server→廣播→前端 dispatch 全即時。\n\n**reload 結構性原因（看到了）**：`main.js` `_boot()` 完全序列化——先 `await` 載 `maplibre-gl.js` / `pmtiles.js` / `milsymbol.js`（地圖大 lib，iPad 數秒）→ 才 init 各模組（`initChatPanel()` 在 line ~675）→ 才 `authInit`。**整個登入後 dashboard（含通聯面板初次 poll）卡在地圖 lib 載完之後。**\n- **建議**：通聯面板與地圖無依賴，其初始化 / 首次 `GET /api/chat` 不應被地圖 lib 阻擋 → 前移或並行，讓通聯一登入就填。\n\n**live chat 延遲**：server 端量不出（Δ=0s、廣播 inline）。需**瀏覽器端**量（WS frame 到達 vs DOM render）才能定位；待 Chrome 桌機確定性量（mobile Safari WS 節流亦為候選）。\n\n## B. 廣播房間 locale 重複 chip + 與「全部」混淆\n\n**現象**（dogfood 截圖）：chips 列出現 `全部 / 3QQaTak / 直接 / All Chat Rooms / 3QQ itak / 所有聊天室`。\n- **ATAK（中文 locale）送 `chatroom=\"所有聊天室\"`、iTAK（英文）送 `\"All Chat Rooms\"`** → **同一個廣播房卻成 2 個分開的 chip**。\n- 兩者又與 **「全部」(`__all__` 跨房 filter)** 語意/視覺撞（`chat_panel.js` `_renderChips` 已有註記「內建房間名（如 All Chat Rooms）視覺撞全部」，但只在 ≤1 房間時隱藏 chips，多房間時無效）。\n\n**根因**：`roomLabel(group)`（chat_panel.js:48）原樣回傳 group → locale 變體不收斂；`distinctRooms` 因此產生重複房 chip。\n\n**建議**：\n- 在 `roomLabel` / chip 正規化**已知廣播房別名**（`All Chat Rooms` / `所有聊天室` / 其他 locale）→ 單一 canonical（如顯示「廣播」），收斂成一個 chip。\n- 釐清語意：「**全部**」= 跨所有房間 filter（meta）；「**廣播房**」= 一個實際房間（broadcast）。兩者不該混。\n- 連帶：`直接` chip 的空收條已由 #248 修掉（空訊息不入）；DM 房（收件人 callsign）chip 為正常行為。\n\n## 關聯\n- **#213**（通聯面板 b1-b3，本面板來源）\n- **#248**（GeoChat 入向；空收條雜訊已修）",
     "closedAt": null,
-    "comments": [],
+    "comments": [
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## 追加：iPad dogfood 兩個新發現（2026-06-13，PR #251 三修後）\n\nPR #251（reload 通聯延遲 / 房間 locale 收斂 / 已讀水位持久化）merge 後，iPad 上又驗到兩個：\n\n### 3. iPad：點通聯 filter chip → 面板先「縮回去」，要再點一次才看得到\n- 任何 filter chip（房間 / by-sender）點下去，通聯面板會先收合，需再點開。\n- 追碼：`chatFilterRoom`（main.js data-action → `chat_panel.chatFilterRoom`）handler **本身不收合面板**（只 `_renderChips()` + `_renderStream()`）。收合是某個 **iPad 觸控 / 版面副作用**，盲讀 code 釘不出，需瀏覽器端觀察（DOM/事件）。\n\n### 4. 新廣播不即時跳未讀紅圈（= 本 issue A 的 live-WS 即時性，浮出來了）\n- 新到的廣播在事件 tab 不即時 +1 紅圈，要等 ~30s poll。\n- 追碼確認：**未讀計數邏輯正確**（id-based `countUnread`；PR #251 的 localStorage 持久化未破壞計數）。事件 tab 新 chat 進 `_onLiveChat` → `_renderUnread` 本應算到。\n- 根因 = **新廣播沒被即時 WS（op:chat）推到瀏覽器**，只靠 30s safety-net poll → 即時看「沒紅圈」。PR #251 的已讀持久化只是**讓這個既有 live-WS 延遲更明顯**（先前 reload 全未讀蓋掉了它）。非回歸。\n- 釘死需**瀏覽器端量** WS frame 到達時間（server 端已證 Δ=0s、broadcast inline、`cop_stream.js:126` 收到即派 chat:new）→ 待 Chrome 桌機觀察。\n\n### 共通\n兩者都已達「server/code 盲測天花板」，需 Chrome 桌機（或 iPad Web Inspector）實際觀察 WS frame + DOM/觸控事件才能定位。server dogfood 環境保留中。",
+        "createdAt": "2026-06-13T14:09:44Z",
+        "id": "IC_kwDOSnBjpc8AAAABGBFGqg",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/250#issuecomment-4698752682"
+      }
+    ],
     "createdAt": "2026-06-13T13:22:17Z",
     "labels": [],
     "milestone": null,
     "number": 250,
     "state": "OPEN",
     "title": "通聯面板 UX：chat 顯示延遲（reload 卡地圖 lib）+ 廣播房間 locale 重複 chip（All Chat Rooms / 所有聊天室）與「全部」混淆",
-    "updatedAt": "2026-06-13T13:22:17Z",
+    "updatedAt": "2026-06-13T14:09:44Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/250"
   }
 ]
