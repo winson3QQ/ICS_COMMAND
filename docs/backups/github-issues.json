@@ -3448,5 +3448,25 @@
     "title": "通聯面板 UX：chat 顯示延遲（reload 卡地圖 lib）+ 廣播房間 locale 重複 chip（All Chat Rooms / 所有聊天室）與「全部」混淆",
     "updatedAt": "2026-06-13T14:09:44Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/250"
+  },
+  {
+    "assignees": [],
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "body": "## 緣起\n\n2026-06-14 設計對話衍生（#211 dogfood 起 ICS 時的 ops 摩擦 → 延伸到量產 doctrine）。\n\n現況：TAK **連線參數**（`TAK_COT_URL` / `TAK_CLIENT_CERT` / `KEY` / `CAFILE` / `TAK_MARTI_URL`）走 **env（部署層）**，**不存 DB**；只有 **enable/disable** 持久在 DB（`tak.connection_enabled`，P2-24 #164）。痛點：每次起 process 都要備妥 env，否則 toggle 開了也 `is_configured()=false` 連不上。量產時希望操作員能在 dashboard 後台設定「連哪台 TAK / 開關」，不必碰 shell —— 即把連線設定也納入 toggle/admin console。本 issue 定義這塊 scope（= 既有 ROADMAP **P2-26 L2「TAK admin console：cert/role 管理」**的具體化）。\n\n## 已成立、不需工作：TAK-less 量產機\n\n「量產 ICS 機台不一定有 TAK server」**已是一等支援狀態**：TAK 為選配來源、不得硬依賴（[strategy §2 三階降階](docs/roadmap/tak-integration-strategy.md)）。無 TAK 的單機 toggle 維持 off / env 留空 → `is_configured()=false` → ICS 全功能照常、燈顯「未備妥」非報錯。**此狀態零新工作**，降階紀律已保證。\n\n## 要拆開的兩件事（P2-24 的設計分線）\n\n| 東西 | 現在存哪 | 本 issue 主張 |\n|---|---|---|\n| enable/disable | ✅ DB toggle（P2-24）| 已在 |\n| **URL**（`TAK_COT_URL` / `TAK_MARTI_URL`）| env | **進 DB/UI（低風險）** |\n| **cert 路徑 / 啟用某張已佈署 cert** | 磁碟檔，env 存路徑 | **進 UI（pointer，可）** |\n| **cert/key 內容（私鑰本體）** | 磁碟檔 | **⚠️ 不進明文 DB，卡 P1-12** |\n\n## 分級 scope\n\n**1. URL 進 DB/UI（贊成）** — 操作員後台填「TAK server 在哪」，不碰 shell。風險 = 一個位址。\n\n**2. cert *路徑* / 啟用已佈署 cert（可）** — UI 選/啟用一張已在機器上的憑證 + 設 URL。\n\n**3. cert/key *內容* 存進 DB（反對，至少 P1-12 前）** — 紅線：TLS client **私鑰**進**明文 SQLite**，DB 外洩 = 冒充本 ICS 對 TAK 推假 COP（**COP poisoning，blast radius 最大**）。這正是 P2-24 寫死「toggle 只消費、不暴露 cert」並把 cert-in-DB 綁 **P1-12（SQLCipher/LUKS at-rest 加密，#226）** 的原因。at-rest 加密未到位前，私鑰留檔案系統（OS 權限 / LUKS），不進應用 DB。\n\n## 佈署現實（繞不開）\n\n量產 ICS 的 TAK client cert **必須由該 TAK server 的 CA（step-ca）簽發** → **憑證取得本質是 deploy-time 步驟**（先 enroll 才有能連的 cert）。UI 能做的是**選擇/啟用 + 設 URL + 開關**，**不是無中生有簽憑證**。故結論：**UI 管 pointer + 開關，deploy 管 secret**。\n\n## 程式面（低摩擦延伸既有 pattern）\n\n`tak_runtime` 對 enable flag 已是「持久值優先、env fallback」（`persisted_enabled()` → `effective_enabled()`，`services/tak_runtime.py:35-53`）。把**同一 pattern 延伸到 URL**（DB 值優先、env fallback）即可，對稱乾淨：`start()` 現讀 `config.TAK_COT_URL` → 改讀 `effective_cot_url()`。**守住紅線：URL 走這套；key 內容不走。**\n\n## 關係 / 依賴\n\n- **= P2-26 L2** 具體化（TAK admin console cert/role 管理）；P2-24（#164）的「唯讀診斷狀態」即本項接縫。\n- **安全卡 P1-12（#226）**：cert/key 內容入 DB 需 at-rest 加密先到位。\n- doctrine：[strategy §2 降階](docs/roadmap/tak-integration-strategy.md)、[threat_model §8](docs/compliance/threat_model.md)（COP 完整性 / 信任邊界）、memory `tak-server-marti-cert-not-oauth` / `tak-marti-authz-model`。\n\n## Out of scope\n\n- 簽發憑證的 UI（CA enroll 仍 deploy-time）。\n- cert/key 內容入 DB（卡 P1-12，另議）。\n- role 管理 UI（P2-26 L2 其餘部分，視需要另切）。\n\n## DoD（草）\n\n- [ ] `TAK_COT_URL` / `TAK_MARTI_URL` DB 化（admin UI 可編，持久值優先、env fallback，比照 `effective_enabled()`）。\n- [ ] `tak_runtime.start()` 改讀 `effective_*` 連線參數。\n- [ ] cert：UI 設「啟用哪張已佈署 cert（路徑）」，**不上傳 key 內容**。\n- [ ] RBAC：設定屬部署層控制 → `SYSADMIN_ONLY`（比照 P2-24 toggle）；audit-first。\n- [ ] 負向：無 cert/URL → `is_configured()=false`、ICS 照常 TAK-less 跑（降階守門測試）。\n- [ ] 安全紅線測試：拒絕把 key 內容寫入 DB（或明確 gate 在 P1-12 後）。\n\n> **狀態**：Design / scope 定義。動工前對動工當下 code 再 reality-check。本 issue 為 P2-26 L2 的連線設定切片。\n",
+    "closedAt": null,
+    "comments": [],
+    "createdAt": "2026-06-13T23:48:57Z",
+    "labels": [],
+    "milestone": null,
+    "number": 255,
+    "state": "OPEN",
+    "title": "P2-26 L2 衍生：TAK 連線設定 dashboard 化（URL/開關 DB 化 + cert pointer；key 內容卡 P1-12）",
+    "updatedAt": "2026-06-13T23:48:57Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/255"
   }
 ]

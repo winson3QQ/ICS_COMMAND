@@ -3830,5 +3830,68 @@
     "title": "fix(ui): #250 通聯面板 UX 三修 — reload 延遲 / 房間 locale 收斂 / 已讀持久化",
     "updatedAt": "2026-06-13T14:01:44Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/251"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "對稱入向 #213。ICS 推標記到現場 TAK 時，CoT detail 原本只有 `callsign`+`remarks`+`archive`（**`team_color` 已存卻沒外送 = 純漏填**），現場端收到只是空殼 2525 框。\n\n## 改動（純後端 `tak_downlink`）\n新增 `_fidelity_detail(entity)`，帶上 ICS **真有的靜態描述**：\n- **`<__group name role>`**：re-share 的 `attributes.__group` 原樣回送；無則由頂層 `team_color`/`role` 建（漏填修補）\n- **`<color argb>`**：re-share 的 `attributes.color` 原樣回送（round-trip 忠實）\n- **`<usericon iconsetpath>`**：re-share 的 `attributes.usericon` 原樣回送\n\n`build_command_cot` / `build_geometry_cot` 加 `extra_detail` 參數；`entity_to_cot` 串接。值走 `quoteattr`。\n\n## 🚫 紅線（加註解防誤補）\n**絕不外送裝置遙測** `<takv>`/`<status battery>`/`<track>`/`<precisionlocation geopointsrc=GPS>` —— ICS 非 GPS 裝置，編造誤導現場 + 違背 `source: ICS` 誠實原則。位置/移動由 `<point>` + P2-30 移動重推承載。manual 無 color → 不硬塞（靠 type 帶 affiliation 框色）。\n\n## 驗證\n- 測 +5（re-share 三欄原樣 / manual 由 team_color 建 __group / 裸標記不填 / **紅線：含遙測 attributes 也不外送** ×全欄）。\n- 全套後端綠 + doc_sync 綠。\n\n## v2 後置\n`<link>` 來源事件（依賴 #240 N:1 / P2-27）、manual usericon 由 type 推導、真機 iTAK human verify（field 端顯示隊伍色/符號）。故 `refs` 不 `Closes`。\n\nrefs #214\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+    "closedAt": "2026-06-13T14:49:34Z",
+    "comments": [],
+    "createdAt": "2026-06-13T14:49:22Z",
+    "headRefName": "feat/issue-214-outbound-fidelity",
+    "labels": [],
+    "mergedAt": "2026-06-13T14:49:34Z",
+    "number": 252,
+    "state": "MERGED",
+    "title": "feat(tak): #214 出向內容忠實度 v1 — ICS→TAK 標記帶 __group/color/usericon",
+    "updatedAt": "2026-06-13T14:49:54Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/252"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "Revert PR #252（commit `e98d49e`）。\n\n**退因**（dogfood reality check 補正）：序列化程式正確、有測試、無回歸，但**無現行流程觸發其真值** → 驗不出、依「缺驗不算完成」不留 main。\n- 有 `team_color`/`color`/`usericon` 的標記 = `source='tak'`（入向）→ ICS 唯讀、無廣播鈕。\n- 能廣播的 = `source='manual'` 手放標記 → 無設隊伍/符號 UI → 欄位恆空。\n- 「ICS re-廣播現場標記」多餘：TAK server 已推給同群組全員；跨群組 = DataSync/Mission 地盤。\n\n待「跨群組轉發/DataSync」或「手放標記可設隊伍/符號」成案時，連同序列化一起做、一起驗。\n\nrefs #214\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+    "closedAt": "2026-06-13T15:30:33Z",
+    "comments": [],
+    "createdAt": "2026-06-13T15:30:20Z",
+    "headRefName": "revert/issue-214",
+    "labels": [],
+    "mergedAt": "2026-06-13T15:30:33Z",
+    "number": 253,
+    "state": "MERGED",
+    "title": "Revert #214 出向內容忠實度 — premature，無消費流程",
+    "updatedAt": "2026-06-13T15:30:38Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/253"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "PR #251 後 code review 抓出兩 bug：\n\n1. **stale 已讀水位卡死未讀**（真 bug，解 dogfood「新廣播沒紅圈」）：localStorage 持久化的 `_lastSeenId` 高於現有 chat 最大 id（DB 換/reset；跨副本 DB id 序列獨立）→ 新 chat 永不算未讀、紅圈不跳。修：`_poll` 拿全量後夾回現有 max（可下降）；抽純函式 `clampWatermark` 供測。\n2. **廣播每則多餘重繪**（效率）：`newRoom` 對廣播恆 true → 每則多跑 `_renderChips`。修：排除 `_BROADCAST_ROOMS`。\n\neslint + vitest **321 綠**（+4 clampWatermark）。\n\nrefs #250\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+    "closedAt": "2026-06-13T15:41:57Z",
+    "comments": [],
+    "createdAt": "2026-06-13T15:41:55Z",
+    "headRefName": "fix/issue-250-unread-stale",
+    "labels": [],
+    "mergedAt": "2026-06-13T15:41:57Z",
+    "number": 254,
+    "state": "MERGED",
+    "title": "fix(ui): #250 review 後修 — stale 已讀水位夾回 + 廣播免多餘重繪",
+    "updatedAt": "2026-06-13T15:42:15Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/254"
   }
 ]
