@@ -95,6 +95,22 @@ def test_message_escaped():
     assert "<script>" not in msg          # 原樣不得存
 
 
+# ── 4. #248：收條/ack（空訊息 b-t-f）不寫 chats（前端「直接」頻道不冒空白列）────────
+
+
+@pytest.mark.parametrize("rmk", [None, "", "   ", "\n\t "])
+def test_empty_remarks_btf_skipped(rmk):
+    # GeoChat 收條/ack：type b-t-f 但 <remarks> 空（uid=訊息 GUID）→ ingest 跳過、不寫不廣播。
+    _ingest(_event(uid="RECEIPT-1", remarks=rmk))
+    assert _chats() == []
+
+
+def test_nonempty_remarks_btf_still_ingests():
+    # 對照：非空訊息照常進 chats（守門只擋空訊息，不誤殺正常通聯）。
+    _ingest(_event(remarks="real msg"))
+    assert len(_chats()) == 1
+
+
 # ── 4. exercise scoping（無 active → NULL）──────────────────────────────────
 
 
