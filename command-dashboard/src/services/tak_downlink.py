@@ -33,6 +33,45 @@ _CONNECT_TIMEOUT_S = 10.0
 _WRITE_TIMEOUT_S = 10.0
 
 
+def _xml_self_close(tag: str, attrs: dict) -> str:
+    """組 `<tag a="v" .../>`；None/空字串的屬性略過；值走 quoteattr（縱深防護）。"""
+    pairs = "".join(f" {k}={quoteattr(str(v))}" for k, v in attrs.items() if v is not None and v != "")
+    return f"<{tag}{pairs}/>"
+
+
+def _fidelity_detail(entity: dict) -> list[str]:
+    """#214 出向內容忠實度：把 ICS **真有的靜態描述**欄位帶上 CoT detail（對稱入向 #213）。
+
+    只帶可信欄位：
+      - `<__group name role>`：re-share 的 `attributes.__group` 原樣回送；無則由頂層 `team_color`/`role`
+        建（**team_color 已存卻沒外送是純漏填，本項修補**）。
+      - `<color argb>`：re-share 的 `attributes.color` **原樣回送**（round-trip 忠實）。
+      - `<usericon iconsetpath>`：re-share 的 `attributes.usericon` 原樣回送。
+    **刻意 NOT 填**（ICS 沒有 → 編造＝說謊、誤導現場，違背 `source: ICS` 誠實原則）：
+      `<takv 裝置/平台/OS>`、`<status battery>`、`<track speed/course>`、`<precisionlocation geopointsrc=GPS>`。
+      位置/移動由 `<point>` + P2-30「移動即時重推」承載，**不需也不可**偽造速度/航向/GPS 來源。
+      manual 標記無 color 時**不補**（靠 type 帶 affiliation 框色，ATAK 自渲染，不硬塞顏色）。
+    """
+    attrs = entity.get("attributes") or {}
+    parts: list[str] = []
+
+    grp = attrs.get("__group")
+    if isinstance(grp, dict) and grp.get("name"):
+        parts.append(_xml_self_close("__group", {"name": grp.get("name"), "role": grp.get("role")}))
+    elif entity.get("team_color"):
+        parts.append(_xml_self_close("__group", {"name": entity.get("team_color"), "role": entity.get("role")}))
+
+    col = attrs.get("color")
+    if isinstance(col, dict) and col.get("argb") is not None:
+        parts.append(_xml_self_close("color", {"argb": col.get("argb")}))
+
+    ico = attrs.get("usericon")
+    if isinstance(ico, dict) and ico.get("iconsetpath"):
+        parts.append(_xml_self_close("usericon", {"iconsetpath": ico.get("iconsetpath")}))
+
+    return parts
+
+
 def build_command_cot(
     *,
     uid: str,
@@ -42,10 +81,13 @@ def build_command_cot(
     hae: float = 0.0,
     callsign: str | None = None,
     remarks: str | None = None,
+    extra_detail: list[str] | None = None,
     stale_minutes: int = 60,
     now: datetime | None = None,
 ) -> str:
     """組一個 v0 CoT XML 指令字串（server 端產 time/start/stale，不信 client 時鐘）。
+
+    `extra_detail`：已序列化的額外 detail 元素（#214 出向忠實度 `<__group>`/`<color>`/`<usericon>`）。
 
     所有外來字串走 XML escape/quoteattr（縱深防護；上游 router 另有內容白名單）。
     含 `<archive/>`：要求 server 持久保留（過 stale 不丟）——對齊 #161 archive doctrine；
@@ -60,6 +102,8 @@ def build_command_cot(
         detail_parts.append(f"<contact callsign={quoteattr(callsign)}/>")
     if remarks:
         detail_parts.append(f"<remarks>{escape(remarks)}</remarks>")
+    if extra_detail:
+        detail_parts.extend(extra_detail)  # #214：__group / color / usericon
     detail_parts.append("<archive/>")  # 持久標記
     detail = "".join(detail_parts)
 
@@ -81,6 +125,7 @@ def build_geometry_cot(
     closed: bool,
     callsign: str | None = None,
     remarks: str | None = None,
+    extra_detail: list[str] | None = None,
     stale_minutes: int = 60,
     now: datetime | None = None,
 ) -> str:
@@ -107,6 +152,8 @@ def build_geometry_cot(
         detail_parts.append(f"<contact callsign={quoteattr(callsign)}/>")
     if remarks:
         detail_parts.append(f"<remarks>{escape(remarks)}</remarks>")
+    if extra_detail:
+        detail_parts.extend(extra_detail)  # #214：__group / color / usericon
     detail_parts.append("<archive/>")
     detail = "".join(detail_parts)
 
@@ -140,6 +187,8 @@ def entity_to_cot(entity: dict, *, stale_minutes: int = 60, now: datetime | None
     # cop_entities（entity.remarks 保持使用者原註記乾淨）。
     _user_remarks = entity.get("remarks")
     remarks = f"source: ICS\n{_user_remarks}" if _user_remarks else "source: ICS"
+    # #214：帶上 ICS 真有的靜態描述（__group/color/usericon）—— re-share 原樣回送 + team_color 兜底。
+    extras = _fidelity_detail(entity)
 
     if kind in ("route", "polygon"):
         vertices = attrs.get("vertices") or []
@@ -150,6 +199,7 @@ def entity_to_cot(entity: dict, *, stale_minutes: int = 60, now: datetime | None
             closed=(kind == "polygon"),
             callsign=callsign,
             remarks=remarks,
+            extra_detail=extras,
             stale_minutes=stale_minutes,
             now=now,
         )
@@ -161,6 +211,7 @@ def entity_to_cot(entity: dict, *, stale_minutes: int = 60, now: datetime | None
         hae=float(entity.get("hae") or 0.0),
         callsign=callsign,
         remarks=remarks,
+        extra_detail=extras,
         stale_minutes=stale_minutes,
         now=now,
     )
