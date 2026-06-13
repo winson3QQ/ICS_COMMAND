@@ -3788,5 +3788,26 @@
     "title": "feat(map): #213c marker 詳情欄位補全 — 入向顯示忠實度",
     "updatedAt": "2026-06-13T12:02:59Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/247"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "## 問題（Windows dogfood 2026-06-13）\nGeoChat 收條/ack CoT（`type=b-t-f` 但 `<remarks>` 空、uid=訊息 GUID、無 `<__chat>`）被 `ingest_chat` 當空 chat 寫入 → 前端「直接」頻道（`roomLabel` 對 `group=null` 回「直接」）冒出 callsign=None、message='' 的空白列。Marti `/cot/sa` 直查可見多筆此類收條（`6DCC724F`/`E2464E77`…）。\n\n## 修法\n`ingest_chat` 加空訊息守門：`event.remarks` 去頭尾空白為空 → 回 `None` 跳過,**不寫 chats、不廣播**。非空訊息行為完全不變（最小改動,守門只擋空訊息不誤殺正常通聯）。\n\n## 驗證\n- 測 +5（None/空/純空白/whitespace → 跳過；非空 → 照常進）。\n- 全套後端綠 + doc_sync 綠。\n- 安全:守門只減少處理,無新 sink;caller（`ingest_cot_event`）本就忽略回傳值,None 容錯。\n\n## 範圍\n本 PR 只修 #248 的「收條雜訊」bug。#248 另含 **doctrine A 拍板**（DM 經 Marti resync 入 COP 即可;live 串流僅廣播為 TAK 路由特性）已記 ROADMAP;**即時 DM（B）+ 新報的「全 chat 延遲」另議**,故 `refs` 不 `Closes`。\n\nrefs #248\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+    "closedAt": "2026-06-13T13:10:53Z",
+    "comments": [],
+    "createdAt": "2026-06-13T13:10:41Z",
+    "headRefName": "fix/issue-248-empty-chat-receipt",
+    "labels": [],
+    "mergedAt": "2026-06-13T13:10:53Z",
+    "number": 249,
+    "state": "MERGED",
+    "title": "fix(tak): #248 GeoChat 收條/ack 空訊息不入 chats",
+    "updatedAt": "2026-06-13T13:11:18Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/249"
   }
 ]
