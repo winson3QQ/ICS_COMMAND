@@ -2199,7 +2199,7 @@
       "name": ""
     },
     "body": "## 來源\n#161 dogfood（2026-06-08，真機 iTAK + 活 TAK server）t-x-d-d 刪除實驗的副發現。\n\n## 事實（wire 實證）\n從 ICS 用 cert 開**新 streaming subscriber** 連 :8089，8 秒內 server 只補發**自身位置（PLI）**，**不補發任何靜態標記**（archived marker `不明` 仍在 server archive、但沒被推送；其他 zone 也沒）。\n\n## 根因 / 影響\n- TAK server `<latestSA>` 對新連線只推 **live SA（contacts/PLI）**，**不重播靜態 archived 標記/繪圖**。\n- ICS 是 streaming-fed → **重啟 / 斷線重連期間，server 上既有的（或別人放的）靜態 marker 不會被重新送達 ICS** → ICS 的 COP 與 server / 其他 TAK client **分歧（少物件）**。\n- 現況 ICS 只有「即時收 broadcast」一條路；缺「主動拉權威全集」的路。\n\n## 修法方向（屬 P2-14 Mission/DataSync）\n- ICS 啟動 / 重連時，透過 **Marti REST（`tak_rest_client`，P2-11 已建）主動拉權威態勢**（Mission contents / SA query），對帳 cop_entities，補回 streaming 漏掉的。\n- 沿用 cert（[memory tak-server-marti-cert-not-oauth]）。\n- 與 P2-14 DataSync client 合併設計（同一條「主動查 Marti」管線）。\n\n## 關聯\nP2-14（DataSync）、P2-11（tak_rest_client）、#161（archive 持久化）、memory tak-streaming-archive-stale-vs-mission。\n",
-    "closedAt": null,
+    "closedAt": "2026-06-13T11:12:03Z",
     "comments": [
       {
         "author": {
@@ -2214,15 +2214,29 @@
         "minimizedReason": "",
         "reactionGroups": [],
         "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/173#issuecomment-4647501802"
+      },
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## Windows E2E resync 驗證通過（2026-06-13）\n\n實作早於 PR #210（`32ddcdd`，Marti 權威 resync）+ #222/#224（on-connect 接線：掛 `subscribe` 的 `on_connect`，含 subscribe loop 內部自動重連，非只 `start()`）。本次於 Windows + 真機 ATAK-CIV(Samsung S20) + iTAK(iPhone) + TAK Server 5.7 完成端到端驗證。\n\n**前置修正**：Windows runtime（`tak-runtime/start-ics-tak.ps1`）原本只設 :8089 streaming env，缺 `TAK_MARTI_URL` / `TAK_MARTI_READ_CERT/KEY` → `resync_enabled()` 為 false、resync 靜默停用。已補三行（讀身分複用 icscop，truststore 信任即通，毋須另簽 read cert）。\n\n**驗證證據**（origin/main 程式碼，跑 data 副本不碰正式資料）：\n- ICS 重啟（= 模擬重連）→ `tak.connected` → on-connect resync：\n  `tak.resync.done fetched=557 ingested=9 skipped=548 errors=0`（窗 08:47→10:47）。\n- 重啟前 cop_entities 僅 1 筆（live PLI，走串流）；重啟後 resync 補進 9 筆，含 ATAK/iTAK 放置、**串流不會重播**的靜態標記（`ATAKN1`/`atakE1`/`atakU1`/`itak敵情`/`itak威脅`/`itak不明`…）。\n- 即「ICS 重啟漏靜態標記 → Marti 權威 resync 補齊」核心情境成立。\n- 附帶交叉驗：含空格 callsign（`itak 不明`/`3QQ itak`）乾淨進來（#236 淨化）。\n\n**衍生發現**（已另記 #217 待補）：dogfood 中觀測到「ATAK 刪除 → iTAK 未收到刪除 → iTAK 重廣播 → 標記復活且 provenance 被洗成 iTAK」，實證刪除不跨 client 傳播（#194 前提）與「resync upsert-only 不刪」的必要性。\n\n程式碼 + 測試（`test_tak_resync.py` / `test_tak_resync_api.py`）齊備，現 E2E 驗證完成 → 關閉。",
+        "createdAt": "2026-06-13T11:12:00Z",
+        "id": "IC_kwDOSnBjpc8AAAABGAsqvQ",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/173#issuecomment-4698352317"
       }
     ],
     "createdAt": "2026-06-08T08:32:01Z",
     "labels": [],
     "milestone": null,
     "number": 173,
-    "state": "OPEN",
+    "state": "CLOSED",
     "title": "ICS 重連/重啟漏靜態 TAK 標記 — streaming 不重播，需 Marti 權威 resync（P2-14）",
-    "updatedAt": "2026-06-08T09:44:57Z",
+    "updatedAt": "2026-06-13T11:12:03Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/173"
   },
   {
