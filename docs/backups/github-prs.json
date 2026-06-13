@@ -3725,5 +3725,26 @@
     "title": "feat(map): 乙-2a 事件依 regime 渲染 ◆/▲（alert→三角）+ regime 分流地基（#243）",
     "updatedAt": "2026-06-12T09:38:27Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/244"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "@\n兩個**疊在一起、一起 review + 真機 iPad verify** 的變更（拆兩 PR 需跨 squash-merge 的 git 手術，風險高 → 合一 PR、訊息清楚分述）。\n\n## #243 乙-2b — 軍用事件 → milsymbol 2525 框（Closes #243）\n- drone/不明/QRF（regime=military）→ milsymbol 2525 敵我框，**獨立 `zones-military-icon` 層**（同 `zones` source、**不套 icon-color**——milsymbol 為全彩 icon，icon-color 會把它染成 severity 色；對齊 tak-units 既有教訓）。halo/critical-pulse/click/drag 因同源自動保留。\n- zones-event/outline/abbr filter 排除 military；**拿掉框上 abbr**（2525 自帶敵我語意）。\n- **敵我=框色（藍友/黃不明/紅敵）、severity=光暈** 兩軸分離。\n- async 烤 SIDC + `_zoneRenderSeq` seq guard（對齊 `_renderTakUnits`）。\n\n## #240 刀0 甲-1 — marker 自描述感知原子（refs #240，走「甲：真大一統」）\n- marker **自帶 `event_type`** → `_renderZones` 依 marker 自身推 regime/abbr（`evType = zone.event_type || ev?.event_type`），**不再查 linked event 借型別** → 解鎖 N:1（一事件 N marker 各帶自己型別）。\n- **kind `event`→`sighting`** 降級：`createEntity` 寫 sighting；`copEntityToEventZone` guard + 搜尋 + `cop.py` link/audit **同時認 event+sighting**（back-compat）；**m027** 遷移既有 `event`→`sighting`（+ down）。\n- 1:1 視覺/操作不變（結構改動）。**甲-2（N:1 即時聚合 = P2-33c）為下刀。**\n\n## 驗證\n`/code-review` **0**（migration idempotent + kind back-compat + 無漏 read site + 軍用層分割完整 + 無 RBAC 回歸）+ `/security-review` **0**（m027 常數 SQL 無注入、kind 無提權、input_safety + key-lookup 雙防 XSS）。後端全套（1 skip）/ vitest 315 / eslint 0 / doc_sync 綠。\n**真機 iPad human verify PASS**：藍友/黃不明/紅敵框、無小字、critical 紅暈；**5 個既有事件經 m027 降級後零回歸、點得開**。\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n@",
+    "closedAt": "2026-06-12T23:59:52Z",
+    "comments": [],
+    "createdAt": "2026-06-12T23:57:52Z",
+    "headRefName": "feat/issue-240-marker-self-describe",
+    "labels": [],
+    "mergedAt": "2026-06-12T23:59:52Z",
+    "number": 245,
+    "state": "MERGED",
+    "title": "feat(map): 乙-2b 軍用 2525 框 + 甲-1 marker 自描述/降級（Closes #243, refs #240）",
+    "updatedAt": "2026-06-12T23:59:56Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/245"
   }
 ]
