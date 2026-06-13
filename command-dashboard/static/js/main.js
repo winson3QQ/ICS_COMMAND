@@ -35,6 +35,7 @@ import {
 } from './cop.js';
 import {
   initChatPanel, switchRightTab, chatFilterRoom, chatClearSender, chatRowDown, chatRowUp,
+  refreshChatNow,
 } from './chat_panel.js';
 import {
   getSeries, expandSpark, getExpandedSpark, renderSparklines,
@@ -710,6 +711,7 @@ function _loadClassicScript(src) {
       startSessionStatusPolling();
       setPollActive(true);
       poll();
+      refreshChatNow();  // #250：通聯與事件同步在登入後立即載入（否則通聯要等 30s interval 才填）
       setInterval(() => poll(), POLL_INTERVAL);
       // COP 即時同步：地圖就緒後連 WS（issue #29 PR-E）
       _initCopStream();
