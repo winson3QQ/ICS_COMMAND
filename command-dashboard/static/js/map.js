@@ -2318,6 +2318,20 @@ function _openTakUnitDetail(id) {
   body += row('callsign', _escapeHtml(ent.callsign || ''));
   body += row('座標', (ent.lat != null && ent.lon != null) ? _coordValueHTML(ent.lat, ent.lon) : '');  // 數字→安全 HTML（MGRS+經緯）；lat/lon 成對才渲染
   body += row('備註', _escapeHtml(ent.remarks || ''));   // 含 source: ICS（若 #192 外推帶入）
+  // #213c：surface client 推來、已存進 attributes/頂層卻沒顯示的欄位（入向顯示忠實度）。
+  // 皆外部 CoT 內容 → 一律 _escapeHtml；row() 對空值自動跳過，缺欄不佔位。
+  const _attr = ent.attributes || {};
+  const _takv = _attr.takv || {};
+  // 平台＋裝置（CoT <takv>）：iTAK · iPhone / ATAK-CIV · SAMSUNG SM-G9810。PLI 才帶，放置標記多半無。
+  body += row('平台', _escapeHtml([_takv.platform, _takv.device].filter(Boolean).join(' · ')));
+  // 來源單位（CoT <link> parent）：產生/最後廣播此標記的單位。注意（#217 實證）反映的是
+  // **最後廣播者**，非必為原始建立者（跨 client 復活時會被洗）。
+  body += row('來源單位', _escapeHtml(_attr.link?.parent_callsign || ''));
+  // 小隊（CoT <__group>，頂層提取）：team_color · role，如 Magenta · Team Member。
+  body += row('小隊', _escapeHtml([ent.team_color, ent.role].filter(Boolean).join(' · ')));
+  body += row('電量', ent.battery != null ? _escapeHtml(String(ent.battery)) + '%' : '');
+  // 生命週期：archived（CoT <archive/>）= 持久標記，過 stale 也保留（#161）。
+  body += row('狀態', ent.archived ? '持久（archived）' : '');
   body += `<div style="font-size:10px;color:var(--text3);margin-top:8px;">來源：TAK · 唯讀</div>`;
   _deps.openModal?.(`${affZh}單位 ${ent.callsign || ''}`, body);
 }
