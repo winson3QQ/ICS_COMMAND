@@ -30,10 +30,22 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 # 擋掉 `<script>`、空白、`;`、注入字元等非法 type。
 _COT_TYPE_RE = re.compile(r"^[a-z](?:-[A-Za-z0-9]+)+$")
 
-# callsign 允許：字母（含 unicode，\w）/數字/底線 + 空格與常見標點 `- . / ( ) ' + #`。
-# **刻意允許 `'`**（容 O'Brien 等真實呼號，對齊紅隊 RT-M3 陷阱 1：別誤殺合法輸入）；
-# 擋 `< > & " 反引號 ; =` 與控制字元等注入/破壞字元（縱深防護；渲染端另走 textContent）。
-_CALLSIGN_RE = re.compile(r"^[\w \-./()'+#]{1,128}$")
+# callsign **淨化**（#236）：允許字母（含 unicode 中文，\w）/數字/底線 + 空格與常見呼號標點
+# `- . / ( ) ' + # :`（**加 `:`** 容 iTAK 預設名「iTAK: A1」，#236 主因）。**刻意允許 `'`**（容
+# O'Brien，紅隊 RT-M3 陷阱 1）。其餘（`< > & " 反引號 ; =` 與控制字元等注入/破壞字元）→ **strip**。
+# **改淨化非丟棄**：#157 原本 raise → 整筆 CoT 被丟 → 單位在 COP 隱形（#236）。感測層底線是
+# 「marker 不消失」(#213)——名字髒就清名字，別丟整顆單位。真正 XSS 防線在 sink（渲染 textContent、
+# 出向 builder XML escape），此層為縱深，不該犧牲可用性。
+_CALLSIGN_DISALLOWED = re.compile(r"[^\w \-./()'+#:]")
+
+
+def _sanitize_callsign(v: str | None) -> str | None:
+    """淨化 callsign：strip 非白名單字元 + 去頭尾空白 + 截 128；全清空/全空白 → None（無名單位仍進 COP）。"""
+    if not v:
+        return None  # None 或 ""（空字串）一律歸 None，對齊 str|None 契約（不回空字串）
+    # strip → 截 128 → 再 strip：第二次 strip 清掉「截斷邊界剛好落在空白」殘留的頭尾空白。
+    cleaned = _CALLSIGN_DISALLOWED.sub("", v).strip()[:128].strip()
+    return cleaned or None
 
 
 class CoTEventIn(BaseModel):
@@ -83,10 +95,8 @@ class CoTEventIn(BaseModel):
     @field_validator("callsign")
     @classmethod
     def _validate_callsign(cls, v: str | None) -> str | None:
-        # None / 空字串放行（無呼號）；非空則須過字元白名單。
-        if v and not _CALLSIGN_RE.match(v):
-            raise ValueError("callsign 含內容層白名單不允許的字元")
-        return v
+        # #236：淨化非丟棄——髒字元只清掉，不讓整筆 CoT 因名字失敗而被丟（單位隱形）。
+        return _sanitize_callsign(v)
 
 
 # ── 下行指令（P2-13 A：streaming-write downlink，issue #176 reality check 定案）─────────
@@ -122,9 +132,8 @@ class DownlinkCommandIn(BaseModel):
     @field_validator("callsign")
     @classmethod
     def _validate_callsign(cls, v: str | None) -> str | None:
-        if v and not _CALLSIGN_RE.match(v):
-            raise ValueError("callsign 含內容層白名單不允許的字元")
-        return v
+        # #236：出向指令亦淨化（一致；XML builder 另 escape）。
+        return _sanitize_callsign(v)
 
     @field_validator("uid")
     @classmethod

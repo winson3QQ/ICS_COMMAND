@@ -131,7 +131,7 @@ def test_archive_explicit_false_not_archived(body):
 
 from pydantic import ValidationError  # noqa: E402
 
-from schemas.tak import CoTEventIn  # noqa: E402
+from schemas.tak import CoTEventIn, DownlinkCommandIn  # noqa: E402
 
 _BASE = dict(
     uid="T-1",
@@ -161,10 +161,59 @@ def test_callsign_apostrophe_allowed():
     assert CoTEventIn(**{**_BASE, "callsign": "O'Brien-1"}).callsign == "O'Brien-1"
 
 
-@pytest.mark.parametrize("bad", ["<script>", 'a"b', "a&b", "a`b", "a\x00b", "a;b", "a<b>c"])
-def test_bad_callsign_rejected(bad):
-    with pytest.raises(ValidationError):
-        CoTEventIn(**{**_BASE, "callsign": bad})
+@pytest.mark.parametrize("dirty,clean", [
+    ("<script>", "script"),
+    ('a"b', "ab"),
+    ("a&b", "ab"),
+    ("a`b", "ab"),
+    ("a\x00b", "ab"),
+    ("a;b", "ab"),
+    ("a<b>c", "abc"),
+])
+def test_dirty_callsign_sanitized_not_dropped(dirty, clean):
+    # #236：髒 callsign **淨化非丟棄**——危險字元 strip 掉、單位仍進 COP（不隱形）。
+    assert CoTEventIn(**{**_BASE, "callsign": dirty}).callsign == clean
+
+
+def test_itak_default_colon_callsign_kept():
+    # #236 主因：iTAK 預設名「iTAK: A1」（冒號）原本整筆被丟 → 單位隱形。現 `:` 入白名單、保留。
+    assert CoTEventIn(**{**_BASE, "callsign": "iTAK: A1"}).callsign == "iTAK: A1"
+
+
+def test_all_dirty_callsign_becomes_none_unit_still_ingests():
+    # 全是危險字元 → 清空成 None（無名），但**物件建構成功**（單位仍進 COP）。
+    assert CoTEventIn(**{**_BASE, "callsign": "<<>>"}).callsign is None
+
+
+@pytest.mark.parametrize("raw", ["", "   ", None])
+def test_empty_or_whitespace_callsign_normalized_to_none(raw):
+    # code review #236：空字串/純空白一律歸 None（對齊 str|None 契約，不回空字串）。
+    assert CoTEventIn(**{**_BASE, "callsign": raw}).callsign is None
+
+
+def test_callsign_truncated_no_trailing_space_at_boundary():
+    # code review #236：截斷邊界落在空白時不留尾空白（strip→[:128]→strip）。
+    raw = "a" * 127 + " " + "b" * 20  # 第 128 字是空白
+    out = CoTEventIn(**{**_BASE, "callsign": raw}).callsign
+    assert out == "a" * 127 and len(out) <= 128 and out == out.strip()
+
+
+def test_dirty_callsign_via_stream_not_dropped():
+    # :8089 路徑：髒 callsign **不再**讓整筆變 CoTParseError（對照 type 仍 raise）——單位照進。
+    xml = (
+        '<event version="2.0" uid="DIRTY" type="a-f-G" time="2026-06-05T04:00:00Z" '
+        'start="2026-06-05T04:00:00Z" stale="2026-06-05T04:05:00Z" how="m-g">'
+        '<point lat="24.0" lon="120.0" hae="0" ce="9" le="9"/>'
+        '<detail><contact callsign="iTAK: A1&lt;x&gt;"/></detail></event>'
+    )
+    e = parse_cot_xml(xml)
+    assert e.uid == "DIRTY" and e.callsign == "iTAK: A1x"  # 冒號保留、<x> strip
+
+
+def test_downlink_command_callsign_sanitized_not_dropped():
+    # code review #236：出向指令共用 _sanitize_callsign——髒字元 strip、冒號保留、單位不丟。
+    cmd = DownlinkCommandIn(type="a-f-G", lat=24.0, lon=120.0, callsign="iTAK: A1<x>")
+    assert cmd.callsign == "iTAK: A1x"
 
 
 @pytest.mark.parametrize("lat,lon", [(91.0, 0.0), (-91.0, 0.0), (0.0, 181.0), (0.0, -181.0)])
