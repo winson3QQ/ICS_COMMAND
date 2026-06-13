@@ -173,3 +173,63 @@ def test_entity_to_cot_polygon_closed():
     }
     e = _parse_event(tak_downlink.entity_to_cot(ent, now=_NOW))
     assert e.find("detail/shape/polyline").get("closed") == "true"
+
+
+# ── #214：出向內容忠實度（帶 __group / color / usericon；絕不編裝置遙測）──────────────
+
+
+def test_entity_to_cot_reshare_carries_group_color_usericon():
+    # re-share 的 TAK 標記：attributes 帶 __group/color/usericon → 原樣回送（round-trip 忠實）。
+    ent = {
+        "uid": "tak:U-1", "type": "a-f-G-U-C", "lat": 24.8, "lon": 121.0,
+        "team_color": "Cyan", "role": "Team Member",
+        "attributes": {
+            "__group": {"name": "Cyan", "role": "Team Member"},
+            "color": {"argb": "-1"},
+            "usericon": {"iconsetpath": "COT_MAPPING_2525C/a-f/a-f-G-U-C"},
+        },
+    }
+    e = _parse_event(tak_downlink.entity_to_cot(ent, now=_NOW))
+    g = e.find("detail/__group")
+    assert g is not None and g.get("name") == "Cyan" and g.get("role") == "Team Member"
+    assert e.find("detail/color").get("argb") == "-1"
+    assert e.find("detail/usericon").get("iconsetpath") == "COT_MAPPING_2525C/a-f/a-f-G-U-C"
+
+
+def test_entity_to_cot_manual_builds_group_from_team_color():
+    # ICS 手動標記：無 attributes.__group 但有頂層 team_color → 由 team_color/role 建 __group（漏填修補）。
+    ent = {
+        "uid": "manual:M-1", "type": "a-h-G", "lat": 24.8, "lon": 121.0,
+        "team_color": "Red", "role": "HQ", "attributes": {},
+    }
+    e = _parse_event(tak_downlink.entity_to_cot(ent, now=_NOW))
+    g = e.find("detail/__group")
+    assert g is not None and g.get("name") == "Red" and g.get("role") == "HQ"
+    assert e.find("detail/color") is None  # manual 無 color → 不硬塞（靠 type 帶 affiliation）
+
+
+def test_entity_to_cot_bare_marker_no_fidelity_extras():
+    # 無 team_color / attributes → 不產 __group/color/usericon（只 contact/remarks/archive）。
+    ent = {"uid": "M-2", "type": "a-u-G", "lat": 24.8, "lon": 121.0, "attributes": {}}
+    e = _parse_event(tak_downlink.entity_to_cot(ent, now=_NOW))
+    assert e.find("detail/__group") is None
+    assert e.find("detail/color") is None
+    assert e.find("detail/usericon") is None
+
+
+def test_entity_to_cot_never_fabricates_device_telemetry():
+    # 紅線：即便入向 attributes 帶 takv/status/track/precisionlocation（re-share），出向**不得**外送
+    # 裝置遙測——ICS 非 GPS 裝置，編造誤導現場，違背 source: ICS 誠實原則。
+    ent = {
+        "uid": "tak:U-2", "type": "a-f-G-U-C", "lat": 24.8, "lon": 121.0,
+        "team_color": "Cyan",
+        "attributes": {
+            "takv": {"device": "iPhone", "platform": "iTAK"},
+            "status": {"battery": "78"},
+            "track": {"speed": "5", "course": "90"},
+            "precisionlocation": {"geopointsrc": "GPS"},
+        },
+    }
+    cot = tak_downlink.entity_to_cot(ent, now=_NOW)
+    for tag in ("takv", "status", "track", "precisionlocation"):
+        assert f"<{tag}" not in cot, f"出向不得帶 {tag}（編造遙測）"
