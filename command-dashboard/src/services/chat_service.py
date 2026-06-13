@@ -32,8 +32,10 @@ def _feed_item(row: dict) -> dict:
     }
 
 
-async def ingest_chat(event: CoTEventIn) -> dict:
+async def ingest_chat(event: CoTEventIn) -> dict | None:
     """b-t-f GeoChat → chats 表（綁當前 active 場）+ 即時 WS 廣播（#213 b2）。
+
+    空訊息（收條/ack b-t-f）→ 回 None 跳過、不寫不廣播（#248）。
 
     message ← <remarks>（parse 層已抽 `event.remarks`），**存前 html.escape**；
     callsign ← `event.callsign` 或 <__chat senderCallsign>；group ← <__chat chatroom>；
@@ -46,6 +48,10 @@ async def ingest_chat(event: CoTEventIn) -> dict:
     detail = event.detail or {}
     chat = detail.get("__chat")
     chat = chat if isinstance(chat, dict) else {}
+    # #248：GeoChat 收條/ack —— type b-t-f 但 <remarks> 空（uid=訊息 GUID、無 __chat group）。
+    # 空訊息 chat 無意義，且會在前端「直接」頻道冒空白列（Windows dogfood 實證）→ 不寫、不廣播。
+    if not (event.remarks or "").strip():
+        return None
     record = ChatIn(
         sender_uid=event.uid,
         callsign=event.callsign or chat.get("senderCallsign"),
