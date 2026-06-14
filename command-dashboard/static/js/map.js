@@ -2581,6 +2581,10 @@ function _armShapeMove(id, kind, start) {
   };
   const map = _getMap();
   map?.dragPan?.disable();
+  // 抓取回饋：游標轉 grabbing（桌機）+ 短提示（觸控無游標靠這條）。讓 user 知道長按已生效、可拖。
+  const canvas = map?.getCanvas?.();
+  if (canvas) canvas.style.cursor = 'grabbing';
+  _flashMapMsg('✋ 已抓取圖形 — 拖曳移動、放開定位', 2500);
   // window（非 canvas）：拖出畫布外放開仍要 commit + 還原 dragPan（canvas-only 漏 pointerup → 卡死，review）。
   window.addEventListener('pointermove', _onShapeMovePointer);
   window.addEventListener('pointerup', _endShapeMove);
@@ -2610,7 +2614,10 @@ async function _endShapeMove() {
   window.removeEventListener('pointermove', _onShapeMovePointer);
   window.removeEventListener('pointerup', _endShapeMove);
   window.removeEventListener('pointercancel', _endShapeMove);
-  _getMap()?.dragPan?.enable();
+  const _map = _getMap();
+  _map?.dragPan?.enable();
+  const _cv = _map?.getCanvas?.();
+  if (_cv) _cv.style.cursor = '';  // 還原游標（grabbing → 預設）
   if (!mv.dLat && !mv.dLng) {  // 沒移動 → 不寫，清 override 還原
     _movingShape = null;
     if (mv.kind === 'route') _renderRoutes(); else _renderPolygons();
