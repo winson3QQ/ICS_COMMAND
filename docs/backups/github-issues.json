@@ -3542,14 +3542,29 @@
     },
     "body": "## 原則\nCOP 雙向對稱 doctrine（使用者 2026-06-14 拍板，memory `cop-collaborative-edit-shared-truth`）：地圖資料以「當前真實」為準、協作可編輯。本 issue = 對稱性的**無 doctrine 爭議半**：ICS 對**自己建立**的 sensor 物件補上 TAK client 早有的編輯/移動能力。\n\n## 缺口（reality check 2026-06-14，code 證實）\nICS 自建（`source=manual`/`command`）的繪圖/標記在 TAK client 上可 reshape/move/edit，**ICS 自己卻不行**：\n- **zone（polygon/route）**：`_onPolygonClick`/`_onRouteClick` 只開 detail（刪除 + 廣播）—— **無 drag handle、無 reshape**（`map.js`）。\n- **marker（contact）**：有 `_syncContactDragHandles`（可拖移）+ `saveContactNote`（只改 callsign/remarks）—— **不能改型別/affiliation/符號/幾何**。\n\n## 為何無 doctrine 爭議\nICS 自建物件 = `source∈{manual,command}` ∈ `_DASHBOARD_OWNED_SOURCES` → **後端 `_require_editable_source` 本來就准 PUT 編輯**。卡的純粹是**前端沒做**。（外部 TAK 來源的編輯＝Issue β，那才動 doctrine。）\n\n## Scope\n- [ ] **polygon/route move**：拖移整個繪圖（仿 contact `_syncContactDragHandles` / event zone `_syncEventDragHandles` 機制）。\n- [ ] **polygon/route reshape**：頂點編輯（拖頂點 / 增刪頂點）→ 更新 `attributes.vertices`。\n- [ ] **marker edit**：改 affiliation/型別/符號（非僅 note）—— 注意 contact 的 type 來自 affiliation→CoT type 映射。\n- [ ] **編輯/移動後即時重推 CoT**：已分享（`attributes.shared_tak`）的物件 move/reshape/edit → 重推（P2-30 part3 已有「move/note 即時重推」管線，擴到 zone + reshape + 型別變更）。\n- [ ] 即時同步給其他 ICS client（既有 cop_stream/WS）+ 樂觀鎖（version_clock CAS）。\n- [ ] 測試 + `/verify`（真機 ATAK：ICS 移動/改 zone → 現場端即時更新）。\n\n## Out of scope\n- 編輯 **TAK 來源**（`source=tak`）的物件 = **Issue β**（動 #146 doctrine）。\n\n## 依賴 / 關聯\n- 後端編輯路徑（PUT `/api/cop/entities/{uid}` + If-Match）+ propagation（P2-30 `entity_to_cot`/share）皆已在。\n- doctrine：memory `cop-collaborative-edit-shared-truth`；姊妹 = **Issue β**（外部來源對稱，含 #146 放開）。\n- 出向幾何格式（#211/#212 已修，P2-36）：reshape 後重推走同一條 ATAK 原生 `<link>`+樣式序列化。\n\n## 性質\n純前端中等重構 + 既有後端/propagation 重用；無安全邊界變更。\n",
     "closedAt": null,
-    "comments": [],
+    "comments": [
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## Reality check / inventory（2026-06-14，進實作前）\n\n**核心結論：後端 + 重推全備，#257 ≈ 純前端。**\n\n| 能力 | 現況 | 本 issue 要做 |\n|---|---|---|\n| 後端 PUT 編輯 | `manual`/`command` 可改（`_require_editable_source` OK）；`attributes`(vertices)/lat-lon/type 皆 patchable（不在 `_PUT_FORBIDDEN_FIELDS`）| ✅ 零改 |\n| 編輯後重推 TAK | `cop.py` `_resync_tak_if_shared`：`attributes.shared_tak` entity 被 PUT(move/編輯) → **自動重推 CoT**（泛用，zone 也吃）| ✅ 零改 |\n| MOVE 機制 | `EventDragManager`（touch handleSize 44）已用於 contact / event-zone → `_copStream.updateEntity({lat,lon})` | 🔧 zone/route 接上（平移全頂點）|\n| zone/route 拖移 | ❌ 無 drag handle（`_onPolygonClick`/`_onRouteClick` 只 detail）| 🆕 接 EventDragManager + 平移 vertices |\n| zone/route reshape | ❌ 無 | 🆕 逐頂點 handle → patch `attributes.vertices` |\n| marker 編輯 | 只有 note（callsign/remarks，`saveContactNote`）；`updateEntity({attributes})` 已有用例（map.js:2525）| 🆕 改型別/affiliation |\n\n**關鍵**：polygon/route 位置 = `attributes.vertices`（latlngs，**無單一 lat/lon**）→ move = 平移全頂點、reshape = 改單頂點，皆走 `updateEntity(id, {attributes: {...vertices 改完}})`。\n\n### Landmine（動工前驗）\n1. **attributes patch 可能整包取代**（非 merge）→ 讀現值 → 改 vertices → 送整包 attributes（驗 `update_cop_entity_cas` replace/merge）。\n2. **MOVE = 全頂點平移 Δ**（`EventDragManager.onDragEnd` 給 latlng + fromLatlng）。\n3. **CAS/version_clock**：快速拖曳連發 PUT 可能 409 → 比照 contact（onDrag 視覺跟手、onDragEnd 才 commit）。\n4. **reshape = 每頂點 handle**：多頂點 clutter + 觸控 ≥44px；只在選中時顯示。\n5. 重推的 route 格式仍是 #260 的 b-m-p-c partial（不卡本 issue）。\n\n### 拆三刀（iPad touch 皆吃）\n- **α-1 MOVE**（先做）：zone/route 整體拖移（EventDragManager + 平移 vertices）—— 後端零工、reuse 最多、iPad 拖移驗最直接。\n- **α-2 RESHAPE**：逐頂點編輯 handle（新）。\n- **α-3 marker 編輯**：型別/affiliation（extend contact detail）。\n\n> **平行 session 安全**：本 issue 全在 `map.js`/`map/event_drag.js`；後端零改 → 與後端任務（如 #214 tak_downlink）零衝突。開工 α-1。\n",
+        "createdAt": "2026-06-14T06:37:08Z",
+        "id": "IC_kwDOSnBjpc8AAAABGDKntA",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/257#issuecomment-4700940212"
+      }
+    ],
     "createdAt": "2026-06-14T02:46:49Z",
     "labels": [],
     "milestone": null,
     "number": 257,
     "state": "OPEN",
     "title": "feat(map): COP 雙向對稱(α) — ICS 自建 zone/route 可 reshape/move、marker 可 edit + 即時重推（無 doctrine）",
-    "updatedAt": "2026-06-14T02:46:49Z",
+    "updatedAt": "2026-06-14T06:37:08Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/257"
   },
   {
