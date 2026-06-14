@@ -3590,15 +3590,15 @@
       "name": ""
     },
     "body": "## 原則（使用者 2026-06-14 拍板）\nCOP 雙向對稱 doctrine（memory `cop-collaborative-edit-shared-truth`）：\n> 地圖資料以「當前真實」為準、由全體協作維護。任何掌握可信變動的人 —— 原標圖者、隊友幫忙、或指揮部收到可信回報 —— 都能編輯/移動/刪除任一 sensor 物件並即時 propagate，不因『誰建立』而 silo。\n\n對齊 TAK streaming 的 last-write-wins（任何 client 用同 uid 蓋掉/刪掉任一物件）。**理由**：現場動態變動，標圖者可能無法即時回應、或隊友/指揮部代為更新；不論何狀況，**地圖資料要真實並共享** > 維護建立者擁有權。\n\n## ⚠️ 本 issue 動的是一條 threat-model 安全決策\n現況 `_require_editable_source`（`cop.py:71`，#146 / threat_model **§8.2 TAK-B reverse**）：`manual`/`command` 永遠可編輯；`tak`/pi-node/waveink **僅演習(TTX)可編輯、實戰模式鎖死**（理由：保護真實前線位置不被造假/誤刪）。\n\n選 **(a) peer 對稱**（使用者拍板）= **撤掉這道實戰防呆**。釐清：「不改你不擁有的」**不是 TAK 邏輯**（TAK 無 streaming ownership，威脅在每個 client 都在）→ #146 單方面鎖只擋誠實 HQ 誤觸、擋不了惡意者 = defense-in-depth 非真邊界。\n\n## Scope\n- [ ] **放開 `_require_editable_source`**：external 來源（tak/pi-node/waveink）**實戰模式也准** PUT/DELETE（演習本就准）。\n- [ ] **編輯/移動/刪除 TAK 來源 entity** 的前端：拿掉 `_isReadonlySource` 對 edit/delete 的封鎖（給同 Issue α 的 move/reshape/edit UI）。\n- [ ] **propagation**：對 TAK 來源的編輯/移動 → 重推 CoT（last-write-wins）。\n- [ ] **刪除（best-effort，例外）**：external 刪除受 TAK infra 限制（archived 不可靠 propagate、reconnect revive，memory `tak-streaming-archive-stale-vs-mission`）→ 本地 soft-delete/hide + best-effort t-x-d-d；**可靠退路 = view-level hide/declutter（關聯 [#217](https://github.com/winson3QQ/ICS_COMMAND/issues/217)）**。\n- [ ] **threat_model §8.2 改寫**：TAK-B reverse「實戰鎖死」→「協作可編輯 + audit 問責」，明記殘餘風險（authenticated operator 可改真實前線資料）與緩解。\n\n## 撤防呆後保留的 guardrail（威脅換問責，非消失）\n- [ ] **audit-first 成關鍵 backstop**：對 external 來源的編輯/移動/刪除**必須 audit**（誰/何時/改了什麼）—— 確認 cop 操作 audit（P1-14 follow-up）涵蓋 external 來源編輯。\n- [ ] **P2-10 內容白名單**（座標越界/callsign 字元/type prefix）—— 留。\n- [ ] **`_PUT_FORBIDDEN_FIELDS`**（uid/source/version_clock 不可竄，防偽造來源/碰撞 #145）—— 留。\n- [ ] **RBAC**（WRITE_ROLES；zone/infra COMMAND_ROLES）—— 留。\n- [ ] **exercise-scope 仍 server-authoritative**（memory `exercise-scope-server-authoritative`，正交不放）。\n- [ ] **完整 `/security-review`**（動安全邊界，必跑）。\n\n## 關聯\n- doctrine SoT：memory `cop-collaborative-edit-shared-truth`；姊妹 = **Issue α**（自建物件編輯 UI，無 doctrine、可先做）。\n- 推翻/修訂：#146、threat_model §8.2；關聯 [#217](https://github.com/winson3QQ/ICS_COMMAND/issues/217)（view-hide）、memory `tak-streaming-archive-stale-vs-mission`（刪除限制）、`tak-marti-authz-model`。\n- 「TAK↔ICS 功能對等」原則（ROADMAP P2-35/#256）在互動動作對稱面的延伸。\n\n## 性質\n後端 doctrine + 安全邊界變更（threat_model）。**動工前重讀 memory `cop-collaborative-edit-shared-truth` + threat_model §8.2**；務必 `/security-review`。\n",
-    "closedAt": null,
+    "closedAt": "2026-06-14T23:02:41Z",
     "comments": [],
     "createdAt": "2026-06-14T02:46:50Z",
     "labels": [],
     "milestone": null,
     "number": 258,
-    "state": "OPEN",
+    "state": "CLOSED",
     "title": "feat(tak): COP 雙向對稱(β) — 放開 #146 外部來源唯讀、TAK 物件可編輯/移動/刪除 + threat_model §8.2 改寫",
-    "updatedAt": "2026-06-14T02:46:50Z",
+    "updatedAt": "2026-06-14T23:02:41Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/258"
   },
   {

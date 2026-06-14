@@ -3998,5 +3998,26 @@
     "title": "feat(map): #257 α-3 — marker 敵我態原地編輯（點即換 + 即時上 TAK）",
     "updatedAt": "2026-06-14T12:47:15Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/264"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "## #258 β-1：TTX 模式編輯外部 TAK 來源幾何\n\nCOP 雙向對稱（[[cop-collaborative-edit-shared-truth]]）的另一半起步。**β-1 = 只做 TTX 模式 + 只做幾何（polygon/route）**；實戰=β-2、marker=β-1b。\n\n### 行為\n- 前端編輯閘 **mode-aware**：`_isReadonlySource` 對外部來源（tak/pi-node/waveink）僅在 **active exercise type='ttx'** 時放行編輯 → 自動露出 α 全套（移動/reshape/增刪頂點/刪除）+ 既有「📡 廣播」鈕；實戰/無場次維持唯讀。\n- 對齊後端 `_require_editable_source`（server 權威；前端僅避免露出會被 403 的鈕）。\n- 編輯外部物件**不自動回推 TAK** —— 要上 TAK 走明示廣播鈕（避 echo、不蓋前線真相）。\n\n### 變更（純前端，後端零改動）\n- **map.js**：`_isReadonlySource` mode-aware + `setExerciseMode` 橋接（守 module boundary：map.js 不直接 import exercises.js，走 main.js 橋接，同 `applyEventTaxonomy` 慣例）。\n- **exercises.js**：`activeExerciseType()` 讀模組快取。\n- **main.js**：啟動 + `exercise:switched` 後橋接 `setExerciseMode`。\n- **tests**：`exercises.test.js` +3（ttx/real/null）。\n- 後端 TTX 編輯外部來源**早已放行**（已測 `test_put_tak_allowed_in_ttx` + 實戰 403 + manual 永遠可編）。\n\n### 驗證\n- eslint clean、**vitest 329 passed**、backend cop_router gate tests 27 passed\n- code review（agent）：1 finding（重連 mode 過時）—— 原以「重連重派」修，但會加重 #265 race → **已撤回**，gate 重連新鮮度交由 #265 統一根治。\n- **live 驗證受 [#265](https://github.com/winson3QQ/ICS_COMMAND/issues/265) 影響**（切換演習後 WS scope 不更新 → 新場 entity 需硬重整才 render；既有 P1-14 遺留 bug、非本 PR 引入）。β-1 閘邏輯本身正確、單元測試通過。\n\nCloses #258 β-1（α 系列已 #262/#263/#264）。後續：#265（WS scope）、β-1b marker、β-2 實戰。\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+    "closedAt": "2026-06-14T23:02:40Z",
+    "comments": [],
+    "createdAt": "2026-06-14T23:02:35Z",
+    "headRefName": "feat/issue-258-b1-ttx-external-edit",
+    "labels": [],
+    "mergedAt": "2026-06-14T23:02:40Z",
+    "number": 266,
+    "state": "MERGED",
+    "title": "feat(map): #258 β-1 — TTX 模式可編輯外部 TAK 來源幾何（編輯閘 mode-aware）",
+    "updatedAt": "2026-06-14T23:02:40Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/266"
   }
 ]
