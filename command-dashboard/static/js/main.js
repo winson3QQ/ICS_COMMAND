@@ -65,6 +65,7 @@ import {
   _deletePolygon, _deleteRoute, _deleteInfra, _deleteEventZone,
   _deleteContact, _shareContactTak, _saveContactNote,
   _resetPolyLabelAnchor, _resetRouteLabelAnchor,
+  _startVertexEdit, _finishVertexEdit, _cancelVertexEdit,
   _panToCoordTarget, _mgrsSearch, _toggleCoordMode,
   _populateNapsgCsel,
   onPlaceTypeChange,
@@ -358,6 +359,19 @@ document.addEventListener('click', function (e) {
       _resetRouteLabelAnchor(id);
       break;
     }
+    // #257 α-2：逐頂點 reshape。詳情鈕進入（先關 modal 再進編輯模式）；banner ✓/✕ 收尾。
+    case 'editShapeVertices': {
+      if (!canAccessMapObjects()) break;
+      closeModal();
+      _startVertexEdit(id);
+      break;
+    }
+    case 'finishVertexEdit': {
+      if (!canAccessMapObjects()) break;
+      _finishVertexEdit();
+      break;
+    }
+    case 'cancelVertexEdit': _cancelVertexEdit(); break;
     // P2-34（#220）：放置節點/設施/敵情標記改走長按建立對話框（CreatePopup）；
     // 舊 arm-then-click dispatch（openNodePlace/startNodePlace/openContactPlace/
     // startContactPlace/openInfraForm/startInfraPlace）已隨面板入口退場。
