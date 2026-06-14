@@ -67,6 +67,22 @@ async def _periodic_session_cleanup():
             log.warning("[session] 週期清理失敗（best-effort）", exc_info=True)
 
 
+_RETENTION_INTERVAL = 24 * 3600  # 秒：軌跡 TTL 清理每日跑一次（#207）
+
+
+async def _periodic_retention_cleanup():
+    """P2-20 收尾（#207）：軌跡 PII TTL 清理——開機跑一次 + 每日一次。
+    開關每輪重讀（Admin runtime 切換即生效）；best-effort：單次失敗 log 後下輪再試。"""
+    from services import retention_service
+
+    while True:
+        try:
+            await asyncio.to_thread(retention_service.cleanup_expired_tracks)
+        except Exception:
+            log.warning("[retention] 軌跡 TTL 清理失敗（best-effort，下輪再試）", exc_info=True)
+        await asyncio.sleep(_RETENTION_INTERVAL)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
@@ -85,6 +101,8 @@ async def lifespan(app: FastAPI):
     event_taxonomy_store.ensure()
     # #93(b)：啟動週期 session 清理任務（abandoned 逾時登出及時 audit）
     _cleanup_task = asyncio.create_task(_periodic_session_cleanup())
+    # #207：軌跡 PII TTL 清理（開機 + 每日；開關見 retention_service）
+    _retention_task = asyncio.create_task(_periodic_retention_cleanup())
     # P2-03（#107）：啟動 :8089 CoT 訂閱背景 task（CoT → ingest → COP）。
     # P2-24（#164）：啟停改由 tak_runtime 控制器管（單一 handle，與 runtime toggle 共用）；
     # 開機依 effective_enabled()（持久選擇優先、回退 TAK_ENABLED env）決定是否起。
@@ -97,6 +115,9 @@ async def lifespan(app: FastAPI):
     _cleanup_task.cancel()
     with suppress(asyncio.CancelledError):
         await _cleanup_task
+    _retention_task.cancel()
+    with suppress(asyncio.CancelledError):
+        await _retention_task
     await tak_runtime.stop()
     from services.realtime_hub import cop_hub
 

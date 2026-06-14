@@ -214,6 +214,15 @@ Command **信任 TAK Server 轉發的所有 CoT** —— 即使傳輸加密（§
 
 **[2026-06-08 retention 實證，連動 PII / 缺口 #13]**：同一顆碟上**兩個資料域目前都無界成長**（= 更多明文 PII 暴露面 + 磁碟耗盡 DoS）：① **TAK PG**——TAK 有 Data Retention GUI（per-type TTL：Cot/GeoChat/Mission(含 tracks)/Files + 排程），但**現況 TTL 全空、排程 `Never`**（預設留全部）；② **ICS `cop_entity_tracks`**（SQLite，TAK 保留管不到）。緩解：兩域各設 TTL（90 天 / exercise 刪除 cascade）——TAK 側開 GUI、ICS 側自管。
 
+**[2026-06-11 政策定案（P2-20 收尾 / issue #207，使用者拍板乙案）— 軌跡 PII retention policy]**：
+
+| 資料域 | 政策 | 機制 |
+|---|---|---|
+| **ICS `cop_entity_tracks`**（人員行蹤，PII） | **exercise 刪除 cascade（既有）＋ 90 天 TTL 自動清理（#207 落地）** | `services/retention_service.py` 每日背景清理 `t <` cutoff；天數 env `TRACKS_TTL_DAYS`（預設 90、下限 1 防全清誤設）；**Admin runtime 開關** `POST /api/admin/retention`（SYSADMIN_ONLY、`RETENTION_TOGGLE` audit-first、**預設啟用**——政策出廠生效，可關以支援長保存需求）；每次清理筆數記 `RETENTION_CLEANUP` audit（個資刪除留痕） |
+| **TAK PostgreSQL**（同一批行蹤的 TAK 側副本） | 同 90 天基準 | **ops SOP**：TAK admin GUI `Administrative → Data Retention` 設 per-type TTL（Cot/GeoChat/Mission/Files）+ 排程（現況 `Never` 須手動改）——ICS 管不到，部署 checklist 項 |
+
+**已知 trade-off（接受並記明）**：超過 90 天的演習**不可再 AAR 回放**（軌跡已清；events/decisions/chats/audit 不在此政策內、仍保留）。需長保存的場次：Admin 關閉開關、或於 90 天內以 exercise 歸檔備份（P1-12b backup）帶走。
+
 ### 8.5 憑證撤銷控制缺口（被擄裝置）
 
 §8.3 描述「任一被 TAK 接納的裝置都能推 CoT」這個**威脅**；對應的**控制缺口**＝**無憑證撤銷機制**。被擄/失竊的場端裝置，其 client cert 在 TLS 有效期內仍在信任邊界內 → 可**注入假敵我位置、或用 `t-x-d-d` 刪 COP 物件**（完整性威脅，對 C2 ≥ 機密性）。
