@@ -3914,5 +3914,26 @@
     "title": "feat(retention): #207 軌跡 PII TTL 自動清理 + Admin 開關（P2-20 收尾）",
     "updatedAt": "2026-06-14T03:47:16Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/259"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "## ROADMAP item\n\nROADMAP **P2-36**（出向幾何 ATAK 格式修正 + zone/route 廣播 UI）\n- Closes #212（出向 zone/route 推 TAK UI — 後端格式 + 前端按鈕，完整）\n- Partial #214（出向忠實度 — 幾何 color/style/dotted 半；marker `<__group>`/`<color>`/`<usericon>` 另刀）\n- 衍生 #211（ATAK dogfood 根因）、#260（route 富物件深挖，route b-m-p-c 為 partial 止血）\n\n## What changed\n\n#211 ATAK 真機 dogfood 驗出 ICS 出向幾何 ATAK 不渲染（舊 `<shape><polyline>` 無樣式；iTAK 寬鬆才吃）。\n- **後端**：`vertices_to_cot_links`（ATAK 原生 `<link>` 序列，取代 `vertices_to_cot_shape`）+ `hex_to_argb_int`（出向色，對稱入向 `_argb_int_to_hex`）；`build_geometry_cot` 帶 strokeColor/strokeWeight/strokeStyle（dotted>dashed>solid）+ closed fillColor，色/筆觸由 `attributes.color`/`dash`/`dotted` 衍生。route 改 `b-m-p-c` 控制點壓「SP」航點（partial，#260）。\n- **前端**：`_featureInfo` 加「📡 廣播」鈕 + polygon/route 右鍵 contextmenu 廣播選單（鏡像 contact，重用 `_shareContactTak`/`_openContactBroadcastMenu`，唯讀 TAK 來源不開）。\n- **doctrine memory**：`cop-collaborative-edit-shared-truth`（COP 協作可編輯、撤 #146；衍生 #257/#258）。\n\n## DoD checklist\n- [x] Tests added / updated（link 格式 / dotted / hex_to_argb 對稱 / route control-point；70 passed）\n- [x] `pytest` green（全套 exit 0，1 skip）\n- [x] `npm test` green（vitest 321 passed / eslint 0）\n- [ ] 規格書更新（出向 CoT 格式 → 視需要；本 PR 暫不動規格書）\n- [x] ROADMAP P2-36 對應（⏳ 待本 PR merge 翻 ✅）\n\n## §8 Human Verification Script\n\n```bash\n# 前置：ICS server（TAK_ENABLED + icscop cert）+ 活 TAK Server 5.7 + 真機 ATAK enroll 連 :8089\n# 重整 dashboard 登入，TAK 燈轉綠\n\n# Step 1: zone 廣播（詳情按鈕）\n# 畫一個 polygon(▱) → 命名/類型 → 存 → 左鍵點它 → 詳情 modal 出現綠色「📡 廣播」→ 按\n# 預期：flash「✓ 已廣播到 TAK」；ATAK 渲染出該多邊形（框色 + 半透明填色，dashed 顯虛線）\n\n# Step 2: route 廣播（右鍵）\n# 畫一條 route(↗) → 存 → 右鍵點它 → 跳「📡 廣播」menu → 按\n# 預期：ATAK 渲染出該線（strokeColor 色）；route 為控制點、無「<name> SP」航點 marker（partial，深挖 #260）\n\n# Step 3: 唯讀守門\n# 右鍵 / 點 一個 TAK 來源的繪圖（現場推來的）\n# 預期：唯讀 modal、無廣播鈕、右鍵不開廣播 menu\n\n# Step 4: TAK 停用 gate\n# 系統 tab 關 TAK 連線 → 點 zone\n# 預期：「📡 廣播」鈕不顯示（gate canAccessMapObjects + _takEnabled）\n```\n\n**已驗**：Step 1/2 真機 ATAK 端到端 PASS（zone 黃/紅框+填色、route 線渲染）；iTAK 亦渲染（`<link>`+樣式雙吃）。\n\n## Out of scope / known limitations\n- **#214 marker 欄位**（`<__group>`/`<color>`/`<usericon>` on 點標記）= 後續刀。\n- **route 富物件忠實度**（waypoint 命名 / link_attr 導航屬性 / 雙向 round-trip）= 深挖 #260；本 PR 的 `b-m-p-c` 只壓「SP」航點表面症狀。\n- **route 首尾重合 → ICS re-ingest 誤判 Polygon**：極窄 pre-existing 入向 heuristic（ATAK 顯示正常），留註記未處理。\n- **刪除 propagation**：不在本 PR（archived 不可靠，#217/#258）。\n\n## Notes for reviewer\n- 已跑 `/code-review`（high，2 修：dotted 漏填 + fill alpha drift）+ `/security-review`（0 finding，XML 全數值/enum、callsign/remarks 既有 escape）。\n- 出向色彩對稱入向：`hex_to_argb_int` ↔ `cop_service._argb_int_to_hex`（測試斷言對稱）。\n- 含 doctrine memory commit（`69735a6`）—— 非 code，COP 協作可編輯 doctrine 留痕。\n",
+    "closedAt": "2026-06-14T05:17:39Z",
+    "comments": [],
+    "createdAt": "2026-06-14T05:11:12Z",
+    "headRefName": "claude/sharp-napier-680198",
+    "labels": [],
+    "mergedAt": "2026-06-14T05:17:39Z",
+    "number": 261,
+    "state": "MERGED",
+    "title": "feat(tak): #212/#214 出向幾何 ATAK 原生 link+樣式 + zone/route 廣播 UI（+ route b-m-p-c partial + COP doctrine memory）",
+    "updatedAt": "2026-06-14T05:17:40Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/261"
   }
 ]
