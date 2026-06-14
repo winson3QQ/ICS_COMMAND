@@ -440,7 +440,7 @@ function _initMaplibre() {
   }
 
   _leafletMap = initMaplibre('leaflet-map', {
-    shouldSuppressInteraction: () => !!(_polyDrawState || _routeDrawState),
+    shouldSuppressInteraction: () => !!(_polyDrawState || _routeDrawState || _editingShape),
 
     // 單擊：繪製模式時新增頂點（P2-34 後點放置改走長按對話框，不再用單擊 arm-then-click）
     onClick: ({ lat, lng }) => {
@@ -2276,6 +2276,7 @@ function _readonlyShapeModal(title, desc, entity) {
 }
 
 function _onPolygonClick(e) {
+  if (_editingShape) return;  // #257 α-2：頂點編輯中 → 不開詳情（避免覆蓋編輯 banner）
   if (_suppressMarkerClick) { _suppressMarkerClick = false; return; }  // 剛長按進移動 → 吞掉這下 click（否則詳情也彈）
   if (!canAccessMapObjects()) return;
   const id = e.features?.[0]?.properties?.id;
@@ -2292,7 +2293,7 @@ function _onPolygonClick(e) {
   }
   _deps.openModal?.(`▱ ${poly.label || '範圍'}`,
     _featureInfo(desc, 'deletePolygon', poly.id,
-      { ...(poly.label_anchor ? { resetAnchorAction: 'resetPolyLabelAnchor' } : {}), shareTak: true }));
+      { ...(poly.label_anchor ? { resetAnchorAction: 'resetPolyLabelAnchor' } : {}), shareTak: true, editVertices: true }));
 }
 
 function _onInfraClick(e) {
@@ -2454,6 +2455,7 @@ export async function _shareContactTak(id) {
 }
 
 function _onRouteClick(e) {
+  if (_editingShape) return;  // #257 α-2：頂點編輯中 → 不開詳情（避免覆蓋編輯 banner）
   if (_suppressMarkerClick) { _suppressMarkerClick = false; return; }  // 剛長按進移動 → 吞掉這下 click（否則詳情也彈）
   if (!canAccessMapObjects()) return;
   const id = e.features?.[0]?.properties?.id;
@@ -2470,7 +2472,7 @@ function _onRouteClick(e) {
   }
   _deps.openModal?.(`↗ ${route.label || '路線'}`,
     _featureInfo(desc, 'deleteRoute', route.id,
-      { ...(route.label_anchor ? { resetAnchorAction: 'resetRouteLabelAnchor' } : {}), shareTak: true }));
+      { ...(route.label_anchor ? { resetAnchorAction: 'resetRouteLabelAnchor' } : {}), shareTak: true, editVertices: true }));
 }
 
 function _onZoneClick(e) {
@@ -2503,10 +2505,11 @@ function _renderPolygons() {
   }
   // PR-G1a cutover：資料來源從 _mapConfig 改為 cop_entities（attributes.kind='polygon'），
   // 經 copEntityToPolygon adapter 轉成 polygonToFeature 吃的 shape，渲染管線不變。
-  const polys = _applyShapeMoveOverride(
+  let polys = _applyShapeMoveOverride(
     (_copStream?.getEntitiesByKind('polygon') || []).map(copEntityToPolygon).filter(Boolean),
     'polygon',
   );  // #257 α-1：移動中以暫態 base+Δ 覆蓋 latlngs（live-follow）
+  polys = _applyVertexEditOverride(polys, 'polygon');  // #257 α-2：頂點編輯中以工作副本覆蓋 latlngs
   // 每個 polygon 產出 2 個 feature 餵同 source：
   //   1. Polygon geometry（fill / stroke layer 渲染）
   //   2. Point geometry（centroid，label layer 渲染 — 解 MapLibre 跨 tile 多
@@ -2520,7 +2523,13 @@ function _renderPolygons() {
   // Step 8：sync HTML drag handles 給有 label 的 polygon。label_anchor 改動 → PUT cop
   // （attributes 整包覆寫，故先取現值合併）。WS 廣播回來 → onChange 自動重繪。
   if (_polyLabelMgr) {
-    _polyLabelMgr.sync(polys, (id, latlng) => {
+    // #257 α-2：頂點編輯中，撤掉「該」圖形的 label drag handle —— 否則質心 handle（與頂點
+    // handle 在小圖形上可能重疊）被拖會獨立 PUT label_anchor，與 ✓ 完成的 vertices PUT 搶
+    // If-Match → 409 / 互蓋。其餘圖形的 label handle 不受影響。
+    const labelPolys = _editingShape?.kind === 'polygon'
+      ? polys.filter((p) => p.id !== _editingShape.uid)
+      : polys;
+    _polyLabelMgr.sync(labelPolys, (id, latlng) => {
       _putCopLabelAnchor(id, [latlng.lat, latlng.lng]);
     }, polygonCentroid);
   }
@@ -2625,6 +2634,122 @@ async function _endShapeMove() {
     if (mv.kind === 'route') _renderRoutes(); else _renderPolygons();
   }
   _flashMapMsg(ok ? '✓ 已移動圖形（已分享者即時上 TAK）' : '✗ 移動儲存失敗（可能被他人同時修改 / 連線中斷），請重試');
+}
+
+// ── #257 α-2：逐頂點 reshape（詳情 modal「✎ 編輯頂點」鈕進入）────────────────────
+// 入口走 modal 鈕（非長按 — 長按已給 α-1 整體移動）。進編輯模式後每頂點蓋一個 draggable
+// maplibregl.Marker；拖單一頂點 → 更新工作副本 vertices[i] + live re-render（override 注入
+// _renderPolygons/_renderRoutes）；✓ 完成才一次 PUT（整包 attributes 保 shared_tak → 已分享者
+// cop.py `_resync_tak_if_shared` 自動重推 TAK），✕ 取消丟棄。範圍：只拖既有頂點（插入/刪除 = α-2b）。
+// 編輯期間 shouldSuppressInteraction 把 _editingShape 納入 → 長按/雙擊靜音；click→詳情亦守門。
+let _editingShape = null;   // { uid, kind, vertices:[[lat,lng],...] } —— 工作副本，null=未編輯
+let _vertexHandles = [];    // 每頂點一個 maplibregl.Marker
+let _vertexRafPending = false;
+let _vertexCommitInFlight = false;  // ✓ 完成 PUT 進行中 → 擋重入雙送（_editingShape 撐到 finally 才清，光靠它擋不住 await 窗）
+
+// render 注入：編輯中以工作副本 vertices 覆蓋該圖形 latlngs（不持久化，✓ 才寫）。
+function _applyVertexEditOverride(shapes, kind) {
+  if (!_editingShape || _editingShape.kind !== kind) return shapes;
+  const { uid, vertices } = _editingShape;
+  return shapes.map((s) => (s && s.id === uid)
+    ? { ...s, latlngs: vertices.map(([la, lo]) => [la, lo]) }
+    : s);
+}
+
+function _clearVertexHandles() {
+  for (const m of _vertexHandles) m.remove();
+  _vertexHandles = [];
+}
+
+function _buildVertexHandles() {
+  _clearVertexHandles();
+  const map = _getMap();
+  if (!map || !window.maplibregl || !_editingShape) return;
+  _editingShape.vertices.forEach((v, i) => {
+    const handle = document.createElement('div');
+    handle.className = 'mlb-vertex-handle';
+    handle.style.cssText = 'width:26px;height:26px;display:flex;align-items:center;'
+      + 'justify-content:center;cursor:grab;user-select:none;';  // 26px 透明 hitbox（觸控友善）
+    const dot = document.createElement('div');
+    dot.style.cssText = 'width:13px;height:13px;border-radius:50%;background:rgba(88,166,255,0.95);'
+      + 'border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,0.45);pointer-events:none;';
+    handle.appendChild(dot);
+    const marker = new window.maplibregl.Marker({ element: handle, draggable: true, anchor: 'center' })
+      .setLngLat([v[1], v[0]])
+      .addTo(map);
+    marker.on('dragstart', () => { handle.style.cursor = 'grabbing'; });
+    marker.on('drag', () => {
+      if (!_editingShape) return;
+      const ll = marker.getLngLat();
+      _editingShape.vertices[i] = [ll.lat, ll.lng];  // 只動這一頂點
+      if (_vertexRafPending) return;
+      _vertexRafPending = true;
+      requestAnimationFrame(() => {
+        _vertexRafPending = false;
+        if (!_editingShape) return;
+        if (_editingShape.kind === 'route') _renderRoutes(); else _renderPolygons();
+      });
+    });
+    marker.on('dragend', () => { handle.style.cursor = 'grab'; });
+    _vertexHandles.push(marker);
+  });
+}
+
+// modal「✎ 編輯頂點」→ 進編輯模式。唯讀 TAK 來源不可（=#258）。
+export function _startVertexEdit(uid) {
+  if (_editingShape) return;                 // 已在編輯 → 不重入
+  if (!canAccessMapObjects()) return;
+  const ent = _copStream?.getEntity(uid);
+  if (!ent || _isReadonlySource(ent)) return;
+  const kind = ent.attributes?.kind;
+  if (kind !== 'polygon' && kind !== 'route') return;
+  const verts = ent.attributes?.vertices;
+  if (!Array.isArray(verts) || verts.length < 2) return;
+  _editingShape = { uid, kind, vertices: verts.map((v) => [Number(v[0]), Number(v[1])]) };
+  _buildVertexHandles();
+  const banner = el('vertex-edit-banner');
+  if (banner) {
+    const hint = banner.querySelector('.veh');
+    if (hint) hint.textContent = kind === 'route' ? '↗ 編輯路線　拖曳節點調整' : '▱ 編輯範圍　拖曳頂點調整';
+    banner.style.display = 'flex';
+  }
+}
+
+// ✓ 完成 → 一次 PUT（重算質心；label_anchor 手動值保持不動 —— reshape 非整體平移）。
+export async function _finishVertexEdit() {
+  const ed = _editingShape;
+  if (!ed || _vertexCommitInFlight) return;  // 重入守門：double-tap ✓ 不雙送 PUT
+  _vertexCommitInFlight = true;
+  _clearVertexHandles();                     // handle 先撤（commit 中不可再拖）
+  const banner = el('vertex-edit-banner');
+  if (banner) banner.style.display = 'none';
+  const ent = _copStream?.getEntity(ed.uid);
+  const attrs = { ...(ent?.attributes || {}) };   // 整包：保留 shared_tak 等現值
+  attrs.vertices = ed.vertices.map(([la, lo]) => [la, lo]);
+  const [cLat, cLng] = _polyCentroid(ed.vertices);
+  let ok = false;
+  try {
+    ok = await _copStream?.updateEntity(ed.uid, { lat: cLat, lon: cLng, attributes: attrs });
+  } catch (e) {
+    console.warn('[map.js] 頂點編輯 commit 失敗', e);
+  } finally {
+    // override 撐到 PUT 落地才清（避免 await 期間形狀閃回 server 舊值）；無論成敗都清 → 不卡死。
+    _editingShape = null;
+    _vertexCommitInFlight = false;
+    if (ed.kind === 'route') _renderRoutes(); else _renderPolygons();
+  }
+  _flashMapMsg(ok ? '✓ 已更新形狀（已分享者即時上 TAK）' : '✗ 形狀儲存失敗（可能被他人同時修改 / 連線中斷），請重試');
+}
+
+// ✕ 取消 → 丟棄工作副本，還原 server 形狀。
+export function _cancelVertexEdit() {
+  if (!_editingShape) return;
+  const kind = _editingShape.kind;
+  _clearVertexHandles();
+  _editingShape = null;
+  const banner = el('vertex-edit-banner');
+  if (banner) banner.style.display = 'none';
+  if (kind === 'route') _renderRoutes(); else _renderPolygons();
 }
 
 /**
@@ -2770,10 +2895,11 @@ function _renderRoutes() {
     return;
   }
   // PR-G1a cutover：資料來源從 _mapConfig 改為 cop_entities（attributes.kind='route'）。
-  const routes = _applyShapeMoveOverride(
+  let routes = _applyShapeMoveOverride(
     (_copStream?.getEntitiesByKind('route') || []).map(copEntityToRoute).filter(Boolean),
     'route',
   );  // #257 α-1：移動中以暫態 base+Δ 覆蓋 latlngs（live-follow）
+  routes = _applyVertexEditOverride(routes, 'route');  // #257 α-2：頂點編輯中以工作副本覆蓋 latlngs
   // 每個 route 產出 LineString（line/arrow layer 渲染）+ Point（label layer 渲染，
   // 支援 label_anchor override 給 drag handle 移動後的新位置）。
   const features = [
@@ -2784,7 +2910,11 @@ function _renderRoutes() {
   _reapplySelection();  // P1-10e：setData 清掉 feature-state，重套選中
   // Step 8：sync route label drag handles。label_anchor 改動 → PUT cop（同 polygon）。
   if (_routeLabelMgr) {
-    _routeLabelMgr.sync(routes, (id, latlng) => {
+    // #257 α-2：頂點編輯中撤掉「該」route 的 label drag handle（同 polygon，防搶 PUT）。
+    const labelRoutes = _editingShape?.kind === 'route'
+      ? routes.filter((r) => r.id !== _editingShape.uid)
+      : routes;
+    _routeLabelMgr.sync(labelRoutes, (id, latlng) => {
       _putCopLabelAnchor(id, [latlng.lat, latlng.lng]);
     }, routeMidLngLat);
   }
@@ -3014,6 +3144,13 @@ function _simpleInfo(text) {
  */
 function _featureInfo(desc, action, id, extra = {}) {
   let html = `<div style="font-size:12px;line-height:1.7;color:var(--text2);margin-bottom:12px;">${desc || ''}</div>`;
+  // #257 α-2：自建 polygon/route 進「逐頂點編輯」（拖既有頂點 reshape）。入口走 modal 鈕——
+  // 長按已給 α-1 整體移動。唯讀 TAK 來源走 _readonlyShapeModal 不到這（=#258）。
+  if (extra.editVertices && canAccessMapObjects()) {
+    html += `<button data-action="editShapeVertices" data-id="${id}"
+      style="width:100%;padding:8px;background:transparent;border:1px solid var(--blue,#58a6ff);color:var(--blue,#58a6ff);
+      border-radius:6px;cursor:pointer;margin-bottom:8px;font-weight:700;font-family:var(--mono);font-size:12px;">✎ 編輯頂點</button>`;
+  }
   if (extra.resetAnchorAction) {
     html += `<button data-action="${extra.resetAnchorAction}" data-id="${id}"
       style="width:100%;padding:7px;background:transparent;border:1px solid var(--border);color:var(--text2);

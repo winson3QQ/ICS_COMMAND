@@ -149,6 +149,13 @@ body{position:fixed;inset:0;}
 #route-draw-banner button{background:transparent;border:1px solid var(--border);color:var(--text2);
   padding:2px 10px;border-radius:10px;font-size:11px;cursor:pointer;}
 #route-draw-banner button.ok{background:var(--green);color:#fff;border-color:var(--green);}
+/* #257 α-2：逐頂點編輯 banner（沿用繪製 banner 樣式）*/
+#vertex-edit-banner{display:none;position:absolute;top:50px;left:50%;transform:translateX(-50%);z-index:1001;
+  background:rgba(14,22,29,.92);border:1px solid var(--border);border-radius:20px;
+  padding:6px 14px;font-size:12px;align-items:center;gap:12px;white-space:nowrap;pointer-events:auto;}
+#vertex-edit-banner button{background:transparent;border:1px solid var(--border);color:var(--text2);
+  padding:2px 10px;border-radius:10px;font-size:11px;cursor:pointer;}
+#vertex-edit-banner button.ok{background:var(--green);color:#fff;border-color:var(--green);}
 /* P1-17 公共設施 hover tooltip（深色，與儀表板一致）*/
 .facility-tip .maplibregl-popup-content{
   background:rgba(22,27,34,.97);color:var(--text);border:1px solid var(--border);
@@ -838,7 +845,7 @@ body{position:fixed;inset:0;}
   /* 防止長按選取文字（地圖操作體驗） */
   #map-panel{-webkit-user-select:none;user-select:none;}
   /* 放置模式 banner 按鈕放大 */
-  #poly-draw-banner button,#route-draw-banner button{
+  #poly-draw-banner button,#route-draw-banner button,#vertex-edit-banner button{
     min-height:44px;padding:0 16px!important;font-size:13px!important;}
 }
 
@@ -1125,6 +1132,12 @@ body{position:fixed;inset:0;}
         <span>↗ 繪製路線　點擊新增節點</span>
         <button id="route-finish-btn" class="ok" data-action="finishRouteDraw" disabled>完成</button>
         <button data-action="cancelRouteDraw">取消</button>
+      </div>
+      <!-- #257 α-2：逐頂點編輯 banner -->
+      <div id="vertex-edit-banner">
+        <span class="veh">▱ 編輯範圍　拖曳頂點調整</span>
+        <button class="ok" data-action="finishVertexEdit">✓ 完成</button>
+        <button data-action="cancelVertexEdit">取消</button>
       </div>
       <!-- P1-16 放置 banner（節點 / 設施共用：點地圖放置） -->
       <!-- 圖層面板 -->
