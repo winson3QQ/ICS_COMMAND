@@ -2839,6 +2839,20 @@
         "minimizedReason": "",
         "reactionGroups": [],
         "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/211#issuecomment-4700198649"
+      },
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## Dogfood finding 補充 — PLI 斷線移除 + 重連復活（ATAK 飛航模式循環，2026-06-14）\n\n承上一則（atakF1 放置標記刪不掉）。本次驗 **A3 老化**，意外得到**對 #211/#217 更關鍵的正向證據**：ICS 的 **t-x-d-d 入向刪除處理是通的**，刪除不一致的根源在「TAK 會不會 propagate」而非「ICS 會不會處理」。\n\n### 操作\n1. PLI 自我位置 `3QQ:aTak`（`type=a-f-G-U-C`、`how=h-e`、**archived=0** = 非持久 live track）在 ICS 上 live。\n2. **ATAK 進飛航模式**（斷線）。\n3. 觀察 ICS：`3QQ:aTak` **直接消失，沒有先變灰**。\n4. **關飛航重連** → `3QQ:aTak` **回到地圖**。\n\n### DB 實證（逐步）\n\n| 階段 | deleted | time | stale | vclock | 解讀 |\n|---|---|---|---|---|---|\n| 斷線前 | 0 | 00:36:31Z | 00:42:34Z（未來）| ~19 | live PLI，每分鐘刷 stale |\n| 飛航後 | **1** | 00:36:31Z | **00:40:48Z** | 19 | soft-delete（stale=刪除當下）|\n| 重連後 | **0** | 00:45:41Z（新）| 00:51:44Z（未來）| **20** | **#161 復活**（墓碑 + 更新 CoT → revive）|\n\n### 判讀（兩個結論）\n\n**1. 「沒變灰直接消失」= 收到真刪除，非 stale 老化。** 全 `src` 只有兩條路徑設 `deleted=1`：HTTP 端點（使用者；但 TAK 標記 UI 唯讀、無人能刪）與 `cop_service` 的 **`t-x-d-d` 刪除命令處理（`actor=\"tak\"`，`cop_service.py:356`）**。排除前者 → **TAK server 在 ATAK 斷線時送了 `t-x-d-d` 移除 CoT**，ICS 收到 → 軟刪 + 廣播 `op=delete` → 前端整顆移除（delete 事件不經 grey）。**確認無後端 stale-prune 週期任務**（移除來自真刪除 CoT，非老化）。\n\n**2. ICS 的 t-x-d-d 入向處理 = 通。** 對照本 issue 前一則（atakF1）：\n\n| 情境 | TAK 是否 propagate 刪除 | ICS 結果 |\n|---|---|---|\n| atakF1（放置標記·archived·ATAK 本機刪）| ❌ 不送 | 卡住、鬼影（#217）|\n| 3QQ:aTak（PLI·ATAK 斷線）| ✅ server 送 t-x-d-d | **乾淨移除** |\n\n→ **刪除不一致的根源 = 「TAK 會不會 propagate」，不是「ICS 會不會處理」。** ICS 入向刪除管線健康；#217 的鬼影問題本質是「放置/archived 標記的刪除 TAK 不送 removal」。\n\n**3. #161 復活邏輯驗證 PASS。** 重連後同 uid 收到更新 CoT → 墓碑（deleted=1）翻回 deleted=0、vclock 19→20、time/stale 刷新（`cop_service.py:438` 復活路徑）。\n\n### 對 #211 本體的意義\n本筆是**入向方向（server→ICS）t-x-d-d 有效**的真機佐證。#211 item A/B（server→**ATAK** 的 Mission REMOVE / `t-x-d-d` 是否讓 ATAK 移圖）仍待手動 Marti 驅動測試 —— 但至少證明「ICS 端對 t-x-d-d 的處理」不是瓶頸。\n\n### 「變灰」何時才看得到\n`_isAging`（grey）只在「**非 archived 單位過 stale、且 server 沒送刪除**」時出現（例如某些繪圖 u-d-* 停送）。PLI 斷線因 server 主動送 t-x-d-d → 跳過 grey。\n",
+        "createdAt": "2026-06-14T00:47:02Z",
+        "id": "IC_kwDOSnBjpc8AAAABGChCug",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/211#issuecomment-4700259002"
       }
     ],
     "createdAt": "2026-06-11T06:50:34Z",
@@ -2847,7 +2861,7 @@
     "number": 211,
     "state": "OPEN",
     "title": "ATAK(Android) Mission 刪除 + DataSync dogfood — 驗證 P2-14 (A)/(DataSync) 是否 iTAK-only 限制",
-    "updatedAt": "2026-06-14T00:17:59Z",
+    "updatedAt": "2026-06-14T00:47:02Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/211"
   },
   {
