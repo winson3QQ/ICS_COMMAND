@@ -71,3 +71,15 @@ const _AFFILIATION_COT_TYPE = {
 export function affiliationToCotType(affiliation) {
   return _AFFILIATION_COT_TYPE[affiliation] || _AFFILIATION_COT_TYPE.unknown;
 }
+
+// #257 α-3：改既有 marker 的敵我態——只換 CoT type 的 affiliation 字元（位 2），保留維度/功能
+// （a-f-G-U-C → a-h-G-U-C）。非 atom 或畸形 type 退回通用 a-{f/h/n/u}-G（fail-safe）。
+const _AFFILIATION_CHAR = { friendly: 'f', hostile: 'h', neutral: 'n', unknown: 'u' };
+export function swapCotAffiliation(cotType, affiliation) {
+  const ch = _AFFILIATION_CHAR[affiliation] || 'u';
+  if (typeof cotType !== 'string') return affiliationToCotType(affiliation);
+  const parts = cotType.split('-');
+  if (parts[0] !== 'a' || parts.length < 2) return affiliationToCotType(affiliation);
+  parts[1] = ch;
+  return parts.join('-');
+}

@@ -12,7 +12,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 
-import { affiliationFromCot, cotToSidc, affiliationToCotType } from '../../static/js/map/mil_symbol.js';
+import { affiliationFromCot, cotToSidc, affiliationToCotType, swapCotAffiliation } from '../../static/js/map/mil_symbol.js';
 
 // 載入 vendored milsymbol（UMD）→ 取 CJS 出口，驗 SIDC 真能渲染
 const _here = dirname(fileURLToPath(import.meta.url));
@@ -86,6 +86,33 @@ describe('affiliationToCotType（P2-30 part 3：建敵情標記，affiliationFro
   });
   it('產出能被 cotToSidc 渲染（hostile → SIDC 位2=H，2525 紅框）', () => {
     expect(cotToSidc(affiliationToCotType('hostile'))[1]).toBe('H');
+  });
+});
+
+describe('swapCotAffiliation（#257 α-3：改既有 marker 敵我態）', () => {
+  it('只換 affiliation 字元、保留維度/功能', () => {
+    expect(swapCotAffiliation('a-f-G-U-C', 'hostile')).toBe('a-h-G-U-C');
+    expect(swapCotAffiliation('a-h-A', 'friendly')).toBe('a-f-A');
+    expect(swapCotAffiliation('a-u-G', 'neutral')).toBe('a-n-G');
+  });
+  it('四態 → 對應字元 f/h/n/u', () => {
+    expect(swapCotAffiliation('a-u-G', 'friendly')).toBe('a-f-G');
+    expect(swapCotAffiliation('a-u-G', 'hostile')).toBe('a-h-G');
+    expect(swapCotAffiliation('a-u-G', 'neutral')).toBe('a-n-G');
+    expect(swapCotAffiliation('a-u-G', 'unknown')).toBe('a-u-G');
+  });
+  it('與 affiliationFromCot 一致（換完讀回即新態）', () => {
+    for (const aff of ['friendly', 'hostile', 'neutral', 'unknown']) {
+      expect(affiliationFromCot(swapCotAffiliation('a-f-G-U-C', aff))).toBe(aff);
+    }
+  });
+  it('非 atom / 非字串 / 畸形 → 退回通用 a-{?}-G（fail-safe）', () => {
+    expect(swapCotAffiliation('b-m-r', 'hostile')).toBe('a-h-G');
+    expect(swapCotAffiliation(null, 'friendly')).toBe('a-f-G');
+    expect(swapCotAffiliation('a', 'neutral')).toBe('a-n-G');
+  });
+  it('未知 affiliation → u（不誤標友軍）', () => {
+    expect(swapCotAffiliation('a-f-G', 'garbage')).toBe('a-u-G');
   });
 });
 

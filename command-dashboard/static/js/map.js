@@ -54,7 +54,7 @@ import {
   pickForeground,
 } from './map/entity_layer.js';
 import { NAPSG_GLYPH_SVG, hasNapsgGlyph } from './map/napsg_glyphs.js';
-import { cotToSidc, affiliationFromCot, affiliationToCotType } from './map/mil_symbol.js';
+import { cotToSidc, affiliationFromCot, affiliationToCotType, swapCotAffiliation } from './map/mil_symbol.js';
 import { DrawPreview } from './map/draw_tools.js';
 import { LabelMarkerManager } from './map/label_markers.js';
 import { CreatePopup } from './map/create_popup.js';
@@ -2373,6 +2373,22 @@ export function _openContactDetail(id) {
   const FLD = 'width:100%;padding:6px 8px;margin-bottom:8px;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:6px;font-family:var(--mono);font-size:12px;box-sizing:border-box;';
   const BTN = 'width:100%;padding:8px;margin-bottom:8px;color:#fff;border:none;border-radius:6px;font-weight:700;cursor:pointer;font-family:var(--mono);font-size:12px;';
   let body = `<div style="font-size:12px;line-height:1.7;color:var(--text2);margin-bottom:12px;">${desc}</div>`;
+  // #257 α-3：敵我態原地切換（點即換）—— 四態色鈕，當前態高亮；點別態 → PUT type（換 affiliation
+  // 字元）+ 折入未存的 callsign/remarks 一併送 → 已分享者即時重推 TAK 換框色。唯讀外部單位走
+  // _openTakUnitDetail（不到這），故此處一律可編。
+  if (canAccessMapObjects()) {
+    const _curAff = affiliationFromCot(ent.type);
+    const _affs = [['friendly', '友軍'], ['hostile', '敵性'], ['neutral', '中立'], ['unknown', '不明']];
+    body += '<div style="font-size:11px;color:var(--text3);margin-bottom:4px;">敵我態</div><div style="display:flex;gap:6px;margin-bottom:10px;">';
+    for (const [aff, label] of _affs) {
+      const on = aff === _curAff;
+      const c = _AFFILIATION_COLOR[aff] || '#888';
+      body += `<button data-action="changeMarkerAffiliation" data-id="${_escapeHtml(String(id))}" data-aff="${aff}" `
+        + `style="flex:1;padding:7px 0;border-radius:6px;cursor:pointer;font-family:var(--mono);font-size:12px;font-weight:700;`
+        + `border:2px solid ${c};background:${on ? c : 'transparent'};color:${on ? '#fff' : c};">${label}</button>`;
+    }
+    body += '</div>';
+  }
   // 注記（標籤 + 備註）—— operator+ 可編輯（無線電回報內容）。callsign/remarks 經 PUT 落地。
   if (canAccessMapObjects()) {
     body += `<input id="contact-callsign-${_escapeHtml(String(id))}" placeholder="標籤/呼號" value="${_escapeHtml(ent.callsign || '')}" style="${FLD}"/>`;
@@ -2438,6 +2454,26 @@ export async function _saveContactNote(id) {
   const ok = await _persistContactInputs(id);
   _deps.closeModal?.();
   _flashMapMsg(ok ? '✓ 注記已儲存' : '✗ 儲存失敗（可能版本衝突，請重開）');
+}
+
+// #257 α-3：改 marker 敵我態（點即換）。換 CoT type 的 affiliation 字元 → PUT；同時折入 modal 內
+// 未存的 callsign/remarks（避免改敵我態洗掉打到一半的注記）。已分享者 cop.py `_resync_tak_if_shared`
+// 自動重推 → TAK 框色當場換。不帶 attributes → shared_tak 不受影響、自動保留。
+export async function _changeMarkerAffiliation(id, affiliation) {
+  if (!canAccessMapObjects() || !_copStream) return;
+  const ent = _copStream.getEntity(id);
+  if (!ent) return;
+  if (affiliation === affiliationFromCot(ent.type)) return;  // 點當前態 → no-op：不送 PUT、不重推 TAK（注記另走儲存鈕）
+  const newType = swapCotAffiliation(ent.type, affiliation);
+  const patch = { type: newType };
+  const cs = el(`contact-callsign-${id}`);
+  const rm = el(`contact-remarks-${id}`);
+  if (cs) patch.callsign = cs.value.trim();
+  if (rm) patch.remarks = rm.value.trim();
+  const ok = await _copStream.updateEntity(id, patch);
+  _deps.closeModal?.();
+  const affZh = { friendly: '友軍', hostile: '敵性', neutral: '中立', unknown: '不明' }[affiliation] || '不明';
+  _flashMapMsg(ok ? `✓ 已改為${affZh}（已分享者即時上 TAK）` : '✗ 更新失敗（可能版本衝突，請重開）');
 }
 
 export async function _shareContactTak(id) {

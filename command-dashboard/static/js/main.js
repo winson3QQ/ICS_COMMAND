@@ -63,7 +63,7 @@ import {
   _savePolygon, _saveRoute,
   _openPolyForm, _openRouteForm,
   _deletePolygon, _deleteRoute, _deleteInfra, _deleteEventZone,
-  _deleteContact, _shareContactTak, _saveContactNote,
+  _deleteContact, _shareContactTak, _saveContactNote, _changeMarkerAffiliation,
   _resetPolyLabelAnchor, _resetRouteLabelAnchor,
   _startVertexEdit, _finishVertexEdit, _cancelVertexEdit,
   _panToCoordTarget, _mgrsSearch, _toggleCoordMode,
@@ -326,6 +326,11 @@ document.addEventListener('click', function (e) {
     case 'saveContactNote': {
       if (!canAccessMapObjects()) break;
       _saveContactNote(btn.dataset.id);
+      break;
+    }
+    case 'changeMarkerAffiliation': {  // #257 α-3：點即換敵我態
+      if (!canAccessMapObjects()) break;
+      _changeMarkerAffiliation(btn.dataset.id, btn.dataset.aff);
       break;
     }
     case 'shareContactTak': {
