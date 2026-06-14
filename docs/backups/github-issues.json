@@ -3483,5 +3483,25 @@
     "title": "P2-26 L2 衍生：TAK 連線設定 dashboard 化（URL/開關 DB 化 + cert pointer；key 內容卡 P1-12）",
     "updatedAt": "2026-06-13T23:48:57Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/255"
+  },
+  {
+    "assignees": [],
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "body": "## 原則（使用者 2026-06-14 拍板）\n\n**感測層大一統的一條原則：TAK 有的重要功能，ICS 也要能對應。** ICS 作為指揮端權威 COP，現場 TAK client（ATAK/iTAK）有的核心態勢能力，ICS 該有對等呈現。本 issue = 該原則的**第一個具體 instance**：**移動單位的即時尾跡（breadcrumbs）**。\n\n## 缺口\n\nATAK 有 **breadcrumbs**（移動單位即時拖出近期路徑尾跡，是標準 SA 功能）。**ICS 即時 ops 地圖無對應** —— 單位會即時移動，但不留即時尾跡。\n\n## 現況（reality check 2026-06-14，ATAK 真機 e2e A2 衍生）\n\n- **即時 ops 地圖 `static/js/map.js` 無 trail 渲染**（grep 確認：只有畫出來的 route LineString，無移動尾跡）。\n- **尾跡渲染只在 AAR 回放頁** `static/js/aar/aar_map.js`（`aar-trails` 層、10 分鐘窗）= **歷史回放、非即時、讀 DB**。\n- 後端軌跡寫入 `cop_service._record_track`（P2-06a/#120）有實作，但 **exercise_id=NULL（無 active 場）時跳過**（[#123](https://github.com/winson3QQ/ICS_COMMAND/issues/123)，`cop_service.py:318`）→ 「無進行中場次」時連 `cop_entity_tracks` 都沒資料。\n- **e2e 實證**：ATAK 移動單位 → ICS 位置即時反映 ✅，但**無尾跡**、且 `cop_entity_tracks=0`（因無 active 場）。\n\n## 與 AAR 尾跡的區分（重要，勿混為一物）\n\n| | **本 issue：即時 SA breadcrumb** | AAR 尾跡（P2-20 B2，已做）|\n|---|---|---|\n| 目的 | 即時態勢「這單位剛從哪來」 | 演習後逐格複盤 |\n| 來源 | 前端即時累積（WS 位置流）| DB `cop_entity_tracks` |\n| 時效 | ephemeral，近 N 分鐘 | 耐久、可 seek 任意時刻 |\n| 場次 | 不綁 exercise（實戰無場次也要）| exercise-scoped |\n| 視圖 | 即時 ops 地圖 | AAR 回放頁 |\n\n## 設計方向（reality check 後建議）\n\n- **資料來源建議 = 前端累積**：dashboard 已收 WS 位置流，per-uid 在瀏覽器記近 N 分鐘 / K 點 → 畫 LineString。理由：(a) **獨立於 exercise-scope 軌跡記錄**（#123 不擋、實戰無場次也能畫）、(b) **對齊 ATAK 本機 breadcrumb 模型**、(c) **零後端改動**。reload 後尾跡重置可接受（即時 SA；歷史是 AAR 的事）。\n- 可重用 AAR 的 `trailGeoJSON` helper（`aar/replay_engine.js`）+ MapLibre LineString 層模式（線在點之下）。\n- **affiliation 上色**（對齊 2525 框色：友藍/敵紅/中綠/不明黃）。\n- 圖層 toggle 收進 ☰ 面板（與 [#219](https://github.com/winson3QQ/ICS_COMMAND/issues/219) VIEW 側圖層面板協調）。\n- perf：per-uid 點數上限 + 過窗裁剪 + 節流。\n\n## 降階\n\n純前端、**無 TAK 硬依賴**（用已流動的位置串流；TAK 掛照常無尾跡可畫，不報錯）。\n\n## Scope / DoD（草）\n\n- [ ] 前端 per-uid 近 N 分鐘位置累積（WS 位置更新驅動）\n- [ ] MapLibre LineString 即時尾跡層（affiliation 色，線在點之下）\n- [ ] N 分鐘窗 + per-uid 點上限 + 過窗裁剪\n- [ ] ☰ 圖層面板 toggle（預設值待定）\n- [ ] **與 AAR 尾跡明確分離**（不共用 live 路徑、不依賴 `cop_entity_tracks`）\n- [ ] reload 重置（不持久；歷史走 AAR）\n- [ ] 測試（累積/裁剪/窗口/toggle）+ `/verify`\n\n## Out of scope\n\n- AAR 歷史尾跡（已 P2-20 B2 完成）。\n- 後端軌跡記錄改動（#123 exercise-scope 閘維持不動）。\n\n## 關係 / 依賴\n\n- **感測層大一統「TAK 功能對等」原則的第一個 instance**（後續其他 TAK→ICS 對等缺口可援引本則）。\n- 對照：P2-20 B2（AAR 尾跡）、P2-06a/[#120](https://github.com/winson3QQ/ICS_COMMAND/issues/120)（track 記錄）、[#123](https://github.com/winson3QQ/ICS_COMMAND/issues/123)（exercise-scope 閘）、[#219](https://github.com/winson3QQ/ICS_COMMAND/issues/219)（VIEW 側圖層面板）、`docs/design/cop-event-layering.md` L3 感知層。\n\n## 來源\n\n2026-06-14 ATAK(Android) 真機 e2e A2 dogfood（位置即時反映 ✅，但即時視圖無尾跡）。\n",
+    "closedAt": null,
+    "comments": [],
+    "createdAt": "2026-06-14T00:32:35Z",
+    "labels": [],
+    "milestone": null,
+    "number": 256,
+    "state": "OPEN",
+    "title": "感測層大一統：即時 ops 地圖移動尾跡（對應 ATAK breadcrumbs）— TAK 功能對等原則",
+    "updatedAt": "2026-06-14T00:32:35Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/256"
   }
 ]
