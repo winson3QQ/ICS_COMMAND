@@ -352,6 +352,18 @@ async def update_entity(uid: str, request: Request, response: Response):
     existing = cop_entity_repo.get_cop_entity(uid)
     if existing is not None:
         _require_editable_source(existing)
+        # #257：`shared_tak` 是 **server 管的旗標**（只有 `mark_shared_tak`／share 端點以 json_set 設、
+        # **不 broadcast** → 前端 entity 無此值）。client PUT **整包覆寫** attributes（move 改 vertices /
+        # label drag 改 label_anchor）會把它洗掉 → 斷「編輯後即時重推 TAK」(_resync_tak_if_shared)。
+        # 故 PUT 一律以 existing 的值蓋掉 client 帶的 shared_tak：① existing 有 → 保留（修我的移動 +
+        # pre-existing label drag 兩處 clobber）；② existing 無 → 移除（client 不得經 PUT 自設「已分享」、
+        # 繞過 share 端點的 COP_SHARE_TAK audit + send_cot；分享只能走 /api/tak/share，security hardening）。
+        if isinstance(body.get("attributes"), dict):
+            _shared = (existing.get("attributes") or {}).get("shared_tak")
+            if _shared:
+                body["attributes"]["shared_tak"] = _shared
+            else:
+                body["attributes"].pop("shared_tak", None)
 
     try:
         result = cop_entity_repo.update_cop_entity_cas(uid, expected, body, actor=_actor(request))
