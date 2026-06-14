@@ -468,6 +468,19 @@ function _initMaplibre() {
           return;
         }
       }
+      // #257 α-1：長按命中可編輯 polygon/route → 進移動（而非建立對話框）。唯讀 TAK 來源不可（=#258）。
+      const _shapeLyrs = ['polygons-fill', 'routes-line-solid', 'routes-line-dash', 'routes-line-dotted'].filter((l) => m?.getLayer(l));
+      const _shapeHit = point && m && _shapeLyrs.length ? m.queryRenderedFeatures(point, { layers: _shapeLyrs }) : [];
+      if (_shapeHit.length) {
+        const _sid = _shapeHit[0].properties?.id;
+        const _sent = _sid ? _copStream?.getEntity(_sid) : null;
+        const _skind = _sent?.attributes?.kind;
+        if (_sent && !_isReadonlySource(_sent) && (_skind === 'polygon' || _skind === 'route')) {
+          _suppressMarkerClick = true;  // 抑制放開後補發的 click（否則詳情也彈）
+          _armShapeMove(_sid, _skind, { lat, lng });
+          return;
+        }
+      }
       _openCreatePopup(lat, lng);
     },
 
@@ -2263,6 +2276,7 @@ function _readonlyShapeModal(title, desc, entity) {
 }
 
 function _onPolygonClick(e) {
+  if (_suppressMarkerClick) { _suppressMarkerClick = false; return; }  // 剛長按進移動 → 吞掉這下 click（否則詳情也彈）
   if (!canAccessMapObjects()) return;
   const id = e.features?.[0]?.properties?.id;
   // PR-G1a：polygon 已 cutover 進 cop_entities，從 cop_stream 回查（id = entity uid）。
@@ -2440,6 +2454,7 @@ export async function _shareContactTak(id) {
 }
 
 function _onRouteClick(e) {
+  if (_suppressMarkerClick) { _suppressMarkerClick = false; return; }  // 剛長按進移動 → 吞掉這下 click（否則詳情也彈）
   if (!canAccessMapObjects()) return;
   const id = e.features?.[0]?.properties?.id;
   // PR-G1a：route 已 cutover 進 cop_entities，從 cop_stream 回查（id = entity uid）。
@@ -2488,9 +2503,10 @@ function _renderPolygons() {
   }
   // PR-G1a cutover：資料來源從 _mapConfig 改為 cop_entities（attributes.kind='polygon'），
   // 經 copEntityToPolygon adapter 轉成 polygonToFeature 吃的 shape，渲染管線不變。
-  const polys = (_copStream?.getEntitiesByKind('polygon') || [])
-    .map(copEntityToPolygon)
-    .filter(Boolean);
+  const polys = _applyShapeMoveOverride(
+    (_copStream?.getEntitiesByKind('polygon') || []).map(copEntityToPolygon).filter(Boolean),
+    'polygon',
+  );  // #257 α-1：移動中以暫態 base+Δ 覆蓋 latlngs（live-follow）
   // 每個 polygon 產出 2 個 feature 餵同 source：
   //   1. Polygon geometry（fill / stroke layer 渲染）
   //   2. Point geometry（centroid，label layer 渲染 — 解 MapLibre 跨 tile 多
@@ -2523,6 +2539,92 @@ function _putCopLabelAnchor(uid, anchor) {
   if (anchor) attrs.label_anchor = anchor;
   else delete attrs.label_anchor;
   return _copStream.updateEntity(uid, { attributes: attrs });
+}
+
+// ── #257 α-1：長按自建 polygon/route → 整體移動（C 設計，live-follow）──────────────
+// 長按命中可編輯繪圖 → arm；之後 pointermove 平移全頂點 + live re-render；pointerup commit
+// （PUT vertices + label_anchor 一併平移；已分享者 cop.py `_resync_tak_if_shared` 自動重推）。
+// arm 時 dragPan.disable() 防地圖平移（maplibre 長按只 fire 一次、不追後續拖曳，故自接 pointer
+// 事件）。唯讀 TAK 來源不可進（=#258）；label drag（質心 handle）不受影響（不同手勢）。
+// 後端 attributes 整包覆寫 → commit 讀現值整包送、保留 shared_tak（否則掉分享 + 斷重推）。
+let _movingShape = null;  // { uid, kind, baseVertices, baseLabelAnchor, dLat, dLng, startLat, startLng }
+let _moveRafPending = false;
+
+// render 注入：drag 中以 base+Δ 暫態覆蓋移動中圖形的 latlngs（不持久化）。
+function _applyShapeMoveOverride(shapes, kind) {
+  if (!_movingShape || _movingShape.kind !== kind) return shapes;
+  const { uid, baseVertices, dLat, dLng } = _movingShape;
+  return shapes.map((s) => (s && s.id === uid)
+    ? { ...s, latlngs: baseVertices.map(([la, lo]) => [la + dLat, lo + dLng]) }
+    : s);
+}
+
+function _armShapeMove(id, kind, start) {
+  if (_movingShape) return;  // 已在移動中 → 不重掛 listener（防殘留 + 雙重 commit）
+  const ent = _copStream?.getEntity(id);
+  const verts = ent?.attributes?.vertices;
+  if (!Array.isArray(verts) || verts.length < 2) return;
+  _movingShape = {
+    uid: id, kind,
+    baseVertices: verts.map((v) => [v[0], v[1]]),
+    baseLabelAnchor: Array.isArray(ent.attributes.label_anchor) ? [...ent.attributes.label_anchor] : null,
+    dLat: 0, dLng: 0, startLat: start.lat, startLng: start.lng,
+  };
+  const map = _getMap();
+  map?.dragPan?.disable();
+  // window（非 canvas）：拖出畫布外放開仍要 commit + 還原 dragPan（canvas-only 漏 pointerup → 卡死，review）。
+  window.addEventListener('pointermove', _onShapeMovePointer);
+  window.addEventListener('pointerup', _endShapeMove);
+  window.addEventListener('pointercancel', _endShapeMove);
+}
+
+function _onShapeMovePointer(ev) {
+  if (!_movingShape) return;
+  const map = _getMap();
+  if (!map) return;  // window listener 可能在 map teardown 後殘存（防 null deref）
+  const rect = map.getCanvas().getBoundingClientRect();
+  const ll = map.unproject([ev.clientX - rect.left, ev.clientY - rect.top]);
+  _movingShape.dLat = ll.lat - _movingShape.startLat;
+  _movingShape.dLng = ll.lng - _movingShape.startLng;
+  if (_moveRafPending) return;
+  _moveRafPending = true;
+  requestAnimationFrame(() => {
+    _moveRafPending = false;
+    if (!_movingShape) return;
+    if (_movingShape.kind === 'route') _renderRoutes(); else _renderPolygons();
+  });
+}
+
+async function _endShapeMove() {
+  const mv = _movingShape;
+  if (!mv) return;
+  window.removeEventListener('pointermove', _onShapeMovePointer);
+  window.removeEventListener('pointerup', _endShapeMove);
+  window.removeEventListener('pointercancel', _endShapeMove);
+  _getMap()?.dragPan?.enable();
+  if (!mv.dLat && !mv.dLng) {  // 沒移動 → 不寫，清 override 還原
+    _movingShape = null;
+    if (mv.kind === 'route') _renderRoutes(); else _renderPolygons();
+    return;
+  }
+  const ent = _copStream?.getEntity(mv.uid);
+  const attrs = { ...(ent?.attributes || {}) };  // 整包：保留 shared_tak 等現值
+  const moved = mv.baseVertices.map(([la, lo]) => [la + mv.dLat, lo + mv.dLng]);
+  attrs.vertices = moved;
+  if (mv.baseLabelAnchor) attrs.label_anchor = [mv.baseLabelAnchor[0] + mv.dLat, mv.baseLabelAnchor[1] + mv.dLng];
+  const [cLat, cLng] = _polyCentroid(moved);
+  let ok = false;
+  try {
+    ok = await _copStream?.updateEntity(mv.uid, { lat: cLat, lon: cLng, attributes: attrs });
+  } catch (e) {
+    console.warn('[map.js] 圖形移動 commit 失敗', e);  // network drop 等
+  } finally {
+    // **無論成敗都清 override**：updateEntity throw（連線中斷）若不清，_movingShape 永遠非 null →
+    // 移動子系統卡死（override 凍結 + 下次 arm 重掛 listener）。review finding 1。
+    _movingShape = null;
+    if (mv.kind === 'route') _renderRoutes(); else _renderPolygons();
+  }
+  _flashMapMsg(ok ? '✓ 已移動圖形（已分享者即時上 TAK）' : '✗ 移動儲存失敗（可能被他人同時修改 / 連線中斷），請重試');
 }
 
 /**
@@ -2668,9 +2770,10 @@ function _renderRoutes() {
     return;
   }
   // PR-G1a cutover：資料來源從 _mapConfig 改為 cop_entities（attributes.kind='route'）。
-  const routes = (_copStream?.getEntitiesByKind('route') || [])
-    .map(copEntityToRoute)
-    .filter(Boolean);
+  const routes = _applyShapeMoveOverride(
+    (_copStream?.getEntitiesByKind('route') || []).map(copEntityToRoute).filter(Boolean),
+    'route',
+  );  // #257 α-1：移動中以暫態 base+Δ 覆蓋 latlngs（live-follow）
   // 每個 route 產出 LineString（line/arrow layer 渲染）+ Point（label layer 渲染，
   // 支援 label_anchor override 給 drag handle 移動後的新位置）。
   const features = [

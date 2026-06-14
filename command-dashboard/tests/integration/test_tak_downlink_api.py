@@ -220,6 +220,47 @@ def test_move_shared_entity_resyncs_to_tak(client, auth, captured_cot, tak_enabl
     assert "24.5" in captured_cot[1] and uid in captured_cot[1]
 
 
+def test_move_shared_entity_via_attributes_preserves_shared_tak(client, auth, captured_cot, tak_enabled):
+    """#257：已廣播 entity 經**整包 attributes** PUT（圖形移動改 vertices / label drag 改 label_anchor）
+    → server 須保留 shared_tak（前端無此值、不該被覆寫洗掉）→ 重推 CoT 照樣 fire。"""
+    uid = _create_entity(
+        client, auth, type="u-d-f",
+        attributes={"kind": "polygon", "vertices": [[25.0, 121.0], [25.1, 121.0], [25.1, 121.1]]},
+    )
+    client.post(f"/api/tak/share/{uid}", headers=auth)  # captured_cot[0]
+    # 模擬前端移動：送整包 attributes（新 vertices）但**不帶 shared_tak**（前端無此值）
+    r = client.put(
+        f"/api/cop/entities/{uid}",
+        json={
+            "lat": 24.5, "lon": 120.9,
+            "attributes": {"kind": "polygon", "vertices": [[24.5, 120.9], [24.6, 120.9], [24.6, 121.0]]},
+        },
+        headers={**auth, "If-Match": "1"},
+    )
+    assert r.status_code == 200
+    assert len(captured_cot) == 2  # 廣播 + 移動重推（shared_tak 被保留 → _resync 仍 fire）
+    g = client.get(f"/api/cop/entities/{uid}", headers=auth)
+    assert g.json()["attributes"]["shared_tak"] is True  # 沒被整包覆寫洗掉
+
+
+def test_put_cannot_self_set_shared_tak(client, auth, captured_cot, tak_enabled):
+    """#257 hardening：未廣播 entity，client 不得經 PUT attributes 自設 shared_tak（繞過 share 端點的
+    COP_SHARE_TAK audit + send_cot）→ server 一律 pop client 帶的值。"""
+    uid = _create_entity(
+        client, auth, type="u-d-f",
+        attributes={"kind": "polygon", "vertices": [[25.0, 121.0], [25.1, 121.0], [25.1, 121.1]]},
+    )
+    r = client.put(
+        f"/api/cop/entities/{uid}",
+        json={"attributes": {"kind": "polygon", "vertices": [[25.0, 121.0], [25.1, 121.0], [25.1, 121.1]], "shared_tak": True}},
+        headers={**auth, "If-Match": "1"},
+    )
+    assert r.status_code == 200
+    g = client.get(f"/api/cop/entities/{uid}", headers=auth)
+    assert "shared_tak" not in g.json()["attributes"]  # 被 pop —— client 不能自設
+    assert captured_cot == []  # 沒繞過 share 端點推 TAK
+
+
 def test_delete_shared_entity_does_not_push_tak(client, auth, captured_cot, tak_enabled):
     """已廣播 entity 刪除 → **不推 TAK**（issue 4 = P2-14 deferred）。實證：streaming（t-x-d-d/stale）
     對 server 持久層無效、Marti 無單顆 CoT DELETE → 可靠刪除只在 Mission/DataSync。故刪除僅 ICS 端
