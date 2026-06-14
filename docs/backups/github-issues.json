@@ -2853,6 +2853,20 @@
         "minimizedReason": "",
         "reactionGroups": [],
         "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/211#issuecomment-4700259002"
+      },
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## Dogfood finding — 出向幾何 ATAK 不渲染：缺樣式 + 用錯格式（iTAK≠ATAK，已確認修法，2026-06-14）\n\n驗 **B 出向**（ICS→ATAK）時抓到的 **iTAK≠ATAK** 差異，並用 styled-push **確認了 root cause + 修法模板**。\n\n### 現象 → 隔離 → 根因（逐步，皆實證）\n\n1. **ICS 畫 zone(polygon u-d-f)/route(b-m-r) → ATAK 不顯示**（後端 `send_cot` 成功送出，bytes 出去）。\n2. **隔離 1：推單純點**（`a-f-G-U-C` + contact）→ **ATAK 正常渲染** → 證明 push 到得了 ATAK、ATAK 在收，**非 relay/連線問題**（PLI 同時 fresh，ATAK 確在線）。\n3. **code 根因**：`geometry_service.vertices_to_cot_shape`（`:196`）出向產 `<shape><polyline closed><vertex point=\"lat,lon\"/></polyline></shape>`，**只帶 callsign/remarks、零樣式**。而同檔入向 `extract_geometry`（`:124-137`）解析的是 **`<link point=\"lat,lon,hae\"/>` 序列**，註解明載「ATAK/iTAK route/封閉繪圖」→ **真實 ATAK 用 `<link>` 格式、ICS 出向卻用 `<shape><polyline>`，且無樣式**。\n4. **隔離 2：捕捉 ATAK 自己畫的圓**（u-d-c-c「C1Zone」入向落 ICS）→ attributes 帶 `shape(ellipse)` + **strokeColor=-256(黃)/strokeWeight=2.3/strokeStyle=dashed/fillColor/labels_on/__shapeExtras/archive** → **ATAK 的可渲染 shape 一定帶 stroke/fill 樣式**。\n5. **確認測試（styled-push）**：ICS 推一個 `u-d-f` + **`<link>` 序列 + strokeColor/strokeWeight/strokeStyle/fillColor** 的封閉面 → **ATAK 渲染出黃色方框** ✅。\n\n### 結論\n\nICS 出向幾何之所以 **iTAK 能、ATAK 不能**：\n- **格式**：用 CoT_shape.xsd 的 `<shape><polyline><vertex>`，**非** ATAK 原生 `<link point=\"lat,lon,hae\"/>` 序列。\n- **樣式**：**完全沒帶 strokeColor/strokeWeight/fillColor** → ATAK 無從畫；iTAK 寬鬆用預設仍畫，ATAK 嚴格、沒樣式不畫。\n\n→ **這是 [#214](https://github.com/winson3QQ/ICS_COMMAND/issues/214)（出向 CoT 內容忠實度，缺 color/icon 等真有欄位）在幾何上的版本，同源。**\n\n### 修法模板（已驗在 ATAK 渲染）\n\n出向 `build_geometry_cot`/`vertices_to_cot_shape` 改吐 ATAK 原生格式 + 樣式：\n```xml\n<event ... type=\"u-d-f\" ...>\n  <point .../>            <!-- 形心 -->\n  <detail>\n    <link point=\"la,lo,0\"/> ... <link point=\"la1,lo1,0\"/>  <!-- 頂點序列，封閉首尾相同 -->\n    <strokeColor value=\"-256\"/><strokeWeight value=\"3\"/><strokeStyle value=\"solid\"/>\n    <fillColor value=\"1442775040\"/>\n    <contact callsign=\"...\"/><labels_on value=\"false\"/><archive/>\n  </detail>\n</event>\n```\n樣式色可從 entity 的 color/`team_color` 衍生或給預設。route（線）用 `<link>` 序列不閉合 + strokeColor 無 fillColor；圓建議用 `<shape><ellipse>`。\n\n### 影響範圍\n\n- **[#212](https://github.com/winson3QQ/ICS_COMMAND/issues/212)**：補了出向 zone UI 按鈕也沒用 —— 格式不對 ATAK 看不到；**#212 需連同本格式修法一起**，否則只對 iTAK 有效。\n- **[#214](https://github.com/winson3QQ/ICS_COMMAND/issues/214)**：同源（出向缺欄位/樣式）。\n- **P2-30**：part1 的「對活 iTAK 推線+區實收」**僅 iTAK 驗證**；ATAK 需本格式。\n- **本 issue（#211）item C-ish**：ICS 推幾何 ATAK 渲染 = 需原生 `<link>`+樣式才成立。\n\n### 反向（入向）健康\nATAK→ICS 幾何**入向正常**：ATAK 畫的圓（u-d-c-c）落 ICS 成 48 邊形 polygon、樣式 attributes 完整保留。問題純在**出向序列化**。\n",
+        "createdAt": "2026-06-14T01:16:18Z",
+        "id": "IC_kwDOSnBjpc8AAAABGCkl2w",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/211#issuecomment-4700317147"
       }
     ],
     "createdAt": "2026-06-11T06:50:34Z",
@@ -2861,7 +2875,7 @@
     "number": 211,
     "state": "OPEN",
     "title": "ATAK(Android) Mission 刪除 + DataSync dogfood — 驗證 P2-14 (A)/(DataSync) 是否 iTAK-only 限制",
-    "updatedAt": "2026-06-14T00:47:02Z",
+    "updatedAt": "2026-06-14T01:16:18Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/211"
   },
   {
