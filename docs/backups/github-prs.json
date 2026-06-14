@@ -3954,7 +3954,7 @@
     "number": 262,
     "state": "MERGED",
     "title": "feat(cop): #257 α-1 — 長按移動自建 polygon/route（live-follow + 即時上 TAK）",
-    "updatedAt": "2026-06-14T08:00:51Z",
+    "updatedAt": "2026-06-14T12:47:15Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/262"
   },
   {
@@ -3975,7 +3975,28 @@
     "number": 263,
     "state": "MERGED",
     "title": "feat(map): #257 α-2 + α-2b — 自建 polygon/route 逐頂點編輯（reshape + 插入/刪除）",
-    "updatedAt": "2026-06-14T09:39:26Z",
+    "updatedAt": "2026-06-14T09:41:26Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/263"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "## #257 α-3：marker 敵我態原地編輯\n\n完成 #257 自建物件編輯 α 系列最後一刀。詳情 modal 加四色敵我態切換列；**點即換** → 換 CoT type 的 affiliation 字元 → PUT → 已分享者即時重推 TAK（框色當場友藍↔敵紅）。\n\n### 行為\n- 點自建 marker → 詳情 modal 最上方「敵我態」四色鈕（友軍/敵性/中立/不明），當前態高亮\n- 點別態 → `swapCotAffiliation`（`a-f-G→a-h-G`，保留維度/功能）→ `updateEntity({type})`，**折入未存的 callsign/remarks** 避免遺失 → closeModal + flash\n- 已分享者經 cop.py `_resync_tak_if_shared` 自動重推 → ATAK/iTAK 框色即時換\n- 點當前態 = no-op（不送 PUT、不重推 TAK）\n\n### 為何後端零改動\n`type` 不在 `_PUT_FORBIDDEN_FIELDS`；partial patch 不帶 `attributes` → `shared_tak` 自動保留；`entity_to_cot` 讀 `ent.type` → 新敵我態直接進 CoT。\n\n### 變更\n- **mil_symbol.js**：新 `swapCotAffiliation(cotType, affiliation)`（非 atom/畸形 → 退回通用 `a-{?}-G` fail-safe）\n- **map.js**：`_openContactDetail` 敵我態切換列 + `_changeMarkerAffiliation`\n- **main.js**：dispatch `changeMarkerAffiliation`\n- **tests**：`mil_symbol.test.js` +5（vitest 19 passed）\n- **ROADMAP**：P2-36 補記 #257 α 全數完成\n\n### 驗證\n- eslint clean、vitest 19 passed\n- iPad 實機驗 PASS（點即換 / ATAK 框色即時換 / 注記不遺失 / 外部來源無切換列）\n- code review（agent）：ship-able、無高危；finding 3（no-op tap 多餘 PUT）已修\n\n範圍：只改敵我態；完整 2525 符號 picker 留 β。Closes #257 α-3（α-1 #262 / α-2·α-2b #263）\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+    "closedAt": "2026-06-14T12:40:34Z",
+    "comments": [],
+    "createdAt": "2026-06-14T12:40:11Z",
+    "headRefName": "feat/issue-257-a3-affiliation",
+    "labels": [],
+    "mergedAt": "2026-06-14T12:40:34Z",
+    "number": 264,
+    "state": "MERGED",
+    "title": "feat(map): #257 α-3 — marker 敵我態原地編輯（點即換 + 即時上 TAK）",
+    "updatedAt": "2026-06-14T12:47:15Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/264"
   }
 ]

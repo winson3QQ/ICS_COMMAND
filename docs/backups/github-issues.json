@@ -3620,5 +3620,25 @@
     "title": "Route 物件忠實度深挖：ICS route 模型過簡（polyline+樣式）vs TAK route 富物件（waypoint/link_attr/導航語意）",
     "updatedAt": "2026-06-14T04:58:35Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/260"
+  },
+  {
+    "assignees": [],
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "body": "## 症狀\n切換 active 演習（例：實戰/無場 → 啟動一個 TTX 場）後，**新場內產生的 cop entity 不顯示在地圖**，需手動硬重整（Ctrl-Shift-R）才出現。\n\n實證（#258 β-1 測試踩到）：TTX 場 active 期間，ATAK 畫的 polygon 已正確進 DB（`source=tak`、`attributes.kind=polygon`、4 頂點、`exercise_id=<TTX>`、未刪、座標有效），後端 `list_cop_entities` / `_broadcast_cop` / 前端 `copEntityToPolygon`→`polygonToFeature` 全部會接受並渲染它 —— 但前端就是不顯示，直到硬重整。\n\n## 根因（已逐段驗證，非推測）\ncop WS 連線的 **exercise scope 在 handshake 當下凍結**：`/api/cop/ws/updates` 不帶 `exercise_id`，server 連線時 `resolve_scope(sess, None)` → `current_exercise_id()` resolve 一次就固定（`src/routers/cop.py`）。連線存活期間 scope 不再更新 → `realtime_hub._Conn.wants(newScope)` 對新場 entity 回 `False`，live `create`/`update` 全被濾掉。\n\n唯一會重綁 scope 的是「整個 WS 重連」。前端 `_refreshAfterExerciseSwitch`（`static/js/main.js`）走 `_copStream.stop(); _copStream.connect();`，但該路徑有 race / cache 破壞：\n- `stop()` 同步關舊 socket + **清空整個 entity 快取**；`connect()` 立刻 `_stopped=false` 開新 socket。\n- 舊 socket 的 `onclose` **非同步**才觸發，此時 `_stopped` 已是 false → 走 `if (!_stopped) _scheduleReconnect()` 分支、在健康連線上誤排重連並 `_reconnectAttempt++`（`static/js/map/cop_stream.js`）。\n- 清快取到 resync round-trip 回來這段空窗，地圖空白；若 live `create` 落在被拆/過時 socket，且 resync 在錯 scope 下跑 → entity 永不進 `_byUid`、永不 render。\n\n## 提案修法\n1. **主修（server 權威）**：切換演習（activate/archive / `exercise_switched`）時，由 `cop_hub` 直接更新各 live `_Conn.exercise_id` 到新 active scope（per-session re-resolve），**不靠 client 重連**。根除「WS scope 凍結」整類問題。\n2. **前端硬化**（`cop_stream.js`）：`stop()` 重設 `_reconnectAttempt=0`；舊 socket `onclose` 加 identity guard（`if (ws !== _ws) return;`）避免被取代的 socket 誤排重連；`_refreshAfterExerciseSwitch` 改走 in-place `resync()` 對帳、不要同步清空快取（避免切換空窗）。\n\n## 關聯\n- 非 #258 引入；是 P1-14（演習切換）遺留行為，先前未當 bug 開單。#258 β-1（TTX 模式編輯外部來源）的 live 驗證被此 bug 擋住（編輯閘本身正確）。\n- 與 #125（跨場軌跡 misattribution，exercise_id 歸屬層）不同層，但同屬「演習 scope 正確性」家族。\n- 注意另一既有設計：entity `exercise_id` 在 create 時綁定、更新不改 → 切到 TTX 前已存在的真實 PLI（綁 NULL）即使持續廣播也不會進 TTX scope（這是刻意的演習隔離，非本 bug）。\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+    "closedAt": null,
+    "comments": [],
+    "createdAt": "2026-06-14T14:08:35Z",
+    "labels": [],
+    "milestone": null,
+    "number": 265,
+    "state": "OPEN",
+    "title": "切換 active 演習後 cop WS scope 不更新 → 新場 entity 不 render（需硬重整）",
+    "updatedAt": "2026-06-14T14:08:35Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/265"
   }
 ]
