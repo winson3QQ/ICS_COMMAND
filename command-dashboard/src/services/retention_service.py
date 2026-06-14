@@ -44,6 +44,11 @@ def cleanup_expired_tracks() -> int:
     if not ttl_enabled():
         return 0
     days = max(int(config.TRACKS_TTL_DAYS), 1)  # 防呆：≥1 天，拒絕「TTL=0 全清」誤設
+    # 字串比較沿用 codebase 既有時間過濾慣例（如 list_cop_entities 的 `stale > strftime(...,'now')`）：
+    # 假設 t 為 canonical UTC `YYYY-MM-DDTHH:MM:SSZ`（XML 串流 ingest 已正規化）。REST/federation
+    # push 的非正規 t（毫秒/offset）僅造成 90 天窗**邊界次秒~次時**誤差（對 PII TTL immaterial）；
+    # 不在此單點改 strftime(t)——會與全域慣例分歧，且舊版 SQLite(<3.42) 無法解析 'Z' 反而全不刪。
+    # 走 idx_cop_tracks_t（#207 補）索引範圍刪。
     with get_conn() as conn:
         cur = conn.execute(
             "DELETE FROM cop_entity_tracks "
