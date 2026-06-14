@@ -43,9 +43,10 @@ export function getActiveExercise(list) {
 }
 
 // #258 β-1：目前 active 演習模式（'ttx' | 'real' | null）。讀模組快取 _activeExercise，於
-// initExerciseChip（首連啟動）、exercise:switched WS 事件、以及 cop_stream 重連時刷新。
-// map.js 編輯閘據此 mode-aware —— TTX 才放行編輯外部 TAK 來源物件（對齊後端 _require_editable_source；
-// server 仍為權威，前端僅避免露出會被 403 的鈕；快取若暫時過時，後端仍 403 擋住，不破安全）。
+// initExerciseChip（首連啟動）與 exercise:switched WS 事件刷新。map.js 編輯閘據此 mode-aware ——
+// TTX 才放行編輯外部 TAK 來源物件（對齊後端 _require_editable_source；server 仍為權威，前端僅避免露出
+// 會被 403 的鈕；快取若暫時過時，後端仍 403 擋住、不破安全）。
+// 註：重連期間若漏接 exercise_switched，快取可能短暫過時 → 由 #265（server 端切換時更新各連線 scope）統一根治。
 export function activeExerciseType() {
   return _activeExercise?.type || null;
 }
