@@ -79,6 +79,7 @@ import {
   _toggleLayer, _closeLayerPanel, toggleTakFilter,
   setCopStream,
   applyEventTaxonomy,
+  setExerciseMode,
 } from './map.js';
 
 const API_BASE = location.origin;
@@ -134,11 +135,12 @@ function _refreshAfterExerciseSwitch() {
 // 本 session 重新依新 scope 對帳（map/面板）+ 更新 header chip（顯示新的當前場 / 無場次）。
 document.addEventListener('exercise:switched', () => {
   _refreshAfterExerciseSwitch();
-  import('./exercises.js').then(m => {
+  import('./exercises.js').then(async m => {
     // 設定面板開著（正在看演習清單）→ 重渲染清單（含 chip），讓刪除/狀態變更即時反映；
     // 否則只更新 header chip。
     const panelOpen = document.getElementById('settings-overlay')?.classList.contains('show');
-    if (panelOpen) m.renderExercisePanel(); else m.initExerciseChip();
+    if (panelOpen) await m.renderExercisePanel(); else await m.initExerciseChip();
+    setExerciseMode(m.activeExerciseType());  // #258 β-1：橋接新模式 → map.js 編輯閘（TTX 才放行外部來源）
   });
 });
 
@@ -726,7 +728,10 @@ function _loadClassicScript(src) {
       // → 地圖空白（節點/網格不出現，要 cmd-shift-R）。登入帶 token 後重抓 → 正常 render。
       reloadMapConfig();
       // P1-14 PR-2：登入後初始化 header 演習 chip（顯示 active 演習或「實戰」）。
-      import('./exercises.js').then(m => m.initExerciseChip());
+      import('./exercises.js').then(async m => {
+        await m.initExerciseChip();
+        setExerciseMode(m.activeExerciseType());  // #258 β-1：初始模式 → map.js 編輯閘
+      });
       startSessionStatusPolling();
       setPollActive(true);
       poll();

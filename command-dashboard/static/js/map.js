@@ -2256,14 +2256,27 @@ function _reapplySelection() {
   if (map && _selectedObj) map.setFeatureState(_selectedObj, { selected: true });
 }
 
+// #258 β-1：目前演習模式（'ttx' | 'real' | null）。由 main.js 橋接 setExerciseMode 推入
+// （module boundary：map.js 只 import ./ws.js + ./map/*，不直接 import exercises.js；沿用
+// applyEventTaxonomy 的 main.js 橋接慣例）。啟動 / exercise:switched / WS 重連時刷新。
+let _exerciseMode = null;
+
+/** main.js 橋接：active 演習模式變動時推入（TTX 才放行編輯外部來源）。 */
+export function setExerciseMode(type) {
+  _exerciseMode = type || null;
+}
+
 /**
- * 外部來源（TAK / pi-node / waveink）= 非指揮部自建 → 唯讀，不給刪除/編輯。
- * 對齊 backend _require_editable_source（只 manual/command 可改；外部來源 PUT/DELETE 一律擋）。
- * 前端據此：點 TAK 圖形只顯示唯讀資訊，不出現刪除對話框（否則按了也被 server 拒、誤導操作員）。
+ * 外部來源（TAK / pi-node / waveink）= 非指揮部自建。是否唯讀 **依模式**：
+ *   - manual / command（指揮部自建）：永遠可編。
+ *   - 外部來源：**演習(TTX)模式可編**（#258 β-1，COP 雙向對稱）、**實戰模式唯讀**（β-2 再放寬）。
+ * 對齊 backend `_require_editable_source`（server 權威依 active exercise type；前端僅 mode-aware 避免露出
+ * 會被 403 的鈕）。編輯外部物件**不自動回推 TAK** —— 要上 TAK 走明示「📡 廣播」鈕（避 echo / 不蓋前線真相）。
  */
 function _isReadonlySource(entity) {
   const s = entity?.source;
-  return !!s && s !== 'manual' && s !== 'command';
+  if (!s || s === 'manual' || s === 'command') return false;  // ICS 自建 → 可編
+  return _exerciseMode !== 'ttx';  // 外部來源：TTX 可編、其餘（實戰/無場次）唯讀
 }
 
 /** 外部來源圖形的唯讀資訊 modal（無刪除鈕）。 */

@@ -269,9 +269,16 @@ export function createCopStream(deps) {
     }
     _ws = ws;
     ws.onopen = () => {
+      const wasReconnect = _reconnectAttempt > 0;
       _reconnectAttempt = 0;
       // 連上先全量 resync（version_clock merge 冪等，補上斷線期間漏掉的）
       resync();
+      // #258 β-1：重連時 active exercise 可能在斷線期間被他人切換（exercise_switched WS 漏接）→
+      // 重新整 exercise 快取/chip，否則 mode-aware 編輯閘會用過時模式（如已切實戰仍露外部物件編輯 UI）。
+      // 僅重連時補（首連啟動流程已 initExerciseChip）。
+      if (wasReconnect && typeof document !== "undefined") {
+        document.dispatchEvent(new CustomEvent("exercise:switched"));
+      }
       // 啟動週期對帳（#160/#161）。self-rescheduling 迴圈 → _refreshTimer 在 tick 間恆非 null；
       // 故此 guard 確保重連 onopen 不會疊第二個迴圈（stop() 會清回 null）。
       if (_refreshTimer == null) _scheduleRefresh();
