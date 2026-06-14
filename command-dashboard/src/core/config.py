@@ -157,6 +157,11 @@ TRACK_MIN_INTERVAL_S: float = float(os.getenv("TRACK_MIN_INTERVAL_S", "5.0"))
 # 不中斷串流。0 或負值 = 關閉限速（不建議）。預設 60（典型演習人車數 × 1Hz 充裕）。
 TAK_INGEST_MAX_EVENTS_PER_SEC: float = float(os.getenv("TAK_INGEST_MAX_EVENTS_PER_SEC", "60"))
 
+# ── 軌跡 PII retention（P2-20 收尾 / #207，threat_model §8.4 政策乙案）─────────
+# cop_entity_tracks 超過此天數自動清除（人員行蹤個資不無限保存；90 天前演習將不可 AAR 回放）。
+# runtime 開關（Admin）持久化於 config 表 retention.tracks_ttl_enabled，此處為天數參數。
+TRACKS_TTL_DAYS: int = int(os.getenv("TRACKS_TTL_DAYS", "90"))
+
 # 註：舊 COP_STALE_REMOVE_WINDOW_S（#160/#161 WIP last-heard 時窗）已於 #161 reality check
 # 退場——改對齊 TAK 原生 honor `<archive/>` + honor `stale`（見 cop_entity_repo.list_cop_entities
 # 與 memory tak-streaming-archive-stale-vs-mission）。env knob 一併移除避免 dead config 誤導。

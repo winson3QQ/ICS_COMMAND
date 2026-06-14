@@ -42,3 +42,8 @@ class ConfigIn(BaseModel):
 class SuspendAllIn(BaseModel):
     # OP-1（#153）：不可逆批次停權的明確確認字串（後端強制，不依賴前端 dialog）。
     confirm: str
+
+
+class RetentionToggleIn(BaseModel):
+    """#207：軌跡 PII TTL 清理 runtime 開關。"""
+    enabled: bool

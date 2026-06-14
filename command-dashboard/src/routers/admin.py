@@ -42,6 +42,7 @@ from schemas.admin import (
     PinResetIn,
     RoleUpdateIn,
     SuspendAllIn,
+    RetentionToggleIn,
 )
 from services.realtime_hub import cop_hub  # issue #29 PR-G1b：reset 後廣播 resync
 
@@ -327,3 +328,34 @@ def rekey_node(unit_id: str, request: Request):
     if not result:
         raise HTTPException(404, "pi node not found")
     return result
+
+
+# ── 軌跡 PII retention 開關（P2-20 收尾 / #207，threat_model §8.4 政策乙案）──────
+
+
+@router.get("/retention", tags=["account-admin"])
+def get_retention(request: Request):
+    """retention 狀態（sysadmin；中央 gate /api/admin/ = SYSADMIN_ONLY 已涵蓋，
+    endpoint 內 _check_system_admin 為雙保險，同本檔慣例）。"""
+    _check_system_admin(request)
+    from core import config as _cfg
+    from services import retention_service
+
+    return {
+        "tracks_ttl_enabled": retention_service.ttl_enabled(),
+        "tracks_ttl_days": _cfg.TRACKS_TTL_DAYS,
+    }
+
+
+@router.post("/retention", tags=["account-admin"])
+def set_retention(body: RetentionToggleIn, request: Request):
+    """開/關軌跡 TTL 清理。audit-first（RETENTION_TOGGLE，個資刪除政策變更須留痕）。
+    開啟時立即跑一次清理（不等每日排程），回傳本次刪除筆數。"""
+    sess = _check_system_admin(request)
+    from services import retention_service
+
+    audit(sess["username"], None, "RETENTION_TOGGLE", "config",
+          "retention.tracks_ttl_enabled", {"enabled": body.enabled})
+    retention_service.set_ttl_enabled(body.enabled)
+    deleted = retention_service.cleanup_expired_tracks() if body.enabled else 0
+    return {"ok": True, "enabled": body.enabled, "deleted_now": deleted}

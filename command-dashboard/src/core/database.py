@@ -615,6 +615,9 @@ def _m013_cop_v1_schema(conn: sqlite3.Connection) -> None:
         )
     """)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_cop_tracks_uid_t ON cop_entity_tracks(uid, t)")
+    # #207：軌跡 PII TTL 每日清理 `DELETE ... WHERE t < cutoff`（uid 不限）→ 複合索引 leading=uid
+    # 用不上，會全表掃（tracks 為最高量表）。補單欄 t 索引讓範圍刪走索引。
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_cop_tracks_t ON cop_entity_tracks(t)")
 
     # ── cop_entity_links ──────────────────────────────────────────────────
     conn.execute("""
