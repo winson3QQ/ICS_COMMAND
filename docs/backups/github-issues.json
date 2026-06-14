@@ -2825,14 +2825,29 @@
     },
     "body": "## 緣起\nP2-14 的兩個關鍵結論 **(A) 可靠刪除「不可解」** 與 **full DataSync「價值薄」**，證據基礎**全部來自 iTAK(iOS)** 真機 dogfood（#161 2026-06-08、[#194](https://github.com/winson3QQ/ICS_COMMAND/issues/194) 2026-06-11）。**ATAK(Android，參考級全功能 client）從未實測**。ATAK 歷來對 Mission/DataSync 支援最完整，**很可能 honor server 端刪除信號並正常渲染 DataSync** → 若成立，(A) 復活、full DataSync 值得**完整**做。\n\n→ 此 issue = 取得真 ATAK 裝置後的 dogfood 清單。結果決定 P2-14 (A) 與 DataSync 去留。**不做半套**：ATAK 結果出來前不寫任何 DataSync code。\n\n## 前置\n- ATAK(Android) 裝機 → 用**同一張 step-ca cert** enroll（truststore 信任）、連 `:8089`、join 同 group（`__ANON__`）。\n- 確認 ATAK 上線、收得到現場 CoT（與 iTAK 對照基線）。\n\n## 測項\n- [ ] **A. 可靠刪除（核心）**：建 mission → 加 marker（mission-native）→ server 送 `REMOVE_CONTENT` / `DELETE` 整個 mission → **ATAK 地圖 marker 消失嗎？**（iTAK 的失敗點：收到 REMOVE 訊息但圖不動）\n- [ ] **B. `t-x-d-d` 串流刪除**：server 送 t-x-d-d（含 mission dest）→ ATAK 移除 marker 嗎？\n- [ ] **C. DataSync 渲染**：建帶**照片 + 路線/polygon**的 mission，ATAK 訂閱 → ATAK 顯示照片/幾何嗎？同時 ICS 用 `GET /Marti/api/sync/search` + `/missions/{name}/contents` 看得到該內容嗎？\n- [ ] **D. mission owner role**：ATAK **持久 streaming 訂閱**後，寫路徑（`PUT .../contents`）拿得到 `MISSION_OWNER`/`MISSION_WRITE` 嗎？（無狀態 REST 拿不到，memory tak-marti-authz-model line 18 暗示持久訂閱可能拿得到）\n- [ ] **E. archive/stale**：ATAK 對 `<archive/>` + `stale` 的顯示行為與 iTAK 是否一致（對照 #161 結論）\n\n## 判讀\n- **ATAK honor（A/B/C 任一成功）** → 推翻「iTAK-only = 普世」；重啟 P2-14 (A) 可靠刪除設計 + full DataSync 完整評估（含「從受信 Marti 用 hash 取圖 proxy」是否做，使照片可顯示）。\n- **ATAK 同 iTAK** → 確認結論為 TAK 通則；(A) 確定不做、DataSync 確定擱置。\n\n## 關聯\n- 阻擋：P2-14 (A) 可靠刪除、full DataSync（(1)-(4)）\n- 證據來源更正對象：[#194](https://github.com/winson3QQ/ICS_COMMAND/issues/194)、memory `tak-streaming-archive-stale-vs-mission`、ROADMAP P2-14 行\n- 已完成不受影響：P2-14 (C) resync（#194/PR #210，純讀 `/cot/sa`，與 client 渲染無關）",
     "closedAt": null,
-    "comments": [],
+    "comments": [
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## Dogfood finding — ATAK(Android) 真機，2026-06-14（fresh ICS / latest main / TAK 5.7 :8089）\n\n環境：ATAK(Android) 用 icscop step-ca cert enroll、連 `:8089`、join `__ANON__`；ICS 為全新 DB 的 worktree checkout（latest main），TAK 燈 connected。\n\n### 觀察 1（A 基線，expected）— 手動 marker 要 broadcast 才上 ICS\nATAK 手動放的 marker **不會自動**流到 server/ICS，需操作員按「廣播/Send」。只有**自我位置 PLI** 自動廣播（對齊 use-cases doc line 75）。按廣播後 4 種 affiliation（F 友/藍方、R 敵/紅菱、N 中立/綠方、U 不明/黃 quatrefoil）即時上 ICS、2525 框 + 色 + callsign 標籤全正確 → **A1 管線 + P2-05 渲染 PASS**。非 bug。\n\n### 觀察 2（核心 finding）— ATAK 本機刪除 archived marker → **不向上傳播** → ICS 永久殘留\n一顆早先放的 `atakF1` 在 **ATAK 上已本機刪除**，但 **ICS 仍顯示**（solid，未變灰、未移除）。\n\n**DB 實證**（`cop_entities`）：\n```\nuid      = 9f647e92-bb7a-4695-ad9c-60be3e6f6fec\ncallsign = atakF1     type = a-n-G（中立）   source = tak   how = h-g-i-g-o\ntime     = 2026-06-13T23:39:45Z   （最後聽到，之後無更新）\nstale    = 2026-06-13T23:44:36Z   （早已過期）\narchived = 1          deleted = 0\nattributes.archive = [{},{}]      （ATAK 送 marker 時帶 <archive/>）\ncreator  = ANDROID-2eba33cffad87929 (callsign 3QQaTak)\n```\n\n**根因（兩層相疊）**：\n1. `archived=1` —— ATAK marker 帶 `<archive/>`，ICS honor TAK 原生語意（#161）→ **archive = 持久、不因過 stale 老化/移除**（故 stale 早過仍 solid 顯示）。\n2. **ATAK 本機刪除不送任何移除信號** → ICS（subscriber）無從得知 → 永久殘留。\n\n**對 #211 的意義**：#211 假設「ATAK 可能 honor 刪除、不像 iTAK」。**本筆為反向證據** —— ATAK→ICS 方向，**ATAK 本機刪 archived marker 不傳播，行為與 iTAK 一致**（對齊 [[tak-streaming-archive-stale-vs-mission]] / #194）。註：#211 item A 測的是 **server→ATAK 的 Mission REMOVE/DELETE**（不同方向），仍待真測；本筆屬「streaming 刪不掉」家族的 ATAK 佐證。\n\n### 觀察 3（疊加缺口）— ICS 無操作員清除路徑\nTAK 來源 = 唯讀鏡像（`static/js/map.js:2234`：外部來源不給刪除/編輯，點圖只顯唯讀資訊、無刪除鈕）。故 archived TAK marker 在 ICS **操作員無法清除**（除 admin reset 全清）→ **直接坐實 [#217](https://github.com/winson3QQ/ICS_COMMAND/issues/217) 的缺口**（「現場刪了、指揮部永遠不清」＋「declutter/移出 COP 需對 TAK 標記也開」）。\n\n### 判讀\n- 「照 TAK 原生 honor archive/stale」（#161）+ 「streaming 刪不掉」+「TAK 來源 UI 唯讀」三者合起來 = 指揮部 COP 留下無法清除的鬼影。**這是 doctrine 不一致、非 code bug**，但操作上是真痛點 → 強化 **#217 重評**（統一 last-heard / 保留+filter / 混合）與 P2-14 可靠刪除的優先級。\n- **下一步真測（#211 本體）**：server→ATAK 的 Mission REMOVE_CONTENT/DELETE + `t-x-d-d` 是否讓 ATAK 移圖（A/B 測項，需手動 Marti REST 驅動）。\n",
+        "createdAt": "2026-06-14T00:17:59Z",
+        "id": "IC_kwDOSnBjpc8AAAABGCdW-Q",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/211#issuecomment-4700198649"
+      }
+    ],
     "createdAt": "2026-06-11T06:50:34Z",
     "labels": [],
     "milestone": null,
     "number": 211,
     "state": "OPEN",
     "title": "ATAK(Android) Mission 刪除 + DataSync dogfood — 驗證 P2-14 (A)/(DataSync) 是否 iTAK-only 限制",
-    "updatedAt": "2026-06-11T06:50:34Z",
+    "updatedAt": "2026-06-14T00:17:59Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/211"
   },
   {
