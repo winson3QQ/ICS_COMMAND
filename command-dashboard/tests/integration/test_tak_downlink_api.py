@@ -138,7 +138,9 @@ def test_share_geometry_entity(client, auth, captured_cot, tak_enabled):
     )
     r = client.post(f"/api/tak/share/{uid}", headers=auth)
     assert r.status_code == 200
-    assert '<polyline closed="true"' in captured_cot[0]  # 幾何分流
+    # 幾何分流 → ATAK 原生 <link> 序列 + 填色（#211 格式修正）
+    assert "<link point=" in captured_cot[0]
+    assert "<fillColor" in captured_cot[0]
 
 
 def test_share_unknown_uid_404(client, auth, captured_cot, tak_enabled):

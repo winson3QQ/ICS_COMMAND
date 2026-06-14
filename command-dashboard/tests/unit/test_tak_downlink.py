@@ -158,9 +158,10 @@ def test_entity_to_cot_route_geometry():
         "attributes": {"kind": "route", "vertices": [[25.0, 121.0], [25.1, 121.1]]},
     }
     e = _parse_event(tak_downlink.entity_to_cot(ent, now=_NOW))
-    pl = e.find("detail/shape/polyline")
-    assert pl is not None and pl.get("closed") == "false"
-    assert len(pl.findall("vertex")) == 2
+    # 出向改 ATAK 原生 <link> 序列（#211）：開放線 2 點、不補閉合、無填色
+    assert len(e.findall("detail/link")) == 2
+    assert e.find("detail/fillColor") is None
+    assert e.find("detail/strokeColor") is not None
 
 
 def test_entity_to_cot_polygon_closed():
@@ -172,4 +173,6 @@ def test_entity_to_cot_polygon_closed():
         "attributes": {"kind": "polygon", "vertices": [[25.0, 121.0], [25.1, 121.0], [25.1, 121.1]]},
     }
     e = _parse_event(tak_downlink.entity_to_cot(ent, now=_NOW))
-    assert e.find("detail/shape/polyline").get("closed") == "true"
+    # closed polygon：3 頂點 + 閉合 link（首尾相同）+ 填色（ATAK 原生格式，#211）
+    assert len(e.findall("detail/link")) == 4
+    assert e.find("detail/fillColor") is not None

@@ -73,6 +73,12 @@ def build_command_cot(
     )
 
 
+# 出向幾何預設樣式（無 entity color 時）。stroke 不透明白（ATAK 預設可見）；fill 半透明黑。
+_DEFAULT_STROKE_ARGB = -1  # 0xFFFFFFFF 白
+_FILL_ALPHA = 0x40  # 出向填色透明度（~25%，現場端看得到底圖）
+_DEFAULT_FILL_ARGB = _FILL_ALPHA << 24  # 0x40000000 半透明黑（與 _FILL_ALPHA 同源，避免 drift）
+
+
 def build_geometry_cot(
     *,
     uid: str,
@@ -81,32 +87,52 @@ def build_geometry_cot(
     closed: bool,
     callsign: str | None = None,
     remarks: str | None = None,
+    color: str | None = None,
+    dashed: bool = False,
+    dotted: bool = False,
     stale_minutes: int = 60,
     now: datetime | None = None,
 ) -> str:
-    """組一個帶 `<shape>` 幾何的 CoT XML 指令（線/區下行，P2-30 / #180）。
+    """組一個 ATAK 原生格式的幾何 CoT 指令（線/區下行，P2-30 / #180；格式 #211 ATAK dogfood 修正）。
 
-    幾何序列化委派 `geometry_service.vertices_to_cot_shape`（對稱 P2-08 入向，round-trippable）。
+    幾何序列化委派 `geometry_service.vertices_to_cot_links`（`<link point=...>` 序列，對稱 P2-08
+    入向 round-trippable）。**帶樣式**（strokeColor/strokeWeight/strokeStyle，closed 另加 fillColor）
+    —— #211 dogfood：ATAK 不渲染無樣式繪圖（iTAK 寬鬆才吃舊 `<shape><polyline>`）；`<link>`+樣式
+    為 ATAK/iTAK 雙吃超集。樣式色由 entity `attributes.color`（hex）衍生；`strokeStyle` 三態與入向
+    對稱（`dotted` > `dashed` > solid，分別由 `attributes.dotted` / `attributes.dash` 來，不漏 dotted）。
     event `<point>` 取頂點形心（ATAK 標籤錨點）。含 `<archive/>`；callsign/remarks 走 XML escape。
     type_ 慣例：closed polygon → `u-d-f`、line/route → `b-m-r` 或 `u-d-f`（呼叫端定，schema 已驗白名單）。
     """
     from services import geometry_service
 
-    # 同一組 cleaned 點供 shape 與形心用（避免 shape 過濾、形心沒過濾的分歧，review #180）。
+    # 同一組 cleaned 點供 links 與形心用（避免 links 過濾、形心沒過濾的分歧，review #180）。
     pts = geometry_service.clean_vertices(vertices, closed=closed)
-    shape = geometry_service.vertices_to_cot_shape(vertices, closed=closed)
+    links = geometry_service.vertices_to_cot_links(vertices, closed=closed)
     now = now or datetime.now(UTC)
     t = now.strftime("%Y-%m-%dT%H:%M:%S.000Z")
     stale = (now + timedelta(minutes=stale_minutes)).strftime("%Y-%m-%dT%H:%M:%S.000Z")
-    # 形心（點落在頂點集中心；純為 event <point> 錨點，不影響 shape 幾何）
+    # 形心（點落在頂點集中心；純為 event <point> 錨點，不影響 link 幾何）
     lat_c = sum(la for la, _ in pts) / len(pts)
     lon_c = sum(lo for _, lo in pts) / len(pts)
 
-    detail_parts: list[str] = [shape]
+    stroke = geometry_service.hex_to_argb_int(color, alpha=0xFF)
+    stroke = _DEFAULT_STROKE_ARGB if stroke is None else stroke
+    style = "dotted" if dotted else ("dashed" if dashed else "solid")
+
+    detail_parts: list[str] = [
+        links,
+        f"<strokeColor value='{stroke}'/>",
+        "<strokeWeight value='3.0'/>",
+        f"<strokeStyle value='{style}'/>",
+    ]
+    if closed:
+        fill = geometry_service.hex_to_argb_int(color, alpha=_FILL_ALPHA)
+        detail_parts.append(f"<fillColor value='{_DEFAULT_FILL_ARGB if fill is None else fill}'/>")
     if callsign:
         detail_parts.append(f"<contact callsign={quoteattr(callsign)}/>")
     if remarks:
         detail_parts.append(f"<remarks>{escape(remarks)}</remarks>")
+    detail_parts.append("<labels_on value='true'/>")
     detail_parts.append("<archive/>")
     detail = "".join(detail_parts)
 
@@ -150,6 +176,10 @@ def entity_to_cot(entity: dict, *, stale_minutes: int = 60, now: datetime | None
             closed=(kind == "polygon"),
             callsign=callsign,
             remarks=remarks,
+            # #214 / #211：帶 entity 樣式（color hex、dash/dotted bool）→ ATAK 才渲染（無樣式不畫）。
+            color=attrs.get("color"),
+            dashed=bool(attrs.get("dash")),
+            dotted=bool(attrs.get("dotted")),
             stale_minutes=stale_minutes,
             now=now,
         )

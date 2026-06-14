@@ -1869,6 +1869,19 @@ function _ensureEntityLayers() {
   map.on('click', 'zones-abbr', (e) => _onZoneClick(e));  // abbr 字也可點，跟 base 同 handler
   map.on('click', 'zones-military-icon', (e) => _onZoneClick(e));  // 乙-2b：軍用 2525 框 → 事件 modal（非 TAK 詳情）
 
+  // #212：右鍵繪圖（polygon/route）→ 廣播 menu（鏡像 contact 右鍵；重用 _openContactBroadcastMenu，
+  // 該 menu 已 gate canAccessMapObjects + _takEnabled）。唯讀 TAK 來源不開（已是現場端的圖、無須回推）；
+  // e.preventDefault 擋瀏覽器原生選單。layer 事件接得到（繪圖無 DOM handle 蓋住，與 contact 不同）。
+  const _onShapeContext = (e) => {
+    const id = e.features?.[0]?.properties?.id;
+    if (!id || _isReadonlySource(_copStream?.getEntity(id))) return;
+    e.preventDefault?.();
+    _openContactBroadcastMenu(id, e.originalEvent);
+  };
+  for (const lyr of ['polygons-fill', 'routes-line-solid', 'routes-line-dash', 'routes-line-dotted']) {
+    map.on('contextmenu', lyr, _onShapeContext);
+  }
+
   // P1-10e：點到空白（游標下無 polygon/route）→ 取消選中。layer-specific click 先觸發
   // （已 _setSelection），此 general handler 後觸發；queryRenderedFeatures 有命中就不清。
   map.on('click', (e) => {
@@ -2265,7 +2278,7 @@ function _onPolygonClick(e) {
   }
   _deps.openModal?.(`▱ ${poly.label || '範圍'}`,
     _featureInfo(desc, 'deletePolygon', poly.id,
-      poly.label_anchor ? { resetAnchorAction: 'resetPolyLabelAnchor' } : {}));
+      { ...(poly.label_anchor ? { resetAnchorAction: 'resetPolyLabelAnchor' } : {}), shareTak: true }));
 }
 
 function _onInfraClick(e) {
@@ -2442,7 +2455,7 @@ function _onRouteClick(e) {
   }
   _deps.openModal?.(`↗ ${route.label || '路線'}`,
     _featureInfo(desc, 'deleteRoute', route.id,
-      route.label_anchor ? { resetAnchorAction: 'resetRouteLabelAnchor' } : {}));
+      { ...(route.label_anchor ? { resetAnchorAction: 'resetRouteLabelAnchor' } : {}), shareTak: true }));
 }
 
 function _onZoneClick(e) {
@@ -2902,6 +2915,14 @@ function _featureInfo(desc, action, id, extra = {}) {
     html += `<button data-action="${extra.resetAnchorAction}" data-id="${id}"
       style="width:100%;padding:7px;background:transparent;border:1px solid var(--border);color:var(--text2);
       border-radius:6px;cursor:pointer;margin-bottom:8px;font-family:var(--mono);font-size:11px;">↺ 重設標籤至自動位置</button>`;
+  }
+  // #212：線/區「推到 TAK」—— 鏡像 contact 廣播，重用泛用 `_shareContactTak`（POST /api/tak/share/{uid}，
+  // 後端 entity_to_cot 對 kind=polygon/route 走幾何序列化）。gate 與 contact 一致（canAccessMapObjects
+  // + _takEnabled，TAK 停用不顯示、後端 share 停用回 409）。出向格式 ATAK 原生 link+樣式（#211 修正）。
+  if (extra.shareTak && canAccessMapObjects() && _takEnabled) {
+    html += `<button data-action="shareContactTak" data-id="${id}"
+      style="width:100%;padding:8px;background:var(--green,#2e8b57);color:#fff;border:none;border-radius:6px;
+      font-weight:700;cursor:pointer;margin-bottom:8px;font-family:var(--mono);font-size:12px;">📡 廣播</button>`;
   }
   html += `<button data-action="${action}" data-id="${id}"
     style="width:100%;padding:8px;background:var(--red);color:#fff;border:none;border-radius:6px;
