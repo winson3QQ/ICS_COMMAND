@@ -3571,5 +3571,25 @@
     "title": "feat(tak): COP 雙向對稱(β) — 放開 #146 外部來源唯讀、TAK 物件可編輯/移動/刪除 + threat_model §8.2 改寫",
     "updatedAt": "2026-06-14T02:46:50Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/258"
+  },
+  {
+    "assignees": [],
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "body": "## 緣起\n#212 出向 zone/route 廣播驗收（2026-06-14 ATAK 真機 dogfood）發現：**route 在 TAK 不是「一條帶樣式的線」，是個富導航物件**。ICS 目前把 route 壓平成「polyline + 樣式」，雙向都丟失 route 語意。使用者拍板「route 需要深挖、不是只有畫線這麼簡單」。\n\n## 真機基準：ATAK route「Route 1」實際格式（ICS 入向已捕捉）\n```json\n{\n  \"contact\": {\"callsign\": \"Route 1\"},\n  \"link\": [\n    {\"uid\": \"...\", \"callsign\": \"Route 1\", \"type\": \"b-m-p-w\", \"point\": \"lat,lon,hae\", \"relation\": \"c\"},\n    {\"uid\": \"...\", \"callsign\": \"\",        \"type\": \"b-m-p-c\", \"point\": \"lat,lon,hae\", \"relation\": \"c\"},\n    {\"uid\": \"...\", \"callsign\": \"TGT\",     \"type\": \"b-m-p-w\", \"point\": \"lat,lon,hae\", \"relation\": \"c\"}\n  ],\n  \"link_attr\": {\"planningmethod\": \"Infil\", \"color\": \"-65536\", \"method\": \"Walking\",\n                \"prefix\": \"CP\", \"style\": \"2\", \"type\": \"On Foot\", \"stroke\": \"3\",\n                \"direction\": \"Infil\", \"routetype\": \"Primary\", \"order\": \"Ascending Check Points\"},\n  \"__routeinfo\": {}, \"labels_on\": {\"value\": \"false\"}, \"strokeColor\": ..., \"strokeStyle\": ...\n}\n```\n**關鍵**：\n- `link.type`：**`b-m-p-w`（waypoint＝有 uid+名字的 checkpoint marker）** vs **`b-m-p-c`（control point＝只塑線、無 marker）**。\n- `link_attr`：route 導航屬性（planningmethod / method=Walking|Driving / prefix=CP / routetype / direction=Infil|Exfil / order / color / stroke / style）。\n- waypoint 可命名（如 `TGT`）= 戰術 checkpoint。\n\n## 落差（雙向）\n- **入向**：`extract_geometry` 把 route 壓成 `vertices`（純座標）→ **丟失** waypoint 名字、link_attr、__routeinfo、導航語意。\n- **出向**：`build_geometry_cot`/`vertices_to_cot_links` 只送光禿的 link → **無 waypoint 結構、無 link_attr**；裸 link 還被 ATAK 當 waypoint 自動生「<route名> SP」起點 marker（雜訊、archived 累積）。\n\n## 已做的止血（partial，本 issue 重做）\n`vertices_to_cot_links` route 改送 `type=\"b-m-p-c\"` control point（壓掉「SP」起點 marker，#212 partial）。**只解表面症狀，未碰底層模型落差。**\n\n## 待深挖（scope 問題，先定方向再實作）\n1. **保真到哪層？** ICS route 要不要保留 waypoint（命名 checkpoint）/ link_attr 導航屬性，還是只當「styled line + control points」（接受丟失 route 語意）？\n2. **資料模型**：`attributes` 是否擴 `waypoints`（含名字/type）+ `route_attr`（導航屬性），讓入向不丟、出向可重建？\n3. **雙向 round-trip**：入向保留 → 出向忠實重建（對齊 #214 出向忠實度 + COP 雙向對稱 doctrine [memory `cop-collaborative-edit-shared-truth`]）。\n4. **前端**：route 編輯（waypoint 增刪/命名）UI？（與 #257 自建物件編輯對稱半協調）\n\n## 關聯\n- 緣起 #212（partial 止血落於此）；忠實度 #214；雙向對稱 [#257](https://github.com/winson3QQ/ICS_COMMAND/issues/257)/[#258](https://github.com/winson3QQ/ICS_COMMAND/issues/258) + memory `cop-collaborative-edit-shared-truth`。\n- 真機基準格式見上（ATAK「Route 1」），動工第一步對活 ATAK 再抓一次確認。\n\n## 性質\n資料模型 + 雙向序列化（入向 `extract_geometry` / 出向 `build_geometry_cot`）+ 可能前端。**先定保真層級再實作。**\n",
+    "closedAt": null,
+    "comments": [],
+    "createdAt": "2026-06-14T04:58:35Z",
+    "labels": [],
+    "milestone": null,
+    "number": 260,
+    "state": "OPEN",
+    "title": "Route 物件忠實度深挖：ICS route 模型過簡（polyline+樣式）vs TAK route 富物件（waypoint/link_attr/導航語意）",
+    "updatedAt": "2026-06-14T04:58:35Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/260"
   }
 ]
