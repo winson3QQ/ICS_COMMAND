@@ -3935,5 +3935,47 @@
     "title": "feat(tak): #212/#214 出向幾何 ATAK 原生 link+樣式 + zone/route 廣播 UI（+ route b-m-p-c partial + COP doctrine memory）",
     "updatedAt": "2026-06-14T06:22:53Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/261"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "## #257 α-1：長按移動自建 polygon/route\n\nCOP 雙向對稱 doctrine（[[cop-collaborative-edit-shared-truth]]）落地第一步：ICS 自建繪圖可像 TAK client 一樣整體移動，已分享者即時反映回 ATAK/iTAK。\n\n### 行為（C 設計 — live-follow）\n- 長按命中可編輯 polygon/route → 進整體移動（而非建立對話框）\n- `pointermove` 平移全頂點 + live re-render（base+Δ 暫態覆蓋，不持久化）\n- `pointerup` 一次 commit（PUT vertices + label_anchor 一併平移）\n- 已分享者經 cop.py `_resync_tak_if_shared` 自動重推 CoT → 即時上 TAK\n- 唯讀 TAK 來源不可進（=#258 範圍）；label drag（質心 handle）手勢不同、不受影響\n\n### 變更\n- **map.js**：`onLongPress` 分流 → `_armShapeMove`；`_applyShapeMoveOverride` 注入 `_renderPolygons`/`_renderRoutes`；window pointer 事件（拖出畫布外仍 commit）；commit `try/catch/finally` 保證 `_movingShape` 必清（連線中斷不卡死）\n- **cop.py**：PUT 整包覆寫 attributes 時以 existing 值蓋 `shared_tak`——有則保留（修移動 + pre-existing label drag 兩處 clobber，否則斷重推），無則 pop client 帶值（hardening：不得繞過 `/api/tak/share` 自設已分享）\n\n### 驗證\n- eslint clean、pyflakes clean、pytest **24 passed**（含 shared_tak 整包 PUT 保留 + client 不得自設 兩新案）\n- iPad 實機驗：zone/route 長按跟手移動 + 放開即時上 TAK ✓\n- Code review（finder + verifier agent）6 findings 全數處置\n\nCloses part of #257（α-1；α-2 逐頂點 reshape / α-3 marker 編輯後續）\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+    "closedAt": "2026-06-14T08:00:50Z",
+    "comments": [],
+    "createdAt": "2026-06-14T08:00:29Z",
+    "headRefName": "feat/issue-257-edit-move",
+    "labels": [],
+    "mergedAt": "2026-06-14T08:00:50Z",
+    "number": 262,
+    "state": "MERGED",
+    "title": "feat(cop): #257 α-1 — 長按移動自建 polygon/route（live-follow + 即時上 TAK）",
+    "updatedAt": "2026-06-14T08:00:51Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/262"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "## #257 α-2 + α-2b：自建 polygon/route 逐頂點編輯\n\n接續 α-1（整體移動，PR #262）。詳情 modal「✎ 編輯頂點」鈕進入編輯模式，操作工作副本 + live re-render，✓ 完成才一次 PUT（整包 attributes 保 `shared_tak` → 已分享者 cop.py `_resync_tak_if_shared` 自動重推 TAK），✕ 取消丟棄。頂點存「開放」陣列、renderer 自動收尾 → 增/刪純為陣列 splice，**後端無改動**。\n\n### α-2 reshape（拖既有頂點）\n- 每頂點一個 26px draggable handle，拖 → 移動該頂點 live-follow\n- `_applyVertexEditOverride` 注入 `_renderPolygons`/`_renderRoutes`\n- 編輯中撤掉「該」圖形 label drag handle（免質心 handle 搶 PUT）；`_vertexCommitInFlight` 擋 double-tap ✓\n\n### α-2b insert / delete\n- **插入**：每邊中點空心 ghost handle，拖 → 該邊插入新頂點並跟手（**延後 splice**：位移跨 6px 門檻才插，免觸控微抖塞冗餘點）。polygon n 段含閉合邊、route n-1 段\n- **刪除**：點頂點 → ✕ 徽章 → 點 ✕ 刪。min 守門 `{polygon:3, route:2}`\n- 增/刪後一律全重建 handle（index 位移免手動維護）\n\n### α-1 UX 補強\n- 長按抓取進入移動時：桌機游標轉 grabbing、觸控跳「✋ 已抓取」提示（原本無回饋）\n\n### 守門\n- 唯讀 TAK 來源（外部）無「✎ 編輯頂點」鈕（=#258）\n- 編輯中點形狀不重開詳情、長按不觸發整體移動；`_editingShape` 納入 shouldSuppressInteraction\n\n### 驗證\n- eslint clean\n- Windows 實機驗：reshape / 插入 / 刪除 / ✓ 上 TAK / ✕ 還原 / 抓取游標回饋 ✓\n- 兩輪 code review（finder+verifier agent）findings 全處置（label PUT race、commit 重入、中點微抖冗餘頂點）\n\nCloses #257 α-2 / α-2b（α-1 已 merge #262；α-2b 插入/刪除完成，後續 α-3 = marker type/敵我態編輯）\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+    "closedAt": "2026-06-14T09:39:26Z",
+    "comments": [],
+    "createdAt": "2026-06-14T09:39:14Z",
+    "headRefName": "feat/issue-257-a2b-insert-delete",
+    "labels": [],
+    "mergedAt": "2026-06-14T09:39:26Z",
+    "number": 263,
+    "state": "MERGED",
+    "title": "feat(map): #257 α-2 + α-2b — 自建 polygon/route 逐頂點編輯（reshape + 插入/刪除）",
+    "updatedAt": "2026-06-14T09:39:26Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/263"
   }
 ]

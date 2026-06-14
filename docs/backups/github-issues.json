@@ -3541,7 +3541,7 @@
       "name": ""
     },
     "body": "## 原則\nCOP 雙向對稱 doctrine（使用者 2026-06-14 拍板，memory `cop-collaborative-edit-shared-truth`）：地圖資料以「當前真實」為準、協作可編輯。本 issue = 對稱性的**無 doctrine 爭議半**：ICS 對**自己建立**的 sensor 物件補上 TAK client 早有的編輯/移動能力。\n\n## 缺口（reality check 2026-06-14，code 證實）\nICS 自建（`source=manual`/`command`）的繪圖/標記在 TAK client 上可 reshape/move/edit，**ICS 自己卻不行**：\n- **zone（polygon/route）**：`_onPolygonClick`/`_onRouteClick` 只開 detail（刪除 + 廣播）—— **無 drag handle、無 reshape**（`map.js`）。\n- **marker（contact）**：有 `_syncContactDragHandles`（可拖移）+ `saveContactNote`（只改 callsign/remarks）—— **不能改型別/affiliation/符號/幾何**。\n\n## 為何無 doctrine 爭議\nICS 自建物件 = `source∈{manual,command}` ∈ `_DASHBOARD_OWNED_SOURCES` → **後端 `_require_editable_source` 本來就准 PUT 編輯**。卡的純粹是**前端沒做**。（外部 TAK 來源的編輯＝Issue β，那才動 doctrine。）\n\n## Scope\n- [ ] **polygon/route move**：拖移整個繪圖（仿 contact `_syncContactDragHandles` / event zone `_syncEventDragHandles` 機制）。\n- [ ] **polygon/route reshape**：頂點編輯（拖頂點 / 增刪頂點）→ 更新 `attributes.vertices`。\n- [ ] **marker edit**：改 affiliation/型別/符號（非僅 note）—— 注意 contact 的 type 來自 affiliation→CoT type 映射。\n- [ ] **編輯/移動後即時重推 CoT**：已分享（`attributes.shared_tak`）的物件 move/reshape/edit → 重推（P2-30 part3 已有「move/note 即時重推」管線，擴到 zone + reshape + 型別變更）。\n- [ ] 即時同步給其他 ICS client（既有 cop_stream/WS）+ 樂觀鎖（version_clock CAS）。\n- [ ] 測試 + `/verify`（真機 ATAK：ICS 移動/改 zone → 現場端即時更新）。\n\n## Out of scope\n- 編輯 **TAK 來源**（`source=tak`）的物件 = **Issue β**（動 #146 doctrine）。\n\n## 依賴 / 關聯\n- 後端編輯路徑（PUT `/api/cop/entities/{uid}` + If-Match）+ propagation（P2-30 `entity_to_cot`/share）皆已在。\n- doctrine：memory `cop-collaborative-edit-shared-truth`；姊妹 = **Issue β**（外部來源對稱，含 #146 放開）。\n- 出向幾何格式（#211/#212 已修，P2-36）：reshape 後重推走同一條 ATAK 原生 `<link>`+樣式序列化。\n\n## 性質\n純前端中等重構 + 既有後端/propagation 重用；無安全邊界變更。\n",
-    "closedAt": null,
+    "closedAt": "2026-06-14T09:39:27Z",
     "comments": [
       {
         "author": {
@@ -3576,9 +3576,9 @@
     "labels": [],
     "milestone": null,
     "number": 257,
-    "state": "OPEN",
+    "state": "CLOSED",
     "title": "feat(map): COP 雙向對稱(α) — ICS 自建 zone/route 可 reshape/move、marker 可 edit + 即時重推（無 doctrine）",
-    "updatedAt": "2026-06-14T07:02:52Z",
+    "updatedAt": "2026-06-14T09:39:27Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/257"
   },
   {
