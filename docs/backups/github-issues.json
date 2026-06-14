@@ -3556,6 +3556,20 @@
         "minimizedReason": "",
         "reactionGroups": [],
         "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/257#issuecomment-4700940212"
+      },
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## α-1 設計修正：B → C（長按進移動 + live-follow），2026-06-14 iPad reality check 衍生\n\n### 為何不是 B（常駐 handle）\nB（選中/常駐質心 handle）**撞既有 label drag**：`_polyLabelMgr`/`_routeLabelMgr`（LabelMarkerManager）的 label 拖曳 handle **就在質心**（無 `label_anchor` 時 = `polygonCentroid`，map.js:2511）→ 兩個可拖 DOM handle 疊一起、語意衝突。v1（常駐質心 handle）已 revert。\n\n### 定案：C（使用者拍板）\n**長按圖形 → 進「移動模式」→ 跟手 live-follow → 放開 commit + 即時重推 TAK**；label drag（質心）維持不動（長按是不同手勢，不撞）。\n\n### Reality check（可行，皆有現成機制）\n- **長按 hit-detection 已有**：`onLongPress`（maplibre_core）用 `queryRenderedFeatures(point, {layers})` 分流（map.js:460；命中 marker→篩通聯、空地→建立對話框）→ **加分支**：命中 `polygons-fill`/`routes-line-*` 且 `!_isReadonlySource` → 進移動模式（而非建立對話框）。\n- **live-follow 已有**：contact 拖曳 `onDrag` → `_copStream.dragLocal(id, lat, lng)` + `_renderContacts({skipHandleSync:true})` 每幀重繪（map.js:2645）→ 套到圖形＝**平移全頂點 + live re-render**（需 polygon/route 的 dragLocal-equivalent：暫態 override vertices 再 `_renderPolygons`/`_renderRoutes`）。\n- **即時重推 TAK**：commit（PUT）時 `cop.py _resync_tak_if_shared` 對 `shared_tak` entity 自動重推（無需每幀推）。\n\n### 可重用邏輯（v1 已驗對）\n- 平移：`moved = vertices.map(([la,lo]) => [la+dLat, lo+dLng])`，Δ = 放開座標 − 長按起點。\n- commit：`updateEntity(id, {lat:新質心, lon:..., attributes:{...現值, vertices:moved}})` —— **後端 attributes 整包 json.dumps 取代（非 merge），必須讀現值整包送、保留 `shared_tak`**（否則掉分享 + 斷重推）。`_polyCentroid` helper 已存在（map.js:2548）。\n- **label 跟著走**：commit 時若有 `attributes.label_anchor` → 一併平移 Δ（否則 title 留原地）。\n\n### 待實作（C，custom 長按-拖曳手勢）\n1. `onLongPress` 加「命中可編輯 polygon/route → arm 移動模式」分支（+ banner 提示）。\n2. arm 後 touchmove/mousemove → 暫態平移全頂點 + live re-render（dragLocal-for-shape）。\n3. touchend/mouseup → commit（PUT vertices + 平移 label_anchor + auto 重推 TAK）+ 退出移動模式；點別處取消。\n4. 唯讀 TAK 來源不可進（= #258）。\n5. eslint/vitest + iPad 真機驗（長按 → 跟手 → 放開即時上 TAK）。\n\n> 比 EventDragManager 常駐 handle 複雜（自訂手勢），但避開 label 衝突 + 符合 touch 直覺。\n",
+        "createdAt": "2026-06-14T07:02:52Z",
+        "id": "IC_kwDOSnBjpc8AAAABGDN3hg",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/257#issuecomment-4700993414"
       }
     ],
     "createdAt": "2026-06-14T02:46:49Z",
@@ -3564,7 +3578,7 @@
     "number": 257,
     "state": "OPEN",
     "title": "feat(map): COP 雙向對稱(α) — ICS 自建 zone/route 可 reshape/move、marker 可 edit + 即時重推（無 doctrine）",
-    "updatedAt": "2026-06-14T06:37:08Z",
+    "updatedAt": "2026-06-14T07:02:52Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/257"
   },
   {
