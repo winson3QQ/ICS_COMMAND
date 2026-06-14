@@ -66,6 +66,15 @@ def test_links_closed_appends_closing_point():
     assert links.count("<link") == 4  # 3 頂點 + 閉合點（首尾相同）
 
 
+def test_links_route_uses_control_points_polygon_bare():
+    # #211 route dogfood：route(open) link 帶 b-m-p-c（control point）→ ATAK 不建「SP」航點 marker；
+    # polygon(closed) 維持裸 link（無航點問題）。
+    route_links = vertices_to_cot_links([[24.9, 121.4], [25.0, 121.5]], closed=False)
+    assert 'type="b-m-p-c"' in route_links
+    poly_links = vertices_to_cot_links([[25.0, 121.0], [25.1, 121.0], [25.1, 121.1]], closed=True)
+    assert "b-m-p-c" not in poly_links  # polygon 不帶 control-point type（裸 link）
+
+
 def test_hex_to_argb_int_symmetric_with_inbound():
     # 對稱 cop_service._argb_int_to_hex：黃 0xFFFFFF00 → -256
     assert hex_to_argb_int("#ffff00", alpha=0xFF) == -256

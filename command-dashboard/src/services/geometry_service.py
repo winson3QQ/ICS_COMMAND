@@ -215,12 +215,18 @@ def vertices_to_cot_links(vertices: list[list[float]], *, closed: bool) -> str:
 
     **取代舊 `vertices_to_cot_shape`**（`<shape><polyline>`）——#211 ATAK dogfood 實證：ATAK 只
     渲染 `<link>` 序列 + stroke/fill 樣式的繪圖，不認無樣式 `<shape><polyline>`（iTAK 寬鬆兩種皆吃）。
-    closed → 補閉合 link（首點重複），對齊 `extract_geometry` 以「首尾相同」判 Polygon（round-trip 仍通）。
+
+    **polygon（closed）**：裸 `<link point>` + 補閉合 link（首點重複），對齊 `extract_geometry`
+    以「首尾相同」判 Polygon（round-trip 仍通）。
+    **route（open）**：link 帶 **`type="b-m-p-c"`（control point）**——#211 route dogfood 實證：裸
+    `<link>` 會被 ATAK 當 **waypoint** 自動生「<route名> SP」起點 marker（雜訊、archived 累積）；
+    control point 只塑線、無航點 marker。`relation="c"` 對齊 ATAK 真機 route 格式。
     驗證走 `clean_vertices`（座標範圍 + 點數門檻）。樣式/event 包裝在 `tak_downlink.build_geometry_cot`。
     """
     pts = clean_vertices(vertices, closed=closed)
-    links = "".join(f'<link point="{la},{lo},0"/>' for la, lo in pts)
     if closed:
+        links = "".join(f'<link point="{la},{lo},0"/>' for la, lo in pts)
         la0, lo0 = pts[0]
-        links += f'<link point="{la0},{lo0},0"/>'  # 閉合點（首尾相同 → Polygon）
-    return links
+        return links + f'<link point="{la0},{lo0},0"/>'  # 閉合點（首尾相同 → Polygon）
+    # route：control point，ATAK 不建航點 marker（裸 link → waypoint → 自動「SP」起點，#211）
+    return "".join(f'<link type="b-m-p-c" relation="c" point="{la},{lo},0"/>' for la, lo in pts)
