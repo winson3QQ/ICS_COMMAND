@@ -2789,7 +2789,7 @@
       "name": ""
     },
     "body": "P2-20 row 的 compliance 尾巴（「軌跡 PII retention policy 文件化」）。**2026-06-11 使用者拍板＝乙案＋開關**：\n\n## 決策\n- **政策**：ICS 側軌跡（`cop_entity_tracks`）retention = **exercise 刪除 cascade（既有）＋ 90 天 TTL 自動清理（新）**；TAK PG 側為 ops SOP（開 Data Retention GUI 設 TTL）。\n- **Admin 開關**：sysadmin 可 runtime 開/關 TTL 清理（比照 P2-24 toggle 模式：config 表持久化、audit-first）。**預設開啟**（政策出廠生效；可關以支援長保存需求）。\n- 90 天前的演習將**不能再 AAR 回放**（軌跡已清）——政策已知 trade-off。\n\n## 落地\n- [ ] `services/retention_service.py`：`cleanup_expired_tracks()`（刪 `t <` 90 天 cutoff；筆數寫 `RETENTION_CLEANUP` audit）\n- [ ] lifespan 週期 task（每日 + 開機跑一次；每次跑前讀開關）\n- [ ] `POST /api/admin/retention {enabled}` + GET 狀態（`/api/admin/` 中央 gate = SYSADMIN_ONLY 自動涵蓋）；`RETENTION_TOGGLE` audit-first；config key `retention.tracks_ttl_enabled`；TTL 天數 env `TRACKS_TTL_DAYS`（預設 90）\n- [ ] threat_model §8.4 retention 段升級為**正式政策**（乙案 + 開關 + TAK 側 SOP + trade-off 記明）\n- [ ] 測試：過期刪/未過期留/關閉時 no-op/RBAC 403/audit 留痕\n- [ ] `/code-review` + `/security-review`；ROADMAP P2-20 註記\n\n## 範圍\n碰 `admin.py`/`main.py` lifespan（小）＋新 service＋docs——零撞活躍 session 領地。\n",
-    "closedAt": null,
+    "closedAt": "2026-06-14T03:46:45Z",
     "comments": [
       {
         "author": {
@@ -2810,9 +2810,9 @@
     "labels": [],
     "milestone": null,
     "number": 207,
-    "state": "OPEN",
+    "state": "CLOSED",
     "title": "P2-20 收尾: 軌跡 PII retention — 90 天 TTL + Admin 開關 + threat_model 政策文件化",
-    "updatedAt": "2026-06-11T06:40:15Z",
+    "updatedAt": "2026-06-14T03:46:45Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/207"
   },
   {

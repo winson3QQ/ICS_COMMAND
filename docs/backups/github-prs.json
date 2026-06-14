@@ -3893,5 +3893,26 @@
     "title": "fix(ui): #250 review 後修 — stale 已讀水位夾回 + 廣播免多餘重繪",
     "updatedAt": "2026-06-13T15:42:15Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/254"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "## 摘要\nP2-20 收尾 / [#207](https://github.com/winson3QQ/ICS_COMMAND/issues/207)：`cop_entity_tracks`（人員行蹤 PII）除既有 exercise 刪除 cascade，補 **90 天 TTL 自動清理** + **sysadmin runtime 開關** + threat_model §8.4 政策文件化。防「沒人刪演習就永遠留著」的個資累積（外洩面 + 磁碟無界）。\n\n## 改動\n- **`services/retention_service.py`**（new）：`ttl_enabled`/`set_ttl_enabled`/`cleanup_expired_tracks`（鏡像 P2-24 toggle、audit-first、**≥1 天下限防 TTL=0 全清**、清理筆數記 `RETENTION_CLEANUP`）。\n- **`config.py`**：`TRACKS_TTL_DAYS=90`（env）。\n- **`main.py`**：`_periodic_retention_cleanup` 每日背景 task（開機 + 24h，shutdown 對稱 cancel）。\n- **`routers/admin.py`**：`GET/POST /api/admin/retention`（SYSADMIN、`RETENTION_TOGGLE` audit-first、開啟即跑一次清理回筆數）。\n- **`_helpers.py`**：`audit()` 對 `RETENTION_*` 跨場系統動作 → `exercise_id=NULL`（PII 刪除證明不隨單場 cascade 消失；同既有 `exercise_` 慣例）。\n- **`database.py`**：補 `idx_cop_tracks_t` 單欄索引（每日範圍刪免全表掃）。\n- **`threat_model.md §8.4`**：政策表 + trade-off（>90 天演習不可 AAR 回放）。\n- **tests**：`test_track_retention.py`（6 測：TTL/toggle/floor/persist/403/audit-scope）。\n\n## 接手說明\n此為先前 session 的未 commit WIP（在很舊的 base 上）。**接手後**：rebase 到當前 main（**零衝突**——全加法型改動）、commit（排除 `.claude/launch.json` 本機設定）、跑現行全測、過 reviews。\n\n## Reviews\n- `/code-review`（high）：1 fix 落地——**補 `idx_cop_tracks_t` 索引**（每日 `DELETE WHERE t<cutoff` uid 不限、複合索引 leading=uid 用不到 → 全表掃最高量表）。其餘觀察皆 follows precedent / 可接受並記註解（t 字串比較沿用 codebase 既有時間過濾慣例；非正規 REST t 僅 90 天窗次秒~次時邊界誤差，immaterial；audit `RETENTION_` prefix 同既有 `exercise_`；toggle sync 端點由 FastAPI threadpool 卸載）。\n- `/security-review`：**0 finding**（SQL 全參數化 + days 整數強制；GET/POST 雙層 sysadmin gate；audit 改動強化完整性、action_type 全 hardcoded 不可繞；回應/log 無 PII）。\n\n## 測試\n後端全綠（含 retention 6 測）+ pyflakes/doc_sync ✓。前端未動（純後端）。\n\n## §8 Verification\n- **API**：`POST /api/admin/retention {enabled:false}` → 停用、`cleanup_expired_tracks` no-op；`{enabled:true}` → 啟用 + 即時清理回 `deleted_now`。`GET` 回 `{tracks_ttl_enabled, tracks_ttl_days}`。非 sysadmin（operator）→ 403。\n- **TTL**：seed 200 天前 + 現在各一筆 → 清理刪舊留新；audit `RETENTION_CLEANUP` 留痕、`exercise_id=NULL`。\n- ⚠️ **開關為 API-only**（無系統 tab UI 按鈕）。若需 UI 控制為後續 slice；現 sysadmin API 足供 ops。\n\nCloses #207\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+    "closedAt": "2026-06-14T03:46:45Z",
+    "comments": [],
+    "createdAt": "2026-06-14T03:46:31Z",
+    "headRefName": "feat/issue-207-track-retention",
+    "labels": [],
+    "mergedAt": "2026-06-14T03:46:44Z",
+    "number": 259,
+    "state": "MERGED",
+    "title": "feat(retention): #207 軌跡 PII TTL 自動清理 + Admin 開關（P2-20 收尾）",
+    "updatedAt": "2026-06-14T03:46:45Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/259"
   }
 ]
