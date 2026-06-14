@@ -193,14 +193,34 @@ def clean_vertices(vertices: list[list[float]], *, closed: bool) -> list[tuple[f
     return pts
 
 
-def vertices_to_cot_shape(vertices: list[list[float]], *, closed: bool) -> str:
-    """**出向**（P2-30 / #180）：前端 vertices `[[lat,lng],...]` → CoT `<shape><polyline>`。
+def hex_to_argb_int(hex_color: str | None, *, alpha: int = 0xFF) -> int | None:
+    """**出向**：`'#rrggbb'` + alpha → ATAK 有號 32-bit ARGB 整數（`cop_service._argb_int_to_hex`
+    的反向）。ATAK 的 strokeColor/fillColor/color 一律有號 int（如 0xFFFFFF00 黃 → -256）。
+    非法/缺色 → None（呼叫端退預設）。alpha：描邊用 0xFF（不透明）、填色用半透明（如 0x40）。"""
+    if not hex_color:
+        return None
+    h = hex_color.lstrip("#")
+    if len(h) != 6:
+        return None
+    try:
+        rgb = int(h, 16)
+    except ValueError:
+        return None
+    argb = ((alpha & 0xFF) << 24) | (rgb & 0xFFFFFF)
+    return argb - (1 << 32) if argb >= (1 << 31) else argb  # → 有號 32-bit（ATAK 慣例）
 
-    對稱 `_from_shape` 入向（round-trip：本函式產 XML → `extract_geometry` 還原同型同點）：
-      `<shape><polyline closed="true|false"><vertex point="lat,lon"/>...</polyline></shape>`
-    驗證走 `clean_vertices`（座標範圍 + 點數門檻）。不含 color/event 包裝——那是
-    `tak_downlink.build_geometry_cot` 的事（純函式、可獨立測）。
+
+def vertices_to_cot_links(vertices: list[list[float]], *, closed: bool) -> str:
+    """**出向**：前端 vertices `[[lat,lng],...]` → ATAK 原生 `<link point="lat,lon,hae"/>` 序列。
+
+    **取代舊 `vertices_to_cot_shape`**（`<shape><polyline>`）——#211 ATAK dogfood 實證：ATAK 只
+    渲染 `<link>` 序列 + stroke/fill 樣式的繪圖，不認無樣式 `<shape><polyline>`（iTAK 寬鬆兩種皆吃）。
+    closed → 補閉合 link（首點重複），對齊 `extract_geometry` 以「首尾相同」判 Polygon（round-trip 仍通）。
+    驗證走 `clean_vertices`（座標範圍 + 點數門檻）。樣式/event 包裝在 `tak_downlink.build_geometry_cot`。
     """
     pts = clean_vertices(vertices, closed=closed)
-    verts = "".join(f'<vertex point="{la},{lo}"/>' for la, lo in pts)
-    return f'<shape><polyline closed="{"true" if closed else "false"}">{verts}</polyline></shape>'
+    links = "".join(f'<link point="{la},{lo},0"/>' for la, lo in pts)
+    if closed:
+        la0, lo0 = pts[0]
+        links += f'<link point="{la0},{lo0},0"/>'  # 閉合點（首尾相同 → Polygon）
+    return links
