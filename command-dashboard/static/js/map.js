@@ -2636,16 +2636,24 @@ async function _endShapeMove() {
   _flashMapMsg(ok ? '✓ 已移動圖形（已分享者即時上 TAK）' : '✗ 移動儲存失敗（可能被他人同時修改 / 連線中斷），請重試');
 }
 
-// ── #257 α-2：逐頂點 reshape（詳情 modal「✎ 編輯頂點」鈕進入）────────────────────
-// 入口走 modal 鈕（非長按 — 長按已給 α-1 整體移動）。進編輯模式後每頂點蓋一個 draggable
-// maplibregl.Marker；拖單一頂點 → 更新工作副本 vertices[i] + live re-render（override 注入
-// _renderPolygons/_renderRoutes）；✓ 完成才一次 PUT（整包 attributes 保 shared_tak → 已分享者
-// cop.py `_resync_tak_if_shared` 自動重推 TAK），✕ 取消丟棄。範圍：只拖既有頂點（插入/刪除 = α-2b）。
+// ── #257 α-2 / α-2b：逐頂點編輯（詳情 modal「✎ 編輯頂點」鈕進入）──────────────────
+// 入口走 modal 鈕（非長按 — 長按已給 α-1 整體移動）。進編輯模式後：
+//   • 拖實心頂點 handle → 移動該頂點（α-2 reshape）
+//   • 拖空心中點 ghost handle → 在該邊插入新頂點並跟手（α-2b insert）
+//   • 點頂點 handle → 掛 ✕ 徽章，點 ✕ → 刪除該頂點（α-2b delete，min 頂點守門）
+// 全程改的是工作副本 _editingShape.vertices + live re-render（override 注入 _renderPolygons/
+// _renderRoutes，不持久化）；✓ 完成才一次 PUT（整包 attributes 保 shared_tak → 已分享者 cop.py
+// `_resync_tak_if_shared` 自動重推 TAK），✕ 取消丟棄。頂點儲存為「開放」陣列（renderer 自動收尾
+// polygon），故增/刪純為陣列 splice、commit 語意不變。
 // 編輯期間 shouldSuppressInteraction 把 _editingShape 納入 → 長按/雙擊靜音；click→詳情亦守門。
 let _editingShape = null;   // { uid, kind, vertices:[[lat,lng],...] } —— 工作副本，null=未編輯
-let _vertexHandles = [];    // 每頂點一個 maplibregl.Marker
+let _vertexHandles = [];    // 每頂點一個實心 maplibregl.Marker（拖=移動該頂點）
+let _midpointHandles = [];  // #257 α-2b：每條邊中點一個空心 ghost handle（拖=在該邊插入新頂點）
+let _delBadgeIdx = -1;      // #257 α-2b：目前掛 ✕ 刪除徽章的頂點 index（-1=無）
 let _vertexRafPending = false;
 let _vertexCommitInFlight = false;  // ✓ 完成 PUT 進行中 → 擋重入雙送（_editingShape 撐到 finally 才清，光靠它擋不住 await 窗）
+// #257 α-2b：刪頂點下限 —— polygon renderer ring<3 回 null（圖形消失）、route LineString<2 無效。
+const _MIN_VERTS = { polygon: 3, route: 2 };
 
 // render 注入：編輯中以工作副本 vertices 覆蓋該圖形 latlngs（不持久化，✓ 才寫）。
 function _applyVertexEditOverride(shapes, kind) {
@@ -2656,13 +2664,76 @@ function _applyVertexEditOverride(shapes, kind) {
     : s);
 }
 
-function _clearVertexHandles() {
+// 重畫工作副本形狀（rAF 節流）— 頂點拖、中點插入拖共用。
+function _renderEditShape() {
+  if (_vertexRafPending) return;
+  _vertexRafPending = true;
+  requestAnimationFrame(() => {
+    _vertexRafPending = false;
+    if (!_editingShape) return;
+    if (_editingShape.kind === 'route') _renderRoutes(); else _renderPolygons();
+  });
+}
+
+// 清掉編輯模式所有 handle（頂點 + 中點 ghost）+ ✕ 徽章狀態。
+function _clearEditHandles() {
   for (const m of _vertexHandles) m.remove();
+  for (const m of _midpointHandles) m.remove();
   _vertexHandles = [];
+  _midpointHandles = [];
+  _delBadgeIdx = -1;
+}
+
+// 整批重建頂點 + 中點 handle。增 / 刪 / 拖完後呼叫（index 會位移，一律全重建最簡單）。
+function _rebuildEditHandles() {
+  _clearEditHandles();
+  _buildVertexHandles();
+  _buildMidpointHandles();
+}
+
+// 收起目前的 ✕ 刪除徽章。
+function _dismissDelBadge() {
+  if (_delBadgeIdx < 0) return;
+  _vertexHandles[_delBadgeIdx]?.getElement()?.querySelector('.vtx-del')?.remove();
+  _delBadgeIdx = -1;
+}
+
+// #257 α-2b：點頂點 → 掛 ✕ 徽章（再點同頂點 → 收起）。已達下限則不掛、提示。
+function _toggleDelBadge(handle, i) {
+  if (_delBadgeIdx === i) { _dismissDelBadge(); return; }
+  _dismissDelBadge();
+  const min = _MIN_VERTS[_editingShape?.kind] || 3;
+  if (!_editingShape || _editingShape.vertices.length <= min) {
+    _flashMapMsg(`✗ 已是最少頂點數（${min}），不可再刪`);
+    return;
+  }
+  const badge = document.createElement('div');
+  badge.className = 'vtx-del';
+  badge.textContent = '✕';
+  // handle 由 maplibregl-marker class 設 position:absolute → 即為 badge 的定位容器（不另設 relative，
+  // 設了會蓋掉 marker 自身的 transform 定位、害 marker 歸零，見 label_markers.js 留痕）。
+  badge.style.cssText = 'position:absolute;top:-13px;right:-13px;width:20px;height:20px;border-radius:50%;'
+    + 'background:var(--red,#f85149);color:#fff;font-size:12px;font-weight:700;display:flex;'
+    + 'align-items:center;justify-content:center;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,0.5);z-index:5;';
+  badge.addEventListener('click', (e) => { e.stopPropagation(); _deleteVertex(i); });
+  handle.appendChild(badge);
+  _delBadgeIdx = i;
+}
+
+// 刪除第 i 個頂點（下限守門）。
+function _deleteVertex(i) {
+  if (!_editingShape) return;
+  const min = _MIN_VERTS[_editingShape.kind] || 3;
+  if (_editingShape.vertices.length <= min) {
+    _flashMapMsg(`✗ 已是最少頂點數（${min}），不可再刪`);
+    return;
+  }
+  _editingShape.vertices.splice(i, 1);
+  _rebuildEditHandles();   // 重置 _delBadgeIdx、重編 index
+  _renderEditShape();
 }
 
 function _buildVertexHandles() {
-  _clearVertexHandles();
   const map = _getMap();
   if (!map || !window.maplibregl || !_editingShape) return;
   _editingShape.vertices.forEach((v, i) => {
@@ -2677,22 +2748,91 @@ function _buildVertexHandles() {
     const marker = new window.maplibregl.Marker({ element: handle, draggable: true, anchor: 'center' })
       .setLngLat([v[1], v[0]])
       .addTo(map);
-    marker.on('dragstart', () => { handle.style.cursor = 'grabbing'; });
+    let didDrag = false;
+    marker.on('dragstart', () => { didDrag = true; handle.style.cursor = 'grabbing'; _dismissDelBadge(); });
     marker.on('drag', () => {
       if (!_editingShape) return;
       const ll = marker.getLngLat();
       _editingShape.vertices[i] = [ll.lat, ll.lng];  // 只動這一頂點
-      if (_vertexRafPending) return;
-      _vertexRafPending = true;
-      requestAnimationFrame(() => {
-        _vertexRafPending = false;
-        if (!_editingShape) return;
-        if (_editingShape.kind === 'route') _renderRoutes(); else _renderPolygons();
-      });
+      _renderEditShape();
     });
-    marker.on('dragend', () => { handle.style.cursor = 'grab'; });
+    marker.on('dragend', () => {
+      handle.style.cursor = 'grab';
+      _buildMidpointHandles();  // 頂點移位 → 中點 ghost 落到新邊中點（拖曳中暫不更新，省每幀重算）
+    });
+    // #257 α-2b：乾淨單擊（非拖）→ 掛 ✕ 徽章。didDrag 區分（拖完瀏覽器補的 click 吞掉，沿用 event_drag 慣例）。
+    handle.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (didDrag) { didDrag = false; return; }
+      _toggleDelBadge(handle, i);
+    });
     _vertexHandles.push(marker);
   });
+}
+
+// #257 α-2b：每條邊中點一個空心 ghost handle，拖 → 在該邊插入新頂點並跟手。
+// polygon 含閉合邊（n 段）；route 開放（n-1 段）。拖曳中此 ghost 即代表新頂點，dragend 才整批重建。
+function _buildMidpointHandles() {
+  for (const m of _midpointHandles) m.remove();
+  _midpointHandles = [];
+  const map = _getMap();
+  if (!map || !window.maplibregl || !_editingShape) return;
+  const verts = _editingShape.vertices;
+  const n = verts.length;
+  if (n < 2) return;
+  const edges = _editingShape.kind === 'route' ? n - 1 : n;
+  for (let i = 0; i < edges; i++) {
+    const a = verts[i];
+    const b = verts[(i + 1) % n];
+    const midLat = (a[0] + b[0]) / 2;
+    const midLng = (a[1] + b[1]) / 2;
+    const insertAt = i + 1;  // 在 a、b 之間插入（閉合邊 i=n-1 → insertAt=n → 陣列尾，順序正確）
+    const handle = document.createElement('div');
+    handle.className = 'mlb-midpoint-handle';
+    handle.style.cssText = 'width:24px;height:24px;display:flex;align-items:center;'
+      + 'justify-content:center;cursor:copy;user-select:none;';
+    const dot = document.createElement('div');
+    dot.style.cssText = 'width:11px;height:11px;border-radius:50%;background:rgba(88,166,255,0.2);'
+      + 'border:2px dashed rgba(88,166,255,0.9);pointer-events:none;';
+    handle.appendChild(dot);
+    const marker = new window.maplibregl.Marker({ element: handle, draggable: true, anchor: 'center' })
+      .setLngLat([midLng, midLat])
+      .addTo(map);
+    let inserted = -1;   // 已插入的頂點 index（-1=本次拖曳尚未真的插入）
+    let startPt = null;  // dragstart 的螢幕座標 — 用來判位移是否超過門檻
+    marker.on('dragstart', () => {
+      if (!_editingShape) return;
+      _dismissDelBadge();
+      handle.style.cursor = 'grabbing';
+      // **延後 splice**：等位移超過門檻才真的插入頂點，避免觸控微抖動（maplibre 無拖曳像素門檻、
+      // 一動就 dragstart）塞進一個冗餘近共線頂點（review finding 1/2）。
+      inserted = -1;
+      startPt = map.project(marker.getLngLat());
+    });
+    marker.on('drag', () => {
+      if (!_editingShape) return;
+      const ll = marker.getLngLat();
+      if (inserted < 0) {
+        if (!startPt) return;
+        const p = map.project(ll);
+        if (Math.hypot(p.x - startPt.x, p.y - startPt.y) < 6) return;  // <6px → 視為未拖，不插
+        _editingShape.vertices.splice(insertAt, 0, [ll.lat, ll.lng]);  // 跨門檻才插入新頂點
+        inserted = insertAt;
+      } else {
+        _editingShape.vertices[inserted] = [ll.lat, ll.lng];  // 新頂點跟手
+      }
+      _renderEditShape();
+    });
+    marker.on('dragend', () => {
+      const didInsert = inserted >= 0;
+      inserted = -1;
+      startPt = null;
+      handle.style.cursor = 'copy';
+      if (didInsert) _rebuildEditHandles();           // ghost → 實心頂點 handle；中點重算
+      else marker.setLngLat([midLng, midLat]);        // 未跨門檻：把被 maplibre 拖位的 ghost 拉回原中點
+    });
+    _midpointHandles.push(marker);
+  }
 }
 
 // modal「✎ 編輯頂點」→ 進編輯模式。唯讀 TAK 來源不可（=#258）。
@@ -2706,11 +2846,13 @@ export function _startVertexEdit(uid) {
   const verts = ent.attributes?.vertices;
   if (!Array.isArray(verts) || verts.length < 2) return;
   _editingShape = { uid, kind, vertices: verts.map((v) => [Number(v[0]), Number(v[1])]) };
-  _buildVertexHandles();
+  _rebuildEditHandles();
   const banner = el('vertex-edit-banner');
   if (banner) {
     const hint = banner.querySelector('.veh');
-    if (hint) hint.textContent = kind === 'route' ? '↗ 編輯路線　拖曳節點調整' : '▱ 編輯範圍　拖曳頂點調整';
+    if (hint) hint.textContent = kind === 'route'
+      ? '↗ 編輯路線　拖節點移動・拖中點加・點節點刪'
+      : '▱ 編輯範圍　拖頂點移動・拖中點加・點頂點刪';
     banner.style.display = 'flex';
   }
 }
@@ -2720,7 +2862,7 @@ export async function _finishVertexEdit() {
   const ed = _editingShape;
   if (!ed || _vertexCommitInFlight) return;  // 重入守門：double-tap ✓ 不雙送 PUT
   _vertexCommitInFlight = true;
-  _clearVertexHandles();                     // handle 先撤（commit 中不可再拖）
+  _clearEditHandles();                       // handle 先撤（commit 中不可再拖/增/刪）
   const banner = el('vertex-edit-banner');
   if (banner) banner.style.display = 'none';
   const ent = _copStream?.getEntity(ed.uid);
@@ -2745,7 +2887,7 @@ export async function _finishVertexEdit() {
 export function _cancelVertexEdit() {
   if (!_editingShape) return;
   const kind = _editingShape.kind;
-  _clearVertexHandles();
+  _clearEditHandles();
   _editingShape = null;
   const banner = el('vertex-edit-banner');
   if (banner) banner.style.display = 'none';
