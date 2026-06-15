@@ -89,6 +89,9 @@ const POLL_INTERVAL = 5000;
 // ── COP 即時同步（issue #29 PR-E）──────────────────────────────────────────
 // 與既有 map_config 圖層疊加；operator 用 /api/cop/* 建立/拖/刪，WS 廣播即時同步。
 let _copStream = null;
+// #267：目前 active 演習型別（'ttx'|'real'|null）。供 roster 判「有無 active 演習」以標常駐候選
+// （演習中 NULL 單位＝常駐；無 active 演習則所有單位都常駐、不標）。隨 setExerciseMode 同步更新。
+let _activeExType = null;
 
 async function _initCopStream() {
   if (_copStream) {
@@ -104,6 +107,9 @@ async function _initCopStream() {
     getToken,
     authFetch,
     canWrite: () => canAccessMapObjects(),
+    // #267 常駐層疊看：指揮層（sysadmin/commander）的連線帶 standing → 演習中也收 NULL 常駐 entity
+    // （後端再 gate 一次）。可見性由地圖圖層 toggle 控（預設關），訂閱恆開、不重連。
+    includeStanding: canUseRealModeControls(),
   });
   setCopStream(_copStream); // 交給 map.js 訂閱 onChange 即時重繪 route/polygon/event
   _copStream.connect();
@@ -147,7 +153,8 @@ document.addEventListener('exercise:switched', () => {
     // 否則只更新 header chip。
     const panelOpen = document.getElementById('settings-overlay')?.classList.contains('show');
     if (panelOpen) await m.renderExercisePanel(); else await m.initExerciseChip();
-    setExerciseMode(m.activeExerciseType());  // #258 β-1：橋接新模式 → map.js 編輯閘（TTX 才放行外部來源）
+    _activeExType = m.activeExerciseType();
+    setExerciseMode(_activeExType);  // #258 β-1：橋接新模式 → map.js 編輯閘（TTX 才放行外部來源）
   });
 });
 
@@ -738,7 +745,8 @@ function _loadClassicScript(src) {
       // P1-14 PR-2：登入後初始化 header 演習 chip（顯示 active 演習或「實戰」）。
       import('./exercises.js').then(async m => {
         await m.initExerciseChip();
-        setExerciseMode(m.activeExerciseType());  // #258 β-1：初始模式 → map.js 編輯閘
+        _activeExType = m.activeExerciseType();
+        setExerciseMode(_activeExType);  // #258 β-1：初始模式 → map.js 編輯閘
       });
       startSessionStatusPolling();
       setPollActive(true);
@@ -748,7 +756,11 @@ function _loadClassicScript(src) {
       // COP 即時同步：地圖就緒後連 WS（issue #29 PR-E）
       _initCopStream();
       // #269：右欄「隊伍」名冊（讀 cop_stream TAK 單位、按 team_color 分組；純前端 v1）
-      initRoster({ getTakUnits: () => (_copStream ? _copStream.getEntitiesBySource('tak') : []) });
+      initRoster({
+        getTakUnits: () => (_copStream ? _copStream.getEntitiesBySource('tak') : []),
+        // #267：有 active 演習時，NULL 單位＝常駐候選 → 標記；無 active 演習則不標（皆常駐、無對照）。
+        getHasActiveExercise: () => _activeExType != null,
+      });
       // #269：還原 per-session 記憶的右欄 tab（TAK 狀態套用後；記憶為 TAK 頁但已停用則退回事件）
       restoreRightTab();
 
