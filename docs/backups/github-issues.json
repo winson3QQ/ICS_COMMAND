@@ -3665,6 +3665,20 @@
         "minimizedReason": "",
         "reactionGroups": [],
         "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/267#issuecomment-4704047382"
+      },
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## 後續切片 reality check：納編/退編（enrollment）後端（2026-06-15）\n\n#269 切片1（UI）已 merged（roster 顯示 + 納編/定址/編組佔位）。本核對盤的是讓「納編/退編」動起來的後端。**決策沿用**：保留 `cop_entities.exercise_id` 當歸屬欄、由 enrollment 動作改它（解除「ingest 不可改 exercise_id」規則僅限這條路），**不**重建 join 表。\n\n### ✅ 確認（機制比想像簡單）\n- **改 scope = 一個 repo 呼叫**：`exercise_id` 不在 `_CAS_PROTECTED_COLS`（`cop_entity_repo.py:288`）→ `update_cop_entity_cas({\"exercise_id\": N})` 直接可改。不可變只是 ingest 層 policy（`_TAK_UPDATE_FIELDS` 排除，`cop_service.py:54-60`），非 repo 限制。**零 schema 改動、不用新 repo fn**。\n- **納編後續報保留新 scope**：`exercise_id` 不在 `_TAK_UPDATE_FIELDS` → 後續 PLI + #161 復活都不動它 → 一次納編永久生效。\n- **RBAC / audit 現成**：COMMAND_ROLES gate 有 pattern（`cop.py:91`）；`audit()` 自動戳當前 active（`_helpers.py`）；退編走 NULL（`NULL_SCOPE` 三態已支援）。FK 軟參照無 CASCADE（pre-existing，out of scope）。\n\n### ⚠️ 地雷 1（BLOCKER，好修）— 換 scope 的廣播\n`broadcast(exercise_id=B)` 只到訂 B 的連線；舊 scope A 的連線**收不到移除信號**、殘留舊釘到重整（`realtime_hub.py:44-57` wants 精確比對；`cop_service.py:269` `_broadcast_cop`）。**修法＝雙廣播**：對舊 scope 送 `op=delete` + 對新 scope 送 `op=create`。寫在 endpoint 裡即可。\n\n### ⚠️ 地雷 2（關鍵，切片順序被綁）— 看不到要納編的單位\nroster 讀 `cop_stream`＝**當前 active scope** 快取。演習 active 時 WS 只送 active scope 單位 → **NULL 池的單位（如先前的 3QQ-aTak）根本不在 cop_stream → roster 看不到 → 無從勾選納編**。反之無 active 演習時看得到 NULL 單位、卻沒有 active 場可納編入。\n\n→ **「演習中把 NULL 單位納編進來」的可用流程依賴跨 scope 可見性**，二選一：\n- (A) 先做**常駐層疊看**（`wants()` NULL-union，需 `/security-review`，碰 #265 剛強化的 P1-14 隔離邊界）；或\n- (B) 給 enroll picker 一個 **COMMAND-only「列出所有 TAK 單位」endpoint**（繞過 WS scope，只給指揮層）。\n\n**純做 enrollment 機制後端、UI 仍點不到候選單位** —— 兩切片咬在一起，別只做半套。\n\n### 🟡 設計問題（先定，不擋實作）\n**tracks 追溯改歸屬**：`cop_entity_tracks` 無 `exercise_id`、靠 JOIN 當前 `cop_entities.exercise_id`（Design B，`cop_entity_repo.py:433`）→ 納編把該單位**全部歷史軌跡**搬進新場 AAR。是「補登（要全歷史）」還是「中途轉入（只要納編後）」？後者需 `tracks.exercise_id` + backfill（out of scope）。**先記假設＝全歷史搬移**。\n\n### 最小切片 plan\n1. **enrollment 後端**：`POST /api/exercises/{id}/enroll {uid, action: enroll|unenroll}` + 雙廣播（地雷1）+ audit + COMMAND_ROLES gate；用既有 `update_cop_entity_cas` + `cop_hub.broadcast`（~40 LOC、零 schema）。\n2. **候選單位來源**（必要、否則 UI 點不到）：選 (A) 疊看 或 (B) picker endpoint。**先定這個分叉**。\n3. **前端**：roster 佔位動作接 enroll endpoint；WS delete+create 雙信號驅動 cop_stream 跨 scope 搬移。\n4. 測試：A→B 納編（A list 移除 / B list 加入）、退編→NULL、納編後 PLI 保留、復活保留。\n\n> 定址（發訊息/分享標記，接 #216/#214）、ICS 側編組指派、「推回手機」研究 = 另外的後續切片，與本切片正交。\n",
+        "createdAt": "2026-06-15T04:10:10Z",
+        "id": "IC_kwDOSnBjpc8AAAABGGiFZw",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/267#issuecomment-4704470375"
       }
     ],
     "createdAt": "2026-06-15T02:01:33Z",
@@ -3680,7 +3694,7 @@
     "number": 267,
     "state": "OPEN",
     "title": "感測層 doctrine：Group(常駐分類) + 參與編組(勾選) 兩層 — 取代 insert-time exercise scope 綁定",
-    "updatedAt": "2026-06-15T02:42:34Z",
+    "updatedAt": "2026-06-15T04:10:11Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/267"
   },
   {
