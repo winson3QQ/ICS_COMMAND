@@ -39,9 +39,14 @@ def _silence_broadcast(monkeypatch):
 
 def _event(**ov) -> CoTEventIn:
     base = {
-        "uid": "CHAT-1", "type": "b-t-f",
-        "time": "2026-06-05T04:00:00Z", "start": "2026-06-05T04:00:00Z",
-        "stale": "2099-01-01T00:00:00Z", "how": "h-g-i-g-o", "lat": 24.1, "lon": 120.6,
+        "uid": "CHAT-1",
+        "type": "b-t-f",
+        "time": "2026-06-05T04:00:00Z",
+        "start": "2026-06-05T04:00:00Z",
+        "stale": "2099-01-01T00:00:00Z",
+        "how": "h-g-i-g-o",
+        "lat": 24.1,
+        "lon": 120.6,
     }
     base.update(ov)
     return CoTEventIn(**base)
@@ -66,16 +71,21 @@ def _cop_count(uid: str) -> int:
 
 def test_btf_not_in_cop_entities():
     out = _ingest(_event(remarks="hello"))
-    assert out is None                    # 分流路徑回 None（非 cop row）
-    assert _cop_count("CHAT-1") == 0      # 主表零筆
+    assert out is None  # 分流路徑回 None（非 cop row）
+    assert _cop_count("CHAT-1") == 0  # 主表零筆
 
 
 # ── 2. b-t-f 進 chats 表 ─────────────────────────────────────────────────────
 
 
 def test_btf_goes_to_chats():
-    _ingest(_event(remarks="集結點 A", callsign="ALPHA-1",
-                   detail={"__chat": {"chatroom": "All Chat Rooms", "senderCallsign": "ALPHA-1"}}))
+    _ingest(
+        _event(
+            remarks="集結點 A",
+            callsign="ALPHA-1",
+            detail={"__chat": {"chatroom": "All Chat Rooms", "senderCallsign": "ALPHA-1"}},
+        )
+    )
     chats = _chats()
     assert len(chats) == 1
     c = chats[0]
@@ -92,7 +102,7 @@ def test_message_escaped():
     _ingest(_event(remarks="敵情 <script>alert(1)</script>"))
     msg = _chats()[0]["message"]
     assert "&lt;script&gt;" in msg
-    assert "<script>" not in msg          # 原樣不得存
+    assert "<script>" not in msg  # 原樣不得存
 
 
 # ── 4. #248：收條/ack（空訊息 b-t-f）不寫 chats（前端「直接」頻道不冒空白列）────────
@@ -111,6 +121,32 @@ def test_nonempty_remarks_btf_still_ingests():
     assert len(_chats()) == 1
 
 
+def test_btf_idempotent_same_uid_not_duplicated():
+    # 冪等：同一則 GeoChat（同 uid，含訊息 GUID）被 TAK 重訂閱 / resync 重播 → 只入庫一筆、不重複。
+    # （修前：每次重連多一筆，dogfood 實證同訊息累積 42 筆。）b-t-f ingest 恆回 None（分流），
+    # 故以 chats 列數驗冪等、非回傳值。
+    ev = _event(uid="GeoChat.DEV.Room.GUID-1", remarks="Enemy founded")
+    _ingest(ev)
+    _ingest(ev)  # 重播
+    _ingest(ev)  # 再重播
+    assert len(_chats()) == 1  # 三次同 uid → 仍只一筆
+
+
+def test_btf_idempotent_skips_broadcast_on_replay(monkeypatch):
+    # 重播（同 uid）不再廣播（查重在 insert+broadcast 之前）→ 只廣播首次一次。
+    calls = []
+
+    async def _capture(message, exercise_id=None):
+        if isinstance(message, dict) and message.get("op") == "chat":
+            calls.append(message)
+
+    monkeypatch.setattr(cop_service.cop_hub, "broadcast", _capture)
+    ev = _event(uid="GeoChat.DEV.Room.GUID-2", remarks="dup")
+    _ingest(ev)
+    _ingest(ev)
+    assert len(calls) == 1  # 重播不重廣播
+
+
 # ── 4. exercise scoping（無 active → NULL）──────────────────────────────────
 
 
@@ -127,9 +163,9 @@ def test_pipeline_from_fixture():
     _ingest(event)
     chats = _chats()
     assert len(chats) == 1
-    assert "&lt;script&gt;" in chats[0]["message"]   # fixture XSS payload 已 escape
+    assert "&lt;script&gt;" in chats[0]["message"]  # fixture XSS payload 已 escape
     assert chats[0]["group"] == "All Chat Rooms"
-    assert _cop_count(event.uid) == 0                # b-t-f 不進主表
+    assert _cop_count(event.uid) == 0  # b-t-f 不進主表
 
 
 # ── 6. 非 b-t-f 不被誤擋，照常進 cop_entities ───────────────────────────────
@@ -139,7 +175,7 @@ def test_non_btf_still_in_cop_entities():
     out = _ingest(_event(uid="UNIT-1", type="a-f-G-U-C", remarks="x"))
     assert out is not None
     assert _cop_count("UNIT-1") == 1
-    assert _chats() == []                 # 一般 entity 不進 chats
+    assert _chats() == []  # 一般 entity 不進 chats
 
 
 # ── 7. review #131：缺 chatroom 時 group=None（不把 groupOwner 布林旗標當群組名）──
@@ -147,7 +183,7 @@ def test_non_btf_still_in_cop_entities():
 
 def test_group_none_when_no_chatroom():
     _ingest(_event(remarks="x", detail={"__chat": {"groupOwner": "false", "senderCallsign": "B"}}))
-    assert _chats()[0]["group"] is None   # 非 "false"
+    assert _chats()[0]["group"] is None  # 非 "false"
 
 
 # ── 8. b2（#213）：b-t-f 寫入後即時 WS 廣播 op=chat（feed 形狀，帶 exercise scope）──
@@ -162,8 +198,7 @@ def test_btf_broadcasts_chat_op(monkeypatch):
         calls.append((message, exercise_id))
 
     monkeypatch.setattr(cop_service.cop_hub, "broadcast", _capture)
-    _ingest(_event(remarks="集結點 A", callsign="ALPHA-1",
-                   detail={"__chat": {"chatroom": "All Chat Rooms"}}))
+    _ingest(_event(remarks="集結點 A", callsign="ALPHA-1", detail={"__chat": {"chatroom": "All Chat Rooms"}}))
     assert len(calls) == 1
     msg, _ex = calls[0]
     assert msg["op"] == "chat"
@@ -171,7 +206,7 @@ def test_btf_broadcasts_chat_op(monkeypatch):
     assert c["message"] == "集結點 A"
     assert c["callsign"] == "ALPHA-1"
     assert c["group"] == "All Chat Rooms"
-    assert "t" in c and "time" not in c          # feed 形狀（t = time or received_at），非 raw row
+    assert "t" in c and "time" not in c  # feed 形狀（t = time or received_at），非 raw row
     assert {"id", "sender_uid", "lat", "lon"} <= set(c)
 
 

@@ -51,7 +51,9 @@ WARNING_THRESHOLD_SECONDS: int = int(os.getenv("ICS_WARNING_THRESHOLD_SECONDS", 
 # 常駐 entity（`_Conn.include_standing` + `wants()` NULL-union）；證明不跨演習（仍精確擋別場）。
 # PATCH：#267 REST 對等 —— `GET /api/cop/entities?include_standing`（限 COMMAND）疊加 NULL 常駐，
 # 與 WS 對等，補掉 resync 抹掉常駐單位的鬼影（前端疊看 slice 的後端半）。
-APP_VERSION = "2.6.1"
+# PATCH：GeoChat 冪等（#248 衍生）—— chat ingest 查 sender_uid（含訊息 GUID、唯一）跳過重播，
+# 修「TAK 重訂閱/resync 重播持久化 GeoChat → 同訊息每次重連多一筆」（dogfood 實證 42 筆）。
+APP_VERSION = "2.6.2"
 
 # CMD_VERSION：前端 UI 功能版本（不同於後端 SemVer APP_VERSION；規則見 CLAUDE.md 版號規則）
 # 兩軌版本命名，不可混用。由 /api/version 提供給前端，是唯一 source-of-truth；release 時更新此值。
