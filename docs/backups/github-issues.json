@@ -3679,6 +3679,20 @@
         "minimizedReason": "",
         "reactionGroups": [],
         "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/267#issuecomment-4704470375"
+      },
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## 後續切片 reality check：常駐層疊看（standing overlay，方向 A）（2026-06-15）\n\n地雷 2（演習中看不到 NULL 單位）的解法選 **(A) 疊看** —— 讓 active scope 連線也收 NULL（常駐/real-world）entity，指揮官跑 TTX 時疊看真實單位，也是 enrollment picker 的候選來源。**直接動 #265 強化的 P1-14 隔離**，故先核對邊界。\n\n### 🔒 安全裁決：`active ∪ NULL` 可證明不跨演習洩漏\n`exercise_id` 在 ingest 當下綁 `current_exercise_id()`（`cop_service.py:240`）→ **NULL 只代表「當下無 active 演習」**（real-world/常駐），**永遠不是別場資料**（軌跡寫入也明文跳過 NULL，`cop_service.py:305-320`）。scope=N + 疊看的連線只配對 `{N, NULL}`、**配不到別場 M**。**「演習↔演習」隔離牆原封不動，只放寬「active↔常駐」**。by-uid HTTP 讀層（`cop.py:215-230`）同一套過濾，不洩。\n\n### ✅/⚠️ 核對\n| 點 | 裁決 |\n|---|---|\n| `wants()` 改動 | 小 — `_Conn` 加 `include_standing` 旗標，`wants` 多一條 `include_standing && msg is None`（~50 LOC）|\n| 跨演習洩漏 | ✅ 證明不會 |\n| 授權 | **限 COMMAND_ROLES**（對齊 resolve_scope「看歷史限指揮層」）|\n| 與 #265 rescope 組合 | ✅ 乾淨 — `include_standing` 獨立於 `follows_active`，rescope 不動它 |\n| 前端區分 | entity 本來就帶 `exercise_id` → `=== null` 即常駐、淡顯；接 #219 toggle |\n\n### ⚠️ 最大風險\n把 `include_standing=True` 誤給非指揮層。緩解：handshake **設旗標前硬 gate `COMMAND_ROLES`** + 負向測試（operator→False）+ `# SECURITY` 註記。\n\n### 切片\n- **後端（純，本切片）**：`realtime_hub` `include_standing` + `wants()` + `cop.py` handshake `?standing=1` COMMAND gate + 正/負向測試 → **跑 `/security-review`**（邊界放寬照規矩過）。\n- **前端（後續）**：WS 帶 `?standing=1`、常駐單位淡顯、#219 toggle。\n- A（可見性）+ enrollment 後端（動作）互補，兩者齊才有完整「演習中納編常駐單位」。\n",
+        "createdAt": "2026-06-15T04:16:41Z",
+        "id": "IC_kwDOSnBjpc8AAAABGGkc7Q",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/267#issuecomment-4704509165"
       }
     ],
     "createdAt": "2026-06-15T02:01:33Z",
@@ -3694,7 +3708,7 @@
     "number": 267,
     "state": "OPEN",
     "title": "感測層 doctrine：Group(常駐分類) + 參與編組(勾選) 兩層 — 取代 insert-time exercise scope 綁定",
-    "updatedAt": "2026-06-15T04:10:11Z",
+    "updatedAt": "2026-06-15T04:16:41Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/267"
   },
   {
