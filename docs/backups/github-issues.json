@@ -3682,5 +3682,32 @@
     "title": "感測層 doctrine：Group(常駐分類) + 參與編組(勾選) 兩層 — 取代 insert-time exercise scope 綁定",
     "updatedAt": "2026-06-15T02:42:34Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/267"
+  },
+  {
+    "assignees": [],
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "body": "**Parent doctrine**: #267（group 兩層 scoping）。本 issue = **切片 1 的 UI 起點**：右欄重構成四-tab + TAK 隊伍名冊（roster）。納編/定址/編組的後端（enrollment 表等）分批接，本切片先把 UI 骨架 + 真實 TAK 單位顯示做出來。\n\n## 緣起\n2026-06-15 ATAK dogfood + #267 討論：指揮部需要「隊伍名冊」當 group 三用途（歸屬/定址/編組）的操作地基。決定放進右欄當第 4 個 tab；又因指揮部**多幕僚、多 session、各看一頁**，把常駐的「待裁示」也轉成 tab（各 tab 掛紅圈數字做跨頁感知），讓每頁整欄高、各停一頁。\n\n## Reality check（2026-06-15，前端右欄機制）— 確認/修正/地雷\n\n**✅ 確認**\n- 加寬安全：右欄**現為 20%**（base `.side-panel{flex:0 0 20%}`；30% 那個是 dead focus-mode）；地圖 `flex:1` 自動吃剩餘。\n- TAK 顯隱 pattern 可重用（`tak:conn-state` 事件，`chat_panel.js:206`）。\n- 紅圈數字來源全現成、每 poll 更新：`#evt-open-total`/`#evt-overdue`（events.js）、`#chat-unread`（chat_panel.js）、`#dec-count`（cop.js:525）。\n- **roster 零後端改動**：逐單位資料用前端已有的 `cop_stream.getEntitiesBySource('tak')`（uid/team_color/role/battery/stale，WS 即時）→ v1 純前端按 `team_color` client-side 分組。（`aggregate_squads` 已在 `/api/dashboard` 的 `_data.tak_squads`，team 級彙總可選用於 badge/centroid。）\n- per-session 記憶：codebase 標準是 **sessionStorage**（非 localStorage），符合「各 session 停自己那頁、關了重置」。\n\n**🔧 修正**\n1. `switchRightTab`（chat_panel.js:190）是**寫死二元 events/chat**，要改成 tab→content 對照表跑迴圈。\n2. `_resizeEvtList()` guard（main.js:425）由「不是 chat 就 resize」改成「**只有 events 才 resize**」。\n3. roster 紅圈「未編人數」要等 enrollment（後端切片）才有 → v1 badge 先用 offline 數或暫不掛。\n\n**⚠️ 地雷**\n1. 「待裁示轉 tab」其實安全：cop.js 每 5s poll **不管顯隱都寫** `#dec-count`/`#right-dec-list`，隱藏時照更新、切回來 ≤5s 新。正解＝`#right-decisions` **留 DOM 只切 `display`**（同 events/chat），把 `#dec-count` span **搬到 tab 上**（cop.js 用 `getElementById` 寫，位置無關）。不用 lazy render、不改 poll。\n2. **別碰** `toggleRightExpand` / `.expanded` / `_applyRightExpand`（dead，但 dispatch 還掛著，觸發會亂動 flex）；`_resizeEvtList()` 是活的要保留。\n\n## 施工清單（依序）\n- [ ] 1. `.side-panel.right` 寬度 override 20%→~33%\n- [ ] 2. tab strip 變四個（事件追蹤｜通聯｜隊伍｜待裁示）；`#dec-count` 移到待裁示 tab 上\n- [ ] 3. `switchRightTab` 改通用多 tab；修 `_resizeEvtList` guard 為 `=== 'events'`\n- [ ] 4. `#right-decisions` 改 tab 內容（display 切換、留 DOM、poll 照寫）\n- [ ] 5. 新 `roster_panel.js`：讀 `cop_stream.getEntitiesBySource('tak')`、按 `team_color` 分組渲染（零後端）\n- [ ] 6. 各 tab 掛紅圈數字（接現成 count；roster 先用 offline 數或暫不掛）\n- [ ] 7. active tab 存 sessionStorage `_activeRightTab`\n- [ ] 8. 納編/定址/編組按鈕先擺 UI（disabled / 後端分批接）\n- [ ] 測試（switchRightTab 多 tab、roster 分組）+ `/verify`\n\n## Out of scope（後續切片）\n- `enrollment` 表 + 納編/退編後端（#267 切片 1 後端半）\n- 定向發送後端（接 #216/#214）\n- 指揮部側編組指派 / 「推回手機」研究（待驗 TAK 能力）\n- 常駐層疊看（碰 #265 P1-14 隔離，需 `/security-review`）\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n",
+    "closedAt": null,
+    "comments": [],
+    "createdAt": "2026-06-15T03:08:32Z",
+    "labels": [
+      {
+        "color": "a2eeef",
+        "description": "New feature or request",
+        "id": "LA_kwDOSnBjpc8AAAACklX2xg",
+        "name": "enhancement"
+      }
+    ],
+    "milestone": null,
+    "number": 269,
+    "state": "OPEN",
+    "title": "feat(ui): #267 切片1 — 右欄四-tab 重構 + TAK 隊伍名冊(roster) + 待裁示轉 tab",
+    "updatedAt": "2026-06-15T03:08:32Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/269"
   }
 ]
