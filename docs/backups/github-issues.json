@@ -3693,6 +3693,20 @@
         "minimizedReason": "",
         "reactionGroups": [],
         "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/267#issuecomment-4704509165"
+      },
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## 進度更新（2026-06-15）— 疊看線落地\n\n| 切片 | 狀態 | PR |\n|---|---|---|\n| 切片1 UI（右欄四-tab + TAK 隊伍名冊）| ✅ merged | #269 → #270 |\n| 常駐層疊看**後端**（WS `?standing=1`，限 COMMAND）| ✅ merged | #271 |\n| 常駐層疊看**前端 + REST 對等**（圖層 toggle、roster 標常駐、resync 鬼影修）| ✅ merged | #272 |\n\n真機 dogfood 驗過：演習中 toggle 疊顯/隱常駐單位、roster 標「常駐」候選、不閃爍。\n\n**釐清（dogfood）**：\n- 常駐層（地圖疊看）= **所有 NULL entity**（真實單位 PLI + 觀測到的敵情/不明接觸），= 「演習外的真實世界 COP」。roster 只列**友軍**常駐（隊員候選）——兩視圖刻意不同 scope。\n- NULL vs 演習 scope 的差別本質是「進來時哪場 active」（時序），非「真的 vs 演習的」——這個脆弱性正是本 issue 要用「明確編組/納編」取代的。\n\n**仍待（後續切片）**：\n- enrollment 動作後端（納編/退編 + 雙廣播，findings 見上方留言）。\n- 前端 roster 動作接線（納編/定址/編組目前佔位）。\n- 定向發送（接 #216/#214）、ICS 側編組指派、「推回手機」研究。\n- （可選 polish）常駐 entity 地圖上淡顯，與演習 entity 一眼區分。\n",
+        "createdAt": "2026-06-15T05:59:08Z",
+        "id": "IC_kwDOSnBjpc8AAAABGHCJyA",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/267#issuecomment-4704995784"
       }
     ],
     "createdAt": "2026-06-15T02:01:33Z",
@@ -3708,7 +3722,7 @@
     "number": 267,
     "state": "OPEN",
     "title": "感測層 doctrine：Group(常駐分類) + 參與編組(勾選) 兩層 — 取代 insert-time exercise scope 綁定",
-    "updatedAt": "2026-06-15T04:16:41Z",
+    "updatedAt": "2026-06-15T05:59:08Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/267"
   },
   {

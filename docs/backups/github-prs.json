@@ -4061,5 +4061,68 @@
     "title": "feat(ui): #269/#267 切片1 — 右欄四-tab 重構 + TAK 隊伍名冊",
     "updatedAt": "2026-06-15T03:58:44Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/270"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "**Part of #267**（sensor-layer doctrine）。方向 A（疊看）的**純後端**切片：讓 active 場連線（限指揮層）也收 NULL 常駐 entity，指揮官跑 TTX 時疊看真實單位，也是 enrollment picker 候選來源。\n\n## 機制（realtime_hub）\n- `_Conn.include_standing` 旗標；`wants()` 多一條 `include_standing && msg is None`。\n- active 場 N + 疊看 → 收 `{N, NULL}`；**仍精確擋別場 M** → 演習↔演習隔離不變（#265），只放寬 active↔常駐。與 #265 `rescope_active` 組合乾淨（不動 include_standing）。\n\n## 授權（cop.py handshake）\n- `?standing=1` **限 COMMAND_ROLES**（對齊 `resolve_scope` 看歷史的權限模型）。非指揮層即使帶 `standing=1` 也強制 `False`。\n\n## 安全\n`active ∪ NULL` **可證明不跨演習洩漏**（`exercise_id` 在 ingest 綁 `current_exercise_id()`，NULL 只代表「無 active」、非別場資料）。`/code-review` + `/security-review`：**0 finding**（gate airtight、隔離不降級）。\n\n## 驗證\n- pytest **1021 passed**（test_realtime_hub +2：wants 矩陣含別場擋掉 / broadcast 疊看不洩別場；test_cop_ws +1：operator 負向 gate）、ruff clean\n- 版號 `backend-v2.6.0`（MINOR，新後端能力）；前端零改動\n\n## 後續切片（#267）\n前端疊看（WS `?standing=1` + 常駐淡顯 + #219 toggle）、enrollment 動作後端、定址。\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+    "closedAt": "2026-06-15T04:40:47Z",
+    "comments": [],
+    "createdAt": "2026-06-15T04:38:56Z",
+    "headRefName": "feat/issue-267-standing-overlay",
+    "labels": [],
+    "mergedAt": "2026-06-15T04:40:47Z",
+    "number": 271,
+    "state": "MERGED",
+    "title": "feat(cop): #267 常駐層疊看後端 — WS ?standing=1（限 COMMAND）疊收 NULL 常駐 entity",
+    "updatedAt": "2026-06-15T04:40:50Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/271"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "**Part of #267**（sensor-layer doctrine）。方向 A 前端切片：指揮官跑 TTX 時疊看真實/常駐（NULL）單位 + enrollment picker 候選來源。\n\n## REST 對等（BLOCKER 修）\n`GET /api/cop/entities?include_standing`（限 COMMAND）→ active 場疊加 NULL 常駐，與 WS `?standing=1` 對等，補掉 resync 抹掉常駐單位的鬼影。\n\n## 前端\n- cop_stream `includeStanding` → WS `?standing=1` + resync `?include_standing=1`（指揮層）。\n- map.js `standing` feature property + 疊看 filter（**無 active 演習時常駐恆顯**）+ 圖層 toggle「⬢ 常駐層疊看」（限指揮層、演習中現、預設關）。\n- roster 標「常駐」候選（`_activeExType` 注入，不靠資料推斷避免空場誤判）。\n\n## 驗證\n- pytest **1024**、vitest **340**、eslint/ruff clean\n- `/code-review` + `/security-review` **0 finding**（gate airtight、不 blank 地圖、#265 guard 保留）\n- 真機 dogfood：toggle 顯/隱常駐、roster 標常駐、不閃爍\n- 版號 backend-v2.6.1（PATCH）/ frontend-v1.6.0（MINOR）\n\n常駐層含所有 NULL entity（真實單位 + 觀測接觸）；roster 僅列友軍候選。後續：enrollment 動作後端、定向發送。\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+    "closedAt": "2026-06-15T05:53:18Z",
+    "comments": [],
+    "createdAt": "2026-06-15T05:51:04Z",
+    "headRefName": "feat/issue-267-standing-overlay-fe",
+    "labels": [],
+    "mergedAt": "2026-06-15T05:53:18Z",
+    "number": 272,
+    "state": "MERGED",
+    "title": "feat(ui): #267 常駐層疊看前端 + REST 對等",
+    "updatedAt": "2026-06-15T05:53:20Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/272"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "dogfood 實證：同一則 GeoChat「Enemy founded」在 chats 表累積 **42 筆**（`time`/`sender_uid` 全同、`received_at` 散在 28 分鐘）。\n\n## 根因\nchat ingest **無冪等**：每次 ICS 重訂閱 TAK `:8089` / `/cot/sa` resync，TAK server 重播持久化的 GeoChat，ICS 就再 insert 一筆。（COP entity 有 `version_clock` CAS 冪等，chats 表是缺口。）\n\n## 修法\n`chat_service.ingest` insert 前查 `chat_repo.chat_exists(sender_uid)` —— GeoChat 的 CoT uid 為 `GeoChat.<dev>.<room>.<msgGuid>`、含訊息 GUID 唯一 → 同 uid 已存在就跳過、不寫不廣播。單 worker 事件迴圈下 `chat_exists`→`insert` 間無 `await`、原子，無 TOCTOU。\n\n## 驗證\n- `test_geochat_routing` +2（同 uid 重播只一筆 / 重播不重廣播）；34 passed、ruff clean\n- `/code-review` + `/security-review`：SQL 參數化、uid 唯一鍵正確、無洩漏；唯一 flagged TOCTOU 經分析不可達（check→insert 間無 await）\n- 版號 backend-v2.6.2（PATCH）\n- 另：清掉既有 42 筆重複（每 sender_uid 留最早一筆）\n\n衍生自 #248（GeoChat 入向）。\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+    "closedAt": "2026-06-15T05:57:29Z",
+    "comments": [],
+    "createdAt": "2026-06-15T05:55:11Z",
+    "headRefName": "fix/geochat-ingest-idempotent",
+    "labels": [],
+    "mergedAt": "2026-06-15T05:57:29Z",
+    "number": 273,
+    "state": "MERGED",
+    "title": "fix(chat): GeoChat ingest 冪等 — 同訊息重播不再重複入庫",
+    "updatedAt": "2026-06-15T05:57:31Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/273"
   }
 ]
