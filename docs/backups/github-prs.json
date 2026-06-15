@@ -4019,5 +4019,26 @@
     "title": "feat(map): #258 β-1 — TTX 模式可編輯外部 TAK 來源幾何（編輯閘 mode-aware）",
     "updatedAt": "2026-06-14T23:03:04Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/266"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "## #265 — 切換 active 演習後 WS scope 凍結\n\nP1-14 的 `exercise_switched` 廣播只靠 client 重連對帳，但 WS 連線 scope 在 handshake 當下凍結（`_Conn.exercise_id` resolve 一次定死）→ 切換 active 演習後新場 entity 被 `wants()` 濾掉、需硬重整才 render。#258 β-1 真機 dogfood 踩到。\n\n### 主修（server 權威）\n- **realtime_hub**：`_Conn.follows_active` 旗標 + `cop_hub.rescope_active(new_scope)` — activate/archive 時就地把跟隨 active 的連線重綁新 scope，**不靠 client 重連**；COMMAND_ROLES 顯式 pin 歷史場的連線（`follows_active=False`）不動，保持 P1-14 isolation 邊界。\n- **cop.py**：WS handshake 依「有無顯式 `?exercise_id`」設 `follows_active`。\n- **exercises.py**：activate/archive 走 `_rescope_and_announce()`（先 rescope 再廣播）。\n\n### 前端硬化（cop_stream / main.js）\n- onclose identity guard：被取代的舊 socket 遲到關閉不誤排重連。\n- `stop()` 重置 `_reconnectAttempt`（backoff 不漂）。\n- `_refreshAfterExerciseSwitch` 改就地 `resync()`，不 `stop()` 清快取，消雙 socket race。\n\n### 驗證\n- pytest **1018 passed**、vitest **331 passed**、ruff clean\n- `/code-review` + `/security-review`：**0 finding**（isolation 邊界經驗證保持）\n- **真機 ATAK dogfood /verify PASS**：切換不重開 WS、新場 entity 即時 render\n- 版號：`backend-v2.5.1`（PATCH，行為改變）/ `frontend-v1.4.1`（PATCH，UI 不再需硬重整）\n\ndogfood 另挖出感測層 doctrine 缺口（group + 參與編組兩層）→ #267。\n\nCloses #265\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+    "closedAt": "2026-06-15T02:23:19Z",
+    "comments": [],
+    "createdAt": "2026-06-15T02:20:58Z",
+    "headRefName": "fix/issue-265-ws-scope-rescope",
+    "labels": [],
+    "mergedAt": "2026-06-15T02:23:19Z",
+    "number": 268,
+    "state": "MERGED",
+    "title": "fix(cop): #265 — 切換 active 演習後 WS scope 凍結（新場 entity 需硬重整才 render）",
+    "updatedAt": "2026-06-15T02:23:21Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/268"
   }
 ]
