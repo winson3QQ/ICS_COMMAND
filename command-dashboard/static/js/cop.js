@@ -522,8 +522,12 @@ export function renderZoneC(d) {
   // 裁示列表（委派給 decisions.js）
   const pendingDecs = _data?.decisions?.pending || [];
   const decidedDecs = _data?.decisions?.decided || [];
+  // #269：待裁示計數移到右欄 tab 上（紅圈），>0 才顯示。cop.js poll 不管 tab 顯隱照寫。
   const decCountEl = document.getElementById('dec-count');
-  if (decCountEl) decCountEl.textContent = pendingDecs.length;
+  if (decCountEl) {
+    decCountEl.textContent = pendingDecs.length > 0 ? String(pendingDecs.length) : '';
+    decCountEl.style.display = pendingDecs.length > 0 ? 'inline-block' : 'none';
+  }
 
   const decListEl = document.getElementById('right-dec-list');
   if (decListEl) {

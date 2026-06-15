@@ -35,8 +35,9 @@ import {
 } from './cop.js';
 import {
   initChatPanel, switchRightTab, chatFilterRoom, chatClearSender, chatRowDown, chatRowUp,
-  refreshChatNow,
+  refreshChatNow, restoreRightTab,
 } from './chat_panel.js';
+import { initRoster, stopRoster } from './roster_panel.js';
 import {
   getSeries, expandSpark, getExpandedSpark, renderSparklines,
   buildSliceHtml,
@@ -114,6 +115,7 @@ async function _initCopStream() {
 onAuthChange((type) => {
   if (type === 'logout' || type === 'lock') {
     if (_copStream) _copStream.stop();
+    stopRoster();  // #269：清掉 roster 週期重繪 timer（防 logout 後殘留）
   } else if (type === 'login' || type === 'unlock') {
     _initCopStream();
   }
@@ -420,9 +422,10 @@ document.addEventListener('click', function (e) {
     // ── COP 面板切換 ──
     case 'switchLeftPanel': switchLeftPanel(btn.dataset.group); break;
     case 'switchDecTab':    switchDecTab(btn.dataset.tab); break;
-    // ── 右欄頂層 tab（事件追蹤 ｜ 通聯）+ 通聯 room 過濾（#213 b1）──
-    // 切回事件即重算列表高（顯示後才量得到 clientHeight；補隱藏期間 window resize 的殘留）。
-    case 'switchRightTab':  switchRightTab(btn.dataset.rtab); if (btn.dataset.rtab !== 'chat') _resizeEvtList(); break;
+    // ── 右欄頂層 tab（事件追蹤 ｜ 通聯 ｜ 隊伍 ｜ 待裁示，#269）+ 通聯 room 過濾（#213 b1）──
+    // 切到事件才重算列表高（顯示後才量得到 clientHeight；補隱藏期間 window resize 的殘留）。
+    // #269：原 `!== 'chat'` 在四 tab 下會對 roster/decisions 也誤觸 → 收緊成 `=== 'events'`。
+    case 'switchRightTab':  switchRightTab(btn.dataset.rtab); if (btn.dataset.rtab === 'events') _resizeEvtList(); break;
     case 'chatFilterRoom':  chatFilterRoom(btn.dataset.room); break;
     case 'chatClearSender': chatClearSender(); break;  // #213 b3-1：清除 by-sender 過濾
 
@@ -744,6 +747,10 @@ function _loadClassicScript(src) {
       setInterval(() => poll(), POLL_INTERVAL);
       // COP 即時同步：地圖就緒後連 WS（issue #29 PR-E）
       _initCopStream();
+      // #269：右欄「隊伍」名冊（讀 cop_stream TAK 單位、按 team_color 分組；純前端 v1）
+      initRoster({ getTakUnits: () => (_copStream ? _copStream.getEntitiesBySource('tak') : []) });
+      // #269：還原 per-session 記憶的右欄 tab（TAK 狀態套用後；記憶為 TAK 頁但已停用則退回事件）
+      restoreRightTab();
 
       // 恢復上次開啟的事件 modal
       setTimeout(() => {

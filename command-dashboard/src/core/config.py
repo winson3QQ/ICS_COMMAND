@@ -54,11 +54,14 @@ APP_VERSION = "2.5.1"
 # v1.0.0：拆分自 ICS_DMAS 後首個完整可用形態（MapLibre 地圖引擎全換 P1-10b + PWA 移除 P1-11
 #         + 演習/放置/稽核 UI P1-13/14/16/#93 + 分類編輯器 #66）→ 0.x 畢業為 MAJOR 紀元。
 CMD_VERSION: str = os.getenv(
-    "CMD_VERSION", "v1.4.1"
+    "CMD_VERSION", "v1.5.0"
 )  # MINOR：P2-24 前端尾（#164）TAK runtime 控制 UI 功能組 —— 系統 tab sysadmin 開/關 toggle
 # + 唯讀連線狀態行 + header 燈號認實化（running/configured 區分，消除「沒 task 卻顯斷線重連」謊報）
 # PATCH(v1.4.1)：#265 —— 切換演習後不再需硬重整即即時 render（cop_stream onclose identity guard +
 # stop() backoff 重置 + _refreshAfterExerciseSwitch 改就地 resync 不清快取，消雙 socket race）。
+# MINOR(v1.5.0)：#269/#267 切片1 —— 右欄四-tab 重構（事件追蹤｜通聯｜隊伍｜待裁示，各整欄高 + 紅圈計數
+# + per-session tab 記憶）+ 新 TAK 隊伍名冊（按 team_color 分組、只列友軍、敵情接觸排除）。納編/定址/編組
+# 動作佔位，後端分批接。
 # v1.3.0：P2-30 part 3（#180）敵情標記 UI —— 2525 渲染 + callsign + 右鍵廣播 + 拖曳 + detail modal
 
 # ── CORS（C1-B）──────────────────────────
