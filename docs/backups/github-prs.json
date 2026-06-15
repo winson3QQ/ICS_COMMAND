@@ -4040,5 +4040,26 @@
     "title": "fix(cop): #265 — 切換 active 演習後 WS scope 凍結（新場 entity 需硬重整才 render）",
     "updatedAt": "2026-06-15T02:23:21Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/268"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "**Parent**: #267（group 兩層 scoping doctrine）。本 PR = 切片 1 的 UI 起點。\n\n## 右欄重構（多幕僚多 session）\n- 四 tab：事件追蹤｜通聯｜隊伍｜待裁示，各整欄高、各帶紅圈計數做跨頁感知 + per-session tab 記憶（sessionStorage）。\n- 待裁示由原底部常駐 40% 區轉成 tab；`#dec-count` 移到 tab 上。\n- `switchRightTab` 改通用多 tab；`_resizeEvtList` guard 收緊 `=== 'events'`；右欄 20%→25%。\n- 通聯/隊伍 tab 在 TAK 停用時隱藏（沿用 `tak:conn-state`）。\n\n## TAK 隊伍名冊（新 `roster_panel.js`，純前端 v1）\n- 讀 `cop_stream` TAK 單位、按 `team_color`（CoT `<__group>`）分組（未分組排最後）。\n- **只列友軍**（`affiliationFromCot==='friendly'`）—— 敵情接觸（a-h/a-n/a-u）屬感測層、不入隊伍名冊。\n- 在線=stale 未過（同地圖 `_isAging`）；離線單位由後端既有機制即時移出 list。\n- 納編/定址/編組動作**佔位**（後端 enrollment / 定向發送分批接）。\n- logout/lock 清 timer（防殘留，code-review 修）。\n\n## 驗證\n- vitest **337 passed**（roster_panel.test +6：友軍過濾/敵情排除/分組/未分組墊底/在線離線）、eslint 0、ruff clean\n- `/code-review`：roster timer leak 已修；restore 時序 thrash 為自癒小事（接受）\n- `/security-review`：**0 XSS** —— untrusted CoT 欄位（callsign/team/role/uid）全 `_esc`，battery 後端驗證 int\n- 版號：`frontend-v1.5.0`（MINOR，新 UI 功能組）；後端零改動\n\n## Out of scope（後續切片）\n- `enrollment` 表 + 納編/退編後端、定向發送（接 #216/#214）、ICS 側編組指派、常駐層疊看（碰 #265 隔離，需 security-review）。\n\nCloses #269\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+    "closedAt": "2026-06-15T03:58:42Z",
+    "comments": [],
+    "createdAt": "2026-06-15T03:56:32Z",
+    "headRefName": "feat/issue-269-roster-4tab",
+    "labels": [],
+    "mergedAt": "2026-06-15T03:58:42Z",
+    "number": 270,
+    "state": "MERGED",
+    "title": "feat(ui): #269/#267 切片1 — 右欄四-tab 重構 + TAK 隊伍名冊",
+    "updatedAt": "2026-06-15T03:58:44Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/270"
   }
 ]
