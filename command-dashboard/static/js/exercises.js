@@ -51,6 +51,11 @@ export function activeExerciseType() {
   return _activeExercise?.type || null;
 }
 
+/** #267：目前 active 演習 id（無 active → null）。roster 納編/退編 endpoint `/{id}/enroll` 用。 */
+export function activeExerciseId() {
+  return _activeExercise?.id ?? null;
+}
+
 /** 建立演習（type: 'ttx' | 'real'）。 */
 export async function createExercise(name, type = 'ttx') {
   return authFetch(API_BASE + '/api/exercises', {

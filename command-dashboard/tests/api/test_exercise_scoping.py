@@ -223,3 +223,48 @@ class TestStandingOverlay:
         # 5. operator + include_standing=1 → SECURITY gate 擋，仍看不到
         ents = client.get("/api/cop/entities?include_standing=1", headers=operator_auth).json()["entities"]
         assert not any(e["uid"] == uid for e in ents), "operator 不可疊常駐（gate）"
+
+
+class TestEnroll:
+    """#267 納編/退編：POST /api/exercises/{id}/enroll —— 把 cop entity 移進 active 場 / 退回 NULL。"""
+
+    def test_enroll_then_unenroll(self, client, auth):
+        # 1. 無 active 時建 entity → 綁 NULL（常駐候選）
+        uid = client.post("/api/cop/entities", json={**_COP, "callsign": "ENR-1"}, headers=auth).json()["uid"]
+        # 2. 啟動演習
+        ex = client.post("/api/exercises", json={"name": "納編場", "type": "ttx"}, headers=auth).json()
+        assert client.post(f"/api/exercises/{ex['id']}/activate", json={}, headers=auth).status_code == 200
+        # 預設（active scope）看不到常駐
+        assert not any(e["uid"] == uid for e in client.get("/api/cop/entities", headers=auth).json()["entities"])
+        # 3. 納編 → exercise_id = active
+        r = client.post(f"/api/exercises/{ex['id']}/enroll", json={"uid": uid, "action": "enroll"}, headers=auth)
+        assert r.status_code == 200, r.text
+        assert r.json()["exercise_id"] == ex["id"]
+        # 現在 active scope 看得到、不需 include_standing
+        assert any(e["uid"] == uid for e in client.get("/api/cop/entities", headers=auth).json()["entities"])
+        # 4. 退編 → 回 NULL
+        r = client.post(f"/api/exercises/{ex['id']}/enroll", json={"uid": uid, "action": "unenroll"}, headers=auth)
+        assert r.status_code == 200, r.text
+        assert r.json()["exercise_id"] is None
+        # active scope 又看不到；include_standing 才看得到
+        assert not any(e["uid"] == uid for e in client.get("/api/cop/entities", headers=auth).json()["entities"])
+        ents = client.get("/api/cop/entities?include_standing=1", headers=auth).json()["entities"]
+        assert any(e["uid"] == uid for e in ents)
+
+    def test_enroll_only_into_active(self, client, auth):
+        # {id} 非當前 active → 409（不可納編進非 active 場）
+        a = client.post("/api/exercises", json={"name": "A", "type": "ttx"}, headers=auth).json()
+        b = client.post("/api/exercises", json={"name": "B", "type": "ttx"}, headers=auth).json()
+        client.post(f"/api/exercises/{a['id']}/activate", json={}, headers=auth)  # A active（B 非）
+        uid = client.post("/api/cop/entities", json={**_COP, "callsign": "ENR-2"}, headers=auth).json()["uid"]
+        r = client.post(f"/api/exercises/{b['id']}/enroll", json={"uid": uid, "action": "enroll"}, headers=auth)
+        assert r.status_code == 409
+
+    def test_enroll_command_only(self, client, auth, operator_auth):
+        ex = client.post("/api/exercises", json={"name": "權限", "type": "ttx"}, headers=auth).json()
+        client.post(f"/api/exercises/{ex['id']}/activate", json={}, headers=auth)
+        uid = client.post("/api/cop/entities", json={**_COP, "callsign": "ENR-3"}, headers=auth).json()["uid"]
+        r = client.post(
+            f"/api/exercises/{ex['id']}/enroll", json={"uid": uid, "action": "enroll"}, headers=operator_auth
+        )
+        assert r.status_code == 403
