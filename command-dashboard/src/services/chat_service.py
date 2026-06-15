@@ -52,6 +52,10 @@ async def ingest_chat(event: CoTEventIn) -> dict | None:
     # 空訊息 chat 無意義，且會在前端「直接」頻道冒空白列（Windows dogfood 實證）→ 不寫、不廣播。
     if not (event.remarks or "").strip():
         return None
+    # 冪等：GeoChat 的 uid 含訊息 GUID（唯一）。TAK 重訂閱 / `/cot/sa` resync 會重播持久化 GeoChat →
+    # 同 uid 重來不再入庫、不再廣播（否則每次重連多一筆同訊息，dogfood 實證 42 筆「Enemy founded」）。
+    if chat_repo.chat_exists(event.uid):
+        return None
     record = ChatIn(
         sender_uid=event.uid,
         callsign=event.callsign or chat.get("senderCallsign"),

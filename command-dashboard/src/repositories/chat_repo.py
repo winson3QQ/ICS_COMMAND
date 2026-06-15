@@ -1,9 +1,9 @@
 """repositories/chat_repo.py — chats 表存取（P2-07，#129）。"""
 
 from core.database import get_conn
+from schemas.chat import ChatIn
 
 from ._helpers import NULL_SCOPE, row_to_dict
-from schemas.chat import ChatIn
 
 
 def insert_chat(chat: ChatIn) -> dict:
@@ -23,6 +23,15 @@ def insert_chat(chat: ChatIn) -> dict:
     with get_conn() as conn:
         row = conn.execute("SELECT * FROM chats WHERE id = ?", (rid,)).fetchone()
         return row_to_dict(row)
+
+
+def chat_exists(sender_uid: str) -> bool:
+    """是否已有同 sender_uid 的通聯。GeoChat 的 CoT uid 含訊息 GUID（`GeoChat.<dev>.<room>.<guid>`）
+    → 每則訊息唯一。冪等用：TAK 重訂閱 / `/cot/sa` resync 會重播持久化 GeoChat，若不查重會每次
+    重連多插一筆（dogfood 實證同一則「Enemy founded」累積 42 筆）。"""
+    with get_conn() as conn:
+        row = conn.execute("SELECT 1 FROM chats WHERE sender_uid = ? LIMIT 1", (sender_uid,)).fetchone()
+    return row is not None
 
 
 def list_chats(exercise_id, since: str | None = None, until: str | None = None, cap: int = 200) -> list[dict]:
