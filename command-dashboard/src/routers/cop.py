@@ -198,18 +198,26 @@ def list_entities(
     source: str | None = None,
     exercise_id: int | None = None,
     include_stale: bool = False,
+    include_standing: bool = False,
     limit: int = 500,
 ):
     """列出 COP entity（預設過濾 stale）。前線 client 啟動 / WS 重連時全量 resync 用。
-    P1-14：預設只回當前 active 場；commander 顯式帶 exercise_id 才看歷史（resolve_scope 守門）。"""
-    return {
-        "entities": cop_entity_repo.list_cop_entities(
-            source=source,
-            exercise_id=resolve_scope(request.state.session, exercise_id),
-            include_stale=include_stale,
-            limit=limit,
+    P1-14：預設只回當前 active 場；commander 顯式帶 exercise_id 才看歷史（resolve_scope 守門）。
+    #267：include_standing（限 COMMAND）→ active 場再疊加 NULL 常駐 entity，與 WS `?standing=1`
+    對等（否則 resync 會把 WS 推來的常駐單位刪掉＝鬼影）。"""
+    scope = resolve_scope(request.state.session, exercise_id)
+    entities = cop_entity_repo.list_cop_entities(
+        source=source, exercise_id=scope, include_stale=include_stale, limit=limit
+    )
+    # int scope＝有 active 場；疊加常駐（NULL_SCOPE）。已是 NULL_SCOPE（無 active）者本就看得到常駐、不疊。
+    # SECURITY：限 COMMAND_ROLES（對齊 WS gate）；非指揮層帶 include_standing 也忽略。
+    if include_standing and isinstance(scope, int) and is_role_allowed(request.state.session, COMMAND_ROLES):
+        standing = cop_entity_repo.list_cop_entities(
+            source=source, exercise_id=NULL_SCOPE, include_stale=include_stale, limit=limit
         )
-    }
+        seen = {e["uid"] for e in entities}
+        entities = entities + [e for e in standing if e["uid"] not in seen]
+    return {"entities": entities}
 
 
 @router.get("/entities/{uid}")

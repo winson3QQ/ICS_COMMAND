@@ -12,6 +12,7 @@
 import { affiliationFromCot } from './map/mil_symbol.js';
 
 let _getTakUnits = () => [];
+let _hasActiveExercise = () => false;
 let _timer = null;
 
 // 隊伍名冊＝**我方人員/單位**（友軍）。敵性/中立/不明是「觀測到的接觸」（感測層、map 上），
@@ -87,6 +88,11 @@ export function renderRoster() {
     return;
   }
 
+  // #267：有 active 演習時，NULL 單位＝常駐候選（疊看送進來的）→ 加「常駐」標記以與在場單位區分；
+  // 無 active 演習時所有單位都是常駐、無對照 → 不標（徒增雜訊）。active 狀態由 main.js 注入
+  // （不能只看「清單有無在場單位」—— 演習剛開、尚無人在場時會誤判）。
+  const markStanding = _hasActiveExercise();
+
   let html = '';
   for (const [team, list] of groups) {
     const online = list.filter((e) => _isOnline(e, now)).length;
@@ -98,9 +104,13 @@ export function renderRoster() {
     for (const e of list) {
       const on = _isOnline(e, now);
       const meta = [_esc(e.role || ''), e.battery != null ? e.battery + '%' : ''].filter(Boolean).join(' · ');
+      const standingTag = markStanding && e.exercise_id == null
+        ? '<span style="font-size:8px;color:var(--text3);border:1px solid var(--border);border-radius:3px;padding:0 3px;flex-shrink:0;">常駐</span>'
+        : '';
       html += '<div style="display:flex;align-items:center;gap:7px;padding:4px 6px 4px 14px;border-bottom:1px solid var(--border);">'
         + '<span style="width:7px;height:7px;border-radius:50%;flex-shrink:0;background:' + (on ? 'var(--green)' : 'var(--text3)') + ';"></span>'
         + '<span style="flex:1;min-width:0;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + _esc(e.callsign || e.uid) + '</span>'
+        + standingTag
         + '<span style="color:var(--text3);font-size:9px;flex-shrink:0;">' + meta + '</span>'
         + '</div>';
     }
@@ -113,8 +123,9 @@ export function renderRoster() {
 }
 
 /** main.js 注入 TAK 單位來源 + 啟動週期重繪 + 綁 tab 切換即時重繪。 */
-export function initRoster({ getTakUnits } = {}) {
+export function initRoster({ getTakUnits, getHasActiveExercise } = {}) {
   if (typeof getTakUnits === 'function') _getTakUnits = getTakUnits;
+  if (typeof getHasActiveExercise === 'function') _hasActiveExercise = getHasActiveExercise;
   document.addEventListener('right-tab:switched', (e) => {
     if (e?.detail?.tab === 'roster') renderRoster();
   });

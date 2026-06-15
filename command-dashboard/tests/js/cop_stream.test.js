@@ -399,6 +399,48 @@ describe("reconnect / onclose hardening (#265)", () => {
   });
 });
 
+// ── 常駐層疊看參數（#267）────────────────────────────────────────────────
+describe("includeStanding param (#267)", () => {
+  function makeWithStanding(includeStanding) {
+    let wsUrl = null;
+    const fetchUrls = [];
+    const Ctor = function (url) {
+      wsUrl = url;
+      this.readyState = 1;
+    };
+    const stream = createCopStream({
+      getToken: () => "tok",
+      authFetch: (url) => {
+        fetchUrls.push(url);
+        return _resp(200, { entities: [] });
+      },
+      canWrite: () => true,
+      WebSocketCtor: Ctor,
+      wsUrl: "ws://h/api/cop/ws/updates",
+      includeStanding,
+      setTimeoutFn: () => 0,
+      clearTimeoutFn: () => {},
+    });
+    return { stream, getWsUrl: () => wsUrl, fetchUrls };
+  }
+
+  test("true → WS ?standing=1 + resync ?include_standing=1", async () => {
+    const { stream, getWsUrl, fetchUrls } = makeWithStanding(true);
+    stream.connect();
+    expect(getWsUrl()).toBe("ws://h/api/cop/ws/updates?standing=1");
+    await stream.resync();
+    expect(fetchUrls.some((u) => u.includes("/api/cop/entities?include_standing=1"))).toBe(true);
+  });
+
+  test("false（預設）→ 無 standing 參數", async () => {
+    const { stream, getWsUrl, fetchUrls } = makeWithStanding(false);
+    stream.connect();
+    expect(getWsUrl()).toBe("ws://h/api/cop/ws/updates");
+    await stream.resync();
+    expect(fetchUrls.every((u) => !u.includes("standing"))).toBe(true);
+  });
+});
+
 // ── 渲染委派 seam（PR-G1：map.js 接管渲染）─────────────────────────────────
 
 describe("render delegation seam", () => {

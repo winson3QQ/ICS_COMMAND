@@ -116,8 +116,7 @@ class TestScopeRoleGate:
         descs = [e["description"] for e in evs]
         assert "在B" in descs and "在A" not in descs
         # commander/sysadmin（admin）帶 ?exercise_id=A → 看得到歷史 A
-        descs2 = [e["description"] for e in
-                  client.get(f"/api/events?exercise_id={a['id']}", headers=auth).json()]
+        descs2 = [e["description"] for e in client.get(f"/api/events?exercise_id={a['id']}", headers=auth).json()]
         assert "在A" in descs2
 
     def test_observer_blocked_from_historical_aar_and_ai_report(self, client, auth, observer_auth, active_exercise):
@@ -133,12 +132,27 @@ class TestNodeInfraRBAC:
     """P1-16 security review HIGH-1：節點(zone)/設施(infra)建立+刪除限指揮層（後端授權，非只前端）。
     其餘 kind（route/polygon/event）operator 仍可寫，不誤傷。"""
 
-    _ZONE = {"type": "a-f-G-I", "lat": 24.8, "lon": 121.0, "callsign": "收容組",
-             "attributes": {"kind": "zone", "node_type": "shelter"}}
-    _INFRA = {"type": "a-f-G-I", "lat": 24.8, "lon": 121.0, "callsign": "醫院",
-              "attributes": {"kind": "infra", "infra_type": "hospital"}}
-    _ROUTE = {"type": "a-f-G", "lat": 24.8, "lon": 121.0, "callsign": "R",
-              "attributes": {"kind": "route", "vertices": [[24.8, 121.0], [24.9, 121.1]]}}
+    _ZONE = {
+        "type": "a-f-G-I",
+        "lat": 24.8,
+        "lon": 121.0,
+        "callsign": "收容組",
+        "attributes": {"kind": "zone", "node_type": "shelter"},
+    }
+    _INFRA = {
+        "type": "a-f-G-I",
+        "lat": 24.8,
+        "lon": 121.0,
+        "callsign": "醫院",
+        "attributes": {"kind": "infra", "infra_type": "hospital"},
+    }
+    _ROUTE = {
+        "type": "a-f-G",
+        "lat": 24.8,
+        "lon": 121.0,
+        "callsign": "R",
+        "attributes": {"kind": "route", "vertices": [[24.8, 121.0], [24.9, 121.1]]},
+    }
 
     def test_operator_cannot_create_zone_or_infra(self, client, operator_auth):
         assert client.post("/api/cop/entities", json=self._ZONE, headers=operator_auth).status_code == 403
@@ -158,8 +172,9 @@ class TestNodeInfraRBAC:
     def test_operator_cannot_delete_zone(self, client, auth, operator_auth):
         r = client.post("/api/cop/entities", json=self._ZONE, headers=auth)  # 指揮層建
         uid, vc = r.json()["uid"], r.json()["version_clock"]
-        assert client.delete(f"/api/cop/entities/{uid}",
-                             headers={**operator_auth, "If-Match": str(vc)}).status_code == 403
+        assert (
+            client.delete(f"/api/cop/entities/{uid}", headers={**operator_auth, "If-Match": str(vc)}).status_code == 403
+        )
 
 
 class TestExerciseDelete:
@@ -187,3 +202,24 @@ class TestExerciseDelete:
         assert client.delete(f"/api/exercises/{a['id']}", headers=operator_auth).status_code == 403
         # sysadmin 可刪
         assert client.delete(f"/api/exercises/{a['id']}", headers=auth).status_code == 200
+
+
+class TestStandingOverlay:
+    """#267 常駐層疊看 REST 對等：?include_standing（限 COMMAND）→ active 場再疊加 NULL 常駐 entity。
+    與 WS ?standing=1 對等（否則 resync 抹掉 WS 推來的常駐＝鬼影）。"""
+
+    def test_include_standing_command_only(self, client, auth, operator_auth):
+        # 1. 無 active 演習時建 cop entity → 綁 NULL（常駐）
+        uid = client.post("/api/cop/entities", json={**_COP, "callsign": "STAND-1"}, headers=auth).json()["uid"]
+        # 2. 啟動演習 → active scope = int
+        ex = client.post("/api/exercises", json={"name": "疊看", "type": "ttx"}, headers=auth).json()
+        assert client.post(f"/api/exercises/{ex['id']}/activate", json={}, headers=auth).status_code == 200
+        # 3. 預設（無 include_standing）→ 只回 active 場，看不到常駐
+        ents = client.get("/api/cop/entities", headers=auth).json()["entities"]
+        assert not any(e["uid"] == uid for e in ents), "預設不疊常駐"
+        # 4. command + include_standing=1 → 疊到常駐
+        ents = client.get("/api/cop/entities?include_standing=1", headers=auth).json()["entities"]
+        assert any(e["uid"] == uid for e in ents), "command 疊看應收到常駐"
+        # 5. operator + include_standing=1 → SECURITY gate 擋，仍看不到
+        ents = client.get("/api/cop/entities?include_standing=1", headers=operator_auth).json()["entities"]
+        assert not any(e["uid"] == uid for e in ents), "operator 不可疊常駐（gate）"

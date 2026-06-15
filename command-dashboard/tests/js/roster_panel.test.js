@@ -59,6 +59,16 @@ describe('rosterModel', () => {
     expect(offline).toBe(1);
   });
 
+  test('常駐(NULL exercise)友軍單位仍列入名冊（#267 enroll 候選）', () => {
+    const units = [
+      { uid: 'in', team_color: 'Orange', type: 'a-f-G', exercise_id: 5, stale: '2026-06-15T10:05:00Z' },
+      { uid: 'stand', team_color: 'Orange', type: 'a-f-G', exercise_id: null, stale: '2026-06-15T10:05:00Z' },
+    ];
+    const uids = rosterModel(units, NOW).groups.flatMap(([, l]) => l.map((e) => e.uid));
+    expect(uids).toContain('in');
+    expect(uids).toContain('stand'); // 常駐也列入（候選）
+  });
+
   test('只列友軍：敵性/中立/不明接觸不入名冊', () => {
     const units = [
       U('me', 'Orange', true), // a-f 友軍

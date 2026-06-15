@@ -49,14 +49,16 @@ WARNING_THRESHOLD_SECONDS: int = int(os.getenv("ICS_WARNING_THRESHOLD_SECONDS", 
 # follows_active 連線、不靠 client 重連）；行為改變（新場 entity 不再需硬重整才 render）。
 # MINOR：#267 常駐層疊看後端 —— WS `?standing=1`（限 COMMAND_ROLES）讓 active 場連線也收 NULL
 # 常駐 entity（`_Conn.include_standing` + `wants()` NULL-union）；證明不跨演習（仍精確擋別場）。
-APP_VERSION = "2.6.0"
+# PATCH：#267 REST 對等 —— `GET /api/cop/entities?include_standing`（限 COMMAND）疊加 NULL 常駐，
+# 與 WS 對等，補掉 resync 抹掉常駐單位的鬼影（前端疊看 slice 的後端半）。
+APP_VERSION = "2.6.1"
 
 # CMD_VERSION：前端 UI 功能版本（不同於後端 SemVer APP_VERSION；規則見 CLAUDE.md 版號規則）
 # 兩軌版本命名，不可混用。由 /api/version 提供給前端，是唯一 source-of-truth；release 時更新此值。
 # v1.0.0：拆分自 ICS_DMAS 後首個完整可用形態（MapLibre 地圖引擎全換 P1-10b + PWA 移除 P1-11
 #         + 演習/放置/稽核 UI P1-13/14/16/#93 + 分類編輯器 #66）→ 0.x 畢業為 MAJOR 紀元。
 CMD_VERSION: str = os.getenv(
-    "CMD_VERSION", "v1.5.0"
+    "CMD_VERSION", "v1.6.0"
 )  # MINOR：P2-24 前端尾（#164）TAK runtime 控制 UI 功能組 —— 系統 tab sysadmin 開/關 toggle
 # + 唯讀連線狀態行 + header 燈號認實化（running/configured 區分，消除「沒 task 卻顯斷線重連」謊報）
 # PATCH(v1.4.1)：#265 —— 切換演習後不再需硬重整即即時 render（cop_stream onclose identity guard +
@@ -64,6 +66,8 @@ CMD_VERSION: str = os.getenv(
 # MINOR(v1.5.0)：#269/#267 切片1 —— 右欄四-tab 重構（事件追蹤｜通聯｜隊伍｜待裁示，各整欄高 + 紅圈計數
 # + per-session tab 記憶）+ 新 TAK 隊伍名冊（按 team_color 分組、只列友軍、敵情接觸排除）。納編/定址/編組
 # 動作佔位，後端分批接。
+# MINOR(v1.6.0)：#267 常駐層疊看前端 —— 演習中疊顯 NULL 常駐單位（地圖圖層 toggle 限指揮層、預設關、
+# 無 active 演習時常駐恆顯）+ roster 標「常駐」候選 + cop_stream 帶 standing/include_standing。
 # v1.3.0：P2-30 part 3（#180）敵情標記 UI —— 2525 渲染 + callsign + 右鍵廣播 + 拖曳 + detail modal
 
 # ── CORS（C1-B）──────────────────────────
