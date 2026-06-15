@@ -8,9 +8,9 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from auth.service import validate_session
 from repositories._helpers import NULL_SCOPE, audit, iso_utc
 from repositories.aar_repo import create_aar_entry, get_aar_entries
-from repositories.cop_entity_repo import list_tracks_by_exercise
+from repositories.cop_entity_repo import get_cop_entity, list_tracks_by_exercise, update_cop_entity_cas
 from repositories.exercise_repo import delete_exercise, update_exercise_status
-from schemas.exercise import AAREntryIn, ExerciseCreateIn, ExerciseStatusIn
+from schemas.exercise import AAREntryIn, EnrollIn, ExerciseCreateIn, ExerciseStatusIn
 from services.exercise_service import archive, create, current_exercise_id, get, list_all, set_active
 from services.kpi_service import build_kpis
 from services.realtime_hub import cop_hub
@@ -89,6 +89,61 @@ async def delete_ex(exercise_id: int, request: Request):
     # 演習集合改變 → 廣播，其他 session 的演習清單 / chip 即時更新（即使非 active）
     await cop_hub.broadcast_all({"op": "exercise_switched"})
     return {"ok": True, "cleared": cleared}
+
+
+@router.post("/{exercise_id}/enroll")
+async def enroll(exercise_id: int, body: EnrollIn, request: Request):
+    """#267 納編/退編：把一個 cop entity 移進當前 active 場（enroll）/ 退回 NULL 常駐（unenroll）。
+
+    COMMAND_ROLES（中央 gate `/api/exercises/*` 非 GET）。**不套 `_require_editable_source`**——
+    納編只改歸屬、非編輯現場物件內容，故訓練(ttx)/實戰(real) 皆可（決策見 #267）。
+    `{exercise_id}` 必為當前 active 場（server-authoritative，不信 client 任選歷史場）。
+
+    歸屬改法＝直接改 `cop_entities.exercise_id`（CAS；含 PLI 撞 vc 的一次內部重試）。後續 PLI 不改
+    exercise_id（不在 `_TAK_UPDATE_FIELDS`）→ 一次納編永久生效。雙廣播（舊 scope delete / 新 scope
+    create）讓各 scope 連線正確增刪；疊看連線兩者皆收、version_clock LWW 就地過渡不消失。
+    註：tracks 靠 uid JOIN cop_entities 取場（Design B）→ 納編**追溯**把該單位全部軌跡歸入本場 AAR。"""
+    sess = validate_session(request)
+    if not get(exercise_id):
+        raise HTTPException(404, "演練不存在")
+    if current_exercise_id() != exercise_id:
+        raise HTTPException(409, "只能對當前 active 演習納編/退編")
+    target = exercise_id if body.action == "enroll" else None
+
+    entity = get_cop_entity(body.uid)
+    if entity is None:
+        raise HTTPException(404, f"entity 不存在：{body.uid}")
+    old_scope = entity.get("exercise_id")
+    if old_scope == target:
+        return entity  # 已在該 scope，no-op
+
+    expected_vc = entity["version_clock"]
+    res = None
+    for _ in range(2):  # PLI 可能在讀取後撞 vc → 重讀一次再 CAS
+        res = update_cop_entity_cas(body.uid, expected_vc, {"exercise_id": target}, actor=sess["username"])
+        if res["status"] == "ok":
+            break
+        if res["status"] == "notfound":
+            raise HTTPException(404, f"entity 不存在：{body.uid}")
+        expected_vc = res["entity"]["version_clock"]
+        old_scope = res["entity"].get("exercise_id")
+    if res is None or res["status"] != "ok":
+        raise HTTPException(409, "version 衝突，請重試")
+    new_entity = res["entity"]
+
+    action = "cop_entity_enrolled" if target is not None else "cop_entity_unenrolled"
+    audit(sess["username"], None, action, "cop_entities", body.uid, {"from": old_scope, "to": target})
+
+    # 雙廣播：舊 scope 連線掉、新 scope 連線加。delete 帶 CAS 後 vc（保證 ≥ 任何連線快取值，含 PLI
+    # 撞 vc 重試後的值 → 不會被 _applyDelete 當 stale 丟掉而殘留鬼影）。
+    await cop_hub.broadcast(
+        {"op": "delete", "uid": body.uid, "version_clock": new_entity["version_clock"]}, exercise_id=old_scope
+    )
+    await cop_hub.broadcast(
+        {"op": "create", "uid": body.uid, "version_clock": new_entity["version_clock"], "entity": new_entity},
+        exercise_id=new_entity.get("exercise_id"),
+    )
+    return new_entity
 
 
 @router.put("/{exercise_id}/status")

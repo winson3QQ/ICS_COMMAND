@@ -13,7 +13,9 @@ import { affiliationFromCot } from './map/mil_symbol.js';
 
 let _getTakUnits = () => [];
 let _hasActiveExercise = () => false;
+let _onEnroll = null; // #267：(uid, 'enroll'|'unenroll') => Promise；main.js 注入（指揮層才有）
 let _timer = null;
+let _clickBound = false;
 
 // 隊伍名冊＝**我方人員/單位**（友軍）。敵性/中立/不明是「觀測到的接觸」（感測層、map 上），
 // 非隊伍成員，不列入（例：操作員觀測到的敵情 marker a-h-* 不該出現在我方隊伍名冊）。
@@ -104,31 +106,57 @@ export function renderRoster() {
     for (const e of list) {
       const on = _isOnline(e, now);
       const meta = [_esc(e.role || ''), e.battery != null ? e.battery + '%' : ''].filter(Boolean).join(' · ');
-      const standingTag = markStanding && e.exercise_id == null
-        ? '<span style="font-size:8px;color:var(--text3);border:1px solid var(--border);border-radius:3px;padding:0 3px;flex-shrink:0;">常駐</span>'
-        : '';
+      // #267：演習中——有納編能力（指揮層）→ 常駐單位給「納編」鈕、在場單位給「退編」鈕；
+      // 無能力（onEnroll 缺）則退回純「常駐」標。無 active 演習時不顯（皆常駐、無對照）。
+      const _bs = 'font-size:8px;border:1px solid var(--border);border-radius:3px;padding:0 4px;flex-shrink:0;';
+      let actionEl = '';
+      if (markStanding) {
+        if (_onEnroll) {
+          actionEl = e.exercise_id == null
+            ? `<span data-roster-enroll="enroll" data-uid="${_esc(e.uid)}" style="${_bs}color:var(--green);cursor:pointer;">納編</span>`
+            : `<span data-roster-enroll="unenroll" data-uid="${_esc(e.uid)}" style="${_bs}color:var(--text3);cursor:pointer;">退編</span>`;
+        } else if (e.exercise_id == null) {
+          actionEl = `<span style="${_bs}color:var(--text3);">常駐</span>`;
+        }
+      }
       html += '<div style="display:flex;align-items:center;gap:7px;padding:4px 6px 4px 14px;border-bottom:1px solid var(--border);">'
         + '<span style="width:7px;height:7px;border-radius:50%;flex-shrink:0;background:' + (on ? 'var(--green)' : 'var(--text3)') + ';"></span>'
         + '<span style="flex:1;min-width:0;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + _esc(e.callsign || e.uid) + '</span>'
-        + standingTag
+        + actionEl
         + '<span style="color:var(--text3);font-size:9px;flex-shrink:0;">' + meta + '</span>'
         + '</div>';
     }
   }
-  // 動作列佔位（#267 group 三用途：歸屬/定址/編組）—— 後端分批接，本版 disabled。
+  // 動作列佔位（#267 group 三用途之 定址）—— 發訊息/分享標記後端分批接；納編/退編已上線（per-unit 鈕）。
   html += '<div style="display:flex;gap:4px;flex-wrap:wrap;padding:8px 6px;color:var(--text3);font-size:9px;border-top:1px solid var(--border);margin-top:4px;">'
-    + '<span style="opacity:.5;">納編｜發訊息｜分享標記｜移到隊伍（後端接入中）</span>'
+    + '<span style="opacity:.5;">發訊息｜分享標記（後端接入中）</span>'
     + '</div>';
   body.innerHTML = html;
 }
 
-/** main.js 注入 TAK 單位來源 + 啟動週期重繪 + 綁 tab 切換即時重繪。 */
-export function initRoster({ getTakUnits, getHasActiveExercise } = {}) {
+/** #267 納編/退編 鈕的委派點擊（綁在 #roster-body，innerHTML 重繪不掉）。 */
+function _onBodyClick(ev) {
+  const btn = ev.target.closest && ev.target.closest('[data-roster-enroll]');
+  if (!btn || !_onEnroll) return;
+  const uid = btn.getAttribute('data-uid');
+  const action = btn.getAttribute('data-roster-enroll');
+  if (!uid) return;
+  btn.style.opacity = '0.4'; // 即時回饋（WS create/delete 回來後重繪定案）
+  Promise.resolve(_onEnroll(uid, action)).then(renderRoster).catch(() => renderRoster());
+}
+
+/** main.js 注入 TAK 單位來源 + 納編 callback + 啟動週期重繪 + 綁 tab 切換即時重繪。 */
+export function initRoster({ getTakUnits, getHasActiveExercise, onEnroll } = {}) {
   if (typeof getTakUnits === 'function') _getTakUnits = getTakUnits;
   if (typeof getHasActiveExercise === 'function') _hasActiveExercise = getHasActiveExercise;
+  if (typeof onEnroll === 'function') _onEnroll = onEnroll;
   document.addEventListener('right-tab:switched', (e) => {
     if (e?.detail?.tab === 'roster') renderRoster();
   });
+  if (!_clickBound) {
+    _el('roster-body')?.addEventListener('click', _onBodyClick);
+    _clickBound = true;
+  }
   if (_timer) clearInterval(_timer);
   _timer = setInterval(renderRoster, 3000);
   renderRoster();

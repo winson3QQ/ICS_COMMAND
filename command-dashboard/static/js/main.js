@@ -92,6 +92,7 @@ let _copStream = null;
 // #267：目前 active 演習型別（'ttx'|'real'|null）。供 roster 判「有無 active 演習」以標常駐候選
 // （演習中 NULL 單位＝常駐；無 active 演習則所有單位都常駐、不標）。隨 setExerciseMode 同步更新。
 let _activeExType = null;
+let _activeExId = null;  // #267：active 演習 id（roster 納編/退編 endpoint 用）
 
 async function _initCopStream() {
   if (_copStream) {
@@ -154,6 +155,7 @@ document.addEventListener('exercise:switched', () => {
     const panelOpen = document.getElementById('settings-overlay')?.classList.contains('show');
     if (panelOpen) await m.renderExercisePanel(); else await m.initExerciseChip();
     _activeExType = m.activeExerciseType();
+    _activeExId = m.activeExerciseId();
     setExerciseMode(_activeExType);  // #258 β-1：橋接新模式 → map.js 編輯閘（TTX 才放行外部來源）
   });
 });
@@ -746,6 +748,7 @@ function _loadClassicScript(src) {
       import('./exercises.js').then(async m => {
         await m.initExerciseChip();
         _activeExType = m.activeExerciseType();
+        _activeExId = m.activeExerciseId();
         setExerciseMode(_activeExType);  // #258 β-1：初始模式 → map.js 編輯閘
       });
       startSessionStatusPolling();
@@ -760,6 +763,15 @@ function _loadClassicScript(src) {
         getTakUnits: () => (_copStream ? _copStream.getEntitiesBySource('tak') : []),
         // #267：有 active 演習時，NULL 單位＝常駐候選 → 標記；無 active 演習則不標（皆常駐、無對照）。
         getHasActiveExercise: () => _activeExType != null,
+        // #267 納編/退編：把單位移進 active 場 / 退回 NULL。後端雙廣播 → cop_stream 就地過渡、roster 重繪。
+        onEnroll: async (uid, action) => {
+          if (_activeExId == null) return;
+          await authFetch(`${API_BASE}/api/exercises/${_activeExId}/enroll`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ uid, action }),
+          });
+        },
       });
       // #269：還原 per-session 記憶的右欄 tab（TAK 狀態套用後；記憶為 TAK 頁但已停用則退回事件）
       restoreRightTab();
