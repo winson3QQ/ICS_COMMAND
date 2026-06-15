@@ -1261,6 +1261,13 @@ export function renderZoneC(data, d) {
     }
   }
 
+  // #269：事件追蹤 tab 紅圈＝逾時數（跨頁感知，多幕僚各停一頁時提醒）
+  const evtTabBadge = el('evt-tab-badge');
+  if (evtTabBadge) {
+    evtTabBadge.textContent = overdueCount > 0 ? String(overdueCount) : '';
+    evtTabBadge.style.display = overdueCount > 0 ? 'inline-block' : 'none';
+  }
+
   const statsEl = el('evt-stats');
   if (statsEl) {
     let statsHtml = '';

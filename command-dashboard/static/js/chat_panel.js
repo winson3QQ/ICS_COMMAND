@@ -147,7 +147,7 @@ function _clampLastSeenIfStale(chats) {
     try { window.localStorage.setItem(_LASTSEEN_KEY, String(clamped)); } catch (_) { /* 忽略 */ }
   }
 }
-let _currentTab = 'events'; // 右欄當前分頁（events | chat）
+let _currentTab = 'events'; // 右欄當前分頁（events | chat | roster | decisions，#269）
 let _takDisabled = false;
 let _pollTimer = null;
 
@@ -186,16 +186,24 @@ function _onLiveChat(chat) {
   if (_currentTab === 'chat') _renderStream();
 }
 
-/** 右欄分頁切換（事件追蹤 ｜ 通聯）。切到通聯 → 清未讀水位。 */
+// 右欄四 tab（#269）：事件追蹤 ｜ 通聯 ｜ 隊伍 ｜ 待裁示。各整欄高、display 切換、各帶紅圈計數。
+const RIGHT_TABS = ['events', 'chat', 'roster', 'decisions'];
+const TAK_TABS = new Set(['chat', 'roster']); // TAK 停用時隱藏（無 TAK 即無意義）
+
+/** 右欄分頁切換（#269 通用多 tab）。切到通聯 → 清未讀水位；切到隊伍 → 派事件給 roster_panel 重繪。 */
 export function switchRightTab(tab) {
-  if (tab === 'chat' && _takDisabled) return; // 停用時不可切入
+  if (!RIGHT_TABS.includes(tab)) tab = 'events';
+  if (TAK_TABS.has(tab) && _takDisabled) return; // 停用時不可切入 TAK 相關頁
   _currentTab = tab;
-  const events = _el('right-events');
-  const chat = _el('right-chat');
-  if (events) events.style.display = tab === 'chat' ? 'none' : 'flex';
-  if (chat) chat.style.display = tab === 'chat' ? 'flex' : 'none';
-  _el('rtab-events')?.classList.toggle('active', tab !== 'chat');
-  _el('rtab-chat')?.classList.toggle('active', tab === 'chat');
+  for (const t of RIGHT_TABS) {
+    const content = _el('right-' + t);
+    if (content) content.style.display = (t === tab) ? 'flex' : 'none';
+    _el('rtab-' + t)?.classList.toggle('active', t === tab);
+  }
+  // per-session 記憶（#269）：多幕僚各 session 停自己那頁，重整頁面回到同一 tab。
+  try { sessionStorage.setItem('_activeRightTab', tab); } catch (_) { /* private mode */ }
+  // 解耦通知（roster_panel / 未來其他頁自行訂閱重繪，避免 chat_panel 直接 import）。
+  document.dispatchEvent(new CustomEvent('right-tab:switched', { detail: { tab } }));
   if (tab === 'chat') {
     _setLastSeen(maxChatId(_chats, _lastSeenId));
     _renderUnread();
@@ -203,13 +211,23 @@ export function switchRightTab(tab) {
   }
 }
 
-/** TAK 狀態套用：停用 → 隱藏通聯 tab（並把停留在通聯的使用者切回事件）。 */
+/** 還原 per-session 記憶的 tab（main.js 於登入後、TAK 狀態套用後呼叫）。 */
+export function restoreRightTab() {
+  let tab = 'events';
+  try { tab = sessionStorage.getItem('_activeRightTab') || 'events'; } catch (_) { /* private mode */ }
+  if (TAK_TABS.has(tab) && _takDisabled) tab = 'events'; // 記憶的是 TAK 頁但現在停用 → 退回事件
+  switchRightTab(tab);
+}
+
+/** TAK 狀態套用：停用 → 隱藏通聯/隊伍 tab（並把停留在該頁的使用者切回事件）。 */
 function _applyTakState(state) {
   const disabled = state === 'disabled';
   _takDisabled = disabled;
-  const tab = _el('rtab-chat');
-  if (tab) tab.style.display = disabled ? 'none' : 'inline-flex';
-  if (disabled && _currentTab === 'chat') switchRightTab('events');
+  for (const t of TAK_TABS) {
+    const tabEl = _el('rtab-' + t);
+    if (tabEl) tabEl.style.display = disabled ? 'none' : 'inline-flex';
+  }
+  if (disabled && TAK_TABS.has(_currentTab)) switchRightTab('events');
 }
 
 async function _poll() {

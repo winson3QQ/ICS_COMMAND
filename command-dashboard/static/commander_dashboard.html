@@ -71,7 +71,7 @@ body{position:fixed;inset:0;}
   flex:0 0 20%;display:flex;flex-direction:column;padding:4px 5px;gap:3px;overflow:hidden;min-height:0;
   border-right:1px solid var(--border);
 }
-.side-panel.right{border-right:none;border-left:1px solid var(--border);transition:flex-basis .25s;}
+.side-panel.right{border-right:none;border-left:1px solid var(--border);flex-basis:25%;transition:flex-basis .25s;}
 .side-panel.right.expanded{flex-basis:30%;}
 /* ⚠️ .collapsed (display:none) 與行動裝置的 .mobile-open (transform) 是兩套獨立機制。
    若未來將 .collapsed 套到 #panel-right，display:none 優先於 transform，.mobile-open 無效。
@@ -1180,13 +1180,16 @@ body{position:fixed;inset:0;}
 
   <!-- 右：事件追蹤 + 待裁示 -->
   <div class="side-panel right" id="panel-right">
-    <!-- 頂層 tab：事件追蹤 ｜ 通聯（#213 b1，二選一）。通聯 tab 在 TAK 停用時隱藏（chat_panel.js 同源 takConnState）-->
+    <!-- 頂層 tab（#269）：事件追蹤 ｜ 通聯 ｜ 隊伍 ｜ 待裁示。四選一、各整欄高、各帶紅圈計數做跨頁感知
+         （多幕僚多 session 各停一頁）。通聯/隊伍 tab 在 TAK 停用時隱藏（chat_panel.js 同源 takConnState）。-->
     <div id="right-top-tabs" style="display:flex;align-items:center;gap:4px;padding:4px 8px;flex-shrink:0;border-bottom:1px solid var(--border);">
-      <span id="rtab-events" class="rtab active" data-action="switchRightTab" data-rtab="events">事件追蹤</span>
+      <span id="rtab-events" class="rtab active" data-action="switchRightTab" data-rtab="events">事件追蹤 <span id="evt-tab-badge" class="chat-unread" style="display:none;" title="逾時事件數">0</span></span>
       <span id="rtab-chat" class="rtab" data-action="switchRightTab" data-rtab="chat" style="display:none;">通聯 <span id="chat-unread" class="chat-unread" style="display:none;">0</span></span>
+      <span id="rtab-roster" class="rtab" data-action="switchRightTab" data-rtab="roster" style="display:none;">隊伍 <span id="roster-tab-badge" class="chat-unread" style="display:none;background:var(--text3);">0</span></span>
+      <span id="rtab-decisions" class="rtab" data-action="switchRightTab" data-rtab="decisions">⚖ 待裁示 <span id="dec-count" class="chat-unread" style="display:none;">0</span></span>
     </div>
-    <!-- 上：事件追蹤 60% -->
-    <div id="right-events" style="flex:6;display:flex;flex-direction:column;overflow:hidden;min-height:0;">
+    <!-- 事件追蹤（#269：四 tab 之一，整欄高、display 切換）-->
+    <div id="right-events" style="flex:1;display:flex;flex-direction:column;overflow:hidden;min-height:0;">
       <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 8px;flex-shrink:0;border-bottom:1px solid var(--border);">
         <span style="display:flex;align-items:center;gap:4px;">
           <!-- evt-expand-arrow 已移除（dashboard UX 互斥 expand mode 易誤觸；保留 events.js 的 toggleRightExpand handler 給 decisions header 用） -->
@@ -1204,21 +1207,25 @@ body{position:fixed;inset:0;}
         <div style="color:var(--green);font-size:11px;">無開放事件</div>
       </div>
     </div>
-    <!-- 通聯（#213 b1）：與事件追蹤同 flex:6 槽位、二選一顯示。單一流 + [room] 標籤 + 動態 filter chips -->
-    <div id="right-chat" style="flex:6;display:none;flex-direction:column;overflow:hidden;min-height:0;">
+    <!-- 通聯（#213 b1）：四 tab 之一、整欄高。單一流 + [room] 標籤 + 動態 filter chips -->
+    <div id="right-chat" style="flex:1;display:none;flex-direction:column;overflow:hidden;min-height:0;">
       <div id="chat-chips" style="display:flex;flex-wrap:wrap;gap:4px;padding:4px 8px;flex-shrink:0;border-bottom:1px solid var(--border);"></div>
       <div id="chat-stream" style="flex:1;overflow-y:auto;padding:4px 6px;font-size:10px;min-height:0;">
         <div class="chat-empty">無通聯</div>
       </div>
     </div>
-    <!-- 分隔線 -->
-    <div style="height:1px;background:var(--border);flex-shrink:0;margin:2px 0;"></div>
-    <!-- 下：待裁示 40% -->
-    <div id="right-decisions" style="flex:4;display:flex;flex-direction:column;overflow:hidden;">
-      <!-- toggleRightExpand 已徹底拿掉（events.js 函式定義保留為 dead code，未來要恢復 focus mode 再連回）。
-           原 data-action="toggleRightExpand" + cursor:pointer 已移除。-->
+    <!-- 隊伍名冊 roster（#269 / #267 切片1）：四 tab 之一。按 team_color（CoT &lt;__group&gt;）分組顯示連線 TAK 單位。
+         v1 純前端：roster_panel.js 讀 cop_stream.getEntitiesBySource('tak') 即時分組。納編/定址/編組動作後端分批接。-->
+    <div id="right-roster" style="flex:1;display:none;flex-direction:column;overflow:hidden;min-height:0;">
+      <div id="roster-body" style="flex:1;overflow-y:auto;padding:4px;font-size:10px;min-height:0;">
+        <div style="color:var(--text3);font-size:11px;padding:8px;">尚無友軍單位</div>
+      </div>
+    </div>
+    <!-- 待裁示（#269：由原底部常駐 40% 區轉成第 4 個 tab、整欄高；#dec-count 計數移到上方 tab）。
+         留 DOM、只切 display：cop.js poll 不管顯隱照寫 #right-dec-list/#dec-count，切回來即 ≤5s 新。-->
+    <div id="right-decisions" style="flex:1;display:none;flex-direction:column;overflow:hidden;min-height:0;">
       <div style="display:flex;align-items:center;gap:6px;padding:6px 8px;flex-shrink:0;border-bottom:1px solid var(--border);">
-        <span id="dec-tab-pending" class="dec-tab active" data-action="switchDecTab" data-tab="pending" style="font-size:10px;font-weight:600;cursor:pointer;">⚖ 待裁示 <span id="dec-count" style="color:var(--yellow)">0</span></span>
+        <span id="dec-tab-pending" class="dec-tab active" data-action="switchDecTab" data-tab="pending" style="font-size:10px;font-weight:600;cursor:pointer;">待裁示</span>
         <span id="dec-tab-decided" class="dec-tab" data-action="switchDecTab" data-tab="decided" style="font-size:10px;cursor:pointer;">已裁示</span>
       </div>
       <div id="right-dec-list" style="flex:1;overflow-y:auto;padding:0 4px;font-size:10px;">
