@@ -73,7 +73,7 @@ def test_ws_receives_create(client):
 
 def test_ws_broadcasts_exercise_switched_on_activate_and_archive(client):
     # P1-14：他人 activate/archive 演習 → broadcast_all → 所有連線收到 exercise_switched
-    #（各 client 據此重新依新 scope 對帳 map/面板/chip）。
+    # （各 client 據此重新依新 scope 對帳 map/面板/chip）。
     tok = _login(client)
     h = {"X-Session-Token": tok}
     ex = client.post("/api/exercises", json={"name": "WS切場", "type": "ttx"}, headers=h).json()
@@ -93,15 +93,41 @@ def test_ws_broadcast_reaches_operator_role(client):
     # 守住「operator 以下不即時反應」回歸——根因是修前 operator 無刷新觸發源，broadcast 補上後
     # 所有角色都該收得到（broadcast_all 不過濾）。
     from repositories.account_repo import create_account
+
     create_account("opws", "1234", "操作員", "", "operator")
-    admin_tok = _login(client)              # admin/1234
+    admin_tok = _login(client)  # admin/1234
     op_tok = _login(client, "opws", "1234")  # operator
     h = {"X-Session-Token": admin_tok}
     ex = client.post("/api/exercises", json={"name": "WS角色", "type": "ttx"}, headers=h).json()
-    with _connect(client, op_tok) as ws:   # operator 連 WS
+    with _connect(client, op_tok) as ws:  # operator 連 WS
         assert ws.receive_json()["op"] == "hello"
         assert client.post(f"/api/exercises/{ex['id']}/activate", json={}, headers=h).status_code == 200
         assert ws.receive_json()["op"] == "exercise_switched"  # operator 連線確實收到廣播
+
+
+def test_ws_standing_overlay_gated_to_command(client):
+    # #267 SECURITY：?standing=1 常駐層疊看**限 COMMAND_ROLES**。指揮層 → include_standing True；
+    # operator 即使帶 standing=1 也強制 False（不讓低權限在演習中窺看常駐/real-world 單位）。
+    from repositories.account_repo import create_account
+    from services.realtime_hub import cop_hub
+
+    create_account("opstand", "1234", "操作員", "", "operator")
+
+    admin_tok = _login(client)  # admin = 指揮層
+    with client.websocket_connect(
+        "/api/cop/ws/updates?standing=1",
+        subprotocols=["ics-cop-v1", f"ics.session.{admin_tok}"],
+    ) as ws:
+        assert ws.receive_json()["op"] == "hello"
+        assert any(c.include_standing for c in cop_hub._conns)  # 指揮層放行
+
+    op_tok = _login(client, "opstand", "1234")
+    with client.websocket_connect(
+        "/api/cop/ws/updates?standing=1",
+        subprotocols=["ics-cop-v1", f"ics.session.{op_tok}"],
+    ) as ws:
+        assert ws.receive_json()["op"] == "hello"
+        assert not any(c.include_standing for c in cop_hub._conns)  # operator 被 gate 擋
 
 
 def test_ws_receives_update_then_delete(client):

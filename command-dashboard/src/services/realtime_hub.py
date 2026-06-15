@@ -32,21 +32,24 @@ _SEND_TIMEOUT_S = 5.0  # 單一 client send 逾時即視為死連線，避免拖
 class _Conn:
     """一條 WS 連線 + 它的 exercise 訂閱範圍。"""
 
-    __slots__ = ("ws", "exercise_id", "follows_active")
+    __slots__ = ("ws", "exercise_id", "follows_active", "include_standing")
 
-    def __init__(self, ws: WebSocket, exercise_id, follows_active: bool = False):
+    def __init__(self, ws: WebSocket, exercise_id, follows_active: bool = False, include_standing: bool = False):
         self.ws = ws
         self.exercise_id = exercise_id  # int | NULL_SCOPE（client 連線）| None（內部 overview）
         # #265：True＝連線未顯式 pin 歷史場（dashboard 常態）→ active 場切換時就地 rescope；
         # False＝指揮層顯式 ?exercise_id 看歷史 → 切換不動（不可把人從歷史場拉到新 active）。
         self.follows_active = follows_active
+        # #267 常駐層疊看：True＝active 場連線**也**收 NULL（常駐/real-world）entity。
+        # **限 COMMAND_ROLES**（handshake gate）。不跨演習：仍精確擋別場 M（見 wants）。
+        self.include_standing = include_standing
 
     def wants(self, msg_exercise_id: int | None) -> bool:
         """本連線是否該收到這則 entity 訊息（P1-14 strict isolation）。
 
         連線範圍由 resolve_scope 決定（int 或 NULL_SCOPE）：
         - NULL_SCOPE（無 active＝實戰池）→ 只收 exercise_id 為 None 的實戰 entity。
-        - int N（active 場 / 指揮層看歷史）→ **只收 N 的 entity**（exact；不再收 None 全域）。
+        - int N（active 場 / 指揮層看歷史）→ 收 N 的 entity；若 include_standing 另收 NULL 常駐。
         - None（內部 overview，client 不會是此值）→ 全收。
         ⚠ 控制訊息（reset resync）走 broadcast_all，不經本過濾。
         """
@@ -54,7 +57,13 @@ class _Conn:
             return msg_exercise_id is None
         if self.exercise_id is None:
             return True
-        return msg_exercise_id == self.exercise_id
+        if msg_exercise_id == self.exercise_id:
+            return True
+        # #267 常駐層疊看（限 COMMAND）：active 場連線也收 NULL 常駐 entity。仍精確擋別場
+        # M（M≠N、M≠None）→ 演習↔演習隔離不變（#265），只放寬 active↔常駐。
+        if self.include_standing and msg_exercise_id is None:
+            return True
+        return False
 
 
 class CopHub:
@@ -64,10 +73,13 @@ class CopHub:
         self._conns: set[_Conn] = set()
         self._lock = asyncio.Lock()
 
-    async def connect(self, ws: WebSocket, exercise_id, follows_active: bool = False) -> _Conn:
+    async def connect(
+        self, ws: WebSocket, exercise_id, follows_active: bool = False, include_standing: bool = False
+    ) -> _Conn:
         # exercise_id：int（某場）| NULL_SCOPE（實戰池）| None（內部 overview）
         # follows_active：True＝跟隨 active 場（切換時就地 rescope，見 rescope_active）
-        conn = _Conn(ws, exercise_id, follows_active)
+        # include_standing：True＝active 場也疊收 NULL 常駐 entity（限 COMMAND，#267）
+        conn = _Conn(ws, exercise_id, follows_active, include_standing)
         async with self._lock:
             self._conns.add(conn)
         return conn
