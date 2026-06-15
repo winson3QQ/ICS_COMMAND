@@ -47,7 +47,9 @@ WARNING_THRESHOLD_SECONDS: int = int(os.getenv("ICS_WARNING_THRESHOLD_SECONDS", 
 # + 廣播後即時同步（shared_tak json_set + move 重推 CoT）+ CoT remarks 標 source: ICS。
 # PATCH：#265 —— 切換 active 演習後 WS scope 凍結修正（cop_hub.rescope_active 就地重綁
 # follows_active 連線、不靠 client 重連）；行為改變（新場 entity 不再需硬重整才 render）。
-APP_VERSION = "2.5.1"
+# MINOR：#267 常駐層疊看後端 —— WS `?standing=1`（限 COMMAND_ROLES）讓 active 場連線也收 NULL
+# 常駐 entity（`_Conn.include_standing` + `wants()` NULL-union）；證明不跨演習（仍精確擋別場）。
+APP_VERSION = "2.6.0"
 
 # CMD_VERSION：前端 UI 功能版本（不同於後端 SemVer APP_VERSION；規則見 CLAUDE.md 版號規則）
 # 兩軌版本命名，不可混用。由 /api/version 提供給前端，是唯一 source-of-truth；release 時更新此值。

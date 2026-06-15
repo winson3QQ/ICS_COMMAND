@@ -133,6 +133,32 @@ def test_rescope_active_to_null_scope_on_archive():
     asyncio.run(run())
 
 
+def test_wants_include_standing_matrix():
+    # #267 常駐層疊看：int N + include_standing → 收 N、收 None（常駐）；**別場 M 仍精確擋**。
+    assert _Conn(None, 1, include_standing=True).wants(1) is True
+    assert _Conn(None, 1, include_standing=True).wants(None) is True
+    assert _Conn(None, 1, include_standing=True).wants(2) is False  # ★ 不跨演習
+    # 無疊看（預設）→ 不收 None 常駐（維持 #265 strict）
+    assert _Conn(None, 1, include_standing=False).wants(None) is False
+    assert _Conn(None, 1).wants(None) is False
+
+
+def test_include_standing_overlays_null_not_other_exercise():
+    # #267 安全核心：疊看連線收「本場 + 常駐(NULL)」，但**收不到別場**——演習↔演習隔離不變。
+    async def run():
+        hub = CopHub()
+        overlay, plain = _FakeWS(), _FakeWS()
+        await hub.connect(overlay, 1, include_standing=True)
+        await hub.connect(plain, 1)  # 同場、無疊看
+        await hub.broadcast({"m": "ex2"}, exercise_id=2)  # 別場 → 兩者皆不收
+        await hub.broadcast({"m": "ex1"}, exercise_id=1)  # 本場
+        await hub.broadcast({"m": "standing"}, exercise_id=None)  # 常駐
+        assert overlay.sent == [{"m": "ex1"}, {"m": "standing"}]  # 本場 + 常駐
+        assert plain.sent == [{"m": "ex1"}]  # 只本場，不收常駐（疊看是 opt-in）
+
+    asyncio.run(run())
+
+
 def test_close_all_clears():
     async def run():
         hub = CopHub()

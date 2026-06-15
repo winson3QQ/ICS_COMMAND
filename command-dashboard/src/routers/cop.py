@@ -472,10 +472,16 @@ async def cop_ws_updates(websocket: WebSocket):
     # #265：未顯式帶 ?exercise_id（dashboard 常態）＝跟隨 active；切換演習時由 cop_hub 就地
     # rescope，不必重連。顯式 pin 歷史場（指揮層）的連線不跟隨。
     follows_active = requested_ex is None
+    # #267 常駐層疊看：client 帶 ?standing=1 → active 場連線也收 NULL 常駐 entity。
+    # SECURITY：**限 COMMAND_ROLES**（對齊 resolve_scope 看歷史的權限模型）。非指揮層即使帶
+    # standing=1 也強制 False —— 不讓低權限在演習中窺看常駐/real-world 單位。仍不跨演習（見 wants）。
+    include_standing = websocket.query_params.get("standing") == "1" and is_role_allowed(sess, COMMAND_ROLES)
 
     # echo 常數協定（不含 token）；client 必須 offer 它，否則 handshake 不成立
     await websocket.accept(subprotocol=_WS_SUBPROTOCOL)
-    conn = await cop_hub.connect(websocket, exercise_id, follows_active=follows_active)
+    conn = await cop_hub.connect(
+        websocket, exercise_id, follows_active=follows_active, include_standing=include_standing
+    )
     try:
         # P1-14：exercise_id 可能是 NULL_SCOPE（object，無 active＝實戰池），不可序列化 → 送 None
         hello_ex = exercise_id if isinstance(exercise_id, int) else None
