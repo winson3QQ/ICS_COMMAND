@@ -3651,7 +3651,22 @@
     },
     "body": "## 緣起（2026-06-15 ATAK 真機 dogfood）\n\n驗 #265 期間真機 ATAK（`ANDROID-2eba33cffad8` / callsign `3QQ-aTak`）連上 TAK server，撞出一條更深的感測層 doctrine 缺口：**「連上 server」與「參與某場演習/實戰」被混為一談，且歸屬靠 insert 當下的 global active 場綁死、無法更正。**\n\n### 實證鏈（facts，皆 DB/code 驗過）\n- PLI 第一次到 ICS 時無 active 場 → `exercise_id` 綁 **NULL**（`cop_service.py:240`，`current_exercise_id()`）。\n- 之後同 uid 位置更新只 bump `version_clock`，**exercise_id 不改**（`cop_service.py:49` 明文「更新位置時不得改」）；實測 `version_clock=11` 仍 NULL。\n- 關掉 ATAK 2–3 分鐘再開 → 同 uid 只是更新那筆 NULL 列，仍 NULL。\n- 軟刪（`deleted=1`）後再報 → **#161 復活邏輯**（`cop_service.py:438-442`，`{**patch,\"deleted\":0}`）**復活同列、保留舊 exercise_id=NULL** → 救不回。唯硬刪整列才會重新 insert 綁當前 active。\n- 啟動一個 `type=real`「實戰」演習（Exer1, id=2）→ active scope 變 id=2，PLI 仍 NULL → 看不到（**real 演習是有 id 的 scope，不等於 NULL 實戰池**）。\n- Group 資訊**其實已在流入**：`cop_service.py:97-109`（P2-06c/#126）解析 CoT `<__group>` → `team_color`=`Orange`、`role`=`Team Member`，只是當顯示屬性、沒當參與閘。\n\n## 根因\n\nscope 歸屬用錯原語：用「entity 第一次到達時的 **global active 場**」綁死，而非「該單位**是否被編入**這場」。這假設「所有連上的人都在同一場」，與現實不符 —— **所有 ATAK 都連同一台 server，但不是每個人都參加這場演習/實戰。**\n\n## 提案：Group 與 參與 是兩個正交的層\n\n| | **層 1：Group 分類（常駐）** | **層 2：參與/編組（選擇性）** |\n|---|---|---|\n| 是什麼 | 單位原生歸屬（Orange 隊、Team Member…）| **勾選**哪些 PLI 加入 演習/實戰 |\n| 何時存在 | 每一種情境都在（演習/實戰/NULL）| 只有被勾選時 |\n| 來源 | CoT `<__group>`（已流入）| 指揮官明確編組動作 |\n| 變不變 | 跟著單位，不隨 scope 變 | 可隨時加/退 |\n\n**核心**：group ≠ scope ≠ 參與。一個單位「是 Orange 隊」在它沒參加任何場（NULL）時也成立；要不要把它拉進 TTX1 是另一個獨立的勾選。兩個 Orange 隊單位可以一個編進演習、一個只在旁監看 —— 同 group、不同參與。\n\n外圍給定條件：**連線**（cert/mTLS，全連）與**可見**（指揮視圖）。真正缺的核心是上面兩層。\n\n## 資料模型改動\n\n- **Group** = 單位屬性（`team_color`/`role`，已有，沿用）。\n- **參與** = 新增關聯表 `enrollment(uid, scope_id, enrolled_by, enrolled_at)`，**取代** insert-time 用 global active 綁死 `exercise_id` 的原語。\n- **歸屬 = 查 enrollment**（這單位現在編在哪場），不是看 insert 時序。\n- 效果：連線時序無關、PLI 不卡 NULL、退/編一勾即 re-scope、NULL = 「有 group 但未編入任何 active 場」的常駐態。\n\n## Doctrine 紅線（server-authoritative）\n\nCoT `<__group>` team color 是 **client（ATAK 使用者）自設、可偽**。依 memory `exercise-scope-server-authoritative`「範圍由 server 決定、不信 client 宣告」：\n- **v1 可先用** 已收的 `<__group>`（訓練/低對抗夠用）；\n- **權威編組**最終落 **TAK Marti server-side groups**（cert/enrollment 綁定、server 控 CoT 投遞），非信 client 色。延伸 `tak-marti-authz-model`。\n\n## 操作畫面（草，推論）\n\n指揮官開 roster 面板 → 所有連上的 PLI **按 group 分組顯示** → **勾選**參加本場的（整組勾 / 單點）→ 被勾單位之後 CoT 歸本場、進本場 AAR；未勾者留常駐層（可疊看、淡顯）。圖層 toggle 與 #219 協調。\n\n## Scope / 子項（草）\n\n- [ ] 三層正名寫進 doctrine：連線 / 參與(group enrollment) / 可見；NULL 正名為「常駐/未編入」層\n- [ ] 參與層：`enrollment` 關聯表（uid↔scope，多對多歷史可查）；歸屬改查 enrollment，淘汰 insert-time `exercise_id` 綁定\n- [ ] roster 編組 UI：按 group 列出連上 PLI + 勾選（整組/單點）入場\n- [ ] 可見層：演習 active 時疊看常駐實況層（toggle，協調 #219）\n- [ ] 既有 NULL 單位「納編入當前場」操作路徑（解今天 dogfood 的 re-scope 死路）\n- [ ] 權威性 roadmap：v1 用 CoT `<__group>`，標注最終走 Marti server groups\n- [ ] 測試 + `/verify`（編/退組歸屬切換、AAR 只含被編單位、未編單位不入場）\n\n## Out of scope / 後續\n\n- Marti server-side group 投遞整合（權威編組終態，獨立 P2 子項）。\n- AAR 對「中途編入/退出」的時間軸呈現（snapshot vs 事件流）。\n\n## 關聯\n\n- #265（WS scope 凍結，已修；本 issue 是其 dogfood 衍生的更深層 doctrine）\n- #256（感測層大一統：TAK 有的 ICS 要對應 — group 是又一 instance）\n- #219（圖層 filter 面板 — 可見層疊看的落點）\n- #125（跨場軌跡 misattribution — 同屬演習 scope 正確性家族）\n- #161（TAK 復活邏輯 — 保留舊 scope 是 re-scope 死路的成因之一）\n- #214（出向 CoT team/color/icon — group 欄位忠實度）\n- memory：`exercise-scope-server-authoritative`、`cop-marker-event-decoupling`、`tak-marti-authz-model`、`event-symbology-classification`\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n",
     "closedAt": null,
-    "comments": [],
+    "comments": [
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## 補充：group 是一等公民，不只「演習歸屬」（使用者 2026-06-15 提的三情境）\n\n原文把 group 主要當「誰參加哪場」的 scope 原語。實際操作有三個情境，把 group 撐成**三個用途**，原本的範圍要擴：\n\n### 情境 1 — 播送只有「全體」，沒有「指定隊/指定人」\n- **TAK 有**：GeoChat 可發「全體 / 某隊 / 某人」；marker 也能限特定群組。\n- **ICS 現況**：chat（#216）、marker 分享（#214/P2-30）出向**只有廣播**，無法「只發某隊／私訊某人」。\n- **意涵**：group 也是**訊息定址簿**，不只 COP scope。\n\n### 情境 2 — 指揮部沒有「TAK 隊伍一覽表」\n- reality check 確認前端只有「敵我」篩選、**無 roster**（哪些隊／每隊有誰／在線狀態）。\n- 後端 `aggregate_squads`（GROUP BY `team_color`）已有資料，**只差畫面**。\n- **roster = 三情境的共同地基**：沒名冊，定址與重編都無從操作。\n\n### 情境 3 — 指揮部要「打散重編」隊伍（最關鍵，逼出權威性決定）\n- ATAK 隊別**是現場操作員自設**。指揮部要重編 → 不能只「讀」自報，得能「**指派**」。\n- 這把原文擺最後的「權威編組」問題**提前**：要嘛 **ICS 自己當權威**（ICS 內部指派蓋過自報），要嘛靠 **Marti server groups**。\n- ⚠️ **待驗的未知**：重編分兩種 ——\n  - 改 **ICS 這邊**的編組（誰參加哪場／地圖怎麼分組）→ **一定可行**。\n  - 把重編**推回現場手機**（ATAK 顯示新隊別）→ **不確定 TAK 讓不讓**。Marti groups 控「投遞範圍」server-side 可行，但裝置上顯示的隊色是 client 自設、能否強制改要查 Marti spec + dogfood（同類於「server 刪不掉 iTAK 標記」的 client 硬限制，見 memory `tak-marti-authz-model` / `tak-streaming-archive-stale-vs-mission`）。\n\n### group 三用途彙整\n| 用途 | 情境 |\n|---|---|\n| **歸屬**：誰的資料算哪一場 | 原 #267 |\n| **定址**：訊息/標記發給哪隊/誰 | 情境 1（接 #216/#214）|\n| **編組**：指揮部定義/重整隊伍 | 情境 3 |\n\n**roster（隊伍名冊，情境 2）= 把三者攤在同一畫面操作的地方。**\n\n### 對切片順序的影響\n1. **先做 roster（名冊）** —— 後端資料已備、純畫面、三件事地基。\n2. **定向發送** —— 有名冊才知發給誰；接 #216/#214。\n3. **編組** —— 先做 **ICS 側指派/重編**（必可行）；「推回手機」當**研究題先驗 TAK 能力**，不卡前面。\n\n> reality check（同日）另確認：`role`/`access`/`visible_to` 欄位是死的（存了沒讀）、唯一活的 group 訊號是 `team_color`；且「演習中疊看常駐層」會碰 #265 剛強化的 P1-14 嚴格隔離，需另做 + 資安審查。\n",
+        "createdAt": "2026-06-15T02:42:34Z",
+        "id": "IC_kwDOSnBjpc8AAAABGGIRFg",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/267#issuecomment-4704047382"
+      }
+    ],
     "createdAt": "2026-06-15T02:01:33Z",
     "labels": [
       {
@@ -3665,7 +3680,7 @@
     "number": 267,
     "state": "OPEN",
     "title": "感測層 doctrine：Group(常駐分類) + 參與編組(勾選) 兩層 — 取代 insert-time exercise scope 綁定",
-    "updatedAt": "2026-06-15T02:01:33Z",
+    "updatedAt": "2026-06-15T02:42:34Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/267"
   }
 ]
