@@ -341,6 +341,64 @@ describe("週期 resync（軟 stale 移除 + 變灰）", () => {
   });
 });
 
+// ── 重連 / onclose race 硬化（#265）────────────────────────────────────────
+describe("reconnect / onclose hardening (#265)", () => {
+  // 捕捉 WS 實例 + setTimeout(cb, delay)（含 delay 以驗 backoff 階）。
+  function makeReconnectStream() {
+    const sockets = [];
+    const timeouts = []; // {cb, delay}
+    const Ctor = function () {
+      this.readyState = 1;
+      this.close = () => {
+        this.readyState = 3;
+      };
+      sockets.push(this);
+    };
+    const stream = createCopStream({
+      getToken: () => "tok",
+      authFetch: () => _resp(200, { entities: [] }),
+      canWrite: () => true,
+      WebSocketCtor: Ctor,
+      setTimeoutFn: (cb, delay) => {
+        timeouts.push({ cb, delay });
+        return timeouts.length;
+      },
+      clearTimeoutFn: () => {},
+    });
+    return { stream, sockets, timeouts };
+  }
+
+  test("被取代的舊 socket onclose 不誤排重連（identity guard）", () => {
+    const { stream, sockets, timeouts } = makeReconnectStream();
+    stream.connect(); // socket0 = _ws
+    stream.stop(); // close socket0、_ws=null（模擬舊路徑 stop()+connect()）
+    stream.connect(); // socket1 = _ws（_stopped 重設 false）
+    expect(sockets.length).toBe(2);
+
+    const before = timeouts.length;
+    sockets[0].onclose(); // 舊 socket0 遲到關閉 → guard：_ws 已是 socket1 → 不排重連
+    expect(timeouts.length).toBe(before);
+
+    sockets[1].onclose(); // 當前 socket1 關閉 → 正常排重連（反證 guard 不誤殺）
+    expect(timeouts.length).toBe(before + 1);
+  });
+
+  test("stop() 重置 reconnect backoff 階（#265）", () => {
+    const { stream, sockets, timeouts } = makeReconnectStream();
+    stream.connect(); // socket0
+    sockets[0].onclose(); // attempt 0→1，delay=1000
+    expect(timeouts.at(-1).delay).toBe(1000);
+    timeouts.at(-1).cb(); // 觸發重連 → socket1
+    sockets[1].onclose(); // attempt 1→2，delay=2000
+    expect(timeouts.at(-1).delay).toBe(2000);
+
+    stream.stop(); // 重置 _reconnectAttempt=0
+    stream.connect(); // socket2
+    sockets.at(-1).onclose(); // backoff 自 1000 重起（非 4000）
+    expect(timeouts.at(-1).delay).toBe(1000);
+  });
+});
+
 // ── 渲染委派 seam（PR-G1：map.js 接管渲染）─────────────────────────────────
 
 describe("render delegation seam", () => {

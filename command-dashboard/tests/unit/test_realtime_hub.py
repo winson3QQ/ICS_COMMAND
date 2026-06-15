@@ -80,8 +80,8 @@ def test_strict_isolation_global_entity_not_leaked_to_exercise_sub():
         await hub.connect(ex_sub, 1)
         await hub.connect(real_sub, NULL_SCOPE)
         await hub.broadcast({"m": "real"}, exercise_id=None)  # 實戰 entity
-        assert ex_sub.sent == []                  # 某場訂閱者不收實戰
-        assert real_sub.sent == [{"m": "real"}]   # 實戰池訂閱者收得到
+        assert ex_sub.sent == []  # 某場訂閱者不收實戰
+        assert real_sub.sent == [{"m": "real"}]  # 實戰池訂閱者收得到
 
     asyncio.run(run())
 
@@ -96,6 +96,39 @@ def test_broadcast_all_reaches_every_connection():
         await hub.connect(c, NULL_SCOPE)
         await hub.broadcast_all({"op": "resync"})
         assert a.sent == b.sent == c.sent == [{"op": "resync"}]
+
+    asyncio.run(run())
+
+
+def test_rescope_active_moves_only_following_conns():
+    # #265：active 場切換 → 跟隨 active 的連線就地 rescope；顯式 pin 歷史場的不動。
+    async def run():
+        hub = CopHub()
+        follower, pinned = _FakeWS(), _FakeWS()
+        await hub.connect(follower, NULL_SCOPE, follows_active=True)  # dashboard 常態（無 active）
+        await hub.connect(pinned, 7, follows_active=False)  # 指揮層看歷史場 7
+        await hub.rescope_active(9)  # 啟動新場 9
+        by_ws = {c.ws: c for c in hub._conns}
+        assert by_ws[follower].exercise_id == 9  # follower 跟到新場
+        assert by_ws[pinned].exercise_id == 7  # pinned 不被拉走
+        # rescope 後，新場 entity 即時送達 follower、不送 pinned（不必重連）
+        await hub.broadcast({"m": "new"}, exercise_id=9)
+        assert follower.sent == [{"m": "new"}]
+        assert pinned.sent == []
+
+    asyncio.run(run())
+
+
+def test_rescope_active_to_null_scope_on_archive():
+    # 歸檔 active → new_scope=NULL_SCOPE：follower 改只收實戰(None) entity、不再收舊場
+    async def run():
+        hub = CopHub()
+        w = _FakeWS()
+        await hub.connect(w, 3, follows_active=True)
+        await hub.rescope_active(NULL_SCOPE)
+        await hub.broadcast({"m": "real"}, exercise_id=None)
+        await hub.broadcast({"m": "ex3"}, exercise_id=3)
+        assert w.sent == [{"m": "real"}]
 
     asyncio.run(run())
 

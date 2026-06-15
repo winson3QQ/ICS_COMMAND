@@ -45,16 +45,20 @@ WARNING_THRESHOLD_SECONDS: int = int(os.getenv("ICS_WARNING_THRESHOLD_SECONDS", 
 # ── App ───────────────────────────────────
 # MINOR：P2-30 part 3（#180）—— 廣播放寬 operator+（role_enum 窄洞 /api/tak/share/→WRITE_ROLES）
 # + 廣播後即時同步（shared_tak json_set + move 重推 CoT）+ CoT remarks 標 source: ICS。
-APP_VERSION = "2.5.0"
+# PATCH：#265 —— 切換 active 演習後 WS scope 凍結修正（cop_hub.rescope_active 就地重綁
+# follows_active 連線、不靠 client 重連）；行為改變（新場 entity 不再需硬重整才 render）。
+APP_VERSION = "2.5.1"
 
 # CMD_VERSION：前端 UI 功能版本（不同於後端 SemVer APP_VERSION；規則見 CLAUDE.md 版號規則）
 # 兩軌版本命名，不可混用。由 /api/version 提供給前端，是唯一 source-of-truth；release 時更新此值。
 # v1.0.0：拆分自 ICS_DMAS 後首個完整可用形態（MapLibre 地圖引擎全換 P1-10b + PWA 移除 P1-11
 #         + 演習/放置/稽核 UI P1-13/14/16/#93 + 分類編輯器 #66）→ 0.x 畢業為 MAJOR 紀元。
 CMD_VERSION: str = os.getenv(
-    "CMD_VERSION", "v1.4.0"
+    "CMD_VERSION", "v1.4.1"
 )  # MINOR：P2-24 前端尾（#164）TAK runtime 控制 UI 功能組 —— 系統 tab sysadmin 開/關 toggle
 # + 唯讀連線狀態行 + header 燈號認實化（running/configured 區分，消除「沒 task 卻顯斷線重連」謊報）
+# PATCH(v1.4.1)：#265 —— 切換演習後不再需硬重整即即時 render（cop_stream onclose identity guard +
+# stop() backoff 重置 + _refreshAfterExerciseSwitch 改就地 resync 不清快取，消雙 socket race）。
 # v1.3.0：P2-30 part 3（#180）敵情標記 UI —— 2525 渲染 + callsign + 右鍵廣播 + 拖曳 + detail modal
 
 # ── CORS（C1-B）──────────────────────────

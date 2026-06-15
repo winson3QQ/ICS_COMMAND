@@ -286,7 +286,12 @@ export function createCopStream(deps) {
       _onMessage(msg);
     };
     ws.onclose = () => {
-      if (_ws === ws) _ws = null;
+      // identity guard（#265）：只有「當前」socket 的關閉才安排重連。被取代的舊 socket
+      // （例：切換演習舊路徑、或 onerror→close 後已換新 socket）其 onclose 非同步遲到，
+      // 此時 _ws 已是新 socket、_stopped 可能已被 connect() 重設為 false——若不擋，會在
+      // 健康連線上誤排重連並誤加 _reconnectAttempt（backoff 漂掉）。
+      if (_ws !== ws) return;
+      _ws = null;
       if (!_stopped) _scheduleReconnect();
     };
     ws.onerror = () => {
@@ -328,6 +333,7 @@ export function createCopStream(deps) {
     _stopped = true;
     if (_reconnectTimer && clearTimeoutFn) clearTimeoutFn(_reconnectTimer);
     _reconnectTimer = null;
+    _reconnectAttempt = 0; // #265：重置 backoff，避免下次 connect() 的重連從漂掉的指數階開始
     if (_refreshTimer && clearTimeoutFn) clearTimeoutFn(_refreshTimer);
     _refreshTimer = null;
     if (_ws) {

@@ -469,10 +469,13 @@ async def cop_ws_updates(websocket: WebSocket):
     # P1-14 安全收緊：原本直接信任 client query param → 任何 READ_ROLE 可訂閱任意場（越權）。
     # 改走 resolve_scope：預設訂當前 active；顯式指定歷史場限 COMMAND_ROLES，否則強制回 active。
     exercise_id = resolve_scope(sess, requested_ex)
+    # #265：未顯式帶 ?exercise_id（dashboard 常態）＝跟隨 active；切換演習時由 cop_hub 就地
+    # rescope，不必重連。顯式 pin 歷史場（指揮層）的連線不跟隨。
+    follows_active = requested_ex is None
 
     # echo 常數協定（不含 token）；client 必須 offer 它，否則 handshake 不成立
     await websocket.accept(subprotocol=_WS_SUBPROTOCOL)
-    conn = await cop_hub.connect(websocket, exercise_id)
+    conn = await cop_hub.connect(websocket, exercise_id, follows_active=follows_active)
     try:
         # P1-14：exercise_id 可能是 NULL_SCOPE（object，無 active＝實戰池），不可序列化 → 送 None
         hello_ex = exercise_id if isinstance(exercise_id, int) else None
