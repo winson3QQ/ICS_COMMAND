@@ -3,21 +3,30 @@ exercises.py — 演練場次管理（C0 新增）
 合併原 TTX sessions + 新增 real 場次支援
 """
 
-
 from fastapi import APIRouter, HTTPException, Query, Request
 
 from auth.service import validate_session
-from repositories._helpers import audit, iso_utc
+from repositories._helpers import NULL_SCOPE, audit, iso_utc
 from repositories.aar_repo import create_aar_entry, get_aar_entries
 from repositories.cop_entity_repo import list_tracks_by_exercise
 from repositories.exercise_repo import delete_exercise, update_exercise_status
 from schemas.exercise import AAREntryIn, ExerciseCreateIn, ExerciseStatusIn
-from services.exercise_service import archive, create, get, list_all, set_active
+from services.exercise_service import archive, create, current_exercise_id, get, list_all, set_active
 from services.kpi_service import build_kpis
 from services.realtime_hub import cop_hub
 from services.timeline_service import build_timeline
 
 router = APIRouter(prefix="/api/exercises", tags=["演練"])
+
+
+async def _rescope_and_announce() -> None:
+    """active 場切換後：先就地 rescope 所有跟隨 active 的 WS 連線到新 scope（#265，
+    根除 WS scope 凍結 → 新場 entity 不 render），再廣播讓各 client 對帳 + 更新 chip/面板。
+    順序重要：rescope 在 broadcast 之前，client 收到 exercise_switched 而觸發 resync GET 時，
+    server 端 active 與連線 scope 都已是新值。"""
+    new_scope = current_exercise_id() or NULL_SCOPE
+    await cop_hub.rescope_active(new_scope)
+    await cop_hub.broadcast_all({"op": "exercise_switched"})
 
 
 @router.post("")
@@ -48,8 +57,9 @@ async def activate(exercise_id: int, request: Request):
         result = set_active(exercise_id, sess["username"])
     except ValueError as e:
         raise HTTPException(409, str(e)) from e
-    # P1-14：active 場改變 → 廣播給所有 session，各 client 重新依新 scope 對帳（map/面板/chip 即時反應）
-    await cop_hub.broadcast_all({"op": "exercise_switched"})
+    # P1-14：active 場改變 → 各 session 重新依新 scope 對帳（map/面板/chip 即時反應）。
+    # #265：先就地 rescope 跟隨 active 的 WS 連線，再廣播（不靠 client 重連）。
+    await _rescope_and_announce()
     return result
 
 
@@ -59,7 +69,8 @@ async def do_archive(exercise_id: int, request: Request):
     if not get(exercise_id):
         raise HTTPException(404, "演練不存在")
     result = archive(exercise_id, sess["username"])
-    await cop_hub.broadcast_all({"op": "exercise_switched"})  # 同 activate：通知所有 session 重新對帳
+    # 同 activate：歸檔 active 場 → active 變 None（NULL_SCOPE 實戰池），就地 rescope + 廣播（#265）
+    await _rescope_and_announce()
     return result
 
 
@@ -92,13 +103,14 @@ def update_status(exercise_id: int, body: ExerciseStatusIn, request: Request):
 
 # ── AAR ─────────────────────────────────────────────────────────────────────
 
+
 @router.post("/{exercise_id}/aar")
 def add_aar(exercise_id: int, body: AAREntryIn, request: Request):
     sess = validate_session(request)
     try:
-        return create_aar_entry(exercise_id, body.category, body.content,
-                                body.created_by or sess["username"],
-                                ref_t=body.ref_t)
+        return create_aar_entry(
+            exercise_id, body.category, body.content, body.created_by or sess["username"], ref_t=body.ref_t
+        )
     except ValueError as e:
         raise HTTPException(422, str(e)) from e
 

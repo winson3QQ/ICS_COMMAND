@@ -124,11 +124,16 @@ window.addEventListener('beforeunload', () => {
 });
 
 // P1-14：切換 active 演習後，前端要依新 scope 重抓資料（否則 map 圖釘 / 面板停在舊場，
-// 要 hard reload 才更新）。poll() 重抓 dashboard；cop_stream 重連 → server 依新 active 重 scope
-// WS + 上線自動全量 resync（zone/route/event 圖釘）→ map onChange 重繪。
+// 要 hard reload 才更新）。poll() 重抓 dashboard。
+// #265：原本走 stop()+connect()，但 stop() 同步清空整個 entity 快取 + 關 socket，connect()
+// 立刻開新 socket → (a) 清快取到 resync 回來的空窗地圖空白；(b) 舊 socket onclose 遲到時
+// _stopped 已 false → 雙 socket race、誤排重連 → 新場 entity 可能永不 render。
+// 改為「就地對帳」：server 端已在切換時把本連線就地 rescope 到新 active（cop_hub.rescope_active），
+// 故這裡只需 (1) resync() 換掉舊場 entity、補新場（不清空、不關 socket）；(2) connect() 兜底——
+// socket 已連線則 idempotent early-return，僅在 socket 已死時才重連。
 function _refreshAfterExerciseSwitch() {
   try { poll(); } catch (e) { /* poll 失敗不阻斷 */ }
-  if (_copStream) { _copStream.stop(); _copStream.connect(); }
+  if (_copStream) { _copStream.resync(); _copStream.connect(); }
 }
 
 // P1-14：他人 activate/archive 演習 → server broadcast_all → cop_stream 轉發 'exercise:switched'。

@@ -32,11 +32,14 @@ _SEND_TIMEOUT_S = 5.0  # 單一 client send 逾時即視為死連線，避免拖
 class _Conn:
     """一條 WS 連線 + 它的 exercise 訂閱範圍。"""
 
-    __slots__ = ("ws", "exercise_id")
+    __slots__ = ("ws", "exercise_id", "follows_active")
 
-    def __init__(self, ws: WebSocket, exercise_id):
+    def __init__(self, ws: WebSocket, exercise_id, follows_active: bool = False):
         self.ws = ws
         self.exercise_id = exercise_id  # int | NULL_SCOPE（client 連線）| None（內部 overview）
+        # #265：True＝連線未顯式 pin 歷史場（dashboard 常態）→ active 場切換時就地 rescope；
+        # False＝指揮層顯式 ?exercise_id 看歷史 → 切換不動（不可把人從歷史場拉到新 active）。
+        self.follows_active = follows_active
 
     def wants(self, msg_exercise_id: int | None) -> bool:
         """本連線是否該收到這則 entity 訊息（P1-14 strict isolation）。
@@ -61,12 +64,25 @@ class CopHub:
         self._conns: set[_Conn] = set()
         self._lock = asyncio.Lock()
 
-    async def connect(self, ws: WebSocket, exercise_id) -> _Conn:
+    async def connect(self, ws: WebSocket, exercise_id, follows_active: bool = False) -> _Conn:
         # exercise_id：int（某場）| NULL_SCOPE（實戰池）| None（內部 overview）
-        conn = _Conn(ws, exercise_id)
+        # follows_active：True＝跟隨 active 場（切換時就地 rescope，見 rescope_active）
+        conn = _Conn(ws, exercise_id, follows_active)
         async with self._lock:
             self._conns.add(conn)
         return conn
+
+    async def rescope_active(self, new_scope) -> None:
+        """active 場切換時，把所有「跟隨 active」的連線就地重綁到新 scope（#265）。
+
+        根除「WS scope 在 handshake 當下凍結」整類問題——不靠 client 重連（重連有
+        cache-clear 空窗 + 雙 socket race，正是 #265 症狀）。new_scope 由呼叫端以
+        `current_exercise_id() or NULL_SCOPE` 算妥（int＝某場 / NULL_SCOPE＝無 active 實戰池）。
+        顯式 pin 歷史場的指揮層連線（follows_active=False）不動。"""
+        async with self._lock:
+            for c in self._conns:
+                if c.follows_active:
+                    c.exercise_id = new_scope
 
     async def disconnect(self, conn: _Conn) -> None:
         async with self._lock:
