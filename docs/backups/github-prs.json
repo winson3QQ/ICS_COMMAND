@@ -4124,5 +4124,26 @@
     "title": "fix(chat): GeoChat ingest 冪等 — 同訊息重播不再重複入庫",
     "updatedAt": "2026-06-15T05:57:31Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/273"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "**Part of #267**。「參與層」動作：指揮官把常駐(NULL)單位**納編**進當前演習、或**退編**回常駐 —— 用明確動作取代「進來時哪場 active」的時序歸屬。\n\n## 後端\n- `POST /api/exercises/{id}/enroll {uid, action}`（COMMAND_ROLES）。\n- **不套 `_require_editable_source`**（決策：納編改歸屬、非編輯現場物件 → 訓練/實戰皆可）。\n- `{id}` 必為當前 active；改 `cop_entities.exercise_id` 走 CAS（含 PLI 撞 vc 重試）。\n- 雙廣播（舊 scope delete / 新 scope create，delete 帶 CAS 後 vc）→ 疊看連線 LWW 就地過渡不消失；audit 記 from/to。\n\n## 前端\n- roster per-unit「納編」/「退編」鈕（限指揮層、演習中現）+ 委派點擊；`onEnroll` 注入；`activeExerciseId()`。\n\n## 驗證\n- pytest **1027**（+3：納編↔退編往返/限 active/限 COMMAND）、vitest **340**、eslint/ruff clean\n- `/code-review` + `/security-review` **0 finding**（gate 真、scope 完整、LWW 不丟單位、uid `_esc` 安全）\n- 版號 backend-v2.7.0 / frontend-v1.7.0\n\n註：tracks Design-B JOIN → 納編追溯把該單位全部軌跡歸入本場 AAR（v1 接受）。後續：定向發送、編組指派。\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+    "closedAt": "2026-06-15T09:06:21Z",
+    "comments": [],
+    "createdAt": "2026-06-15T09:04:03Z",
+    "headRefName": "feat/issue-267-enrollment",
+    "labels": [],
+    "mergedAt": "2026-06-15T09:06:21Z",
+    "number": 274,
+    "state": "MERGED",
+    "title": "feat(cop): #267 納編/退編 — 把單位移進 active 場 / 退回 NULL 常駐",
+    "updatedAt": "2026-06-15T09:06:23Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/274"
   }
 ]
