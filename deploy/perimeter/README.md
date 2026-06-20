@@ -43,7 +43,8 @@ bridge gateway（`172.19.0.1`），不是真實外網 IP**（實測：iPhone、�
 
 ### C. fail2ban（prod Linux；需真實 IP）
 watch nginx log，對反覆 `400`（無證探測）/ 掃描路徑的 IP 自動 ban（host iptables）。
-Windows Docker 不適用 → prod Linux 部署用。jail/filter 範本見 `fail2ban/`（待補）。
+Windows Docker 不適用 → prod Linux 部署用。**範本已備**：`fail2ban/filter.d/ics-nginx-probe.conf`
++ `fail2ban/jail.d/ics.local`（安裝步驟見 jail 檔頭；**需真實 IP 才有效**）。
 
 ### D. geo / IP allowlist
 測試者已知地域（台灣）→ 只放台灣。需 nginx GeoIP2 module（alpine 預設無）或在
