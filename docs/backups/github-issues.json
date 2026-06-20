@@ -3866,14 +3866,29 @@
     },
     "body": "#275 mTLS 落地後，cmd dashboard 對外（home router 443 forward）長期擺放給測試者。mTLS 是身分核心，但「讓服務不被任意人觸及 + 偵測/阻擋掃描」是更上游的縱深防線。曝 1h 內即遭掃描 bot 打 `/config/.env`、`/ecosystem.config.js`、`PROPFIND /`（全被 mTLS 擋 400，但噪音 + 攻擊面真實）。\n\n## 逐項（依 CP 值，✅=本 issue 範圍 / ↗=已追蹤別處 / ✓=已做）\n- [ ] **A. nginx 周邊硬化**（本 repo·即做）：`limit_req` 網路層限速 + 明顯掃描路徑（`.env`/`.git`/`.php`…）直接 444 drop。✅ 進 `deploy/nginx` + `ics-validation/mtls`。\n- [ ] **B. Cloudflare Tunnel / Tailscale 前置**（ops·runbook+compose）：不開 raw port-forward、隱藏公網 IP、自帶 WAF/DDoS。**單一最高 CP**。✅ 出 `cloudflared` compose service + runbook。\n- [ ] **C. fail2ban**（prod Linux·ops）：watch nginx log ban 掃描 IP。✅ 出 jail/filter + 文件（Windows-Docker 不適用，prod 用）。\n- [ ] **D. geo / IP allowlist**（測試者已知地域→只放台灣）：需 GeoIP2 module（alpine nginx 預設無）→ 評估 module 或 Cloudflare 地端做。✅ 評估 + 落地。\n- [ ] **E. 真 CA 憑證 + OCSP stapling + HSTS preload**（公測/正式）：免自簽警告。✅ 文件 + ssl-common 開關。\n- [ ] ↗ **F. 網路層憑證撤銷**（nginx `ssl_crl`/OCSP，握手即擋）= [#232](https://github.com/winson3QQ/ICS_COMMAND/issues/232)\n- [ ] ↗ **G. at-rest 加密**（PIN hash 離線防護）= P1-12（SQLCipher/LUKS）\n- [ ] **H. 安全監控告警**（失敗握手 / 反覆 400 / 帳號鎖定 → 告警）✅ 評估。\n- [x] ✓ XFF 信任 + 後端 loopback（#275 wave 2/4，原 RT-M1）\n\n## 紀律\n- 每項獨立 PR + code/security review；ops 項出 runbook（不假設能改使用者路由/Cloudflare 帳號）。\n- 對齊 `threat_model §8.6`（#275 收口）+ ROADMAP「軸 2 部署硬化」。",
     "closedAt": null,
-    "comments": [],
+    "comments": [
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "**[2026-06-20 開工·前提盤點]** 實證 **Docker port-publish 抹掉真實 client IP**：nginx/後端看到的全是 bridge gateway `172.19.0.1`（iPhone + 掃描 bot 同一個）→ **所有 per-IP 控制（A nginx limit_req / 後端 rate_limit / C fail2ban）對外網失效**，這是前提。\n\n→ **重排優先序**：B（VPN/Tunnel 前置）升為**第一**——它同時 (1) 埠不對外擋掉 bot (2) 還原真實 client IP 解鎖 A/C/D。C2 建議 **WireGuard/Tailscale**（數據面點對點不過第三方）優於 Cloudflare。分析 + 三修法落 `deploy/perimeter/README.md`。",
+        "createdAt": "2026-06-20T09:32:02Z",
+        "id": "IC_kwDOSnBjpc8AAAABG4yw8g",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/280#issuecomment-4757172466"
+      }
+    ],
     "createdAt": "2026-06-20T09:27:32Z",
     "labels": [],
     "milestone": null,
     "number": 280,
     "state": "OPEN",
     "title": "公網直曝周邊防護硬化（perimeter hardening，#275 衍生）",
-    "updatedAt": "2026-06-20T09:27:32Z",
+    "updatedAt": "2026-06-20T09:32:02Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/280"
   }
 ]
