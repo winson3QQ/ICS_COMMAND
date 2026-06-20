@@ -57,8 +57,13 @@ Tailscale/Cloudflare 端做。alpine nginx 走 module 較重 → 建議在前置
 - F 網路層憑證撤銷（nginx `ssl_crl`/OCSP，握手即擋）= [#232](https://github.com/winson3QQ/ICS_COMMAND/issues/232)
 - G at-rest 加密（PIN hash 離線防護）= P1-12（SQLCipher/LUKS）
 
-### H. 安全監控告警
-失敗握手 / 反覆 400 / 帳號鎖定 → 告警。依賴 A 的 verify-status logging。
+### H. 安全監控告警 ✅（已落地）
+高訊號鑑權異常 → 結構化 `SECURITY_ALERT` log + 可選 webhook：
+- **帳號鎖定**（持續爆破）、**第二因子失敗**（PIN 對但裝置證不符/缺/撤銷＝盜 PIN）。
+- 刻意以**帳號/事件**為主體（非來源 IP——Docker NAT 下 IP 不可靠），同主體 1h 內反覆 ≥3 → 升 `critical`。
+- 推播：設 `ICS_SECURITY_WEBHOOK_URL`（任意 HTTP endpoint，Slack/Discord/自架收集器）；
+  背景緒 fire-and-forget、失敗不影響鑑權。空＝只進 log。
+- `services/security_monitor.py`；接 `routers/auth.py` login 失敗分支。
 
 ## Tailscale 前置 — 實務步驟（白話：只有發鑰匙的人連得到）
 

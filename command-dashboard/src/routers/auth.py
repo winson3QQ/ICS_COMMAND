@@ -22,6 +22,7 @@ from repositories.account_repo import (
     verify_login,
 )
 from schemas.auth import ChangeInitialPinIn, LoginIn
+from services.security_monitor import security_alert
 
 log = structlog.get_logger()
 
@@ -44,6 +45,8 @@ def login(body: LoginIn, request: Request):
         log.warning("login_failed", msg="登入失敗 — 帳號鎖定",
                     user=body.username,
                     detail={"reason": reason})
+        # #280 H：帳號鎖定 = 持續爆破訊號（與 IP 無關，可靠）
+        security_alert("account_locked", "帳號鎖定（疑似密碼爆破）", user=body.username)
         raise HTTPException(423, "帳號暫時鎖定，請 15 分鐘後再試")
     if reason in {"suspended", "archived"}:
         log.warning("login_failed", msg="登入失敗 — 帳號停權",
@@ -68,6 +71,8 @@ def login(body: LoginIn, request: Request):
                 or not cert_active_for_account(acct["id"], presented)):
             log.warning("login_failed", msg="登入失敗 — 裝置憑證",
                         user=body.username, detail={"reason": "cert"})
+            # #280 H：PIN 對但裝置證不符/缺/撤銷 = 盜 PIN 或裝置不符的高訊號
+            security_alert("cert_factor_failed", "第二因子（裝置憑證）失敗", user=body.username)
             raise HTTPException(401, "帳號或 PIN 錯誤")
         cert_cn = presented
     token = create_session(acct, request, cert_cn=cert_cn)

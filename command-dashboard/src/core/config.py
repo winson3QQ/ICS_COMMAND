@@ -118,6 +118,10 @@ ICS_MTLS_REQUIRED: bool = os.getenv("ICS_MTLS_REQUIRED", "false").lower() == "tr
 # 削弱 IP 限速）。容器/正式部署經 nginx → 設 true。
 ICS_BEHIND_PROXY: bool = os.getenv("ICS_BEHIND_PROXY", "false").lower() == "true"
 
+# #280 H：安全告警 webhook（選配）。設了才推；空＝只進結構化 log（SECURITY_ALERT）。
+# 任意 HTTP endpoint（Slack/Discord/自架收集器…）；背景緒推、失敗不影響鑑權。
+ICS_SECURITY_WEBHOOK_URL: str = os.getenv("ICS_SECURITY_WEBHOOK_URL", "")
+
 # #275 wave B-2：面板「發憑證」線上簽發（選項 i 安全版）。後端**不持 CA 鑰**，改呼叫
 # step-ca daemon（provisioner token）請它簽 → 回傳 p12。CA 鑰始終只在 daemon。
 # 未配置（STEP_CA_URL 空）時 /certs/issue 回 503，面板僅保留「手動綁定」（離線簽 fallback）。
