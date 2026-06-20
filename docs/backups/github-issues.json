@@ -3894,6 +3894,20 @@
         "minimizedReason": "",
         "reactionGroups": [],
         "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/280#issuecomment-4757208048"
+      },
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "**[2026-06-20 H 落地]** 安全監控告警 = PR #282：帳號鎖定 / 第二因子失敗 → `SECURITY_ALERT` log + 可選 webhook（`ICS_SECURITY_WEBHOOK_URL`），以帳號為主體（NAT 下 IP 不可靠）、反覆升 critical。\n\n**#280 現況**：A 限速 ✅ / C fail2ban ✅ / E OCSP ✅ / B Tailscale runbook ✅（#281 merged）+ H 監控 ✅（#282）。**使用者已關路由器 443 forward**（公網入口收掉）。剩：B Tailscale 實裝（使用者）、D geo（建議前置層做）、F=#232 / G=P1-12（別處）。",
+        "createdAt": "2026-06-20T10:02:45Z",
+        "id": "IC_kwDOSnBjpc8AAAABG44bUQ",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/280#issuecomment-4757265233"
       }
     ],
     "createdAt": "2026-06-20T09:27:32Z",
@@ -3902,7 +3916,7 @@
     "number": 280,
     "state": "OPEN",
     "title": "公網直曝周邊防護硬化（perimeter hardening，#275 衍生）",
-    "updatedAt": "2026-06-20T09:44:23Z",
+    "updatedAt": "2026-06-20T10:02:45Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/280"
   }
 ]
