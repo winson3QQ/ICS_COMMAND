@@ -21,6 +21,18 @@ def _public(row) -> dict:
     return dict(row)
 
 
+def is_valid_cert_cn(cert_cn: str) -> bool:
+    """CN 合法性（綁定/發證前驗）。拒：空、逗號（會破壞 nginx `[^,]+` CN 抽取 →
+    後端看到的 CN 與綁定值不符）、前導 `-`（傳給 step CLI 會被當旗標，flag injection）、
+    控制字元/引號。允許字母（含 CJK）、數字、空白與 - _ . @。長度 1–64。"""
+    cn = (cert_cn or "").strip()
+    if not cn or len(cn) > 64:
+        return False
+    if cn[0] == "-" or "," in cn:
+        return False
+    return all(c.isalnum() or c in " -_.@" or ord(c) > 127 for c in cn)
+
+
 def account_id_for_username(username: str) -> int | None:
     """解析 username → account id（get_account 不回 id，cert 綁定需要 FK 整數）。"""
     with get_conn() as conn:

@@ -103,6 +103,19 @@ class TestActiveLookups:
         assert is_cert_active("alice-phone") is False
 
 
+class TestCertCnValidation:
+    def test_valid_cns(self, tmp_db):
+        from repositories.account_cert_repo import is_valid_cert_cn
+        for cn in ("my-phone", "commander-phone-01", "王小明-iPhone", "a.b_c@d", "夜鷹 平板"):
+            assert is_valid_cert_cn(cn) is True, cn
+
+    def test_invalid_cns(self, tmp_db):
+        from repositories.account_cert_repo import is_valid_cert_cn
+        # 空、逗號（破壞 nginx [^,]+ CN 抽取）、前導 dash（step CLI flag injection）、控制/引號
+        for cn in ("", "   ", "a,b", "-flag", "--not-after=8760h", 'a"b', "a\nb", "x" * 65):
+            assert is_valid_cert_cn(cn) is False, repr(cn)
+
+
 class TestRevokeKillsLiveSession:
     def test_revoked_cert_invalidates_active_session(self, tmp_db, monkeypatch):
         """撤銷後活躍 session 下一個 request 即失效（不必等 token 過期）。"""

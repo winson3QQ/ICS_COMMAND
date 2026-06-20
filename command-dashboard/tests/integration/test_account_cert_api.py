@@ -63,6 +63,14 @@ class TestCertLifecycle:
         r = client.get("/api/admin/accounts/ghost/certs", headers=auth)
         assert r.status_code == 404
 
+    def test_bind_rejects_invalid_cn(self, client, auth):
+        """逗號 CN 會破壞 nginx CN 抽取、前導 dash 會被 step 當旗標 → 422。"""
+        _mk_account(client, auth, "vic")
+        for bad in ("a,b", "-flag"):
+            r = client.post("/api/admin/accounts/vic/certs",
+                            json={"cert_cn": bad}, headers=auth)
+            assert r.status_code == 422, bad
+
 
 class TestOnlineIssue:
     def test_issue_503_when_step_ca_not_configured(self, client, auth):

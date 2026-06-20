@@ -12,6 +12,7 @@ from fastapi import HTTPException, Request
 
 import core.config as config
 from core.database import get_conn
+from repositories.account_cert_repo import is_cert_active
 
 from .role_enum import normalize_role_pair
 
@@ -195,7 +196,6 @@ def check_session(
                 return None, {"event": EVENT_BINDING_MISMATCH_CERT, "session": sess}
             # wave 3：App 層撤銷即時生效——綁定的 CN 一旦被撤（status≠active），
             # 活躍 session 下一個 request 即失效（不必等 token 過期）。
-            from repositories.account_cert_repo import is_cert_active
             if not is_cert_active(sess["cert_cn"]):
                 return None, {"event": EVENT_BINDING_MISMATCH_CERT, "session": sess}
 

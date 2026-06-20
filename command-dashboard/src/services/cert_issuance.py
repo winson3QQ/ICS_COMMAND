@@ -55,7 +55,7 @@ def issue_p12(cert_cn: str) -> bytes:
         key = os.path.join(td, "client.key")
         p12 = os.path.join(td, "client.p12")
         p12pw = os.path.join(td, "p12pw")
-        with open(p12pw, "w", encoding="ascii") as f:
+        with open(p12pw, "w", encoding="utf-8") as f:
             f.write(config.STEP_CLIENT_CERT_P12_PASS)
 
         # 1. 取 root（fingerprint 驗證，建立對 daemon API 的信任）

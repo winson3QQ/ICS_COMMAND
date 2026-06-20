@@ -10,12 +10,14 @@ from auth.role_enum import (
 )
 from auth.service import validate_session
 from core.database import get_conn, get_schema_version
+import core.config as config
 from core.input_safety import validate_no_unsafe_strings
 from repositories._helpers import audit
 from repositories.account_cert_repo import (
     account_id_for_username,
     bind_cert,
     is_cert_active,
+    is_valid_cert_cn,
     list_certs,
     revoke_cert,
 )
@@ -374,24 +376,35 @@ def set_retention(body: RetentionToggleIn, request: Request):
 # 「CN ↔ 帳號」的綁定/撤銷（App 層第二因子授權）。撤銷即時失效（check_session 查表）。
 
 
-@router.get("/accounts/{username}/certs", tags=["account-admin"])
-def list_account_certs(username: str, request: Request):
-    _check_system_admin(request)
+def _account_id_or_404(username: str) -> int:
     account_id = account_id_for_username(username)
     if account_id is None:
         raise HTTPException(404, "account not found")
-    return list_certs(account_id)
+    return account_id
+
+
+def _validated_cert_cn(body: AccountCertBindIn) -> str:
+    """綁定/發證共用：HTML/JS escape 防護 + CN 合法性（逗號/前導 dash/字元集）。"""
+    validate_no_unsafe_strings(body.cert_cn, body.label or "")
+    cn = body.cert_cn.strip()
+    if not is_valid_cert_cn(cn):
+        raise HTTPException(422, "cert_cn 不合法（不可含逗號、不可 - 開頭，限字母/數字/空白/-_.@）")
+    return cn
+
+
+@router.get("/accounts/{username}/certs", tags=["account-admin"])
+def list_account_certs(username: str, request: Request):
+    _check_system_admin(request)
+    return list_certs(_account_id_or_404(username))
 
 
 @router.post("/accounts/{username}/certs", tags=["account-admin"])
 def bind_account_cert(username: str, body: AccountCertBindIn, request: Request):
     sess = _check_system_admin(request)
-    account_id = account_id_for_username(username)
-    if account_id is None:
-        raise HTTPException(404, "account not found")
-    validate_no_unsafe_strings(body.cert_cn, body.label or "")
+    account_id = _account_id_or_404(username)
+    cn = _validated_cert_cn(body)
     try:
-        return bind_cert(account_id, body.cert_cn, body.label, sess["username"])
+        return bind_cert(account_id, cn, body.label, sess["username"])
     except ValueError as e:
         raise HTTPException(409, str(e))
 
@@ -401,14 +414,10 @@ def issue_account_cert(username: str, body: AccountCertBindIn, request: Request)
     """#275 wave B-2：線上發證（選項 i 安全版）。後端呼叫 step-ca daemon 簽證（CA 鑰不進
     後端）→ 自動綁定 CN ↔ 帳號 → 回傳 p12 下載。未配置 step-ca 時回 503（改走離線簽 + 綁定）。"""
     sess = _check_system_admin(request)
-    account_id = account_id_for_username(username)
-    if account_id is None:
-        raise HTTPException(404, "account not found")
-    from core import config as _cfg
-    if not _cfg.step_ca_configured():
+    account_id = _account_id_or_404(username)
+    if not config.step_ca_configured():
         raise HTTPException(503, "線上發證未配置；請用 deploy/step-ca 離線簽 + 手動綁定")
-    validate_no_unsafe_strings(body.cert_cn, body.label or "")
-    cn = body.cert_cn.strip()
+    cn = _validated_cert_cn(body)
     if is_cert_active(cn):
         raise HTTPException(409, "此 CN 已被有效綁定")
     from services.cert_issuance import CertIssuanceError, issue_p12
@@ -419,6 +428,7 @@ def issue_account_cert(username: str, body: AccountCertBindIn, request: Request)
     bind_cert(account_id, cn, body.label, sess["username"])
     audit(sess["username"], None, "cert_issue", "account_certs", cn,
           {"account_id": account_id, "cert_cn": cn, "online": True})
+    # cn 已過 is_valid_cert_cn（無逗號/控制字元）；filename 再收斂為 alnum+-_.
     safe = "".join(c for c in cn if c.isalnum() or c in "-_.") or "client"
     return Response(
         content=p12,
@@ -430,9 +440,7 @@ def issue_account_cert(username: str, body: AccountCertBindIn, request: Request)
 @router.delete("/accounts/{username}/certs/{cert_id}", tags=["account-admin"])
 def revoke_account_cert(username: str, cert_id: int, request: Request):
     sess = _check_system_admin(request)
-    account_id = account_id_for_username(username)
-    if account_id is None:
-        raise HTTPException(404, "account not found")
+    account_id = _account_id_or_404(username)
     result = revoke_cert(cert_id, sess["username"], account_id=account_id)
     if result is None:
         raise HTTPException(404, "active cert binding not found")
