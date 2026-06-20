@@ -82,6 +82,7 @@ server {
         # 等同剝除偽造）。後端據此驗 SUCCESS + CN 綁定帳號為 AAL2 第二因子。
         proxy_set_header X-Client-Cert-CN     $ics_client_cn;
         proxy_set_header X-Client-Cert-Verify $ssl_client_verify;
+        proxy_set_header X-Proxy-Auth         PROXY_SECRET_PLACEHOLDER;  # #280：證明 cert header 真來自 nginx（setup.sh 替換）
 
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
@@ -99,5 +100,6 @@ server {
         proxy_set_header Host $host;
         proxy_set_header X-Client-Cert-CN     $ics_client_cn;
         proxy_set_header X-Client-Cert-Verify $ssl_client_verify;
+        proxy_set_header X-Proxy-Auth         PROXY_SECRET_PLACEHOLDER;  # #280：證明 cert header 真來自 nginx（setup.sh 替換）
     }
 }
