@@ -3310,7 +3310,7 @@
       "login": "winson3QQ",
       "name": ""
     },
-    "body": "threat_model §8.5 + SC7 升優先項（RTF/多機構「人命級」論據）。**與加密無關，P1-12 解不了** — 被擄/失竊場端裝置的 client cert 在 TLS 有效期內仍在信任邊界內，可注入假敵我位置或用 `t-x-d-d` 刪 COP 物件（完整性威脅，對 C2 ≥ 機密性）。\n\n## 已實證現況（2026-06-08 admin UI 實證）\n\n- TAK Server admin GUI 有 `Revoke Selected` 撤銷功能，**但對本部署顯示 \"No Certificates Found\"**：現行 cert 由 `makeCert.sh` 離線簽發（信任鏈通、未經 enrollment 註冊）→ 不是 managed cert，**GUI 撤銷不到**\n- 無 CRL/OCSP、無被擄裝置撤銷 SOP\n\n## Scope（大半是 ops/SOP，工程量小、風險覆蓋大）\n\n- [ ] 場端裝置 cert 改走 **TAK enrollment（:8446）發行** → 進 managed 清單，GUI 可撤銷 + `Show Revoked` 稽核\n- [ ] 或建 **CA 層 CRL**，並驗證 ICS / TAK 的 mTLS 驗證會 honor CRL\n- [ ] **「裝置遺失 → 立即撤銷」操作 SOP** 文件化（撤銷責任在 TAK 管理員，ICS 為下游消費者）\n- [ ] 短 cert TTL + 自動續期策略（連動 #98 drift、P2-15 federation peer cert profile）\n- [ ] ICS 端縱深（來源標註 + 異常偵測：同 uid 位置跳變 / 大量刪除）→ 留 P2-12 / P2-19，本 issue 只記接點",
+    "body": "threat_model §8.5 + SC7 升優先項。**[2026-06-20 重整為 umbrella]** 原 #232 寫的是 TAK 裝置 cert，但 #280-F「網路層憑證撤銷 = #232」指過來的是 ICS dashboard mTLS cert —— **兩種不同 cert 族群被混在一起**。本 issue 重整為兩軌、各自交代現況，避免接手者混淆。\n\n共同概念：被擄 / 失竊裝置的 client cert 在 TLS 有效期內仍在信任邊界內 → 可注入假位置 / 刪 COP（完整性威脅，對 C2 ≥ 機密性）。**與加密無關，P1-12 解不了。**\n\n---\n\n## 軌 1 — ICS dashboard mTLS cert（裝置→nginx，#275 PKI）\n\n- **app 層撤銷 ✅ 已做（#275 wave B/B-2）**：admin 面板「帳號列表 → 🔑 裝置憑證」per-account CN↔帳號綁定/撤銷（`/api/admin/accounts/{u}/certs`）；後端 App 層 cert 驗證。\n- **網路層撤銷 ⏳ 待做（= #280-F）**：nginx `ssl_crl` / OCSP stapling，握手即擋（不必進到 app）。#280 已做 OCSP-就緒（b48a55b）；CRL/OCSP 接線待落。#283 已把此項提為正式 ROADMAP 項。\n- 連動：#275（PKI/面板）、#280（周邊硬化 F 項）、#283（ROADMAP 正式化）。\n\n## 軌 2 — TAK 場端裝置 cert（ATAK→TAK Server）⏳ 全開未動\n\n- **現況（2026-06-20 複查）**：admin 面板只有「系統 tab → 📡 TAK 連線」**開關 toggle**，**無 TAK cert 管理 UI**；TAK 場端 cert 仍 `makeCert.sh` 離線簽（未經 TAK enrollment 註冊）→ TAK admin GUI 顯 \"No Certificates Found\"、撤銷不到。\n- 待辦：\n  - [ ] 場端裝置 cert 改走 **TAK enrollment（:8446）發行** → 進 managed 清單，TAK GUI 可撤銷 + Show Revoked 稽核\n  - [ ] 或建 CA 層 CRL，並驗 ICS/TAK mTLS 驗證 honor CRL\n  - [ ] **「裝置遺失 → 立即撤銷」操作 SOP** 文件化（撤銷責任在 TAK 管理員，ICS 為下游消費者）\n  - [ ] 短 cert TTL + 自動續期（連動 #98 drift、P2-15 federation peer cert profile）\n- ICS 端縱深（來源標註 + 異常偵測：同 uid 位置跳變 / 大量刪除）→ 留 P2-12 / P2-19，本 issue 只記接點。\n\n---\n\n**範圍切割**：軌 1 網路層歸 #280-F 進度；軌 2 為本 issue 主體（TAK 側、ops/SOP 為主）。兩軌皆與 P1-12 加密無關。",
     "closedAt": null,
     "comments": [],
     "createdAt": "2026-06-11T23:43:21Z",
@@ -3318,8 +3318,8 @@
     "milestone": null,
     "number": 232,
     "state": "OPEN",
-    "title": "憑證撤銷控制缺口（threat_model §8.5）：enrollment 發行切換 + CRL 評估 + 被擄裝置撤銷 SOP",
-    "updatedAt": "2026-06-11T23:43:21Z",
+    "title": "憑證撤銷 umbrella（threat_model §8.5）：ICS mTLS 網路層 + TAK 裝置 cert 兩軌",
+    "updatedAt": "2026-06-20T22:45:52Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/232"
   },
   {

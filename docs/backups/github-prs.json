@@ -3223,7 +3223,7 @@
     "number": 202,
     "state": "MERGED",
     "title": "docs(roadmap): ICS_Command 架構與運維就緒度評論",
-    "updatedAt": "2026-06-10T22:36:54Z",
+    "updatedAt": "2026-06-20T22:41:52Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/202"
   },
   {
@@ -3681,7 +3681,7 @@
     "number": 239,
     "state": "MERGED",
     "title": "docs(layer): 釐清 TAK Mission/DataSync(任務包)屬 L3 非 L4",
-    "updatedAt": "2026-06-12T04:56:13Z",
+    "updatedAt": "2026-06-20T22:41:52Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/239"
   },
   {
@@ -4164,7 +4164,7 @@
     "number": 276,
     "state": "MERGED",
     "title": "feat(auth): #275 mTLS wave 1 + 公網安全收口（#3/#4 + §2.8）",
-    "updatedAt": "2026-06-20T03:48:20Z",
+    "updatedAt": "2026-06-20T22:41:52Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/276"
   },
   {
