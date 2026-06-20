@@ -1216,6 +1216,19 @@ def _m027_event_kind_to_sighting_down(conn: sqlite3.Connection) -> None:
     )
 
 
+def _m028_cert_cn_binding(conn: sqlite3.Connection) -> None:
+    """#275 mTLS：帳號綁定的裝置憑證 CN（cert = MFA 第二因子）+ session cert-binding 欄位。"""
+    _add_column_if_missing(conn, "accounts", "cert_cn", "TEXT")
+    _add_column_if_missing(conn, "sessions", "cert_cn", "TEXT")
+
+
+def _m028_cert_cn_binding_down(conn: sqlite3.Connection) -> None:
+    for table in ("accounts", "sessions"):
+        cols = {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}  # nosec B608
+        if "cert_cn" in cols:
+            conn.execute(f"ALTER TABLE {table} DROP COLUMN cert_cn")  # nosec B608
+
+
 _MIGRATIONS: list[tuple[int, str, object]] = [
     (1, "events_columns", _m001_events_columns),
     (2, "decisions_columns", _m002_decisions_columns),
@@ -1244,6 +1257,7 @@ _MIGRATIONS: list[tuple[int, str, object]] = [
     (25, "events_drop_location_zone_id", _m025_events_drop_location_zone_id),
     (26, "aar_entries_ref_t", _m026_aar_entries_ref_t),
     (27, "event_kind_to_sighting", _m027_event_kind_to_sighting),
+    (28, "cert_cn_binding", _m028_cert_cn_binding),
 ]
 
 

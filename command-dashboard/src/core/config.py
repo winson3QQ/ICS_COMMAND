@@ -108,6 +108,11 @@ DOCS_ENABLED: bool = os.getenv("ICS_DOCS_ENABLED", "false" if IS_PROD else "true
 # /api/version 回傳、登入頁顯示 → 可辨識「實際跑的是哪個 build」(版號常數無法分辨每次 rebuild)。
 BUILD_ID: str = os.getenv("ICS_BUILD_ID", "dev")
 
+# #275 mTLS：是否強制 client 憑證（prod/演練 on、dev/demo 預設 off）。
+# on 時 login + middleware 驗 X-Client-Cert-Verify=SUCCESS 且 cert CN 綁定帳號
+# （cert = MFA「持有」第二因子，與 PIN 構成 AAL2）。見 security_policies §2.8。
+ICS_MTLS_REQUIRED: bool = os.getenv("ICS_MTLS_REQUIRED", "false").lower() == "true"
+
 # ── 認證豁免路由 ──────────────────────────
 # (method, path) 完整匹配
 AUTH_EXEMPT_EXACT: frozenset[tuple[str, str]] = frozenset(

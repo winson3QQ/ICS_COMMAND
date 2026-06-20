@@ -124,6 +124,7 @@ _每次 role 變更、帳號建立 / 刪除均寫 audit log_
 **實作要點（#275 分波）**：
 - nginx `ssl_verify_client on`（`deploy/nginx/conf.d/tier3-mtls.conf.disabled` 落地）→ 無有效 client cert 連不進登入（網路層即擋）。
 - 後端驗 `ssl_client_verify=SUCCESS` 並將 `X-Client-Cert-CN` **綁定帳號**（cert ↔ user = 第二因子）。
+- **⚠ trusted-header 剝除（security-review wave-2 必做）**：nginx 須以 `proxy_set_header X-Client-Cert-CN $ssl_client_s_dn_cn;`／`X-Client-Cert-Verify $ssl_client_verify;` **覆寫**（等同剝除 client 自帶值），且後端（uvicorn）**只經 nginx 可達**（compose 不 publish 後端埠）。否則攻擊者直連後端偽造 cert header 可繞第二因子（AAL2→AAL1）。後端側 `X-Client-Cert-*` 信任已 env-gated（`ICS_MTLS_REQUIRED`）。
 - PKI：per-user / 裝置 client cert 簽發 + 撤銷（step-ca；複用 TAK `gen-device-dp.sh` pattern）。
 - PIN KDF：PBKDF2-HMAC-SHA256 現 100k → 升 OWASP 2023 建議 600k。
 - IP 信任：`_client_ip` 改信任反代設定的可信 hop（非 `X-Forwarded-For` 最左值），防偽造繞限速。
