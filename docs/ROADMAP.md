@@ -478,6 +478,20 @@ P3 整合的前提是 WaveInk 採以下五原則設計訓練 / 運行資料平�
 > 正面：SQLi/XXE/SSRF/CoT 跨源覆寫全防住、機密無入 git、**供應鏈無中國套件（紅線通過）**、mTLS 設計（配置正確時）健全。殘留 MEDIUM/LOW（M2 鎖定 DoS / M3 timing 枚舉 / M5 audit flood / L1 tile traversal / L3 token 明文 / CSP report-only 等）見稽核 log，未納本批。
 > 待開單（非安全、預存）：scenario_designer.html 呼叫已移除的 `/api/ttx/sessions/*` → TTX 設計器壞掉。
 
+### 紅隊批次 2 — 前端駭客視角（#292–296，2026-06-20/21）
+
+> 以「攻擊者讀得到的前端」反推攻法（攻法①–⑥）。完整對照 + perimeter 防禦表見 [`threat_model` §8.7.1](compliance/threat_model.md) + 稽核 log。每單 reality check → 修 → 使用者實機/測試驗 → 單獨 PR merge。
+
+| Issue | 發現 / 工作 | 狀態 |
+|---|---|---|
+| ✅ #292 | roster `_esc` 不跳脫引號 → 屬性脈絡 XSS（攻法③） | merged（PR #297）；iPad 實機驗無回歸 |
+| ✅ #294 | prod image 排除不用的孤兒 HTML 頁（減攻擊面，取代 CSP-enforce 死頁；攻法③/④） | merged（PR #298） |
+| ✅ #296 | RBAC 路由分類 golden 矩陣 + 端到端強制測試（防 #287 類靜默 broken access control；攻法①） | merged（PR #299） |
+| ⏸ #293 | session token → httpOnly cookie | **降級**：cert-bound session 已稀釋價值（XSS 偷到也難跨裝置重放）；非全 auth 重構不划算，緩做 |
+| ⛔ #295 | 鎖定-DoS：per-source 節流 / 高權不硬鎖 | **卡 #280**：per-source 需先「真實 client IP 還原」（Tailscale/Headscale 前置 + 非 Docker-NAT）才有意義 |
+
+> 結論：可立即做的前端面資安單全收（#292/#294/#296）。#293/#295 依設計判斷緩做/有前置依賴。下一步周邊防護 = #280 軸 2（**Headscale 前置**，供應鏈已查過紅線：見 perimeter README）。
+
 ### 現役（command-dashboard，已部署）— 需排程修補
 
 | 編號 | 事實 | 性質 / 推論 | 動工時機（觸發）+ 怎麼動 |
