@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Response
 
 from auth.role_enum import (
     ROLE_COMMANDER,
@@ -15,6 +15,7 @@ from repositories._helpers import audit
 from repositories.account_cert_repo import (
     account_id_for_username,
     bind_cert,
+    is_cert_active,
     list_certs,
     revoke_cert,
 )
@@ -393,6 +394,37 @@ def bind_account_cert(username: str, body: AccountCertBindIn, request: Request):
         return bind_cert(account_id, body.cert_cn, body.label, sess["username"])
     except ValueError as e:
         raise HTTPException(409, str(e))
+
+
+@router.post("/accounts/{username}/certs/issue", tags=["account-admin"])
+def issue_account_cert(username: str, body: AccountCertBindIn, request: Request):
+    """#275 wave B-2：線上發證（選項 i 安全版）。後端呼叫 step-ca daemon 簽證（CA 鑰不進
+    後端）→ 自動綁定 CN ↔ 帳號 → 回傳 p12 下載。未配置 step-ca 時回 503（改走離線簽 + 綁定）。"""
+    sess = _check_system_admin(request)
+    account_id = account_id_for_username(username)
+    if account_id is None:
+        raise HTTPException(404, "account not found")
+    from core import config as _cfg
+    if not _cfg.step_ca_configured():
+        raise HTTPException(503, "線上發證未配置；請用 deploy/step-ca 離線簽 + 手動綁定")
+    validate_no_unsafe_strings(body.cert_cn, body.label or "")
+    cn = body.cert_cn.strip()
+    if is_cert_active(cn):
+        raise HTTPException(409, "此 CN 已被有效綁定")
+    from services.cert_issuance import CertIssuanceError, issue_p12
+    try:
+        p12 = issue_p12(cn)
+    except CertIssuanceError as e:
+        raise HTTPException(502, f"發證失敗：{e}")
+    bind_cert(account_id, cn, body.label, sess["username"])
+    audit(sess["username"], None, "cert_issue", "account_certs", cn,
+          {"account_id": account_id, "cert_cn": cn, "online": True})
+    safe = "".join(c for c in cn if c.isalnum() or c in "-_.") or "client"
+    return Response(
+        content=p12,
+        media_type="application/x-pkcs12",
+        headers={"Content-Disposition": f'attachment; filename="{safe}.p12"'},
+    )
 
 
 @router.delete("/accounts/{username}/certs/{cert_id}", tags=["account-admin"])

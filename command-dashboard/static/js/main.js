@@ -204,6 +204,7 @@ document.addEventListener('click', function (e) {
     // #275 wave B：裝置憑證（mTLS 第二因子）綁定/撤銷
     case 'adm-toggle-certs': import('./auth.js').then(m => m.admToggleCerts(btn.dataset.username)); break;
     case 'adm-bind-cert': import('./auth.js').then(m => m.admBindCert(btn.dataset.username)); break;
+    case 'adm-issue-cert': import('./auth.js').then(m => m.admIssueCert(btn.dataset.username)); break;
     case 'adm-revoke-cert': import('./auth.js').then(m => m.admRevokeCert(btn.dataset.username, btn.dataset.certId)); break;
     case 'adm-add-account': import('./auth.js').then(m => m.admAddAccount()); break;
     case 'adm-create-pi-node': import('./auth.js').then(m => m.admCreatePiNode()); break;

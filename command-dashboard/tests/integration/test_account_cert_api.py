@@ -64,8 +64,58 @@ class TestCertLifecycle:
         assert r.status_code == 404
 
 
+class TestOnlineIssue:
+    def test_issue_503_when_step_ca_not_configured(self, client, auth):
+        """#275 wave B-2：未配置 step-ca → 線上發證回 503（改走離線簽 + 僅綁定）。"""
+        _mk_account(client, auth, "frank")
+        r = client.post("/api/admin/accounts/frank/certs/issue",
+                        json={"cert_cn": "frank-pc"}, headers=auth)
+        assert r.status_code == 503
+
+    def test_issue_success_returns_p12_and_binds(self, client, auth, monkeypatch):
+        """配置齊備 + daemon 簽成功 → 回 p12（x-pkcs12）+ 自動綁定 CN。"""
+        import core.config as config
+        import services.cert_issuance as ci
+        monkeypatch.setattr(config, "step_ca_configured", lambda: True)
+        monkeypatch.setattr(ci, "issue_p12", lambda cn: b"PKCS12-FAKE-BYTES")
+        _mk_account(client, auth, "grace")
+        r = client.post("/api/admin/accounts/grace/certs/issue",
+                        json={"cert_cn": "grace-laptop", "label": "工作機"}, headers=auth)
+        assert r.status_code == 200, r.text
+        assert r.headers["content-type"] == "application/x-pkcs12"
+        assert "grace-laptop.p12" in r.headers.get("content-disposition", "")
+        assert r.content == b"PKCS12-FAKE-BYTES"
+        # 已自動綁定
+        certs = client.get("/api/admin/accounts/grace/certs", headers=auth).json()
+        assert any(c["cert_cn"] == "grace-laptop" and c["status"] == "active" for c in certs)
+
+    def test_issue_409_when_cn_already_active(self, client, auth, monkeypatch):
+        import core.config as config
+        import services.cert_issuance as ci
+        monkeypatch.setattr(config, "step_ca_configured", lambda: True)
+        monkeypatch.setattr(ci, "issue_p12", lambda cn: b"X")
+        _mk_account(client, auth, "heidi")
+        client.post("/api/admin/accounts/heidi/certs", json={"cert_cn": "dupe-cn"}, headers=auth)
+        r = client.post("/api/admin/accounts/heidi/certs/issue",
+                        json={"cert_cn": "dupe-cn"}, headers=auth)
+        assert r.status_code == 409
+
+    def test_issue_502_on_issuance_error(self, client, auth, monkeypatch):
+        import core.config as config
+        import services.cert_issuance as ci
+        monkeypatch.setattr(config, "step_ca_configured", lambda: True)
+        def _boom(cn): raise ci.CertIssuanceError("daemon 不可達")
+        monkeypatch.setattr(ci, "issue_p12", _boom)
+        _mk_account(client, auth, "ivan")
+        r = client.post("/api/admin/accounts/ivan/certs/issue",
+                        json={"cert_cn": "ivan-pc"}, headers=auth)
+        assert r.status_code == 502
+
+
 class TestAuthz:
     def test_requires_auth(self, client):
         assert client.get("/api/admin/accounts/alice/certs").status_code == 401
         assert client.post("/api/admin/accounts/alice/certs",
+                           json={"cert_cn": "x"}).status_code == 401
+        assert client.post("/api/admin/accounts/alice/certs/issue",
                            json={"cert_cn": "x"}).status_code == 401
