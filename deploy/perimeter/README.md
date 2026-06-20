@@ -59,6 +59,32 @@ Tailscale/Cloudflare 端做。alpine nginx 走 module 較重 → 建議在前置
 ### H. 安全監控告警
 失敗握手 / 反覆 400 / 帳號鎖定 → 告警。依賴 A 的 verify-status logging。
 
+## Tailscale 前置 — 實務步驟（白話：只有發鑰匙的人連得到）
+
+**概念**：不再把路由器 443 對全世界開；改成只有「裝了 Tailscale 並被你授權」的裝置，
+才在一個私有虛擬網路裡找得到這台機器。亂掃的 bot 從公網**根本連不到**。mTLS 憑證登入
+照舊＝**兩道鎖**。
+
+### 1. 你的機器（跑 Docker 那台 Windows）
+1. 裝 Tailscale：https://tailscale.com/download/windows → 登入（Google/微軟帳號即可開個人 tailnet）。
+2. 記下這台機器的 **Tailscale IP**（`100.x.x.x`）或 MagicDNS 名稱（如 `ics-cmd.tailxxxx.ts.net`）。
+3. **把家用路由器的 443 port-forward 關掉**（不再對公網）。stack 照常跑（443 在本機）。
+
+### 2. 測試者的裝置（手機/平板/筆電）
+1. 裝 Tailscale app，用**你邀請**的帳號登入加入**同一個 tailnet**（Tailscale 後台 → Invite）。
+2. 連 `https://<你的-100.x.x.x 或 MagicDNS>/static/commander_dashboard.html`
+   → 一樣跳選憑證（my-phone）→ PIN。**iOS 仍須用 Safari**。
+3. server 憑證 SAN 需含該 Tailscale IP/名稱 → 重簽：`ICS_SERVER_SANS="100.x.x.x ics-cmd.tailxxxx.ts.net"`。
+
+### 3.（進階·選配）讓 nginx 看到真實 tailnet IP
+Windows Docker 的 port-publish 仍會把來源 IP 換成 gateway（上面的缺口）→ 即使走 Tailscale，
+nginx 看到的還是 `172.x`。**但因為已經不對公網、只有授權人進得來，per-IP 限速的重要性大降**。
+若要還原真實 IP 做精細限速/監控：prod 走 **Linux + nginx `network_mode: host`**，或 Tailscale
+sidecar 共用 nginx 網路命名空間（需重構 nginx↔backend 連法，prod 再做）。
+
+> 為何不用 Cloudflare：Tunnel 雖附 WAF/DDoS，但**數據面經第三方**（TLS 在 CF 終結）。
+> C2/敏感系統建議資料面點對點（Tailscale/WireGuard），不過第三方。
+
 ## 現況建議（給「擺著測試」）
 1. **最有效一步**：把 443 forward 換成 **Tailscale**（埠不對外 + 還原真實 IP），mTLS 續留＝雙層。
 2. 真實 IP 還原後，A（nginx limit）/ C（fail2ban）才生效，再逐項補。
