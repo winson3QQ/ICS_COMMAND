@@ -33,25 +33,43 @@ fsutil reparsepoint query "command-dashboard\requirements.txt"   # 乾淨: "...n
 
 ## 怎麼清(把 placeholder 變回純檔)
 
-### 方案 A(建議):重新 clone 到非同步路徑
-git clone 寫出的全是純檔,且順便讓 repo 離開 Desktop。
+> 關鍵事實:**Desktop 現已不被 OneDrive 同步**(`$env:OneDrive` 在別處、無 SyncRootManager)
+> → **在此 Desktop 路徑寫的「新檔」就是純檔**(實證:工具新建的檔皆無 reparse)。
+> 所以**不必把 repo 搬到別處**——原地重 clone(同路徑)即可,並行 session/worktree 照樣找得到。
+
+### 方案 A(建議):原地重 clone(同一 Desktop 路徑,位置不變)
+⚠ 破壞性 + 並行依賴,做之前務必:
+1. **所有並行 session/worktree 的未提交工作先 commit/push**——repo 內有別的 worktree
+   (`.claude/worktrees/*`),刪 repo 會連它們未提交變更一起沒。
+2. **備份 gitignored runtime**(clone 不含):`command-dashboard/data/`(DB/使用者資料)、
+   `command-dashboard/static/tiles/`(底圖)。
+3. **沒有任何 session(含 Claude)跑在此 repo 時**才做(不能刪自己站的地)。
 ```powershell
-git clone https://github.com/winson3QQ/ICS_COMMAND.git C:\dev\ICS_COMMAND
-cd C:\dev\ICS_COMMAND
-git config core.hooksPath .githooks          # memory sync hook(見 CLAUDE.md)
-# 重設 runtime(底圖/DB):照 README §換機器 / 新接手者(provision_basemap.sh + first-run)
+# (先備份 data/ 與 static/tiles/ 到別處)
+Remove-Item -Recurse -Force C:\Users\yello\Desktop\ICS_COMMAND
+git clone https://github.com/winson3QQ/ICS_COMMAND.git C:\Users\yello\Desktop\ICS_COMMAND
+cd C:\Users\yello\Desktop\ICS_COMMAND
+git config core.hooksPath .githooks
+# 還原 data/ 與 static/tiles/;worktree 視需要 git worktree add 重建
 docker build -t ics-command:dev command-dashboard   # 這次應成功
 ```
 
-### 方案 B:保留現有 runtime,複製內容出去(較費工)
-robocopy 會讀內容→寫純檔。但 `.git` 不要用 robocopy(會壞)→ 仍建議用 clone(A)。
-若硬要原地保留 data/:clone 到 C:\dev 後,把舊 `command-dashboard/data/` 複製過去即可。
+### 方案 B(零風險替代):臨時 clone 到別處「只用來 build」,Desktop 不動
+build 只在 build 時需要乾淨檔;image 進 Docker 共用 store、不綁路徑。
+```powershell
+git clone https://github.com/winson3QQ/ICS_COMMAND.git C:\Temp\ics-build
+docker build -t ics-command:dev C:\Temp\ics-build\command-dashboard
+# (TAK image 同理在乾淨 clone build)→ 回 Desktop `docker compose up`(用建好的 image,勿 --build)
+Remove-Item -Recurse -Force C:\Temp\ics-build   # 用完即丟
+```
+working repo + 並行 session **完全不動**。代價:runtime bind-mount(如 TAK `../tak-server/release`)
+仍讀 Desktop 的 reparse 檔——一般讀檔會 hydrate,通常 OK,但這是唯一未證實的點。
 
-### ⚠ 不要用 `fsutil reparsepoint delete`
-對 cloud placeholder 直接刪 reparse point **會掉檔案內容**。一律走「複製成新純檔」。
+### ⚠ 不要用 `fsutil reparsepoint delete`(cloud placeholder 會掉內容)。
 
 ## 完成判準
-在 `C:\dev\ICS_COMMAND`(非同步路徑)`docker build` ICS + TAK image 皆成功,
-`(Get-Item requirements.txt -Force).Attributes` 不含 `ReparsePoint`。
+`docker build` ICS + TAK image 成功;`(Get-Item requirements.txt -Force).Attributes` 不含 `ReparsePoint`。
 
-> 相關:此問題擋住「prod image 本機 build 驗證」(#294 的 docker 實證、`deploy/prod/` 合併棧驗證都受影響)。
+> 並行 session 顧慮:**用方案 A(同路徑)或方案 B(不動 Desktop)**,都不會讓其他 session 找不到 repo。
+> 唯有「永久搬到 `C:\dev`」才會改變路徑——那需同步更新所有 session 的 repo 根,非必要不做。
+> 相關:此問題擋住「prod image 本機 build 驗證」(#294 docker 實證、`deploy/prod/` 合併棧驗證)。
