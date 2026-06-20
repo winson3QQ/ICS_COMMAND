@@ -4271,5 +4271,26 @@
     "title": "fix(auth): #280 紅隊修補 — nginx↔後端共享密鑰（堵內網偽造 cert header 繞 mTLS）",
     "updatedAt": "2026-06-20T10:41:09Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/284"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "## 摘要\n2026-06-20 公網曝面紅隊（6 路並行靜態稽核，HIGH 級對 code 二次查證）的 HIGH 級修補。完整發現 + reality-check + 修補軌跡見 [`docs/security-audit/redteam-2026-06-20.md`](docs/security-audit/redteam-2026-06-20.md)。\n\n## 修補\n| Issue | 發現 | 修補 |\n|---|---|---|\n| #286 | H1 `upload_map_image` 任意檔寫入（→ 儲存型 XSS / 全站接管） | server uuid 命名 + `resolve()`/`is_relative_to` 守門 + 移除 svg |\n| #287 | H2 TTX router 無授權 gate + 跨場 | `/api/ttx/` 鎖 COMMAND_ROLES |\n| #288 | H3 events/decisions 寫入 IDOR + 跨演習越權 | 寫入端點對稱套 `resolve_scope` + `scope_clause` |\n| #289 | H4 公網 docker nginx 缺 security headers + cipher | nginx 補 headers + ECDHE/AEAD（runtime 待 Windows `curl -kI` 驗） |\n| #290 | H6 compose 公開預設密碼 + M1 mTLS-on-secret-空 fail-open | compose `${VAR:?}` + lifespan 啟動斷言 |\n\n## 測試\n- 新增 23 案（H1×6 / H2×7 / H3×6 / M1×4）全綠。\n- 全套件僅餘 `test_tak_events::test_status_reflects_disabled_default` 失敗 = 預存環境問題（本機 `TAK_ENABLED=true`，clean main 同 fail），與本批無關。\n- `/security-review`（對正確 diff）：0 blocker，五項修補逐一確認真堵住、無繞過、無新注入。\n\n## 版號\nbackend 2.7.0 → 2.7.1（行為變更：授權收緊 + 上傳清洗）。\n\n## 備註\n- `.claude/launch.json` 的本地改動非本 PR 範圍，未納入。\n- 待開單（非安全、預存）：scenario_designer.html 呼叫已移除的 `/api/ttx/sessions/*`。\n\nCloses #286\nCloses #287\nCloses #288\nCloses #289\nCloses #290\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+    "closedAt": "2026-06-20T12:41:07Z",
+    "comments": [],
+    "createdAt": "2026-06-20T12:40:43Z",
+    "headRefName": "fix/security-hardening-redteam-286-290",
+    "labels": [],
+    "mergedAt": "2026-06-20T12:41:06Z",
+    "number": 291,
+    "state": "MERGED",
+    "title": "fix(security): 紅隊公網曝面 H1–H6 修補（#286–290）+ backend 2.7.1",
+    "updatedAt": "2026-06-20T12:41:10Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/291"
   }
 ]
