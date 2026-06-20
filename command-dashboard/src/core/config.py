@@ -113,6 +113,42 @@ BUILD_ID: str = os.getenv("ICS_BUILD_ID", "dev")
 # （cert = MFA「持有」第二因子，與 PIN 構成 AAL2）。見 security_policies §2.8。
 ICS_MTLS_REQUIRED: bool = os.getenv("ICS_MTLS_REQUIRED", "false").lower() == "true"
 
+# #275 wave 4：反代信任。on 時信任 nginx 設的 X-Real-IP（= 真實 $remote_addr）取 client IP；
+# off（直連/dev）時忽略可偽造的 X-Forwarded-For，改用 request.client.host（防 §8.6 XFF 偽造
+# 削弱 IP 限速）。容器/正式部署經 nginx → 設 true。
+ICS_BEHIND_PROXY: bool = os.getenv("ICS_BEHIND_PROXY", "false").lower() == "true"
+
+# #275 wave B-2：面板「發憑證」線上簽發（選項 i 安全版）。後端**不持 CA 鑰**，改呼叫
+# step-ca daemon（provisioner token）請它簽 → 回傳 p12。CA 鑰始終只在 daemon。
+# 未配置（STEP_CA_URL 空）時 /certs/issue 回 503，面板僅保留「手動綁定」（離線簽 fallback）。
+STEP_CA_URL: str = os.getenv("STEP_CA_URL", "")  # 如 https://step-ca:9000；空=未配置
+STEP_CA_PROVISIONER: str = os.getenv("STEP_CA_PROVISIONER", "ics")
+# provisioner 密碼以檔案提供（不進 log / 不進 env dump）；root 用 fingerprint 驗
+STEP_CA_PROVISIONER_PASSWORD_FILE: str = os.getenv("STEP_CA_PROVISIONER_PASSWORD_FILE", "")
+STEP_CA_FINGERPRINT: str = os.getenv("STEP_CA_FINGERPRINT", "")  # root_ca.crt 指紋（直給）
+# 指紋每次 CA init 變動，容器棧難寫死 → 也支援從檔讀（bootstrap 寫進共享 volume）
+STEP_CA_FINGERPRINT_FILE: str = os.getenv("STEP_CA_FINGERPRINT_FILE", "")
+STEP_CLIENT_CERT_P12_PASS: str = os.getenv("STEP_CLIENT_CERT_P12_PASS", "icsclient")
+STEP_CLIENT_CERT_DURATION: str = os.getenv("STEP_CLIENT_CERT_DURATION", "2160h")  # 90 天
+
+
+def step_ca_fingerprint() -> str:
+    """root 指紋：優先 env，否則讀 *_FILE（容器棧由 bootstrap 寫入共享 volume）。"""
+    if STEP_CA_FINGERPRINT:
+        return STEP_CA_FINGERPRINT.strip()
+    if STEP_CA_FINGERPRINT_FILE and os.path.isfile(STEP_CA_FINGERPRINT_FILE):
+        try:
+            with open(STEP_CA_FINGERPRINT_FILE, encoding="ascii") as f:
+                return f.read().strip()
+        except OSError:
+            return ""
+    return ""
+
+
+def step_ca_configured() -> bool:
+    """線上發證地基是否齊備（URL + provisioner 密碼檔 + root 指紋）。"""
+    return bool(STEP_CA_URL and STEP_CA_PROVISIONER_PASSWORD_FILE and step_ca_fingerprint())
+
 # ── 認證豁免路由 ──────────────────────────
 # (method, path) 完整匹配
 AUTH_EXEMPT_EXACT: frozenset[tuple[str, str]] = frozenset(

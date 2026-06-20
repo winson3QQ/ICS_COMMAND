@@ -263,6 +263,10 @@ install_nginx_configs() {
   local nginx_conf_dir="/etc/nginx/conf.d"
   local cert_path="${ICS_CONFIG_DIR}/certs/command.ics.local.cert.pem"
   local key_path="${ICS_CONFIG_DIR}/certs/command.ics.local.key.pem"
+  # #275 wave 2：root CA truststore（mTLS 驗 client cert 的簽發 CA）
+  local root_ca_path="${ICS_CONFIG_DIR}/certs/root_ca.crt"
+  # #275 全角色 mTLS：ICS_MTLS=1 時安裝單埠強制 mTLS 版（command-mtls）取代 command.conf
+  local mtls="${ICS_MTLS:-0}"
 
   if ! command -v nginx >/dev/null 2>&1; then
     echo "[setup] nginx 未安裝，跳過 nginx config 安裝"
@@ -279,11 +283,26 @@ install_nginx_configs() {
   install -m 0644 "$REPO_ROOT/deploy/nginx/conf.d/ssl-common.conf"        "$nginx_conf_dir/"
   install -m 0644 "$REPO_ROOT/deploy/nginx/conf.d/security-headers.conf"  "$nginx_conf_dir/"
 
-  # command.conf 替換憑證路徑
-  sed -e "s|CERT_PATH_PLACEHOLDER|${cert_path}|g" \
-      -e "s|KEY_PATH_PLACEHOLDER|${key_path}|g" \
-      "$REPO_ROOT/deploy/nginx/conf.d/command.conf" > "$nginx_conf_dir/command.conf"
-  chmod 0644 "$nginx_conf_dir/command.conf"
+  if [[ "$mtls" == "1" ]]; then
+    # #275 全角色 mTLS 單埠 443 強制版。兩個 443 block 不可並存 → 移除非 mTLS command.conf。
+    rm -f "$nginx_conf_dir/command.conf"
+    sed -e "s|CERT_PATH_PLACEHOLDER|${cert_path}|g" \
+        -e "s|KEY_PATH_PLACEHOLDER|${key_path}|g" \
+        -e "s|ROOT_CA_PATH_PLACEHOLDER|${root_ca_path}|g" \
+        "$REPO_ROOT/deploy/nginx/conf.d/command-mtls.conf.disabled" > "$nginx_conf_dir/command-mtls.conf"
+    chmod 0644 "$nginx_conf_dir/command-mtls.conf"
+    echo "[setup] nginx mTLS config（command-mtls.conf）安裝到 $nginx_conf_dir（全角色強制 client cert）"
+    if [[ ! -f "$root_ca_path" ]]; then
+      echo "[setup] ⚠️  root CA $root_ca_path 不存在 — mTLS 啟用前必須提供（Wave 3 PKI 簽發）" >&2
+      echo "[setup]    缺 root CA 時 nginx -t 會 fail（ssl_client_certificate 找不到檔案）" >&2
+    fi
+  else
+    # command.conf 替換憑證路徑（非 mTLS，dev/demo）
+    sed -e "s|CERT_PATH_PLACEHOLDER|${cert_path}|g" \
+        -e "s|KEY_PATH_PLACEHOLDER|${key_path}|g" \
+        "$REPO_ROOT/deploy/nginx/conf.d/command.conf" > "$nginx_conf_dir/command.conf"
+    chmod 0644 "$nginx_conf_dir/command.conf"
+  fi
 
   echo "[setup] nginx config 安裝到 $nginx_conf_dir"
   if [[ ! -f "$cert_path" ]]; then

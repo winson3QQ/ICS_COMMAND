@@ -12,6 +12,7 @@ from fastapi import HTTPException, Request
 
 import core.config as config
 from core.database import get_conn
+from repositories.account_cert_repo import is_cert_active
 
 from .role_enum import normalize_role_pair
 
@@ -46,9 +47,12 @@ def _iso_to_dt(value: str | None) -> datetime:
 def _client_ip(request: Request | None) -> str | None:
     if request is None or request.client is None:
         return None
-    forwarded = request.headers.get("X-Forwarded-For")
-    if forwarded:
-        return forwarded.split(",", 1)[0].strip()
+    # #275 wave 4：僅在反代後信任 nginx 設的 X-Real-IP（真實 client）；直連時忽略可偽造的
+    # X-Forwarded-For，用實際 peer（request.client.host）。見 §8.6 / config.ICS_BEHIND_PROXY。
+    if config.ICS_BEHIND_PROXY:
+        real = request.headers.get("X-Real-IP")
+        if real:
+            return real.strip()
     return request.client.host
 
 
@@ -189,6 +193,10 @@ def check_session(
         # 不套 per-request cert 防護，否則背景/狀態驗證會被誤殺。
         if config.ICS_MTLS_REQUIRED and request is not None:
             if not sess.get("cert_cn") or sess.get("cert_cn") != client_cert_cn(request):
+                return None, {"event": EVENT_BINDING_MISMATCH_CERT, "session": sess}
+            # wave 3：App 層撤銷即時生效——綁定的 CN 一旦被撤（status≠active），
+            # 活躍 session 下一個 request 即失效（不必等 token 過期）。
+            if not is_cert_active(sess["cert_cn"]):
                 return None, {"event": EVENT_BINDING_MISMATCH_CERT, "session": sess}
 
         if touch:

@@ -1,0 +1,103 @@
+# command-mtls.conf.disabled — #275 全角色 mTLS（單埠 443 強制）
+#
+# 拓樸決策（2026-06-20，issue #275）：所有角色之存取均經公網，故 443 主入口
+# 一律要求 client 裝置憑證（ssl_verify_client on）= 網路層准入。無有效 client
+# cert 連不進登入 → 無任何角色裸曝公網。PIN（知道）+ 裝置 cert（持有）= AAL2。
+#
+# ⚠ 這是 command.conf 的 **mTLS 取代版**，同樣 listen 443，兩者不可並存。
+#   啟用方式：佈署時用本檔「取代」command.conf（rename 去掉 .disabled，並把
+#   非 mTLS 的 command.conf 移走），再 nginx -t && nginx -s reload。
+#   setup.sh 以 ICS_MTLS=1 觸發本檔安裝（見 install_nginx_configs）。
+#
+# 前提（Wave 3 / PKI 完成才齊備）：
+#   1. 所有 client 已安裝 step-ca 簽的 per-user/裝置 client cert（否則全員連不進）
+#   2. root CA truststore 就位（ROOT_CA_PATH_PLACEHOLDER）
+#   3. 後端 ICS_MTLS_REQUIRED=true（cert CN 綁定帳號，第二因子生效）
+#
+# 對應：security_policies §2.8（AAL2 / 全角色 mTLS）；threat_model §8.6。
+
+upstream command_backend {
+    server 127.0.0.1:8000;
+    keepalive 32;
+}
+
+# client 憑證 CN 抽取：stock nginx 無「s_dn_cn」式的單欄位變數（用了會 emerg 起不來，
+# 2026-06-20 Docker 實證），只有 $ssl_client_s_dn（RFC2253 全 DN，如 "CN=foo,O=bar"）。
+# 以 map 從全 DN regex 出 CN → $ics_client_cn（map 屬 http context，conf.d 已在 http 內）。
+map $ssl_client_s_dn $ics_client_cn {
+    default "";
+    ~CN=(?<cn>[^,]+) $cn;
+}
+
+# HTTP → HTTPS 強制轉址（與 command.conf 同）
+server {
+    listen 80;
+    listen [::]:80;
+    server_name command.ics.local localhost;
+
+    location /.well-known/acme-challenge/ {
+        root /var/www/acme-challenge;
+    }
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+# HTTPS 主站（mTLS 強制）
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
+    server_name command.ics.local localhost;
+
+    # Host header 防護（與 command.conf 同）
+    if ($host !~* ^(command\.ics\.local|localhost)$) {
+        return 444;
+    }
+
+    # 伺服器憑證（dev: deploy/step-ca/certs/，prod: /etc/ics/certs/，install.sh 替換）
+    ssl_certificate     CERT_PATH_PLACEHOLDER;
+    ssl_certificate_key KEY_PATH_PLACEHOLDER;
+
+    # ── mTLS 核心：要求 client 提供受信任 CA 簽的憑證 ──────────────
+    ssl_client_certificate ROOT_CA_PATH_PLACEHOLDER;  # 信任的簽發 root/intermediate CA
+    ssl_verify_client      on;                        # 無有效 client cert → 415/網路層擋
+    ssl_verify_depth       2;
+
+    include conf.d/ssl-common.conf;
+    include conf.d/security-headers.conf;
+
+    client_max_body_size 10m;
+
+    location / {
+        proxy_pass http://command_backend;
+
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $host;
+
+        # #275 wave 2 trusted-header：從 nginx 驗證結果注入真值（覆寫 client 自帶 =
+        # 等同剝除偽造）。後端據此驗 SUCCESS + CN 綁定帳號為 AAL2 第二因子。
+        proxy_set_header X-Client-Cert-CN     $ics_client_cn;
+        proxy_set_header X-Client-Cert-Verify $ssl_client_verify;
+
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+
+        proxy_read_timeout 60s;
+        proxy_send_timeout 60s;
+        proxy_connect_timeout 5s;
+    }
+
+    # /health 不過 auth、不記 access log（同 command.conf）；仍注入 cert header 真值
+    location = /api/health {
+        access_log off;
+        proxy_pass http://command_backend;
+        proxy_set_header Host $host;
+        proxy_set_header X-Client-Cert-CN     $ics_client_cn;
+        proxy_set_header X-Client-Cert-Verify $ssl_client_verify;
+    }
+}

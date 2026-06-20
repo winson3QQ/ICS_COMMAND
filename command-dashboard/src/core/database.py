@@ -1229,6 +1229,36 @@ def _m028_cert_cn_binding_down(conn: sqlite3.Connection) -> None:
             conn.execute(f"ALTER TABLE {table} DROP COLUMN cert_cn")  # nosec B608
 
 
+def _m029_account_certs(conn: sqlite3.Connection) -> None:
+    """#275 wave 3：per-device 裝置憑證綁定表（一帳號可綁多台裝置 client cert）。
+
+    取代 wave 1 單欄位 accounts.cert_cn 的「一帳號一證」限制（該欄保留不刪，避免破壞
+    既有 down/相容；per-device 以本表為 SoT）。撤銷採 App 層綁定撤銷（status='revoked'，
+    login + check_session 查本表，立即失效；不依賴 CRL 分發）。見 security_policies §2.8。
+    """
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS account_certs (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id  INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+            cert_cn     TEXT NOT NULL,
+            label       TEXT,
+            status      TEXT NOT NULL DEFAULT 'active',
+            issued_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+            revoked_at  TEXT
+        )
+    """)
+    # 一個 CN 同時只能有一筆 active 綁定（撤銷後可重簽同 CN）；不同帳號不可搶同一 active CN。
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_account_certs_cn_active "
+        "ON account_certs(cert_cn) WHERE status='active'"
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_account_certs_account ON account_certs(account_id)")
+
+
+def _m029_account_certs_down(conn: sqlite3.Connection) -> None:
+    conn.execute("DROP TABLE IF EXISTS account_certs")
+
+
 _MIGRATIONS: list[tuple[int, str, object]] = [
     (1, "events_columns", _m001_events_columns),
     (2, "decisions_columns", _m002_decisions_columns),
@@ -1258,6 +1288,7 @@ _MIGRATIONS: list[tuple[int, str, object]] = [
     (26, "aar_entries_ref_t", _m026_aar_entries_ref_t),
     (27, "event_kind_to_sighting", _m027_event_kind_to_sighting),
     (28, "cert_cn_binding", _m028_cert_cn_binding),
+    (29, "account_certs", _m029_account_certs),
 ]
 
 

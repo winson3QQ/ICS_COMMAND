@@ -115,3 +115,62 @@ def test_systemd_unit_service_config():
     assert "StandardOutput=append:/var/log/ics/command.log" in unit
     assert "StandardError=append:/var/log/ics/command.log" in unit
     assert "Restart=on-failure" in unit
+
+
+# ── #275 wave 2：mTLS 鑑權地基 ────────────────────────────────────────
+
+
+def test_systemd_backend_binds_loopback():
+    """#275 wave 2 紅線「後端只經 nginx 可達」：bare-metal systemd 須 bind 127.0.0.1，
+    不對外網直曝 :8000（否則繞過 nginx 的 mTLS + X-Client-Cert-* 剝除）。"""
+    unit = read_repo_file("systemd/ics-command.service")
+    assert "--host 127.0.0.1" in unit
+    assert "--host 0.0.0.0" not in unit
+
+
+def test_nginx_command_conf_strips_client_cert_headers():
+    """#275 wave 2 紅線：非 mTLS 的 command.conf 必須剝除 client 自帶 X-Client-Cert-*，
+    防偽造後端 AAL2 第二因子。"""
+    conf = read_repo_file("deploy/nginx/conf.d/command.conf")
+    assert 'proxy_set_header X-Client-Cert-CN "";' in conf
+    assert 'proxy_set_header X-Client-Cert-Verify "";' in conf
+
+
+def test_validation_nginx_strips_client_cert_headers():
+    """#275 wave 2 紅線：公網直曝驗證棧（ics-validation）同樣須剝除 X-Client-Cert-*，
+    且 XFF 不用可偽造的 $proxy_add_x_forwarded_for。"""
+    conf = read_repo_file("deploy/ics-validation/nginx.conf")
+    assert 'proxy_set_header   X-Client-Cert-CN     "";' in conf
+    assert 'proxy_set_header   X-Client-Cert-Verify "";' in conf
+    assert "$proxy_add_x_forwarded_for" not in conf
+
+
+def test_mtls_conf_enforces_client_cert():
+    """#275 全角色 mTLS 單埠 443 強制版：須 ssl_verify_client on + root CA truststore，
+    且 X-Client-Cert-* 從 nginx 驗證結果 $ssl_client_* 注入（非 client 自帶）。"""
+    conf = read_repo_file("deploy/nginx/conf.d/command-mtls.conf.disabled")
+    assert "ssl_verify_client      on;" in conf
+    assert "ssl_client_certificate ROOT_CA_PATH_PLACEHOLDER;" in conf
+    assert "listen 443 ssl;" in conf  # 單埠 443（非舊 8443 tier3）
+    assert "8443" not in conf
+    # CN 須經 map 從 $ssl_client_s_dn 抽（stock nginx 無 $ssl_client_s_dn_cn，直用會 emerg）
+    assert "map $ssl_client_s_dn $ics_client_cn" in conf
+    assert "$ssl_client_s_dn_cn" not in conf
+    assert "proxy_set_header X-Client-Cert-CN     $ics_client_cn;" in conf
+    assert "proxy_set_header X-Client-Cert-Verify $ssl_client_verify;" in conf
+
+
+def test_setup_sh_installs_mtls_variant():
+    """#275 wave 2：setup.sh 支援 ICS_MTLS=1 安裝單埠 mTLS 版（取代 command.conf）
+    並替換 ROOT_CA placeholder。"""
+    script = read_repo_file("deploy/setup.sh")
+    assert 'mtls="${ICS_MTLS:-0}"' in script
+    assert "ROOT_CA_PATH_PLACEHOLDER" in script
+    assert "command-mtls.conf.disabled" in script
+    # 兩個 443 block 不可並存：mTLS 安裝時須移除非 mTLS command.conf
+    assert 'rm -f "$nginx_conf_dir/command.conf"' in script
+
+
+def test_old_tier3_stub_removed():
+    """#275 wave 2：舊 8443 tier3 stub 已被單埠 command-mtls 取代。"""
+    assert not (REPO_ROOT / "deploy/nginx/conf.d/tier3-mtls.conf.disabled").exists()

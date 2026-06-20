@@ -1,0 +1,122 @@
+# docker-compose.mtls.yml — #275 Windows/Docker 全角色 mTLS 端到端驗證棧
+#
+# 目的：在「真正連公網的 Windows/Docker」上驗 mTLS——持證裝置可登入、不持證握手即擋，
+# 並驗「面板線上發證」（選項 i 安全版：後端不持 CA 鑰，向 step-ca daemon 請簽）。
+# 與同目錄 docker-compose.yml（非 mTLS 自簽快測）並存；這份才開 ssl_verify_client on。
+#
+# 流程見 mtls/README.md。單一 CA 收斂 = step-ca daemon：
+#   1. step-ca daemon：唯一 CA，CA 鑰只在此。
+#   2. ca-bootstrap（one-shot）：向 daemon 簽 nginx server 憑證 + 出 truststore（pki vol）
+#      + 寫 prov.pass/fingerprint（ca-share）供 ICS 後端線上發證。
+#   3. ics-command：ICS_MTLS_REQUIRED=true（cert = AAL2 第二因子）+ STEP_CA_* 線上發證。
+#   4. nginx：ssl_verify_client on，信任 daemon CA（與線上發的 client 證同源）。
+services:
+  # 唯一 CA。auto-init JWK provisioner 'ics'（密碼 icsprov）。CA 鑰只在此 volume。
+  step-ca:
+    image: smallstep/step-ca:latest
+    restart: unless-stopped
+    environment:
+      - DOCKER_STEPCA_INIT_NAME=ICS mTLS CA
+      - DOCKER_STEPCA_INIT_DNS_NAMES=step-ca,localhost
+      - DOCKER_STEPCA_INIT_PROVISIONER_NAME=ics
+      - DOCKER_STEPCA_INIT_PASSWORD=icsprov
+    volumes:
+      - ca-data:/home/step
+    networks: [icsnet]
+
+  # one-shot：單一 CA 收斂——nginx server 憑證 + truststore（向 daemon 簽，不碰 CA 鑰）
+  # + ICS 後端線上發證憑據（prov.pass + fingerprint）。
+  ca-bootstrap:
+    image: smallstep/step-cli:latest
+    user: root
+    depends_on:
+      step-ca:
+        condition: service_healthy
+    environment:
+      - STEP_CA_URL=https://step-ca:9000
+      - STEP_CA_PROVISIONER=ics
+      - STEP_CA_PASSWORD=icsprov
+      # 外網驗證：設你的公網 IP/網域（空白分隔多個）寫進 server 憑證 SAN
+      - ICS_SERVER_SANS=${ICS_SERVER_SANS:-}
+    volumes:
+      - ca-data:/ca:ro            # 只讀 daemon 公開 root/intermediate（非 CA 鑰）
+      - pki:/pki                  # nginx server 憑證 + ca-bundle
+      - ca-share:/share           # ICS 後端線上發證憑據
+      - ./mtls/ca-bootstrap.sh:/ca-bootstrap.sh:ro
+    entrypoint: ["sh", "/ca-bootstrap.sh"]
+    networks: [icsnet]
+    restart: "no"
+
+  ics-command:
+    image: ics-command:dev
+    restart: unless-stopped
+    depends_on:
+      ca-bootstrap:
+        condition: service_completed_successfully
+    environment:
+      - ICS_ENV=prod
+      - ICS_MTLS_REQUIRED=${ICS_MTLS_REQUIRED:-true}   # 驗證時可先 false 做 bootstrap 綁定
+      - ICS_BEHIND_PROXY=true                          # wave 4：信任 nginx X-Real-IP（防 XFF 偽造）
+      - ICS_IDLE_TIMEOUT_SECONDS=86400
+      # 線上發證：後端 → step-ca daemon（CA 鑰不進後端）
+      - STEP_CA_URL=https://step-ca:9000
+      - STEP_CA_PROVISIONER=ics
+      - STEP_CA_PROVISIONER_PASSWORD_FILE=/ca-share/prov.pass
+      - STEP_CA_FINGERPRINT_FILE=/ca-share/fingerprint
+      # 驗證棧 CA 預設 maxTLSCertDuration=24h → 用 23h；prod per-customer CA 設 2160h（90 天）
+      - STEP_CLIENT_CERT_DURATION=23h
+    volumes:
+      - ics-data:/app/data
+      - ics-tiles:/app/static/tiles:ro
+      - ca-share:/ca-share:ro
+    networks: [icsnet]
+    # 不對 host publish；只有同網路的 nginx 進得來（後端只經 nginx 可達）
+
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    depends_on:
+      ca-bootstrap:
+        condition: service_completed_successfully
+      ics-command:
+        condition: service_started
+    ports:
+      - "443:443"                   # 唯一對外入口
+    volumes:
+      - ./mtls/nginx.mtls.conf:/etc/nginx/conf.d/default.conf:ro
+      - pki:/pki:ro
+    networks: [icsnet]
+
+  # CLI 發 per-device client 憑證（一次性，按需跑；走 daemon provisioner，與面板同源）：
+  #   docker compose -f docker-compose.mtls.yml run --rm -e CERT_CN=commander-phone-01 issue-client
+  # 產物寫到 host 的 ./out/<CN>/<CN>.p12
+  issue-client:
+    image: smallstep/step-cli:latest
+    user: root
+    profiles: ["tools"]             # 預設不隨 up 起，只在 run 時用
+    depends_on:
+      ca-bootstrap:
+        condition: service_completed_successfully
+    environment:
+      - CERT_CN=${CERT_CN:-}
+      - STEP_CA_URL=https://step-ca:9000
+      - STEP_CA_PROVISIONER=ics
+      - ICS_CLIENT_P12_PASS=${ICS_CLIENT_P12_PASS:-icsclient}
+    volumes:
+      - ca-share:/share:ro
+      - ./out:/out
+      - ./mtls/issue-client.sh:/issue-client.sh:ro
+    entrypoint: ["sh", "/issue-client.sh"]
+    networks: [icsnet]
+
+volumes:
+  pki:
+  ca-data:        # step-ca daemon 的 STEPPATH（CA 鑰只在此）
+  ca-share:       # bootstrap 寫 prov.pass + fingerprint，ICS 後端唯讀掛載
+  ics-data:
+    external: true
+  ics-tiles:
+    external: true
+
+networks:
+  icsnet:

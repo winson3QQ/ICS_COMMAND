@@ -3,6 +3,10 @@
 # 啟動方式對齊 setup.sh：從 src/ 跑 uvicorn main:app（main.py 用 src 為根的扁平 import）。
 FROM python:3.12-slim
 
+# #275 wave B-2：step CLI（線上發證用——後端呼叫 step-ca daemon 簽 client 憑證，
+# CA 鑰不進後端）。多階段從官方 smallstep/step-cli 取單一 binary（smallstep = 美國，非中國）。
+COPY --from=smallstep/step-cli:latest /usr/local/bin/step /usr/local/bin/step
+
 # 非 root 執行（對外服務最小權限）。--create-home：first-run admin token 寫在 $HOME/.ics/
 RUN groupadd --gid 10001 ics && useradd --uid 10001 --gid ics --create-home --shell /usr/sbin/nologin ics
 

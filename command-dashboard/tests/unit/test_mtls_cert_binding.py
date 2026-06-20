@@ -76,6 +76,11 @@ class TestCheckSessionCertBinding:
         import core.config as config
         monkeypatch.setattr(config, "ICS_MTLS_REQUIRED", True)
         from auth.service import check_session, create_session
+        from repositories.account_cert_repo import account_id_for_username, bind_cert
+        from repositories.account_repo import create_account
+        # wave 3：per-device 以 account_certs 為 SoT；session 的 cert_cn 須有 active 綁定
+        create_account("a", "123456", operator="system")
+        bind_cert(account_id_for_username("a"), "dev-1", None, "system")
         token = create_session({"username": "a", "role": "operator"}, cert_cn="dev-1")
         sess, failure = check_session(token, request=_req(cert_cn="dev-1", cert_verify="SUCCESS"))
         assert failure is None and sess is not None

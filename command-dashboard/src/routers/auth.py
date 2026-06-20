@@ -14,6 +14,7 @@ from auth.service import (
     validate_session,
 )
 from repositories._helpers import audit
+from repositories.account_cert_repo import account_id_for_username, cert_active_for_account
 from repositories.account_repo import (
     clear_default_pin_flag,
     is_first_run_required,
@@ -29,7 +30,16 @@ router = APIRouter(prefix="/api/auth", tags=["認證"])
 
 @router.post("/login")
 def login(body: LoginIn, request: Request):
-    acct, reason = verify_login(body.username, body.pin)
+    # #275 wave 4 鎖定-DoS 緩解：出示綁定本帳號的有效裝置憑證者，帳號鎖定不擋（合法本人
+    # 的裝置永不被攻擊者鎖死；無裝置證者仍受鎖定保護＝反爆破照舊）。在 verify_login 前算，
+    # 因鎖定判斷在其內。account_id 由 username 解析（與 verify_login 的帳號查詢正交）。
+    bypass_lockout = False
+    if config.ICS_MTLS_REQUIRED and client_cert_verified(request):
+        _cn = client_cert_cn(request)
+        _aid = account_id_for_username(body.username)
+        if _cn and _aid and cert_active_for_account(_aid, _cn):
+            bypass_lockout = True
+    acct, reason = verify_login(body.username, body.pin, bypass_lockout=bypass_lockout)
     if reason == "locked":
         log.warning("login_failed", msg="登入失敗 — 帳號鎖定",
                     user=body.username,
@@ -47,17 +57,19 @@ def login(body: LoginIn, request: Request):
                     detail={"reason": reason})
         raise HTTPException(401, "帳號或 PIN 錯誤")
     # #275 mTLS：第二因子（裝置憑證）。MTLS_REQUIRED 時須出示綁定本帳號的 client cert
-    # （nginx 已 CA 驗證 → X-Client-Cert-Verify=SUCCESS；CN 須等於 account.cert_cn）。
+    # （nginx 已 CA 驗證 → X-Client-Cert-Verify=SUCCESS；CN 須為本帳號 active 綁定）。
+    # wave 3：per-device，查 account_certs 表（一帳號可多裝置；撤銷即時失效）。
     # 失敗回與 PIN 錯同樣 401，不洩漏是哪個因子。
     cert_cn = None
     if config.ICS_MTLS_REQUIRED:
+        presented = client_cert_cn(request)
         if (not client_cert_verified(request)
-                or not acct.get("cert_cn")
-                or client_cert_cn(request) != acct.get("cert_cn")):
+                or not presented
+                or not cert_active_for_account(acct["id"], presented)):
             log.warning("login_failed", msg="登入失敗 — 裝置憑證",
                         user=body.username, detail={"reason": "cert"})
             raise HTTPException(401, "帳號或 PIN 錯誤")
-        cert_cn = acct["cert_cn"]
+        cert_cn = presented
     token = create_session(acct, request, cert_cn=cert_cn)
     audit(acct["username"], None, "login", "accounts", acct["username"],
           {"role": acct["role"]})
