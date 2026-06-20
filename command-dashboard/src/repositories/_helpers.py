@@ -3,6 +3,7 @@ repositories/_helpers.py — 共用 DB 工具函式
 """
 
 import hashlib
+import hmac
 import json
 import os
 import sqlite3
@@ -124,19 +125,45 @@ def audit(
         )
 
 
-# ── PIN hashing（PBKDF2-SHA256, 100k iterations）──────────────────────────
+# ── PIN hashing（PBKDF2-HMAC-SHA256）──────────────────────────
+# #275 wave 4：迭代數 100k → 600k（OWASP 2023 建議）。迭代數編進 hash 字串
+# 「<iters>$<hex>」→ verify_pin 可讀並相容舊裸 hex（= legacy 100k）。登入成功時
+# 由 verify_login 透明 rehash 升級（pin_needs_rehash）。見 security_policies §2.8。
+_PBKDF2_ITERATIONS = 600_000
+_LEGACY_ITERATIONS = 100_000
 
 
-def hash_pin(pin: str, salt_hex: str | None = None) -> tuple[str, str]:
+def hash_pin(
+    pin: str, salt_hex: str | None = None, iterations: int = _PBKDF2_ITERATIONS
+) -> tuple[str, str]:
     if salt_hex is None:
         salt = os.urandom(16)
         salt_hex = salt.hex()
     else:
         salt = bytes.fromhex(salt_hex)
-    h = hashlib.pbkdf2_hmac("sha256", pin.encode("utf-8"), salt, 100_000)
-    return h.hex(), salt_hex
+    h = hashlib.pbkdf2_hmac("sha256", pin.encode("utf-8"), salt, iterations)
+    return f"{iterations}${h.hex()}", salt_hex
+
+
+def _parse_stored_hash(stored_hash: str) -> tuple[int, str]:
+    """解析 "<iters>$<hex>"；舊裸 hex（無 $）視為 legacy 100k。"""
+    if "$" in stored_hash:
+        iters_s, digest = stored_hash.split("$", 1)
+        try:
+            return int(iters_s), digest
+        except ValueError:
+            return _LEGACY_ITERATIONS, stored_hash
+    return _LEGACY_ITERATIONS, stored_hash
 
 
 def verify_pin(pin: str, stored_hash: str, stored_salt: str) -> bool:
-    h, _ = hash_pin(pin, stored_salt)
-    return h == stored_hash
+    iterations, digest = _parse_stored_hash(stored_hash)
+    salt = bytes.fromhex(stored_salt)
+    h = hashlib.pbkdf2_hmac("sha256", pin.encode("utf-8"), salt, iterations)
+    return hmac.compare_digest(h.hex(), digest)  # 等時比較，防 timing
+
+
+def pin_needs_rehash(stored_hash: str) -> bool:
+    """stored hash 是否低於現行迭代數（登入成功後透明升級用）。"""
+    iterations, _ = _parse_stored_hash(stored_hash)
+    return iterations < _PBKDF2_ITERATIONS

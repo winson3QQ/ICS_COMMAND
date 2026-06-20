@@ -36,6 +36,8 @@ services:
       - STEP_CA_URL=https://step-ca:9000
       - STEP_CA_PROVISIONER=ics
       - STEP_CA_PASSWORD=icsprov
+      # 外網驗證：設你的公網 IP/網域（空白分隔多個）寫進 server 憑證 SAN
+      - ICS_SERVER_SANS=${ICS_SERVER_SANS:-}
     volumes:
       - ca-data:/ca:ro            # 只讀 daemon 公開 root/intermediate（非 CA 鑰）
       - pki:/pki                  # nginx server 憑證 + ca-bundle
@@ -54,6 +56,7 @@ services:
     environment:
       - ICS_ENV=prod
       - ICS_MTLS_REQUIRED=${ICS_MTLS_REQUIRED:-true}   # 驗證時可先 false 做 bootstrap 綁定
+      - ICS_BEHIND_PROXY=true                          # wave 4：信任 nginx X-Real-IP（防 XFF 偽造）
       - ICS_IDLE_TIMEOUT_SECONDS=86400
       # 線上發證：後端 → step-ca daemon（CA 鑰不進後端）
       - STEP_CA_URL=https://step-ca:9000

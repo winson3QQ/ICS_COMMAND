@@ -20,11 +20,17 @@ step certificate fingerprint /ca/certs/root_ca.crt > /share/fingerprint
 FP="$(cat /share/fingerprint)"
 
 # 2. nginx server 憑證：向 daemon provisioner 簽（本腳本不持 CA 鑰）
+#    外網驗證：ICS_SERVER_SANS 帶你的公網 IP/網域（空白分隔），寫進 SAN → 手機連
+#    https://<公網IP>/ 不跳憑證名稱不符。預設只 localhost/127.0.0.1（本機驗）。
 step ca root /tmp/root.crt --ca-url "$CA" --fingerprint "$FP" -f >/dev/null
-step ca certificate localhost /pki/server.crt /pki/server.key \
+SAN_ARGS="--san localhost --san 127.0.0.1"
+for s in ${ICS_SERVER_SANS:-}; do SAN_ARGS="$SAN_ARGS --san $s"; done
+CN_SUBJECT="$(printf '%s' "${ICS_SERVER_SANS:-localhost}" | awk '{print $1}')"
+# shellcheck disable=SC2086
+step ca certificate "$CN_SUBJECT" /pki/server.crt /pki/server.key \
   --provisioner "$PROV" --provisioner-password-file /share/prov.pass \
   --ca-url "$CA" --root /tmp/root.crt \
-  --san localhost --san 127.0.0.1 --not-after 23h -f >/dev/null
+  $SAN_ARGS --not-after 23h -f >/dev/null
 
 # 3. nginx client-cert truststore = daemon root + intermediate（公開憑證，供 ssl_verify_depth 2）
 cat /ca/certs/root_ca.crt /ca/certs/intermediate_ca.crt > /pki/ca-bundle.crt

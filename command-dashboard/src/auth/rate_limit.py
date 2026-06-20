@@ -17,6 +17,8 @@ from threading import Lock
 from fastapi import Request
 from fastapi.responses import JSONResponse
 
+import core.config as config
+
 # ── 參數 ──────────────────────────────────────────────────────────
 RATE_LIMIT_WINDOW_SEC = 60       # 觀察窗 60 秒
 RATE_LIMIT_MAX_REQ    = 10       # 同一 IP 60 秒內最多 10 次
@@ -27,10 +29,12 @@ _lock = Lock()
 
 
 def _client_ip(request: Request) -> str:
-    """取 client IP。優先 X-Forwarded-For（nginx 反代後）→ remote addr。"""
-    xff = request.headers.get("x-forwarded-for")
-    if xff:
-        return xff.split(",")[0].strip()
+    """取 client IP。#275 wave 4：反代後信任 nginx 的 X-Real-IP（真實 client）；直連忽略
+    可偽造的 X-Forwarded-For（否則攻擊者偽造 IP 繞限速），用實際 peer。見 §8.6。"""
+    if config.ICS_BEHIND_PROXY:
+        real = request.headers.get("x-real-ip")
+        if real:
+            return real.strip()
     if request.client:
         return request.client.host
     return "unknown"

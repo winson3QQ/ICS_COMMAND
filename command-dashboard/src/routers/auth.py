@@ -14,7 +14,7 @@ from auth.service import (
     validate_session,
 )
 from repositories._helpers import audit
-from repositories.account_cert_repo import cert_active_for_account
+from repositories.account_cert_repo import account_id_for_username, cert_active_for_account
 from repositories.account_repo import (
     clear_default_pin_flag,
     is_first_run_required,
@@ -30,7 +30,16 @@ router = APIRouter(prefix="/api/auth", tags=["認證"])
 
 @router.post("/login")
 def login(body: LoginIn, request: Request):
-    acct, reason = verify_login(body.username, body.pin)
+    # #275 wave 4 鎖定-DoS 緩解：出示綁定本帳號的有效裝置憑證者，帳號鎖定不擋（合法本人
+    # 的裝置永不被攻擊者鎖死；無裝置證者仍受鎖定保護＝反爆破照舊）。在 verify_login 前算，
+    # 因鎖定判斷在其內。account_id 由 username 解析（與 verify_login 的帳號查詢正交）。
+    bypass_lockout = False
+    if config.ICS_MTLS_REQUIRED and client_cert_verified(request):
+        _cn = client_cert_cn(request)
+        _aid = account_id_for_username(body.username)
+        if _cn and _aid and cert_active_for_account(_aid, _cn):
+            bypass_lockout = True
+    acct, reason = verify_login(body.username, body.pin, bypass_lockout=bypass_lockout)
     if reason == "locked":
         log.warning("login_failed", msg="登入失敗 — 帳號鎖定",
                     user=body.username,

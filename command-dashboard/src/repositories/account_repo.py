@@ -10,7 +10,7 @@ from auth.role_enum import (
 )
 from core.database import get_conn
 
-from ._helpers import audit, hash_pin, now_utc, verify_pin
+from ._helpers import audit, hash_pin, now_utc, pin_needs_rehash, verify_pin
 
 LOCKOUT_THRESHOLD = 5
 LOCKOUT_DURATION_MIN = 15
@@ -178,7 +178,10 @@ def suspend_all_accounts(operator: str) -> int:
     return cur.rowcount
 
 
-def verify_login(username: str, pin: str) -> tuple[dict | None, str]:
+def verify_login(username: str, pin: str, bypass_lockout: bool = False) -> tuple[dict | None, str]:
+    """#275 wave 4 鎖定-DoS 緩解：bypass_lockout=True（呼叫端確認此 request 出示了綁定本
+    帳號的有效 mTLS 裝置憑證）時，帳號鎖定不擋、錯 PIN 也不再上鎖——攻擊者無裝置證仍可
+    鎖（反爆破保留），但**持本人裝置的合法使用者永不被鎖死**（解 §8.6 鎖死 admin 之患）。"""
     with get_conn() as conn:
         row = conn.execute("SELECT * FROM accounts WHERE username=?", (username,)).fetchone()
         if not row:
@@ -188,12 +191,12 @@ def verify_login(username: str, pin: str) -> tuple[dict | None, str]:
             return None, "archived"
         if d.get("status") != "active":
             return None, "suspended"
-        if _is_locked(d):
+        if _is_locked(d) and not bypass_lockout:
             return None, "locked"
         if not verify_pin(pin, d["pin_hash"], d["pin_salt"]):
             new_count = (d.get("failed_login_count") or 0) + 1
             locked_until = None
-            if new_count >= LOCKOUT_THRESHOLD:
+            if new_count >= LOCKOUT_THRESHOLD and not bypass_lockout:
                 locked_until = (datetime.now(UTC) + timedelta(minutes=LOCKOUT_DURATION_MIN)).strftime(
                     "%Y-%m-%dT%H:%M:%SZ"
                 )
@@ -206,10 +209,20 @@ def verify_login(username: str, pin: str) -> tuple[dict | None, str]:
                 audit(username, None, "account_locked", "accounts", username, {"failed_count": new_count})
                 return None, "locked"
             return None, "bad_pin"
-        conn.execute(
-            "UPDATE accounts SET failed_login_count=0, locked_until=NULL, last_login=? WHERE username=?",
-            (_iso_now(), username),
-        )
+        # 成功：清鎖定 + 透明升級 PIN hash 迭代數（舊 100k → 600k）
+        if pin_needs_rehash(d["pin_hash"]):
+            new_hash, new_salt = hash_pin(pin)
+            conn.execute(
+                "UPDATE accounts SET pin_hash=?, pin_salt=?, failed_login_count=0, "
+                "locked_until=NULL, last_login=? WHERE username=?",
+                (new_hash, new_salt, _iso_now(), username),
+            )
+        else:
+            conn.execute(
+                "UPDATE accounts SET failed_login_count=0, locked_until=NULL, last_login=? "
+                "WHERE username=?",
+                (_iso_now(), username),
+            )
         conn.commit()
     return _public_account(d), "ok"
 

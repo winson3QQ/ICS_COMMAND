@@ -46,9 +46,12 @@ def _iso_to_dt(value: str | None) -> datetime:
 def _client_ip(request: Request | None) -> str | None:
     if request is None or request.client is None:
         return None
-    forwarded = request.headers.get("X-Forwarded-For")
-    if forwarded:
-        return forwarded.split(",", 1)[0].strip()
+    # #275 wave 4：僅在反代後信任 nginx 設的 X-Real-IP（真實 client）；直連時忽略可偽造的
+    # X-Forwarded-For，用實際 peer（request.client.host）。見 §8.6 / config.ICS_BEHIND_PROXY。
+    if config.ICS_BEHIND_PROXY:
+        real = request.headers.get("X-Real-IP")
+        if real:
+            return real.strip()
     return request.client.host
 
 

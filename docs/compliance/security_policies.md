@@ -126,9 +126,9 @@ _每次 role 變更、帳號建立 / 刪除均寫 audit log_
 - 後端驗 `ssl_client_verify=SUCCESS` 並將 `X-Client-Cert-CN` **綁定帳號**（cert ↔ user = 第二因子）。
 - **✅ trusted-header 剝除（wave 2 已落地）**：非 mTLS block（`command.conf` 443、`deploy/ics-validation/nginx.conf`）以 `proxy_set_header X-Client-Cert-CN "";`／`X-Client-Cert-Verify "";` **剝除** client 自帶值；mTLS block 改以 `$ics_client_cn`（map 從 `$ssl_client_s_dn` 抽 CN；stock nginx 無單欄位 CN 變數，直用會 emerg）／`$ssl_client_verify` **覆寫**注入真值。後端（uvicorn）**只經 nginx 可達**：bare-metal systemd 已改 bind `127.0.0.1`、容器 compose 不 publish 後端埠。否則攻擊者直連後端偽造 cert header 可繞第二因子（AAL2→AAL1）。後端側 `X-Client-Cert-*` 信任已 env-gated（`ICS_MTLS_REQUIRED`）。
 - **✅ PKI（wave 3 已落地）**：**per-device** 裝置憑證（一帳號可綁多台，`account_certs` 表 = SoT，migration v29）。簽發兩路徑：① **線上發證（面板「發憑證」，選項 i 安全版）**——後端**不持 CA 鑰**，呼叫 **step-ca daemon**（可撤銷 provisioner token）請簽 → 回傳 p12 + 自動綁定（`services/cert_issuance.py`、`POST /api/admin/accounts/{username}/certs/issue`）；② **離線簽**（`deploy/step-ca/issue-client-cert.sh` / Docker `issue-client`，複用 TAK `gen-device-dp.sh` pattern）+ 面板「僅綁定」。綁定/撤銷管理面：`/api/admin/accounts/{username}/certs`（GET/POST/DELETE，sysadmin only）。**撤銷採 App 層綁定撤銷**（`status='revoked'`）：login 查 active 綁定、`check_session` 每 request 查 `is_cert_active` → 撤銷後活躍 session **下一個 request 即失效**（不依賴 CRL 分發）。網路層 CRL（`ssl_crl` 握手即擋）留作後續客戶威脅模型加固。
-- PIN KDF：PBKDF2-HMAC-SHA256 現 100k → 升 OWASP 2023 建議 600k。
-- IP 信任：`_client_ip` 改信任反代設定的可信 hop（非 `X-Forwarded-For` 最左值），防偽造繞限速。
-- 鎖定-DoS：帳號鎖定（§2.3，5/15min）保留，加 per-source / admin 復原路徑，避免攻擊者鎖死單一 admin。
+- **✅ PIN KDF（wave 4）**：PBKDF2-HMAC-SHA256 100k → **600k**（OWASP 2023）；迭代數編進 hash 字串（`<iters>$<hex>`），舊裸 hex 相容（legacy 100k），登入成功透明 rehash 升級；驗證改 `hmac.compare_digest`（等時）。
+- **✅ IP 信任（wave 4）**：`_client_ip`（`auth/service.py` + `auth/rate_limit.py`）改——反代後信任 nginx 設的 `X-Real-IP`（真實 client），直連時忽略可偽造的 `X-Forwarded-For`、用實際 peer（`config.ICS_BEHIND_PROXY` 切換）→ 防 §8.6 XFF 偽造繞限速。
+- **✅ 鎖定-DoS（wave 4）**：帳號鎖定（§2.3，5/15min）對無裝置證者照舊（反爆破）；**出示綁定本帳號之有效 mTLS 裝置證者，鎖定不擋、錯 PIN 不再上鎖** → 攻擊者無證可鎖、合法本人持裝置永不被鎖死（解 §8.6 鎖死單一 admin 之患）。`unlock_account` 仍為 admin 復原路徑。
 
 > **過渡**：mTLS 未全面佈署前，公網存取為**臨時驗證**狀態（`threat_model` §8.6），正式上線前 #275 必須完成。
 
