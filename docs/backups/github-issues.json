@@ -4062,15 +4062,15 @@
       "name": ""
     },
     "body": "> 來源：2026-06-20 前端駭客視角檢測（攻法③）。威脅依據 threat_model §8.7。\n\n## 檢測成果\n攻擊者讀得到的前端有**同名 `_esc` 兩種實作、行為不一致**：\n- `static/js/events.js:29` `_esc`：完整跳脫 `& < > \" '`（quote-safe）✓\n- `static/js/roster_panel.js:28` `_esc`：`textContent→innerHTML` 技巧，**只跳脫 `< > &`、不跳脫引號**，卻用在**屬性脈絡** `data-uid=\"${_esc(e.uid)}\"`（:116-117）。\n\n## 可利用（假設，需條件）\nroster 列 TAK 友軍單位，uid 來自 CoT。被擄/偽造 ATAK 裝置送 uid=`x\" onmouseover=… x=\"`（無 `<>`，可繞 input_safety——它擋 `<>` 不擋引號）→ 屬性突破。\n- **現況 CSP 擋著**：commander_dashboard 是 enforce + `script-src 'self'` → inline handler 不執行。**但**：(a) 屬性突破仍可 CSS 注入（style-src unsafe-inline）；(b) report-only 頁（admin_backups/scenario_designer）會真的執行；(c) CSP 一弱化即 live。→ **latent，該修**。\n\n## 業界類別 / 標準解\nOWASP A03 / CWE-79。標準解＝脈絡化輸出編碼。**修法**：統一 `_esc` 為完整跳脫（含引號）+ 全前端掃同類不一致 sink（innerHTML 屬性脈絡未 quote-escape）。\n\n## DoD\nroster `_esc` 改完整跳脫 + 全前端掃 + 前端測試（vitest）+ 關閉。",
-    "closedAt": null,
+    "closedAt": "2026-06-20T13:55:51Z",
     "comments": [],
     "createdAt": "2026-06-20T13:20:32Z",
     "labels": [],
     "milestone": null,
     "number": 292,
-    "state": "OPEN",
+    "state": "CLOSED",
     "title": "fix(security): 前端輸出編碼不一致 — roster _esc 不跳脫引號 → 屬性脈絡 XSS（潛在）",
-    "updatedAt": "2026-06-20T13:20:32Z",
+    "updatedAt": "2026-06-20T13:55:51Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/292"
   },
   {

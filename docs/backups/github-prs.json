@@ -4292,5 +4292,26 @@
     "title": "fix(security): 紅隊公網曝面 H1–H6 修補（#286–290）+ backend 2.7.1",
     "updatedAt": "2026-06-20T12:41:10Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/291"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "紅隊前端檢測（攻法③，threat_model §8.7.1）。reality check：掃全前端 _esc/escape helper，僅 `roster_panel._esc` 用 textContent→innerHTML 技巧不跳脫引號、卻用於 `data-uid=\"${_esc(uid)}\"` 屬性脈絡（uid 來自 CoT 可被偽造）。其餘（events/exercises/auth/map）皆已完整跳脫。\n\n修法：roster `_esc` 改純字串完整跳脫（含 `\"` `'`），對齊 events.js/map.js；export 供測試。\n測試：vitest 341 passed、eslint 0；新增 `_esc` 跳脫案含屬性突破 payload。\n實機：iPad 內網驗證載入/基本功能無回歸（build 292@1db6a62）。\n\nCloses #292\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+    "closedAt": "2026-06-20T13:55:50Z",
+    "comments": [],
+    "createdAt": "2026-06-20T13:55:37Z",
+    "headRefName": "fix/issue-292-esc-output-encoding",
+    "labels": [],
+    "mergedAt": "2026-06-20T13:55:50Z",
+    "number": 297,
+    "state": "MERGED",
+    "title": "fix(security): #292 roster _esc 完整跳脫含引號（屬性脈絡 XSS）",
+    "updatedAt": "2026-06-20T13:55:53Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/297"
   }
 ]
