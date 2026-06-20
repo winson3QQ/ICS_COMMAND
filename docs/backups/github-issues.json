@@ -4052,5 +4052,105 @@
     "title": "fix(security): H6+M1 部署組態 fail-closed — compose 公開預設密碼 + mTLS-on-但-proxy-secret-空 啟動拒絕",
     "updatedAt": "2026-06-20T12:41:09Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/290"
+  },
+  {
+    "assignees": [],
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "body": "> 來源：2026-06-20 前端駭客視角檢測（攻法③）。威脅依據 threat_model §8.7。\n\n## 檢測成果\n攻擊者讀得到的前端有**同名 `_esc` 兩種實作、行為不一致**：\n- `static/js/events.js:29` `_esc`：完整跳脫 `& < > \" '`（quote-safe）✓\n- `static/js/roster_panel.js:28` `_esc`：`textContent→innerHTML` 技巧，**只跳脫 `< > &`、不跳脫引號**，卻用在**屬性脈絡** `data-uid=\"${_esc(e.uid)}\"`（:116-117）。\n\n## 可利用（假設，需條件）\nroster 列 TAK 友軍單位，uid 來自 CoT。被擄/偽造 ATAK 裝置送 uid=`x\" onmouseover=… x=\"`（無 `<>`，可繞 input_safety——它擋 `<>` 不擋引號）→ 屬性突破。\n- **現況 CSP 擋著**：commander_dashboard 是 enforce + `script-src 'self'` → inline handler 不執行。**但**：(a) 屬性突破仍可 CSS 注入（style-src unsafe-inline）；(b) report-only 頁（admin_backups/scenario_designer）會真的執行；(c) CSP 一弱化即 live。→ **latent，該修**。\n\n## 業界類別 / 標準解\nOWASP A03 / CWE-79。標準解＝脈絡化輸出編碼。**修法**：統一 `_esc` 為完整跳脫（含引號）+ 全前端掃同類不一致 sink（innerHTML 屬性脈絡未 quote-escape）。\n\n## DoD\nroster `_esc` 改完整跳脫 + 全前端掃 + 前端測試（vitest）+ 關閉。",
+    "closedAt": null,
+    "comments": [],
+    "createdAt": "2026-06-20T13:20:32Z",
+    "labels": [],
+    "milestone": null,
+    "number": 292,
+    "state": "OPEN",
+    "title": "fix(security): 前端輸出編碼不一致 — roster _esc 不跳脫引號 → 屬性脈絡 XSS（潛在）",
+    "updatedAt": "2026-06-20T13:20:32Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/292"
+  },
+  {
+    "assignees": [],
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "body": "> 來源：2026-06-20 前端駭客檢測（攻法③ token 竊取）。威脅依據 threat_model §8.7。\n\n## 檢測成果\n`static/js/auth.js:47` `getToken()=sessionStorage.getItem('cmd_session_id')`、`:359` 登入寫入。token 為 bearer（`X-Session-Token`，:110）→ **JS 可讀 = 任何 XSS 都能整碗端走**。\n\n## perimeter 對照\nmTLS 的 cert-bound session + IP/24 binding 使**重放**較難（換裝置失敗），但 **XSS 當場以受害者身分操作**不受影響。httpOnly cookie 可斷「JS 讀 token」這條根。\n\n## 業界類別 / 標準解\nOWASP A03 緩解、ASVS V3 session。標準解＝token 放 **httpOnly + Secure + SameSite=Strict cookie**，前端不碰 token。需後端改讀 cookie（相容期可雙讀）+ CSRF 對策（SameSite=Strict 已大幅緩解；寫入端點可加 double-submit / origin 檢查）。\n\n## DoD\n後端 set httpOnly cookie + 讀 cookie；前端移除 sessionStorage token；CSRF 對策；測試；關閉。",
+    "closedAt": null,
+    "comments": [],
+    "createdAt": "2026-06-20T13:20:33Z",
+    "labels": [],
+    "milestone": null,
+    "number": 293,
+    "state": "OPEN",
+    "title": "fix(security): session token 存 sessionStorage → 改 httpOnly cookie + SameSite（XSS 不可竊）",
+    "updatedAt": "2026-06-20T13:20:33Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/293"
+  },
+  {
+    "assignees": [],
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "body": "> 來源：2026-06-20 前端駭客檢測（攻法③/④）+ 早前稽核 M8。威脅依據 threat_model §8.7。\n\n## 檢測成果\n`core/security_headers.py`：只有 commander_dashboard.html / aar.html 真 enforce；admin_backups.html / scenario_designer.html 等落 **Report-Only + `script-src 'self' 'unsafe-inline'`** → 這些頁若有 XSS 注入點，CSP 只回報不擋。style-src 全頁 `unsafe-inline`。\n\n## 業界類別 / 標準解\nOWASP A05 / CSP Level 2-3。標準解＝全頁 enforce、移除 script `unsafe-inline`（改 nonce / 外部 JS）、收斂 style `unsafe-inline`。這是「攻法③ 即使屬性突破也不執行」的主防線。\n\n## DoD\nadmin/designer 類頁升 enforce、移除 script unsafe-inline、CSP report 監控、測試、關閉。",
+    "closedAt": null,
+    "comments": [],
+    "createdAt": "2026-06-20T13:20:34Z",
+    "labels": [],
+    "milestone": null,
+    "number": 294,
+    "state": "OPEN",
+    "title": "fix(security): CSP 全頁 enforce + 移除 script-src unsafe-inline（關掉 report-only XSS 執行窗）",
+    "updatedAt": "2026-06-20T13:20:34Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/294"
+  },
+  {
+    "assignees": [],
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "body": "> 來源：2026-06-20 檢測（攻法⑤）+ 早前稽核 M2 + threat_model §8.6 殘留。\n\n## 檢測成果\n前端揭露登入流程 + PIN 4-6 碼 + 鎖定機制（`account_repo` 5 失敗/15 分）。攻擊者對 commander 帳號連送 5 次錯 PIN → 鎖 15 分，週期重複 → **戰時 C2 登不進（可用性攻擊）**。#275 wave4 已讓「持綁定裝置證者不被鎖」，但無證情境仍可鎖死。\n\n## perimeter 對照\n**真實 IP 還原（Tailscale 前置）後**可改「鎖來源 IP 不鎖帳號」/ per-source 漸進延遲 → 直接化解。mTLS 強制時無證者打不到 login。\n\n## 業界類別 / 標準解\nOWASP ASVS V2.2 / NIST 800-63B。標準解＝per-source 節流 + 漸進延遲 + 高權帳號不硬鎖（或僅鎖來源）。**依賴 #280 真實 IP 還原**。\n\n## DoD\n鎖定策略改 per-source / 高權不硬鎖（待真實 IP 還原）+ 測試 + 關閉。",
+    "closedAt": null,
+    "comments": [],
+    "createdAt": "2026-06-20T13:20:35Z",
+    "labels": [],
+    "milestone": null,
+    "number": 295,
+    "state": "OPEN",
+    "title": "fix(security): 帳號鎖定-DoS 緩解 — per-source 節流 + 高權帳號不硬鎖",
+    "updatedAt": "2026-06-20T13:20:35Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/295"
+  },
+  {
+    "assignees": [],
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "body": "> 來源：2026-06-20 檢測（攻法①）+ security-review agent 建議。威脅依據 threat_model §8.7。\n\n## 檢測成果\n前端=零偵察攻擊地圖，攻擊者拿低權 token 對每端點掃 IDOR / 漏掛授權。中央 gate（role_enum）採前綴比對，**漏登記即落寬鬆預設**（#287 TTX 即此患）。本批已修已知端點，但缺**系統性回歸防線**。\n\n## 業界類別 / 標準解\nOWASP A01。標準解＝deny-by-default + **每端點 × 每角色 200/403 矩陣測試**，防未來新 router 靜默漏掛。\n\n## DoD\n建 integration 測試：列舉所有 /api/* 端點 × {observer/operator/commander/sysadmin}，斷言預期 200/403/404；加「每 router prefix 必在 allowed_roles_for 有 case」斷言；關閉。",
+    "closedAt": null,
+    "comments": [],
+    "createdAt": "2026-06-20T13:20:36Z",
+    "labels": [],
+    "milestone": null,
+    "number": 296,
+    "state": "OPEN",
+    "title": "test(security): RBAC × 角色 200/403 integration 測試矩陣（系統性堵 broken access control）",
+    "updatedAt": "2026-06-20T13:20:36Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/296"
   }
 ]
