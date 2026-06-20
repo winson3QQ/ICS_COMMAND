@@ -95,3 +95,27 @@ sidecar 共用 nginx 網路命名空間（需重構 nginx↔backend 連法，pro
 1. **最有效一步**：把 443 forward 換成 **Tailscale**（埠不對外 + 還原真實 IP），mTLS 續留＝雙層。
 2. 真實 IP 還原後，A（nginx limit）/ C（fail2ban）才生效，再逐項補。
 3. 公測前同步處理 [#279](https://github.com/winson3QQ/ICS_COMMAND/issues/279)（憑證 90 天）。
+
+## Headscale 評估 + 單一公網 IP 約束（決策留痕 2026-06-21）
+
+**Headscale = 自架 Tailscale 控制面**（取代 Tailscale 雲端協調 server）;**客戶端仍用官方
+Tailscale app**,`tailscale up --login-server=https://<自架headscale>` 指過去（沒有「Headscale
+client」這種東西）。資料面仍 WireGuard 點對點、不經控制面。GUI 為可選第三方（headscale-ui 等,
+要用先查供應鏈）。
+
+**供應鏈查核（2026-06-21,過中國紅線）**:
+- 維護者 Juan Font（西）+ Kristoffer Dalby（挪威,受僱 Tailscale=加拿大,commit 受 review）+ 社群;
+  BSD-3;**go.mod direct deps 全西方/中性**（github.com/golang.org/x/tailscale.com/gorm/modernc 捷克
+  /gvisor Google…）,**無 gitee/alibaba/tencent/baidu/huawei,零 China-origin**。
+- 殘留盡職:① 只查 direct deps,正式 sign-off 前跑完整 SBOM（`go mod graph`+govulncheck/trivy）;
+  ② **只用上游 `juanfont/headscale`**（搜尋有第三方 fork `LOVEChen/...`,勿用）+ image 釘 digest。
+- 來源:GitHub juanfont/headscale、其 go.mod、docs/index.md（governance）。
+
+**單一公網 IP 約束（使用者環境）**:只有家用 router 一個對外 IP、無 VPS。
+- Headscale 控制面**必須有對外可達端點**（漫遊現場裝置要連到它協調）→ 無 VPS 下得用「家用 IP +
+  動態 DNS + 對外開一個控制埠 + 自管 TLS」,較費工;Tailscale-SaaS 則省事但控制面依賴第三方（C2 資料
+  主權考量）。
+- **決策（2026-06-21）**:**VPN/Headscale 前置暫緩**,先把 [`../prod/`](../prod/) 單機 TAK+ICS 合併棧
+  跑起來（mTLS + TAK client-cert 已是憑證准入,非裸曝;不是「不防」只是少一層 VPN 縱深）。
+  VPN 前置（Headscale 自架控制面 / 或純 WireGuard,資料主權最高）留待**正式交付**時依客戶要求定。
+- 對應 [#280](https://github.com/winson3QQ/ICS_COMMAND/issues/280)（周邊硬化）/ [#295](https://github.com/winson3QQ/ICS_COMMAND/issues/295)（per-source 鎖定需先還原真實 IP,卡在此）。
