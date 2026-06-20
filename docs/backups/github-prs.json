@@ -3658,6 +3658,20 @@
         "minimizedReason": "",
         "reactionGroups": [],
         "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/235#issuecomment-4760275499"
+      },
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## GUI 已搬進 admin 系統 tab（取代 orphaned admin_backups.html）\n\n依使用者決定 + #294（admin_backups.html 已 prod-excluded）：整包備份/還原 UI 從獨立頁移入 **in-dashboard admin 面板「系統」tab**。admin_backups.html 還原為 main 版（不再雙頭）。\n\n§8 GUI 驗收路徑**更新**（取代原 admin_backups.html 步驟）：\n\n1. 登入儀表板（sysadmin）→ 設定 → 開 admin 面板 → **系統** tab\n2. 「💾 整包資料備份/還原」區：\n   - **立即整包備份** → 清單出現 `userdata-*.tar.gz.enc`，按 manifest 顯示檔案清單/演習\n   - 建+啟動演習 → 歸檔 → 清單多一筆 archive 觸發備份（manifest 帶演習名）\n   - 選檔 → **上傳並還原** → 顯示「✅ 還原完成 + pre-restore-* + 需重啟」\n   - 有 active 演習時還原 → **409**\n3. 「重設指揮部資料庫」鈕（同 tab）→ 已改送 `confirm:\"RESET\"`（OP-2），仍可用\n\n前端驗證：eslint 0、vitest 341 passed（模組邊界測試綠 → auth.js 仍零 import）。\n⚠ Windows 還原會卡熱 DB 檔鎖（同 test skip 原因）→ 還原 data-replace 那步請在 Mac/Linux 驗；備份/列表/manifest/409/reset-confirm 在 Windows 可驗。",
+        "createdAt": "2026-06-20T23:24:36Z",
+        "id": "IC_kwDOSnBjpc8AAAABG7w6MQ",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/235#issuecomment-4760287793"
       }
     ],
     "createdAt": "2026-06-12T00:46:42Z",
@@ -3667,7 +3681,7 @@
     "number": 235,
     "state": "OPEN",
     "title": "feat(backup): P1-12b 整包 data/ 加密備份 + GUI 還原 + 三層觸發 + OP-2/OP-4",
-    "updatedAt": "2026-06-20T23:18:24Z",
+    "updatedAt": "2026-06-20T23:24:36Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/235"
   },
   {
