@@ -3580,6 +3580,20 @@
         "minimizedReason": "",
         "reactionGroups": [],
         "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/234#issuecomment-4687319961"
+      },
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## Rebased onto current main（2026-06-21）\n\nbranch 原基於 0ba9d7d，main 已大幅前進（#275 mTLS / #280 perimeter / #286–296 紅隊硬化）。已 rebase 到最新 origin/main。\n\n- 唯一衝突：`threat_model.md` 版本歷史表版號撞號（安全批次占用 0.6/0.7/0.8）→ 我的 P1-12 entry 改 **0.9**。§8.4/§8.5 body inserts 自動合併存活。\n- force-with-lease 更新（8deab59）。\n- 驗證：clean-env 全套 1183 passed / 2 skipped、pyflakes 0、doc_sync passed。",
+        "createdAt": "2026-06-20T23:18:22Z",
+        "id": "IC_kwDOSnBjpc8AAAABG7wJ-Q",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/234#issuecomment-4760275449"
       }
     ],
     "createdAt": "2026-06-12T00:03:06Z",
@@ -3589,7 +3603,7 @@
     "number": 234,
     "state": "OPEN",
     "title": "feat(keymgmt): P1-12a FIDO2 enroll/unlock + HKDF 階層（含 disk-v1）+ mock 測試",
-    "updatedAt": "2026-06-12T04:05:59Z",
+    "updatedAt": "2026-06-20T23:18:22Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/234"
   },
   {
@@ -3630,6 +3644,20 @@
         "minimizedReason": "",
         "reactionGroups": [],
         "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/235#issuecomment-4687320807"
+      },
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## Rebased onto current main（2026-06-21，stacked on rebased 12a）\n\n- 衝突：`exercises.py do_archive` —— main #265 改用 `_rescope_and_announce()`；與我的 L2 自動備份**兩者合併**（先 L2 best-effort 備份，再 rescope+announce）。\n- **整合 catch**：#296 RBAC golden matrix 要求每路由登記 → 補上 12b 4 個新端點（restore + user-data-backups ×3，`allowed_roles_for` 已正確判 SYSADMIN，純補 snapshot）。\n- force-with-lease 更新（b291420）。\n- 驗證：clean-env 全套 **1183 passed / 2 skipped**（2 skip = pyproj facilities + win32 restore_roundtrip）。\n\n⚠ 接下來：依 #294 方向，**12b 備份/還原 UI 將從 admin_backups.html 搬進 in-dashboard admin 系統 tab**（admin_backups.html 已被 #294 列入 prod .dockerignore）。",
+        "createdAt": "2026-06-20T23:18:24Z",
+        "id": "IC_kwDOSnBjpc8AAAABG7wKKw",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/235#issuecomment-4760275499"
       }
     ],
     "createdAt": "2026-06-12T00:46:42Z",
@@ -3639,7 +3667,7 @@
     "number": 235,
     "state": "OPEN",
     "title": "feat(backup): P1-12b 整包 data/ 加密備份 + GUI 還原 + 三層觸發 + OP-2/OP-4",
-    "updatedAt": "2026-06-12T04:06:06Z",
+    "updatedAt": "2026-06-20T23:18:24Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/235"
   },
   {
