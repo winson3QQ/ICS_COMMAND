@@ -201,6 +201,10 @@ document.addEventListener('click', function (e) {
     case 'adm-save-edit': import('./auth.js').then(m => m.admSaveEdit(btn.dataset.username)); break;
     case 'adm-toggle-status': import('./auth.js').then(m => m.admToggleStatus(btn.dataset.username, btn.dataset.status)); break;
     case 'adm-delete': import('./auth.js').then(m => m.admDelete(btn.dataset.username)); break;
+    // #275 wave B：裝置憑證（mTLS 第二因子）綁定/撤銷
+    case 'adm-toggle-certs': import('./auth.js').then(m => m.admToggleCerts(btn.dataset.username)); break;
+    case 'adm-bind-cert': import('./auth.js').then(m => m.admBindCert(btn.dataset.username)); break;
+    case 'adm-revoke-cert': import('./auth.js').then(m => m.admRevokeCert(btn.dataset.username, btn.dataset.certId)); break;
     case 'adm-add-account': import('./auth.js').then(m => m.admAddAccount()); break;
     case 'adm-create-pi-node': import('./auth.js').then(m => m.admCreatePiNode()); break;
     case 'adm-rekey-pi-node': import('./auth.js').then(m => m.admRekeyPiNode(btn.dataset.unitId)); break;

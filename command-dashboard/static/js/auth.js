@@ -1068,7 +1068,10 @@ export async function admLoadAccounts() {
       '<div class="adm-btns">' +
         '<button class="adm-btn" data-action="adm-toggle-edit" data-username="' + a.username + '">編輯</button>' +
         '<button class="adm-btn" data-action="adm-toggle-status" data-username="' + a.username + '" data-status="' + a.status + '">' + (a.status === 'active' ? '停用' : '啟用') + '</button>' +
+        // #275 wave B：裝置憑證（mTLS 第二因子）管理，sysadmin only
+        (_isSysadminSession() ? '<button class="adm-btn" data-action="adm-toggle-certs" data-username="' + a.username + '">🔑 裝置憑證</button>' : '') +
       '</div>' +
+      '<div class="adm-certs-panel" id="adm-certs-' + a.username + '" style="display:none;margin-top:8px;"></div>' +
       '<div class="adm-edit-form" id="adm-edit-' + a.username + '" style="display:none;">' +
         '<label>新 PIN（4-6 位數字，留空不改）</label>' +
         '<input id="adm-newpin-' + a.username + '" type="password" inputmode="numeric" maxlength="6" placeholder="新 PIN">' +
@@ -1090,6 +1093,70 @@ export async function admLoadAccounts() {
 export function admToggleEdit(username) {
   const form = el('adm-edit-' + username);
   if (form) form.style.display = form.style.display === 'none' ? '' : 'none';
+}
+
+// ── #275 wave B：per-device 裝置憑證（mTLS 第二因子）綁定/撤銷 ──────────────
+// 簽證在主機外走 step-ca（deploy/step-ca/issue-client-cert.sh）；此 UI 管 CN↔帳號
+// 綁定授權。一帳號可綁多台裝置；撤銷即時失效（後端 check_session 查表）。sysadmin only。
+
+export function admToggleCerts(username) {
+  const box = el('adm-certs-' + username);
+  if (!box) return;
+  const opening = box.style.display === 'none';
+  box.style.display = opening ? '' : 'none';
+  if (opening) admLoadCerts(username);
+}
+
+export async function admLoadCerts(username) {
+  const box = el('adm-certs-' + username);
+  if (!box) return;
+  box.innerHTML = '<div style="color:var(--text3);font-size:12px;padding:6px;">載入中…</div>';
+  const resp = await authFetch(API_BASE + '/api/admin/accounts/' + username + '/certs');
+  if (!resp.ok) {
+    box.innerHTML = '<div style="color:var(--red);font-size:12px;padding:6px;">無法載入裝置憑證（需系統管理員）</div>';
+    return;
+  }
+  const certs = await resp.json();
+  let rows = '';
+  for (const c of certs) {
+    const active = c.status === 'active';
+    rows += '<div style="display:flex;align-items:center;gap:6px;padding:4px 0;border-bottom:1px solid var(--border,#222);font-size:12px;">' +
+        '<span style="font-family:monospace;flex:1;' + (active ? '' : 'text-decoration:line-through;color:var(--text3);') + '">' + _escAudit(c.cert_cn) + '</span>' +
+        (c.label ? '<span style="color:var(--text3);">' + _escAudit(c.label) + '</span>' : '') +
+        '<span class="adm-badge ' + (active ? 'active' : 'suspended') + '">' + (active ? '有效' : '已撤銷') + '</span>' +
+        (active ? '<button class="adm-btn" data-action="adm-revoke-cert" data-username="' + username + '" data-cert-id="' + c.id + '">撤銷</button>' : '') +
+      '</div>';
+  }
+  if (!certs.length) rows = '<div style="color:var(--text3);font-size:12px;padding:6px;">尚無裝置憑證</div>';
+  box.innerHTML =
+    rows +
+    '<div style="display:flex;gap:4px;margin-top:8px;flex-wrap:wrap;">' +
+      '<input id="adm-certcn-' + username + '" placeholder="裝置憑證 CN（step-ca 簽發 CN）" style="flex:2;min-width:180px;font-family:monospace;">' +
+      '<input id="adm-certlabel-' + username + '" placeholder="標籤（選填，如 指揮官手機）" style="flex:1;min-width:120px;">' +
+      '<button class="adm-btn" data-action="adm-bind-cert" data-username="' + username + '">綁定</button>' +
+    '</div>' +
+    '<div style="font-size:11px;color:var(--text3);margin-top:6px;line-height:1.5;">憑證由 step-ca 離線簽發；此處綁定 <b>CN ↔ 帳號</b> = mTLS 第二因子授權。一帳號可綁多台裝置，撤銷即時失效。</div>';
+}
+
+export async function admBindCert(username) {
+  const cn = el('adm-certcn-' + username)?.value.trim();
+  const label = el('adm-certlabel-' + username)?.value.trim();
+  if (!cn) { alert('請輸入裝置憑證 CN'); return; }
+  const resp = await authFetch(API_BASE + '/api/admin/accounts/' + username + '/certs', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ cert_cn: cn, label: label || null }),
+  });
+  if (resp.status === 409) { alert('此 CN 已被有效綁定（撤銷後才可重綁）'); return; }
+  if (!resp.ok) { alert('綁定失敗（' + resp.status + '）'); return; }
+  admLoadCerts(username);
+}
+
+export async function admRevokeCert(username, certId) {
+  if (!confirm('撤銷此裝置憑證？該裝置將立即無法登入（活躍 session 一併失效）。')) return;
+  const resp = await authFetch(API_BASE + '/api/admin/accounts/' + username + '/certs/' + certId, { method: 'DELETE' });
+  if (!resp.ok) { alert('撤銷失敗（' + resp.status + '）'); return; }
+  admLoadCerts(username);
 }
 
 export async function admSaveEdit(username) {
