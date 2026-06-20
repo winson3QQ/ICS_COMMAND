@@ -158,6 +158,21 @@ def test_mtls_conf_enforces_client_cert():
     assert "$ssl_client_s_dn_cn" not in conf
     assert "proxy_set_header X-Client-Cert-CN     $ics_client_cn;" in conf
     assert "proxy_set_header X-Client-Cert-Verify $ssl_client_verify;" in conf
+    # #280 紅隊修補：mTLS config 注入 proxy 共享密鑰（setup.sh 替換）
+    assert "PROXY_SECRET_PLACEHOLDER" in conf
+
+
+def test_setup_sh_generates_proxy_secret():
+    """#280：mTLS 安裝時產隨機 proxy 密鑰、替換 nginx placeholder、寫進後端 env。"""
+    script = read_repo_file("deploy/setup.sh")
+    assert "ICS_PROXY_SHARED_SECRET=" in script
+    assert "s|PROXY_SECRET_PLACEHOLDER|" in script
+
+
+def test_command_conf_strips_proxy_auth():
+    """#280：非 mTLS command.conf 剝除 client 自帶 X-Proxy-Auth。"""
+    conf = read_repo_file("deploy/nginx/conf.d/command.conf")
+    assert 'proxy_set_header X-Proxy-Auth "";' in conf
 
 
 def test_setup_sh_installs_mtls_variant():

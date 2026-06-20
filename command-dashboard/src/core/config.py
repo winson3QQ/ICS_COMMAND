@@ -118,6 +118,12 @@ ICS_MTLS_REQUIRED: bool = os.getenv("ICS_MTLS_REQUIRED", "false").lower() == "tr
 # 削弱 IP 限速）。容器/正式部署經 nginx → 設 true。
 ICS_BEHIND_PROXY: bool = os.getenv("ICS_BEHIND_PROXY", "false").lower() == "true"
 
+# #280 紅隊修補：nginx ↔ 後端共享密鑰。設了之後，後端只在請求帶相符 X-Proxy-Auth 時
+# 才信任 nginx 注入的 X-Client-Cert-*（mTLS 第二因子）。防「內網直打後端 :8000 偽造
+# cert header 繞過 mTLS」（紅隊實證可拿 sysadmin）。空＝back-compat（信任，舊行為）。
+# 容器/正式部署務必設（與 nginx 同值；nginx 用 envsubst 注入）。
+ICS_PROXY_SHARED_SECRET: str = os.getenv("ICS_PROXY_SHARED_SECRET", "")
+
 # #280 H：安全告警 webhook（選配）。設了才推；空＝只進結構化 log（SECURITY_ALERT）。
 # 任意 HTTP endpoint（Slack/Discord/自架收集器…）；背景緒推、失敗不影響鑑權。
 ICS_SECURITY_WEBHOOK_URL: str = os.getenv("ICS_SECURITY_WEBHOOK_URL", "")

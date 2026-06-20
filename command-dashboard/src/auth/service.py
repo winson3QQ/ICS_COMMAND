@@ -4,6 +4,7 @@ Server-side session service.
 
 from __future__ import annotations
 
+import hmac
 import logging
 import secrets
 from datetime import UTC, datetime, timedelta
@@ -81,16 +82,31 @@ def _request_binding(request: Request | None) -> tuple[str | None, str | None]:
     return ip, _ua_family(ua)
 
 
-def client_cert_cn(request: Request | None) -> str | None:
-    """mTLS 反代（nginx）注入的 client 憑證 CN（#275）。`X-Client-Cert-CN`。"""
+def _proxy_trusted(request: Request | None) -> bool:
+    """#280 紅隊修補：X-Client-Cert-* 是否可信。配置了 proxy secret 時，須請求帶相符
+    X-Proxy-Auth（只有 nginx 知道）才信——防內網直打後端 :8000 偽造 cert header 繞 mTLS。
+    未配置＝back-compat（信任，舊行為）。"""
+    if not config.ICS_PROXY_SHARED_SECRET:
+        return True
     if request is None:
+        return False
+    return hmac.compare_digest(
+        request.headers.get("X-Proxy-Auth", ""), config.ICS_PROXY_SHARED_SECRET
+    )
+
+
+def client_cert_cn(request: Request | None) -> str | None:
+    """mTLS 反代（nginx）注入的 client 憑證 CN（#275）。`X-Client-Cert-CN`。
+    僅在 proxy 可信（X-Proxy-Auth 相符 / 未配置 secret）時採信，否則 None。"""
+    if request is None or not _proxy_trusted(request):
         return None
     return (request.headers.get("X-Client-Cert-CN") or "").strip() or None
 
 
 def client_cert_verified(request: Request | None) -> bool:
-    """nginx `ssl_verify_client` 結果為 SUCCESS（憑證已過 CA 驗證）。`X-Client-Cert-Verify`。"""
-    if request is None:
+    """nginx `ssl_verify_client` 結果為 SUCCESS（憑證已過 CA 驗證）。`X-Client-Cert-Verify`。
+    僅在 proxy 可信（X-Proxy-Auth 相符 / 未配置 secret）時採信，否則 False。"""
+    if request is None or not _proxy_trusted(request):
         return False
     return (request.headers.get("X-Client-Cert-Verify") or "").upper() == "SUCCESS"
 

@@ -286,12 +286,23 @@ install_nginx_configs() {
   if [[ "$mtls" == "1" ]]; then
     # #275 全角色 mTLS 單埠 443 強制版。兩個 443 block 不可並存 → 移除非 mTLS command.conf。
     rm -f "$nginx_conf_dir/command.conf"
+    # #280 紅隊修補：nginx↔後端共享密鑰。產隨機值，替換 nginx config placeholder，並寫進
+    # 後端 EnvironmentFile（systemd 讀），兩邊同值 → 後端據此判 X-Client-Cert-* 真來自 nginx。
+    local proxy_secret env_file="${ICS_CONFIG_DIR}/command.env"
+    proxy_secret="$(head -c 24 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 32)"
+    if ! grep -q '^ICS_PROXY_SHARED_SECRET=' "$env_file" 2>/dev/null; then
+      echo "ICS_PROXY_SHARED_SECRET=${proxy_secret}" >> "$env_file"
+      chmod 0640 "$env_file" 2>/dev/null || true
+    else
+      proxy_secret="$(grep '^ICS_PROXY_SHARED_SECRET=' "$env_file" | head -1 | cut -d= -f2-)"
+    fi
     sed -e "s|CERT_PATH_PLACEHOLDER|${cert_path}|g" \
         -e "s|KEY_PATH_PLACEHOLDER|${key_path}|g" \
         -e "s|ROOT_CA_PATH_PLACEHOLDER|${root_ca_path}|g" \
+        -e "s|PROXY_SECRET_PLACEHOLDER|${proxy_secret}|g" \
         "$REPO_ROOT/deploy/nginx/conf.d/command-mtls.conf.disabled" > "$nginx_conf_dir/command-mtls.conf"
     chmod 0644 "$nginx_conf_dir/command-mtls.conf"
-    echo "[setup] nginx mTLS config（command-mtls.conf）安裝到 $nginx_conf_dir（全角色強制 client cert）"
+    echo "[setup] nginx mTLS config（command-mtls.conf）安裝到 $nginx_conf_dir（全角色強制 client cert + proxy 密鑰）"
     if [[ ! -f "$root_ca_path" ]]; then
       echo "[setup] ⚠️  root CA $root_ca_path 不存在 — mTLS 啟用前必須提供（Wave 3 PKI 簽發）" >&2
       echo "[setup]    缺 root CA 時 nginx -t 會 fail（ssl_client_certificate 找不到檔案）" >&2
