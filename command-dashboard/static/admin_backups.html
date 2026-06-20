@@ -133,27 +133,8 @@
   </table>
 </div>
 
-<div class="panel" id="userDataPanel" style="display:none">
-  <h2>4. 整包資料備份 / 還原（P1-12b · 涵蓋整個 data/）</h2>
-  <p class="meta">DB-only 備份（上方）之外，整包備份涵蓋 <code>data/</code> 全部（DB + map_config + 上傳檔），加密含 manifest（演習 metadata）。演習歸檔 / reset 前系統會自動整包備份。</p>
-  <div style="margin-top:8px">
-    <button onclick="triggerUserDataBackup()">立即整包備份</button>
-    <button class="secondary" onclick="loadUserDataBackups()">重新整理</button>
-  </div>
-  <table style="margin-top:12px">
-    <thead><tr><th>檔名</th><th>類型</th><th>大小</th><th class="actions">操作</th></tr></thead>
-    <tbody id="udRows"></tbody>
-  </table>
-
-  <h3 style="color:#fff;font-size:13px;margin:20px 0 8px">⤴ 還原整包備份</h3>
-  <p class="status-warn">⚠️ 還原會覆蓋當前 <code>data/</code>（系統先自動備份當前為 pre-restore-*）。有進行中演習時不可還原（須先歸檔）。還原後需重啟服務。</p>
-  <input type="file" id="restoreFile" accept=".enc">
-  <button class="danger" onclick="doRestore()">上傳並還原</button>
-  <div id="udDetail" style="margin-top:12px"></div>
-</div>
-
 <div class="panel" id="detailPanel" style="display:none">
-  <h2>5. 詳細資訊：<span id="detailName"></span></h2>
+  <h2>4. 詳細資訊：<span id="detailName"></span></h2>
   <div id="detailContent"></div>
 </div>
 
@@ -169,18 +150,11 @@ function toast(msg, type = "info") {
   setTimeout(() => t.remove(), 4000);
 }
 
-// session token：同分頁從儀表板導覽進來時 sessionStorage 仍在（P1-12b 整包
-// 備份/還原端點走 _check_system_admin = session 驗證，非 X-Admin-PIN）。
-function sessionToken() { return sessionStorage.getItem("cmd_session_id") || ""; }
-
-function _commonHeaders(extra) {
-  return Object.assign({"X-Admin-PIN": pin, "X-Session-Token": sessionToken()}, extra || {});
-}
-
-async function _handleErr(r) {
-  if (r.status === 401) { toast("未登入 — 請先從儀表板登入再進入本頁", "error"); throw new Error("401"); }
-  if (r.status === 403) { toast("需系統管理員權限", "error"); throw new Error("403"); }
-  if (r.status === 423) { toast("已鎖定，請稍後再試", "error"); throw new Error("423"); }
+async function api(path, opts = {}) {
+  opts.headers = Object.assign({"X-Admin-PIN": pin, "Content-Type": "application/json"}, opts.headers || {});
+  const r = await fetch(path, opts);
+  if (r.status === 403) { toast("Admin PIN 錯誤或未設定", "error"); throw new Error("403"); }
+  if (r.status === 423) { toast("Admin PIN 已鎖定，請稍後再試", "error"); throw new Error("423"); }
   if (!r.ok) {
     const body = await r.json().catch(() => ({detail: "未知錯誤"}));
     toast(body.detail || ("HTTP " + r.status), "error");
@@ -189,27 +163,10 @@ async function _handleErr(r) {
   return r.json();
 }
 
-async function api(path, opts = {}) {
-  opts.headers = _commonHeaders(Object.assign({"Content-Type": "application/json"}, opts.headers || {}));
-  return _handleErr(await fetch(path, opts));
-}
-
-// multipart 上傳（不可設 Content-Type，由瀏覽器帶 boundary）
-async function apiForm(path, formData) {
-  return _handleErr(await fetch(path, {method: "POST", headers: _commonHeaders(), body: formData}));
-}
-
 function fmtBytes(n) {
   if (n < 1024) return n + " B";
   if (n < 1024 * 1024) return (n / 1024).toFixed(1) + " KB";
   return (n / 1024 / 1024).toFixed(1) + " MB";
-}
-
-// HTML 跳脫：manifest 欄位（exercise.name / 檔名 / created_at）經 innerHTML 渲染，
-// 縱深防 XSS（即使來源需 BACKUP_KEY，竄改 / 他源 backup 仍應跳脫）。
-function esc(s) {
-  return String(s == null ? "" : s).replace(/[&<>"']/g, c =>
-    ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
 }
 
 async function loadBackups() {
@@ -221,8 +178,6 @@ async function loadBackups() {
     document.getElementById("authStatus").className = "status-ok meta";
     document.getElementById("opsPanel").style.display = "block";
     document.getElementById("listPanel").style.display = "block";
-    document.getElementById("userDataPanel").style.display = "block";
-    loadUserDataBackups();
 
     document.getElementById("systemInfo").innerHTML =
       `共 <b>${data.total}</b> 個 backup（保留 ${data.retain_days} 天 rolling）<br>` +
@@ -327,77 +282,6 @@ async function getRestoreCmd(name) {
     `;
     panel.style.display = "block";
     panel.scrollIntoView({behavior: "smooth"});
-  } catch (e) {}
-}
-
-// ── P1-12b 整包資料備份 / 還原 ─────────────────────────────────────────────
-
-async function loadUserDataBackups() {
-  try {
-    const data = await api("/api/admin/user-data-backups");
-    const rows = document.getElementById("udRows");
-    rows.innerHTML = "";
-    if (data.backups.length === 0) {
-      rows.innerHTML = '<tr><td colspan="4" style="text-align:center;opacity:0.5">（尚無整包備份）</td></tr>';
-      return;
-    }
-    for (const b of data.backups) {
-      const kind = b.is_pre_restore
-        ? '<span class="meta" style="color:#f0883e">還原前自動</span>'
-        : '<span class="meta" style="color:#5dd55d">整包</span>';
-      const tr = document.createElement("tr");
-      tr.innerHTML = `
-        <td style="word-break:break-all">${esc(b.name)}</td>
-        <td>${kind}</td>
-        <td>${fmtBytes(b.size_bytes)}</td>
-        <td class="actions"><button class="secondary" onclick="previewManifest('${b.name}')">預覽 manifest</button></td>`;
-      rows.appendChild(tr);
-    }
-  } catch (e) {}
-}
-
-async function triggerUserDataBackup() {
-  if (!confirm("立即執行整包 data/ 備份？")) return;
-  try {
-    const r = await api("/api/admin/user-data-backups", {method: "POST"});
-    toast(`✅ 整包備份完成：${fmtBytes(r.size_bytes)}（${r.manifest.files.length} 檔）`, "success");
-    loadUserDataBackups();
-  } catch (e) {}
-}
-
-function _renderManifest(m) {
-  const ex = m.exercise
-    ? `演習：${esc(m.exercise.name)}（${esc(m.exercise.type)} / ${esc(m.exercise.status)}）`
-    : "演習：（無 — 實戰池 / 系統層）";
-  const files = (m.files || []).map(f => `<li>${esc(f)}</li>`).join("");
-  return `<p class="meta">建立時間：${esc(m.created_at)}　·　app ${esc(m.app_version)}　·　觸發：${esc(m.trigger)}</p>
-    <p class="meta">${ex}　·　共 ${(m.files||[]).length} 檔 / ${fmtBytes(m.total_bytes || 0)}</p>
-    <ul class="meta" style="columns:2">${files}</ul>`;
-}
-
-async function previewManifest(name) {
-  try {
-    const r = await api(`/api/admin/user-data-backups/${encodeURIComponent(name)}/manifest`);
-    document.getElementById("udDetail").innerHTML =
-      `<h4 style="color:#fff;font-size:12px;margin:8px 0">${esc(name)}</h4>` + _renderManifest(r.manifest);
-  } catch (e) {}
-}
-
-async function doRestore() {
-  const input = document.getElementById("restoreFile");
-  if (!input.files || !input.files[0]) { toast("請先選擇 .tar.gz.enc 備份檔", "error"); return; }
-  const f = input.files[0];
-  if (!f.name.endsWith(".enc")) { toast("僅接受 .tar.gz.enc 整包備份檔", "error"); return; }
-  if (!confirm(`確定以「${f.name}」覆蓋當前 data/？\n系統會先自動備份當前為 pre-restore-*，還原後需重啟服務。`)) return;
-  const fd = new FormData();
-  fd.append("file", f);
-  try {
-    const r = await apiForm("/api/admin/restore", fd);
-    document.getElementById("udDetail").innerHTML =
-      `<p class="status-ok">✅ 還原完成${r.pre_restore ? `（當前已備份為 <code>${esc(r.pre_restore)}</code>）` : ""}</p>
-       <p class="status-warn">⚠️ 請重啟指揮部服務讓新資料生效（替換了熱 DB）。</p>` + _renderManifest(r.manifest);
-    toast("還原完成 — 請重啟服務", "success");
-    loadUserDataBackups();
   } catch (e) {}
 }
 

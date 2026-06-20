@@ -890,6 +890,24 @@ export function admShowSys() {
         <div id="adm-sys-warn" style="font-size:12px;color:var(--red);min-height:16px;"></div>
       </div>
     </div>
+    <div style="margin-bottom:24px;border-top:1px solid var(--border);padding-top:16px;">
+      <div style="font-size:13px;font-weight:600;margin-bottom:8px;color:var(--text);">💾 整包資料備份 / 還原（P1-12b）</div>
+      <div style="font-size:11px;color:var(--text2);margin-bottom:10px;line-height:1.6;max-width:420px;">
+        備份涵蓋整個 <code>data/</code>（DB + map_config + 上傳檔），加密含 manifest。
+        演習歸檔 / 重設前系統會自動備份。<span style="color:var(--text3);">需設定 BACKUP_KEY（部署層）。</span>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="login-btn" data-action="admBackupNow" style="max-width:160px;">立即整包備份</button>
+        <button class="login-btn" data-action="admRefreshBackups" style="max-width:120px;background:var(--bg3);">重新整理</button>
+      </div>
+      <div id="adm-backup-list" style="margin-top:10px;font-size:11px;"></div>
+      <div style="margin-top:12px;">
+        <div style="font-size:12px;color:var(--text2);margin-bottom:6px;">⤴ 還原（覆蓋當前 data/；先自動備份當前；有進行中演習則拒絕）</div>
+        <input id="adm-restore-file" type="file" accept=".enc" style="font-size:11px;max-width:300px;">
+        <button class="login-btn" data-action="admRestore" style="background:var(--red);color:#fff;border:none;max-width:140px;margin-top:4px;">上傳並還原</button>
+      </div>
+      <div id="adm-backup-detail" style="margin-top:10px;font-size:11px;color:var(--text2);"></div>
+    </div>
     <div style="border-top:1px solid var(--border);padding-top:16px;">
       <div style="font-size:13px;font-weight:600;margin-bottom:8px;color:var(--red);">⚠ 重設指揮部資料庫</div>
       <div style="font-size:11px;color:var(--text2);margin-bottom:12px;line-height:1.6;">
@@ -901,6 +919,91 @@ export function admShowSys() {
               style="background:var(--red);color:#fff;border:none;max-width:320px;">重設指揮部資料庫</button>
     </div>`;
   _admLoadTakConn();
+  admRefreshBackups();
+}
+
+// ── P1-12b（#228）整包資料備份 / 還原（in-dashboard，取代 orphaned admin_backups.html）──
+// 端點走 _check_system_admin（session）；authFetch 自帶 X-Session-Token。
+
+function _fmtBytes(n) {
+  if (n < 1024) return n + ' B';
+  if (n < 1048576) return (n / 1024).toFixed(1) + ' KB';
+  return (n / 1048576).toFixed(1) + ' MB';
+}
+
+export async function admRefreshBackups() {
+  const box = el('adm-backup-list');
+  if (!box) return;
+  try {
+    const r = await authFetch(API_BASE + '/api/admin/user-data-backups');
+    if (!r.ok) { box.innerHTML = '<span style="color:var(--text3);">無法載入（需系統管理員）</span>'; return; }
+    const d = await r.json();
+    if (!d.backups.length) { box.innerHTML = '<span style="color:var(--text3);">（尚無整包備份）</span>'; return; }
+    box.innerHTML = d.backups.map(b => {
+      const kind = b.is_pre_restore
+        ? '<span style="color:var(--yellow);">還原前</span>'
+        : '<span style="color:var(--green);">整包</span>';
+      return `<div style="display:flex;gap:8px;align-items:center;padding:3px 0;border-bottom:1px solid var(--border);">
+        <span style="flex:1;word-break:break-all;">${_escAudit(b.name)}</span>
+        <span>${kind}</span><span style="color:var(--text3);">${_fmtBytes(b.size_bytes)}</span>
+        <button class="login-btn" data-action="admPreviewBackup" data-name="${_escAudit(b.name)}"
+                style="max-width:90px;background:var(--bg3);font-size:10px;padding:2px 6px;">manifest</button>
+      </div>`;
+    }).join('');
+  } catch { box.innerHTML = '<span style="color:var(--red);">載入失敗</span>'; }
+}
+
+export async function admBackupNow() {
+  if (!confirm('立即執行整包 data/ 備份？')) return;
+  const detail = el('adm-backup-detail');
+  try {
+    const r = await authFetch(API_BASE + '/api/admin/user-data-backups', { method: 'POST' });
+    if (!r.ok) { alert('備份失敗（' + r.status + '）：' + ((await r.json().catch(() => ({}))).detail || '')); return; }
+    const d = await r.json();
+    if (detail) detail.textContent = `✅ 備份完成：${_fmtBytes(d.size_bytes)}（${d.manifest.files.length} 檔）`;
+    admRefreshBackups();
+  } catch (e) { alert('錯誤：' + e.message); }
+}
+
+function _renderManifest(m) {
+  const ex = m.exercise
+    ? `演習：${_escAudit(m.exercise.name)}（${_escAudit(m.exercise.type)} / ${_escAudit(m.exercise.status)}）`
+    : '演習：（無 — 實戰池 / 系統層）';
+  const files = (m.files || []).map(f => `<li>${_escAudit(f)}</li>`).join('');
+  return `建立：${_escAudit(m.created_at)} · app ${_escAudit(m.app_version)} · 觸發：${_escAudit(m.trigger)}<br>${ex}`
+    + ` · ${(m.files || []).length} 檔<ul style="columns:2;margin:4px 0;">${files}</ul>`;
+}
+
+export async function admPreviewBackup(name) {
+  const detail = el('adm-backup-detail');
+  try {
+    const r = await authFetch(API_BASE + '/api/admin/user-data-backups/' + encodeURIComponent(name) + '/manifest');
+    if (!r.ok) { alert('無法讀取 manifest（' + r.status + '）'); return; }
+    const d = await r.json();
+    if (detail) detail.innerHTML = `<b>${_escAudit(name)}</b><br>` + _renderManifest(d.manifest);
+  } catch (e) { alert('錯誤：' + e.message); }
+}
+
+export async function admRestore() {
+  const input = el('adm-restore-file');
+  if (!input || !input.files || !input.files[0]) { alert('請先選擇 .tar.gz.enc 備份檔'); return; }
+  const f = input.files[0];
+  if (!f.name.endsWith('.enc')) { alert('僅接受 .tar.gz.enc 整包備份檔'); return; }
+  if (!confirm(`確定以「${f.name}」覆蓋當前 data/？\n系統會先自動備份當前為 pre-restore-*，還原後需重啟服務。`)) return;
+  const detail = el('adm-backup-detail');
+  const fd = new FormData();
+  fd.append('file', f);
+  try {
+    const r = await authFetch(API_BASE + '/api/admin/restore', { method: 'POST', body: fd });
+    if (!r.ok) { alert('還原失敗（' + r.status + '）：' + ((await r.json().catch(() => ({}))).detail || '')); return; }
+    const d = await r.json();
+    if (detail) {
+      detail.innerHTML = `<span style="color:var(--green);">✅ 還原完成`
+        + (d.pre_restore ? `（當前已備份為 <code>${_escAudit(d.pre_restore)}</code>）` : '') + '</span>'
+        + '<br><span style="color:var(--yellow);">⚠️ 請重啟指揮部服務讓新資料生效。</span><br>' + _renderManifest(d.manifest);
+    }
+    admRefreshBackups();
+  } catch (e) { alert('錯誤：' + e.message); }
 }
 
 // P2-24（#164）：把 status 物件描述成系統 tab 的唯讀連線狀態行。

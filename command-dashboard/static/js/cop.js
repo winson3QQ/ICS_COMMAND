@@ -121,7 +121,9 @@ export async function confirmResetDB() {
   try {
     const resp = await authFetch(API_BASE + '/api/admin/reset-db', {
       method: 'POST',
-      headers: { 'X-Admin-PIN': pin },
+      headers: { 'X-Admin-PIN': pin, 'Content-Type': 'application/json' },
+      // P1-12b OP-2：後端強制 body confirm:"RESET"（不依賴前端 dialog）
+      body: JSON.stringify({ confirm: 'RESET' }),
     });
     if (!resp.ok) {
       let detail = resp.status;

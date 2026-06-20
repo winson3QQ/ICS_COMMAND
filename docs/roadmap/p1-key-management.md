@@ -22,7 +22,7 @@
 ### 進度
 
 - **12a（#227）**：key 基建 + mock 測試落地（PR #234）。真 token 驗收 → #230。
-- **12b（#228）後端落地**：`services/user_data_backup_service.py`（整包 `data/` tar+gzip+Fernet+MANIFEST，BACKUP_KEY 優先 / legacy fallback / 解密兩 key 試）+ `routers/backup_restore.py`（整包備份 / 列表 / manifest 預覽 / 上傳還原，sysadmin-gated）。三層觸發：L1 手動 button、L2 archive 自動（manifest 帶演習 metadata）、L3 reset-db/reset-exercise 前 best-effort + lifespan shutdown best-effort。OP-2（reset 強制 `confirm:"RESET"`，RBAC 先於 body 驗證）、OP-4（restore-cmd 標 deprecated + warning）、drift bug（API 觸發 DB-only 備份過去產明文 → 有金鑰時加密）一併修。**前端**：`admin_backups.html` 加整包備份/還原 UI（session-token 修正使原 orphaned 頁可用）。**GUI human-verify 待使用者返回**（Windows 鎖熱 DB → 還原 e2e 由 CI Linux + service 層測試覆蓋）。
+- **12b（#228）後端落地**：`services/user_data_backup_service.py`（整包 `data/` tar+gzip+Fernet+MANIFEST，BACKUP_KEY 優先 / legacy fallback / 解密兩 key 試）+ `routers/backup_restore.py`（整包備份 / 列表 / manifest 預覽 / 上傳還原，sysadmin-gated）。三層觸發：L1 手動 button、L2 archive 自動（manifest 帶演習 metadata）、L3 reset-db/reset-exercise 前 best-effort + lifespan shutdown best-effort。OP-2（reset 強制 `confirm:"RESET"`，RBAC 先於 body 驗證）、OP-4（restore-cmd 標 deprecated + warning）、drift bug（API 觸發 DB-only 備份過去產明文 → 有金鑰時加密）一併修。**前端**：整包備份/還原 UI 落在 **in-dashboard admin 面板「系統」tab**（`auth.js admShowSys` + `main.js` dispatcher；session-gated，與後端 `_check_system_admin` 一致）——非孤兒頁 `admin_backups.html`（#294 已將其列入 prod `.dockerignore`，故 GUI 改進 admin 設定；該檔還原為 main 版、不再雙頭）。順帶修 `cop.js confirmResetDB` 帶 `confirm:"RESET"`（配合 OP-2，否則既有重設鈕 422）。**GUI human-verify 待使用者驗收**（Windows 鎖熱 DB → 還原 e2e 由 CI Linux + service 層測試覆蓋）。
 
 ---
 

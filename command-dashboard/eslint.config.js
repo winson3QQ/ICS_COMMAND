@@ -14,6 +14,7 @@ export default [
         Blob: 'readonly',
         Chart: 'readonly',
         CustomEvent: 'readonly',
+        FormData: 'readonly',
         L: 'readonly',
         TextEncoder: 'readonly',
         URL: 'readonly',
