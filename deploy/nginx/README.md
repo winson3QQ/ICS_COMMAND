@@ -24,8 +24,8 @@ deploy/nginx/
 ├── conf.d/
 │   ├── ssl-common.conf    ← TLS 1.2+1.3 cipher、protocol（業界基線，多個 server block 共用）
 │   ├── security-headers.conf  ← HSTS / X-Frame / Referrer-Policy 等
-│   ├── command.conf       ← Command FastAPI 反代（基礎，所有層級啟用）
-│   └── tier3-mtls.conf.disabled  ← Phase 7 / Tier 3 mTLS 雙向憑證（C4 授權開啟）
+│   ├── command.conf       ← Command FastAPI 反代（非 mTLS，dev/demo；剝除 X-Client-Cert-*）
+│   └── command-mtls.conf.disabled  ← #275 全角色 mTLS 單埠 443 強制版（Wave 3 PKI 後啟用）
 └── start-dev.sh           ← Mac 開發機啟動（使用 deploy/step-ca/certs/command.ics.local/）
 ```
 

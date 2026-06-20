@@ -15,7 +15,11 @@ WorkingDirectory=/home/ics/ics-command/command-dashboard
 # --workers 1 必須保留：COP 即時推播是 in-process broadcaster（issue #29 PR-D，
 # services/realtime_hub.py）。多 worker 下各自獨立 hub → WS 廣播跨 worker 漏幀。
 # 水平擴張需改 Redis pub/sub（Wave 7 federation），屆時才可拿掉此 pin。
-ExecStart=/home/ics/ics-command/command-dashboard/.venv/bin/uvicorn main:app --app-dir src --host 0.0.0.0 --port 8000 --workers 1
+# #275 wave 2（紅線「後端只經 nginx 可達」）：bind loopback，不對外網直曝 :8000。
+# 否則攻擊者直連後端可繞過 nginx 的 mTLS + X-Client-Cert-* 剝除（偽造 AAL2 第二因子）。
+# bare-metal 部署 nginx 與 uvicorn 同主機，127.0.0.1 即可達；容器部署另走 compose
+# 不 publish 後端埠（deploy/ics-validation，Dockerfile 內仍 0.0.0.0 供同網路 nginx 連）。
+ExecStart=/home/ics/ics-command/command-dashboard/.venv/bin/uvicorn main:app --app-dir src --host 127.0.0.1 --port 8000 --workers 1
 
 # Defaults 先設，再讓 EnvironmentFile 覆寫（systemd: 後者覆寫前者）
 # Site-specific 設定走 EnvironmentFile（前綴 `-` 表示檔案不存在不 fail）
