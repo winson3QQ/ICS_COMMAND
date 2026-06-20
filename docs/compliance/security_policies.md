@@ -106,6 +106,31 @@ _每次 role 變更、帳號建立 / 刪除均寫 audit log_
 
 ### 2.7 Review
 
+### 2.8 Authentication Assurance（鑑權強度分級 / NIST 800-63B AAL）
+
+> 對應：NIST SP 800-63B（AAL）；OWASP ASVS V2（Authentication）；CJIS §5.6（advanced authentication）。Tracking：[#275](https://github.com/winson3QQ/ICS_COMMAND/issues/275)；威脅依據：`threat_model` §8.6。
+
+**原則**：鑑權強度應匹配角色的權限與影響等級（authentication assurance ∝ privilege / impact）。RBAC（§2.3）規範**授權**；本節規範**鑑權 assurance**（authentication），兩者正交。
+
+**部署決策（2026-06-20）**：本系統所有角色之存取**均經公網**（cmd dashboard 對外），故**所有角色一律要求 mTLS 裝置憑證** —— 「PIN（something you know）+ 裝置 client cert（something you have）」構成雙因子，達 **AAL2**，且無任何角色裸曝公網（憑證即網路層准入）。
+
+| 角色 | 影響 | 目標 AAL | Authenticator |
+|---|---|---|---|
+| observer | 低（唯讀） | AAL2 | PIN + 裝置 cert |
+| operator | 中（可寫） | AAL2 | PIN + 裝置 cert |
+| commander | 高（下令 / 管帳號） | AAL2（敏感操作可 step-up） | PIN + 裝置 cert |
+| sysadmin | 最高 | AAL2–3 | PIN + 裝置 cert + 強制 audit |
+
+**實作要點（#275 分波）**：
+- nginx `ssl_verify_client on`（`deploy/nginx/conf.d/tier3-mtls.conf.disabled` 落地）→ 無有效 client cert 連不進登入（網路層即擋）。
+- 後端驗 `ssl_client_verify=SUCCESS` 並將 `X-Client-Cert-CN` **綁定帳號**（cert ↔ user = 第二因子）。
+- PKI：per-user / 裝置 client cert 簽發 + 撤銷（step-ca；複用 TAK `gen-device-dp.sh` pattern）。
+- PIN KDF：PBKDF2-HMAC-SHA256 現 100k → 升 OWASP 2023 建議 600k。
+- IP 信任：`_client_ip` 改信任反代設定的可信 hop（非 `X-Forwarded-For` 最左值），防偽造繞限速。
+- 鎖定-DoS：帳號鎖定（§2.3，5/15min）保留，加 per-source / admin 復原路徑，避免攻擊者鎖死單一 admin。
+
+> **過渡**：mTLS 未全面佈署前，公網存取為**臨時驗證**狀態（`threat_model` §8.6），正式上線前 #275 必須完成。
+
 ---
 
 ## 3. Audit and Accountability Policy（稽核與課責政策）
