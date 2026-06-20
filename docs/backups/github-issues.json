@@ -3952,5 +3952,105 @@
     "title": "安全監控 H 擴充：成功動作的異常偵測（不只失敗）",
     "updatedAt": "2026-06-20T10:39:56Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/285"
+  },
+  {
+    "assignees": [],
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "body": "> 來源：2026-06-20 紅隊探測 `docs/security-audit/redteam-2026-06-20.md` 發現 **H1（HIGH，主稽核員已對 code 查證）**\n\n## 嚴重度\n🔴 HIGH（authenticated arbitrary file write）\n\n## 證據\n`command-dashboard/src/routers/map.py:207-213`\n```python\nfilename = file.filename or \"map.jpg\"      # 攻擊者全控\next = filename.rsplit(\".\", 1)[-1].lower()  # 只看副檔名\nsave_path = STATIC_DIR / filename          # 無 basename / ../ / 絕對路徑清洗\nsave_path.write_bytes(content)\n```\n\n## 可利用\n- `file.filename` 來自 multipart，Starlette/python-multipart 不清洗。`STATIC_DIR / \"../../static/js/main.js\"` 或絕對路徑可逃出/覆寫。\n- 角色閘 = `COMMAND_ROLES`（`role_enum.py:103-104`）。\n- 覆寫 `static/` 內任一 JS/HTML（前端 ~24,700 行 JS 會在每個登入者瀏覽器執行）→ 儲存型 XSS / 全站接管（含污染 sysadmin = 提權）。allow `svg` → 內含 `<script>` 即儲存型 XSS。\n\n## 修補\n- `os.path.basename()` + `(STATIC_DIR / name).resolve()` + `is_relative_to(STATIC_DIR.resolve())` 否則 400\n- uuid 重命名；移除/消毒 svg；依 User Data 紅線改落 `data/`\n\n## DoD\n程式碼 + unit test（traversal/絕對路徑/svg 三向）+ 關閉。",
+    "closedAt": null,
+    "comments": [],
+    "createdAt": "2026-06-20T11:40:01Z",
+    "labels": [],
+    "milestone": null,
+    "number": 286,
+    "state": "OPEN",
+    "title": "fix(security): H1 任意檔案寫入 — upload_map_image filename 無清洗（→ 儲存型 XSS / 全站接管）",
+    "updatedAt": "2026-06-20T11:40:01Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/286"
+  },
+  {
+    "assignees": [],
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "body": "> 來源：紅隊探測 `docs/security-audit/redteam-2026-06-20.md` 發現 **H2（HIGH，已查證）**\n\n## 嚴重度\n🔴 HIGH（OWASP A01 broken access control + 跨演習越權）\n\n## 證據\n- `auth/role_enum.py:82-147` 的 `allowed_roles_for` **完全沒有 `/api/ttx/` 分支** → 落預設 `:145-147`（GET→READ_ROLES、其餘→WRITE_ROLES）。\n- `routers/ttx.py` 只 `validate_session`，`exercise_id` 直接吃 path/query，無 `resolve_scope`。\n- `ttx_repo.get_ttx_injects` 純 `WHERE exercise_id=?`。\n\n## 可利用\n- observer → `GET /api/ttx/exercises/{任意id}/injects` 讀別場 inject 腳本（跨場洩漏）。\n- operator → `POST .../injects/{id}/push` 把偽造 event/decision/snapshot 注入任意演習場（含已歸檔）→ 污染 AAR。\n\n## 修補\n- `allowed_roles_for` 補 `/api/ttx/` case：push/load/bulk → COMMAND_ROLES；GET 配 scope。\n- `ttx.py` 讀寫一律 `resolve_scope`。\n\n## DoD\ngate case + scope + RBAC×角色 200/403 test + 關閉。",
+    "closedAt": null,
+    "comments": [],
+    "createdAt": "2026-06-20T11:40:02Z",
+    "labels": [],
+    "milestone": null,
+    "number": 287,
+    "state": "OPEN",
+    "title": "fix(security): H2 TTX router 無授權 gate + 無演習 scope（broken access control + 跨場越權）",
+    "updatedAt": "2026-06-20T11:40:02Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/287"
+  },
+  {
+    "assignees": [],
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "body": "> 來源：紅隊探測 `docs/security-audit/redteam-2026-06-20.md` 發現 **H3 + H3b（HIGH，已查證）**\n\n## 嚴重度\n🔴 HIGH（IDOR + 跨演習越權寫入）\n\n## 證據\n讀取有守門、寫入全無：\n- `routers/events.py`：`get_ev:58`/`get_chain:73` 有 `resolve_scope`；`patch_ev:79`/`patch_deadline:92`/`patch_status:105`/`add_note:114` 全部只認 event_id、無 scope。repo `event_repo` 對映函式皆 `WHERE id=?`。\n- `routers/decisions.py`：`get_dec:18` 有 scope；`decide:24-28` 無。`decision_repo.decide:57-69` `WHERE id=?`。\n- 中央 gate 對 `/api/events/`、`/api/decisions/` 非 GET → 預設 WRITE_ROLES（operator 可達）。\n\n## 可利用\n- operator 列舉 id（`EV-MMDD-NNN` 易猜）→ 改別場（含歷史場）事件狀態/欄位、灌 note。\n- operator 帶別場 decision_id → 核准/否決他場待裁指令。\n\n## 修補\n寫入前 `resolve_scope`；repo 寫入加 exercise_id 條件；不在 scope → 404（對齊 event_marker_repo 模式）。\n\n## DoD\nevents + decisions 寫入補 scope + IDOR/跨場 test + 關閉。",
+    "closedAt": null,
+    "comments": [],
+    "createdAt": "2026-06-20T11:40:03Z",
+    "labels": [],
+    "milestone": null,
+    "number": 288,
+    "state": "OPEN",
+    "title": "fix(security): H3 events/decisions 寫入端點 IDOR + 跨演習越權（讀有 scope 寫沒有）",
+    "updatedAt": "2026-06-20T11:40:03Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/288"
+  },
+  {
+    "assignees": [],
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "body": "> 來源：紅隊探測 `docs/security-audit/redteam-2026-06-20.md` 發現 **H4（HIGH，已查證）**\n\n## 嚴重度\n🔴 HIGH（縱深防禦缺口，公網對外）\n\n## 證據\n- grep `deploy/ics-validation/`（含 prod 對外 `mtls/nginx.mtls.conf` 與 `nginx.conf`）只有 `ssl_protocols`，**零 `add_header`、零 `include security-headers`、零 `ssl_ciphers`**。\n- 後端 `core/security_headers.py:4-7` 明文「HSTS/X-Frame-Options/X-Content-Type-Options/Referrer-Policy 由 nginx 注入」，後端只發 CSP。\n- systemd 路徑 `deploy/nginx/conf.d/command.conf:52` 有 include，但 prod 走 Docker 不經此。\n\n## 可利用\n對外 HTTPS 無 HSTS（SSL-strip）、無 X-Frame-Options（clickjacking）、無 nosniff；無 `ssl_ciphers` → OpenSSL 預設 cipher（需 runtime 實測）。\n\n## 修補\n兩份 docker nginx server block include/補等價 `add_header ... always` + 明確 cipher suite。\n\n## DoD\nnginx 設定修 + 部署文件註記 + runtime `curl -kI` 驗（Windows prod）+ 關閉。",
+    "closedAt": null,
+    "comments": [],
+    "createdAt": "2026-06-20T11:40:05Z",
+    "labels": [],
+    "milestone": null,
+    "number": 289,
+    "state": "OPEN",
+    "title": "fix(security): H4 公網 Docker nginx 缺 security headers（HSTS/X-Frame-Options/nosniff）+ 無 cipher 設定",
+    "updatedAt": "2026-06-20T11:40:05Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/289"
+  },
+  {
+    "assignees": [],
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "body": "> 來源：紅隊探測 `docs/security-audit/redteam-2026-06-20.md` 發現 **H6（HIGH）+ M1（MEDIUM）**\n\n## H6 — mtls compose 寫死公開預設密碼\n`deploy/ics-validation/docker-compose.mtls.yml`：\n- L22 `DOCKER_STEPCA_INIT_PASSWORD=icsprov`（硬寫，blast radius 最大：能連 step-ca:9000 者可簽任意 CN 憑證繞 mTLS）\n- L70/L91 `ICS_PROXY_SHARED_SECRET:-ics-stack-proxy-secret-change-me`（後端+nginx 同公開預設 → #280 防內網偽造 header 失效）\n- L113 `ICS_CLIENT_P12_PASS:-icsclient`；`mtls/ca-bootstrap.sh:15`、`issue-client.sh:15` 同\n- 緩解：systemd 路徑 `deploy/setup.sh:286-305` 用 /dev/urandom 隨機（那條安全）。風險限於直接拿 compose 上公網。\n- 修補：移除所有 `:-` 預設改 `${VAR:?must set}`；`DOCKER_STEPCA_INIT_PASSWORD` 改 `${STEP_CA_PASSWORD:?}`。\n\n## M1 — proxy header trust 未設 secret 時 fail-OPEN\n`auth/service.py:89` `if not config.ICS_PROXY_SHARED_SECRET: return True`；`config.py:125` 預設空。若 `ICS_MTLS_REQUIRED=true` 卻漏設 proxy secret → 無條件信任 X-Client-Cert-* → 內網偽造繞 mTLS，系統不警告。\n- 修補：lifespan fail-fast — `IS_PROD && ICS_MTLS_REQUIRED && !secret` → 拒絕啟動。\n\n## DoD\ncompose fail-closed + 啟動斷言 + test + 關閉。",
+    "closedAt": null,
+    "comments": [],
+    "createdAt": "2026-06-20T11:40:06Z",
+    "labels": [],
+    "milestone": null,
+    "number": 290,
+    "state": "OPEN",
+    "title": "fix(security): H6+M1 部署組態 fail-closed — compose 公開預設密碼 + mTLS-on-但-proxy-secret-空 啟動拒絕",
+    "updatedAt": "2026-06-20T11:40:06Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/290"
   }
 ]

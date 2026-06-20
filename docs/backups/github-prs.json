@@ -4185,7 +4185,7 @@
     "number": 277,
     "state": "MERGED",
     "title": "feat(auth): #275 全角色 mTLS 鑑權（AAL2）— wave 2/3/4/A/B/B-2",
-    "updatedAt": "2026-06-20T09:13:25Z",
+    "updatedAt": "2026-06-20T10:41:03Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/277"
   },
   {
@@ -4206,7 +4206,7 @@
     "number": 281,
     "state": "MERGED",
     "title": "feat(deploy): #280 周邊防護 — Tailscale runbook + nginx 掃描 drop/驗證日誌",
-    "updatedAt": "2026-06-20T09:56:12Z",
+    "updatedAt": "2026-06-20T10:41:05Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/281"
   },
   {
@@ -4227,7 +4227,7 @@
     "number": 282,
     "state": "MERGED",
     "title": "feat(auth): #280 H — 安全監控告警（SECURITY_ALERT + 可選 webhook）",
-    "updatedAt": "2026-06-20T10:04:57Z",
+    "updatedAt": "2026-06-20T10:41:07Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/282"
   },
   {
@@ -4248,7 +4248,7 @@
     "number": 283,
     "state": "MERGED",
     "title": "docs(roadmap): #280 mTLS 網路層憑證撤銷（CRL/OCSP）提為正式項",
-    "updatedAt": "2026-06-20T10:10:45Z",
+    "updatedAt": "2026-06-20T10:41:11Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/283"
   },
   {
@@ -4269,7 +4269,7 @@
     "number": 284,
     "state": "MERGED",
     "title": "fix(auth): #280 紅隊修補 — nginx↔後端共享密鑰（堵內網偽造 cert header 繞 mTLS）",
-    "updatedAt": "2026-06-20T10:33:18Z",
+    "updatedAt": "2026-06-20T10:41:09Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/284"
   }
 ]
