@@ -1,0 +1,182 @@
+# deploy/prod/docker-compose.yml — ICS_Command 單機 delivery 棧（ICS + 可選 TAK）
+#
+# 「相同佈署、不同 delivery」(商用化考量)：同一份 compose，用 profile + .env toggle 切交付形態。
+#   純 ICS delivery:    docker compose --env-file .env up -d
+#   ICS + TAK delivery: docker compose --env-file .env --profile tak up -d   （.env 設 TAK_ENABLED=true）
+#   dev 單機全上:        同上（--profile tak）
+#
+# 全服務同一張 icsnet → TAK on 時 ics-command 以容器名 takserver:8089 / :8443 直連（內網，不經公網 IP）。
+# 對外（單一公網 IP 多 port）：443→nginx(ICS mTLS)、8089/8446→takserver（現場 ATAK）；8443 admin 不轉發。
+#
+# ⚠ 前置 1（build）：本機若在 OneDrive 同步路徑 build 會失敗（invalid file request）→ 見 issue #300 /
+#                    deploy/build-env.md，先把 repo 弄到非同步路徑（C:\dev）再 build。
+# ⚠ 前置 2（TAK release）：tak-server 需官方包解壓到 ../tak-server/release/（見 deploy/tak-server/README）。
+# ⚠ 前置 3（憑證）：step-ca 簽 nginx server cert 由 ca-bootstrap 自動；TAK server cert + ICS→TAK client
+#                    cert 需先跑 ../tak-server/pki/issue-tak-certs.sh，產物放 ./tak-certs/（見 README）。
+name: ics-prod
+
+services:
+  # ── ICS 核心（永遠在；複用 ../ics-validation/mtls 的 bootstrap/nginx 腳本）──────────
+  step-ca:
+    image: smallstep/step-ca:latest        # TODO 正式版釘 digest（供應鏈）
+    restart: unless-stopped
+    environment:
+      - DOCKER_STEPCA_INIT_NAME=ICS mTLS CA
+      - DOCKER_STEPCA_INIT_DNS_NAMES=step-ca,localhost
+      - DOCKER_STEPCA_INIT_PROVISIONER_NAME=ics
+      - DOCKER_STEPCA_INIT_PASSWORD=${STEP_CA_PASSWORD:?STEP_CA_PASSWORD 必須設定（見 .env.example）}
+    volumes:
+      - ca-data:/home/step
+    networks: [icsnet]
+
+  ca-bootstrap:
+    image: smallstep/step-cli:latest
+    user: root
+    depends_on:
+      step-ca:
+        condition: service_healthy
+    environment:
+      - STEP_CA_URL=https://step-ca:9000
+      - STEP_CA_PROVISIONER=ics
+      - STEP_CA_PASSWORD=${STEP_CA_PASSWORD:?STEP_CA_PASSWORD 必須設定}
+      - ICS_SERVER_SANS=${ICS_SERVER_SANS:-}   # 公網 IP/網域寫進 nginx server cert SAN（空白分隔）
+    volumes:
+      - ca-data:/ca:ro
+      - pki:/pki
+      - ca-share:/share
+      - ../ics-validation/mtls/ca-bootstrap.sh:/ca-bootstrap.sh:ro
+    entrypoint: ["sh", "/ca-bootstrap.sh"]
+    networks: [icsnet]
+    restart: "no"
+
+  ics-command:
+    image: ics-command:dev                  # build：見 deploy/build-env.md（OneDrive 前置）
+    restart: unless-stopped
+    depends_on:
+      ca-bootstrap:
+        condition: service_completed_successfully
+    environment:
+      - ICS_ENV=prod
+      - ICS_MTLS_REQUIRED=${ICS_MTLS_REQUIRED:-true}
+      - ICS_BEHIND_PROXY=true
+      - ICS_IDLE_TIMEOUT_SECONDS=86400
+      - STEP_CA_URL=https://step-ca:9000
+      - STEP_CA_PROVISIONER=ics
+      - STEP_CA_PROVISIONER_PASSWORD_FILE=/ca-share/prov.pass
+      - STEP_CA_FINGERPRINT_FILE=/ca-share/fingerprint
+      - STEP_CLIENT_CERT_DURATION=${STEP_CLIENT_CERT_DURATION:-23h}
+      - ICS_PROXY_SHARED_SECRET=${ICS_PROXY_SHARED_SECRET:?ICS_PROXY_SHARED_SECRET 必須設定（見 .env.example）}
+      # ── TAK 整合（toggle；純 ICS delivery 下全空、TAK_ENABLED=false）──────────────
+      - TAK_ENABLED=${TAK_ENABLED:-false}
+      - TAK_COT_URL=${TAK_COT_URL:-}              # tls://takserver:8089（容器內網）
+      - TAK_CLIENT_CERT=${TAK_CLIENT_CERT:-}      # /tak-certs/...（step-ca 簽，fullchain）
+      - TAK_CLIENT_KEY=${TAK_CLIENT_KEY:-}
+      - TAK_CAFILE=${TAK_CAFILE:-}                # step-ca root，驗 TAK server cert
+      - TAK_MARTI_URL=${TAK_MARTI_URL:-}          # https://takserver:8443
+      - TAK_MARTI_READ_CERT=${TAK_MARTI_READ_CERT:-}
+      - TAK_MARTI_READ_KEY=${TAK_MARTI_READ_KEY:-}
+      - TAK_MARTI_WRITE_CERT=${TAK_MARTI_WRITE_CERT:-}
+      - TAK_MARTI_WRITE_KEY=${TAK_MARTI_WRITE_KEY:-}
+    volumes:
+      - ics-data:/app/data
+      - ics-tiles:/app/static/tiles:ro
+      - ca-share:/ca-share:ro
+      - ./tak-certs:/tak-certs:ro             # ICS→TAK client/marti 憑證（issue-tak-certs.sh 產）
+    networks: [icsnet]
+    # 不對 host publish；只經 nginx（+ X-Proxy-Auth 共享密鑰）
+
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    depends_on:
+      ca-bootstrap:
+        condition: service_completed_successfully
+      ics-command:
+        condition: service_started
+    ports:
+      - "443:443"                            # ICS 儀表板對外（mTLS）
+    environment:
+      - ICS_PROXY_SHARED_SECRET=${ICS_PROXY_SHARED_SECRET:?ICS_PROXY_SHARED_SECRET 必須設定}
+      - NGINX_ENVSUBST_FILTER=ICS_PROXY_SHARED_SECRET
+    volumes:
+      - ../ics-validation/mtls/nginx.mtls.conf:/etc/nginx/templates/default.conf.template:ro
+      - pki:/pki:ro
+    networks: [icsnet]
+
+  # 按需發 per-device client 憑證：docker compose run --rm -e CERT_CN=commander-phone-01 issue-client
+  issue-client:
+    image: smallstep/step-cli:latest
+    user: root
+    profiles: ["tools"]
+    depends_on:
+      ca-bootstrap:
+        condition: service_completed_successfully
+    environment:
+      - CERT_CN=${CERT_CN:-}
+      - STEP_CA_URL=https://step-ca:9000
+      - STEP_CA_PROVISIONER=ics
+      - ICS_CLIENT_P12_PASS=${ICS_CLIENT_P12_PASS:?ICS_CLIENT_P12_PASS 必須設定}
+    volumes:
+      - ca-share:/share:ro
+      - ./out:/out
+      - ../ics-validation/mtls/issue-client.sh:/issue-client.sh:ro
+    entrypoint: ["sh", "/issue-client.sh"]
+    networks: [icsnet]
+
+  # ── TAK（profiles: ["tak"]；純 ICS delivery 不啟用）──────────────────────────────
+  tak-database:
+    profiles: ["tak"]
+    build:
+      context: ../tak-server/release
+      dockerfile: docker/Dockerfile.takserver-db
+    image: ics-takserver-db:5.7
+    container_name: tak-database
+    hostname: tak-database                  # CoreConfig 綁 jdbc://tak-database，勿改
+    restart: unless-stopped
+    shm_size: "512m"
+    entrypoint: ["/bin/bash", "-c", "chown -R postgres:postgres /var/lib/postgresql/15 && exec /opt/tak/db-utils/configureInDocker.sh"]
+    volumes:
+      - ../tak-server/release/tak:/opt/tak
+      - tak-db-data:/var/lib/postgresql/15/data
+    networks: [icsnet]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U martiuser -d cot || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 120s
+
+  takserver:
+    profiles: ["tak"]
+    build:
+      context: ../tak-server/release
+      dockerfile: docker/Dockerfile.takserver
+    image: ics-takserver:5.7
+    container_name: takserver
+    hostname: takserver                     # ics-command 以此名連 :8089 / :8443
+    restart: unless-stopped
+    depends_on:
+      tak-database:
+        condition: service_healthy
+    env_file: ../tak-server/.env            # TAK server 自身設定（見 deploy/tak-server/README）
+    volumes:
+      - ../tak-server/release/tak:/opt/tak
+    ports:
+      - "${TAK_STREAMING_PORT:-8089}:8089"   # CoT 串流（現場 ATAK；對外轉發）
+      - "${TAK_CERTENROLL_PORT:-8446}:8446"  # 憑證註冊（managed cert 才需；對外轉發）
+      # 8443 admin web：刻意不對外（留內網/本機管理，減攻擊面）。需要時自行加：
+      # - "${TAK_WEBUI_PORT:-8443}:8443"
+    networks: [icsnet]
+
+volumes:
+  pki:
+  ca-data:
+  ca-share:
+  tak-db-data:
+  ics-data:
+    external: true                          # 沿用既有 ics-data（runtime 資料；勿隨棧刪）
+  ics-tiles:
+    external: true                          # provisioned 底圖（taiwan.pmtiles）
+
+networks:
+  icsnet:
