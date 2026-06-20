@@ -4102,15 +4102,15 @@
       "name": ""
     },
     "body": "> 來源：2026-06-20 前端駭客檢測（攻法③/④）+ 早前稽核 M8。威脅依據 threat_model §8.7。\n\n## 檢測成果\n`core/security_headers.py`：只有 commander_dashboard.html / aar.html 真 enforce；admin_backups.html / scenario_designer.html 等落 **Report-Only + `script-src 'self' 'unsafe-inline'`** → 這些頁若有 XSS 注入點，CSP 只回報不擋。style-src 全頁 `unsafe-inline`。\n\n## 業界類別 / 標準解\nOWASP A05 / CSP Level 2-3。標準解＝全頁 enforce、移除 script `unsafe-inline`（改 nonce / 外部 JS）、收斂 style `unsafe-inline`。這是「攻法③ 即使屬性突破也不執行」的主防線。\n\n## DoD\nadmin/designer 類頁升 enforce、移除 script unsafe-inline、CSP report 監控、測試、關閉。",
-    "closedAt": null,
+    "closedAt": "2026-06-20T21:34:57Z",
     "comments": [],
     "createdAt": "2026-06-20T13:20:34Z",
     "labels": [],
     "milestone": null,
     "number": 294,
-    "state": "OPEN",
+    "state": "CLOSED",
     "title": "fix(security): CSP 全頁 enforce + 移除 script-src unsafe-inline（關掉 report-only XSS 執行窗）",
-    "updatedAt": "2026-06-20T13:20:34Z",
+    "updatedAt": "2026-06-20T21:34:57Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/294"
   },
   {

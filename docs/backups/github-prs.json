@@ -4313,5 +4313,26 @@
     "title": "fix(security): #292 roster _esc 完整跳脫含引號（屬性脈絡 XSS）",
     "updatedAt": "2026-06-20T13:55:53Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/297"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "紅隊前端檢測（threat_model §8.7.1）。**reality check 改變方向**：原 #294 想 CSP-enforce report-only 頁，但盤點發現那 4 頁（qr_scanner / scenario_designer / icon_preview / admin_backups）在 prod **無 workflow 可達**（全 repo 無連結；admin_backups 連結僅 dev 導覽頁、被 prod redirect 蓋掉；prod 備份走 systemd ics-backup）。prod 真正在用的頁（commander_dashboard / aar）早已 enforce。\n\n→ 正解＝**不烤進 prod image（減攻擊面）**，而非硬化死頁。\n\n- `.dockerignore` 排除 4 孤兒頁 → prod image 不服務 → 含 qr_scanner 未跳脫 QR innerHTML sink 一併消失。dev 仍保留。admin_backups 待整合進 admin 設定頁後重來。\n- 附帶修：原 `data/   # 行內註解` 的行內 `#` 非註解 → 使 `data/`、`static/tiles/` 排除失效；改註解獨立成行恢復生效。\n- test_deploy_setup 斷言鎖住。**deploy 測試 19 passed。**\n\n備註：docker build 本機實證受阻於 OneDrive 雲端 placeholder（`invalid file request`，移除 .dockerignore 亦重現＝環境問題、非本改動），另記。\n\nCloses #294\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+    "closedAt": "2026-06-20T21:34:56Z",
+    "comments": [],
+    "createdAt": "2026-06-20T21:16:40Z",
+    "headRefName": "fix/issue-294-csp-enforce",
+    "labels": [],
+    "mergedAt": "2026-06-20T21:34:56Z",
+    "number": 298,
+    "state": "MERGED",
+    "title": "fix(security): #294 prod image 排除不用的孤兒 HTML 頁（減攻擊面）",
+    "updatedAt": "2026-06-20T21:34:59Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/298"
   }
 ]
