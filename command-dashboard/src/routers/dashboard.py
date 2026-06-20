@@ -17,6 +17,7 @@ from repositories.audit_repo import get_audit_log
 from repositories.snapshot_repo import get_latest_snapshot
 from services.dashboard_service import build_dashboard
 from services.exercise_service import resolve_scope
+from auth.service import check_session
 
 router = APIRouter(tags=["儀表板"])
 
@@ -67,15 +68,17 @@ def version():
 
 
 @router.get("/api/health", tags=["系統"])
-def health():
+def health(request: Request):
+    """伺服器健康（狀態燈用，未登入亦可呼叫）。
+    §8.6 收口：**未登入只回粗略狀態**(status + db_writable，燈點判斷所需)；
+    **db_path / 磁碟 / DB 延遲 / schema 等運維細節只給已登入者**，避免對外洩漏部署資訊。
+    （前端燈輪詢 cop.js 有 session 即帶 X-Session-Token → 取得完整 tooltip。）"""
     db_path = Path(DB_PATH)
-    disk_free_mb = _disk_free_mb(db_path.parent)
-    disk_free_pct = _disk_free_pct(db_path.parent)
     db_writable = _db_writable(db_path)
     first_run_required = _first_run_required()
+    disk_free_pct = _disk_free_pct(db_path.parent)
     # initializing 狀態跳過 DB 延遲與 schema 查詢，避免並發 DB 連線造成 health 超時
     db_lat_ms = None if first_run_required else _db_latency_ms(db_path)
-    schema_version = None if first_run_required else _schema_version(db_path)
 
     status = "ok"
     if first_run_required:
@@ -87,17 +90,26 @@ def health():
     elif db_lat_ms is not None and db_lat_ms > HEALTH_DB_LATENCY_DEGRADED_MS:
         status = "degraded"
 
-    return {
+    # 未登入：燈點所需的最小集合（不洩漏運維細節）
+    resp = {
         "status": status,
-        "version": APP_VERSION,
-        "db_path": str(db_path),
         "db_writable": db_writable,
-        "schema_version": schema_version,
-        "disk_free_mb": disk_free_mb,
-        "disk_free_pct": disk_free_pct,
-        "db_latency_ms": db_lat_ms,
+        "version": APP_VERSION,
         "timestamp": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
     }
+    # 已登入（帶有效 session token）才附詳細運維數據
+    token = request.headers.get("X-Session-Token")
+    if token:
+        sess, failure = check_session(token, touch=False)
+        if sess and not failure:
+            resp.update({
+                "db_path":       str(db_path),
+                "schema_version": None if first_run_required else _schema_version(db_path),
+                "disk_free_mb":  _disk_free_mb(db_path.parent),
+                "disk_free_pct": disk_free_pct,
+                "db_latency_ms": db_lat_ms,
+            })
+    return resp
 
 
 @router.get("/api/status", tags=["系統"])
