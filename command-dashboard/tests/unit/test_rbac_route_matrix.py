@@ -55,6 +55,7 @@ SYSADMIN GET    /api/admin/status
 SYSADMIN POST   /api/admin/suspend-all
 SYSADMIN GET    /api/admin/user-data-backups
 SYSADMIN POST   /api/admin/user-data-backups
+SYSADMIN GET    /api/admin/user-data-backups/{name}/download
 SYSADMIN GET    /api/admin/user-data-backups/{name}/manifest
 COMMAND  GET    /api/ai/export/{exercise_id}
 WRITE    POST   /api/ai/recommend

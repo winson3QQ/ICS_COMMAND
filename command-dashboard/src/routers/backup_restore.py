@@ -72,20 +72,46 @@ def trigger_user_data_backup(request: Request):
 
 @router.get("/user-data-backups")
 def list_user_data_backups(request: Request):
-    """列出整包備份（最新在前）。pre-restore-* 標 is_pre_restore。"""
+    """列出整包備份（最新在前）+ 解密讀 manifest 帶出 trigger / 演習（清單直接顯示，
+    免逐筆點 manifest）。演習名加密藏在 manifest，僅 sysadmin 已登入時即時解密讀出，
+    不落明文於磁碟（保 at-rest）。單筆解密失敗（外來/損毀檔）→ 仍列出，trigger=None。"""
     _check_system_admin(request)
     items = []
     if BACKUP_DIR.exists():
         for p in BACKUP_DIR.iterdir():
-            if p.is_file() and p.name.endswith(_VALID_SUFFIX):
-                st = p.stat()
-                items.append({
-                    "name": p.name,
-                    "size_bytes": st.st_size,
-                    "is_pre_restore": p.name.startswith("pre-restore-"),
-                })
+            if not (p.is_file() and p.name.endswith(_VALID_SUFFIX)):
+                continue
+            item = {
+                "name": p.name,
+                "size_bytes": p.stat().st_size,
+                "is_pre_restore": p.name.startswith("pre-restore-"),
+                "trigger": None,
+                "exercise": None,
+            }
+            try:
+                m = uds.read_manifest(p)
+                item["trigger"] = m.get("trigger")
+                ex = m.get("exercise")
+                item["exercise"] = ex.get("name") if isinstance(ex, dict) else None
+            except Exception:  # 損毀/外來/舊格式檔仍列出，只是無 trigger/演習
+                pass
+            items.append(item)
     items.sort(key=lambda x: x["name"], reverse=True)
     return {"backups": items, "total": len(items), "backup_dir": str(BACKUP_DIR)}
+
+
+@router.get("/user-data-backups/{name}/download")
+def download_backup(name: str, request: Request):
+    """下載加密備份檔（.tar.gz.enc）給 admin 存到 USB / 異地保存。
+
+    檔案本身已 Fernet 加密；下載者仍需 BACKUP_KEY 才能解，外洩風險受加密保護。
+    """
+    from fastapi.responses import FileResponse
+
+    _check_system_admin(request)
+    path = _resolve(name)
+    audit("admin", None, "user_data_backup_downloaded", "system", name, {"size_bytes": path.stat().st_size})
+    return FileResponse(path, media_type="application/octet-stream", filename=path.name)
 
 
 @router.get("/user-data-backups/{name}/manifest")

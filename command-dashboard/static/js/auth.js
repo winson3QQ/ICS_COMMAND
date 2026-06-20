@@ -850,7 +850,7 @@ function _applyAdminTabVisibility() {
 export function admShowTab(tab) {
   if (!_isSysadminSession() && !['list','add'].includes(tab)) tab = 'list';
   _applyAdminTabVisibility();
-  const tabs = ['list','add','pi','log','sys'];
+  const tabs = ['list','add','pi','log','data','sys'];
   document.querySelectorAll('.adm-tab').forEach((t, i) => {
     t.classList.toggle('active', tabs[i] === tab);
   });
@@ -859,6 +859,7 @@ export function admShowTab(tab) {
   if (tab === 'add') admShowAddForm();
   if (tab === 'pi') admLoadPiNodes();
   if (tab === 'log') admLoadLog();
+  if (tab === 'data') admShowData();
   if (tab === 'sys') admShowSys();
 }
 
@@ -889,20 +890,30 @@ export function admShowSys() {
         <button class="login-btn" data-action="adm-change-pin" style="margin-top:4px;">更改 Admin PIN</button>
         <div id="adm-sys-warn" style="font-size:12px;color:var(--red);min-height:16px;"></div>
       </div>
-    </div>
-    <div style="margin-bottom:24px;border-top:1px solid var(--border);padding-top:16px;">
-      <div style="font-size:13px;font-weight:600;margin-bottom:8px;color:var(--text);">💾 整包資料備份 / 還原（P1-12b）</div>
-      <div style="font-size:11px;color:var(--text2);margin-bottom:10px;line-height:1.6;max-width:420px;">
+    </div>`;
+  _admLoadTakConn();
+}
+
+// ── P1-12b（#228）「備份／重設」tab（in-dashboard，取代 orphaned admin_backups.html）──
+// 端點走 _check_system_admin（session）；authFetch 自帶 X-Session-Token。
+
+export function admShowData() {
+  el('adm-panel-data').innerHTML = `
+    <div style="margin-bottom:24px;">
+      <div style="font-size:13px;font-weight:600;margin-bottom:8px;color:var(--text);">💾 整包資料備份 / 還原</div>
+      <div style="font-size:11px;color:var(--text2);margin-bottom:10px;line-height:1.6;max-width:440px;">
         備份涵蓋整個 <code>data/</code>（DB + map_config + 上傳檔），加密含 manifest。
-        演習歸檔 / 重設前系統會自動備份。<span style="color:var(--text3);">需設定 BACKUP_KEY（部署層）。</span>
+        演習歸檔 / 重設前系統會自動備份。<span style="color:var(--text3);">需設定 BACKUP_KEY（部署層）。</span><br>
+        <b>備份到 USB / 異地</b>：按該筆的「下載」存成 <code>.tar.gz.enc</code>（已加密，需 BACKUP_KEY 才能解），再複製到隨身碟。
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
         <button class="login-btn" data-action="admBackupNow" style="max-width:160px;">立即整包備份</button>
         <button class="login-btn" data-action="admRefreshBackups" style="max-width:120px;background:var(--bg3);">重新整理</button>
       </div>
       <div id="adm-backup-list" style="margin-top:10px;font-size:11px;"></div>
-      <div style="margin-top:12px;">
-        <div style="font-size:12px;color:var(--text2);margin-bottom:6px;">⤴ 還原（覆蓋當前 data/；先自動備份當前；有進行中演習則拒絕）</div>
+      <div id="adm-backup-dir" style="margin-top:6px;font-size:10px;color:var(--text3);"></div>
+      <div style="margin-top:14px;">
+        <div style="font-size:12px;color:var(--text2);margin-bottom:6px;">⤴ 還原（覆蓋當前 data/；先自動備份當前；有進行中演習則拒絕；還原後需重啟服務）</div>
         <input id="adm-restore-file" type="file" accept=".enc" style="font-size:11px;max-width:300px;">
         <button class="login-btn" data-action="admRestore" style="background:var(--red);color:#fff;border:none;max-width:140px;margin-top:4px;">上傳並還原</button>
       </div>
@@ -911,24 +922,33 @@ export function admShowSys() {
     <div style="border-top:1px solid var(--border);padding-top:16px;">
       <div style="font-size:13px;font-weight:600;margin-bottom:8px;color:var(--red);">⚠ 重設指揮部資料庫</div>
       <div style="font-size:11px;color:var(--text2);margin-bottom:12px;line-height:1.6;">
-        清除所有快照、事件、裁示、Pi 批次資料。<br>
+        清除所有快照、事件、裁示、演習、COP、Pi 批次資料。<br>
         <b>帳號和 Pi 節點註冊不受影響</b>，Pi 端資料也不受影響。<br>
+        <span style="color:var(--yellow);">重設只清資料庫，<b>不會刪上方的備份檔</b>；清空前會自動備份當前。</span><br>
         <span style="color:var(--red);">此操作無法復原。</span>
       </div>
       <button class="login-btn" data-action="confirmResetDB"
               style="background:var(--red);color:#fff;border:none;max-width:320px;">重設指揮部資料庫</button>
     </div>`;
-  _admLoadTakConn();
   admRefreshBackups();
 }
-
-// ── P1-12b（#228）整包資料備份 / 還原（in-dashboard，取代 orphaned admin_backups.html）──
-// 端點走 _check_system_admin（session）；authFetch 自帶 X-Session-Token。
 
 function _fmtBytes(n) {
   if (n < 1024) return n + ' B';
   if (n < 1048576) return (n / 1024).toFixed(1) + ' KB';
   return (n / 1048576).toFixed(1) + ' MB';
+}
+
+function _triggerLabel(b) {
+  if (b.is_pre_restore) return '<span style="color:var(--yellow);">還原前</span>';
+  switch (b.trigger) {
+    case 'archive':  return '<span style="color:var(--green);">演習歸檔</span>';
+    case 'manual':   return '<span style="color:var(--text);">手動</span>';
+    case 'shutdown': return '<span style="color:var(--text2);">關機</span>';
+    case 'pre-reset-db':
+    case 'pre-reset-exercise': return '<span style="color:var(--yellow);">重設前</span>';
+    default: return '<span style="color:var(--text3);">整包</span>';
+  }
 }
 
 export async function admRefreshBackups() {
@@ -938,19 +958,42 @@ export async function admRefreshBackups() {
     const r = await authFetch(API_BASE + '/api/admin/user-data-backups');
     if (!r.ok) { box.innerHTML = '<span style="color:var(--text3);">無法載入（需系統管理員）</span>'; return; }
     const d = await r.json();
+    const dir = el('adm-backup-dir');
+    if (dir) dir.textContent = '伺服器備份目錄：' + (d.backup_dir || '—');
     if (!d.backups.length) { box.innerHTML = '<span style="color:var(--text3);">（尚無整包備份）</span>'; return; }
-    box.innerHTML = d.backups.map(b => {
-      const kind = b.is_pre_restore
-        ? '<span style="color:var(--yellow);">還原前</span>'
-        : '<span style="color:var(--green);">整包</span>';
+    box.innerHTML = `<div style="display:flex;gap:8px;color:var(--text3);font-weight:600;padding:2px 0;border-bottom:1px solid var(--border);">
+        <span style="flex:1;">檔名</span><span style="width:64px;">觸發</span><span style="width:110px;">演習</span>
+        <span style="width:60px;text-align:right;">大小</span><span style="width:130px;"></span>
+      </div>` + d.backups.map(b => {
+      const ex = b.exercise ? _escAudit(b.exercise) : '<span style="color:var(--text3);">—</span>';
       return `<div style="display:flex;gap:8px;align-items:center;padding:3px 0;border-bottom:1px solid var(--border);">
         <span style="flex:1;word-break:break-all;">${_escAudit(b.name)}</span>
-        <span>${kind}</span><span style="color:var(--text3);">${_fmtBytes(b.size_bytes)}</span>
-        <button class="login-btn" data-action="admPreviewBackup" data-name="${_escAudit(b.name)}"
-                style="max-width:90px;background:var(--bg3);font-size:10px;padding:2px 6px;">manifest</button>
+        <span style="width:64px;">${_triggerLabel(b)}</span>
+        <span style="width:110px;word-break:break-all;">${ex}</span>
+        <span style="width:60px;text-align:right;color:var(--text3);">${_fmtBytes(b.size_bytes)}</span>
+        <span style="width:130px;display:flex;gap:4px;">
+          <button class="login-btn" data-action="admPreviewBackup" data-name="${_escAudit(b.name)}"
+                  style="background:var(--bg3);font-size:10px;padding:2px 6px;">manifest</button>
+          <button class="login-btn" data-action="admDownloadBackup" data-name="${_escAudit(b.name)}"
+                  style="background:var(--bg3);font-size:10px;padding:2px 6px;">下載</button>
+        </span>
       </div>`;
     }).join('');
   } catch { box.innerHTML = '<span style="color:var(--red);">載入失敗</span>'; }
+}
+
+// 下載加密備份檔（存 USB / 異地）。authFetch 取檔 → blob → 觸發瀏覽器下載。
+export async function admDownloadBackup(name) {
+  try {
+    const r = await authFetch(API_BASE + '/api/admin/user-data-backups/' + encodeURIComponent(name) + '/download');
+    if (!r.ok) { alert('下載失敗（' + r.status + '）'); return; }
+    const blob = await r.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  } catch (e) { alert('下載錯誤：' + e.message); }
 }
 
 export async function admBackupNow() {
