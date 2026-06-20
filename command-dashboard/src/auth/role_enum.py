@@ -118,6 +118,13 @@ def allowed_roles_for(method: str, path: str) -> frozenset[str] | None:
     if path.startswith("/api/exercises/"):
         # 刪除（級聯清資料）破壞性最高 → 限 sysadmin；其餘（detail/aar/activate/archive/status）指揮層。
         return SYSADMIN_ONLY if method == "DELETE" else COMMAND_ROLES
+    # #287 H2：TTX inject 編排（建 inject / push 事件·決策·snapshot 進場 / 載情境）＝演習指揮層
+    # 活動；inject 為「待推送的演習腳本」，參演的 operator/observer 不應預 see（會破壞演習）。
+    # 原本無此 case → 落預設 GET=READ/POST=WRITE，使 observer 讀任意場 inject、operator 注入
+    # 任意場（含已歸檔）→ broken access control + 跨場越權。比照 /api/exercises/ 鎖 COMMAND_ROLES：
+    # COMMAND 本就可跨場編排（doctrine），故 exercise_id 吃 path 參數無需另做 resolve_scope。
+    if path.startswith("/api/ttx/"):
+        return COMMAND_ROLES
     if path.startswith("/api/sync/") and method != "GET":
         return COMMAND_ROLES
     if path.startswith("/api/tak/share/"):

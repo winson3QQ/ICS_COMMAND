@@ -12,7 +12,7 @@ set -e
 CA="${STEP_CA_URL:-https://step-ca:9000}"
 PROV="${STEP_CA_PROVISIONER:-ics}"
 CN="${CERT_CN:?需設 CERT_CN（裝置憑證 CN，例 commander-phone-01）}"
-P12_PASS="${ICS_CLIENT_P12_PASS:-icsclient}"
+P12_PASS="${ICS_CLIENT_P12_PASS:?需設 ICS_CLIENT_P12_PASS（client p12 匯入密碼，勿用預設）}"  # #290 H6
 OUT="/out/$CN"
 
 [ -f /share/fingerprint ] || { echo "✗ ca-share 未就緒，先 docker compose up ca-bootstrap" >&2; exit 1; }

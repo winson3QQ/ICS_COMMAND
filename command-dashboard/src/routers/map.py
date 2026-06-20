@@ -1,5 +1,6 @@
 import json
 import sqlite3
+import uuid
 from pathlib import Path
 
 from fastapi import APIRouter, File, HTTPException, Request, UploadFile
@@ -204,14 +205,21 @@ async def save_event_taxonomy(request: Request):
 @router.post("/api/map/upload-image", tags=["system"])
 async def upload_map_image(request: Request, file: UploadFile = File(...)):
     # session 由 middleware 強制，不必再 access — 原 `request.state.session` 是 B018 dead code
-    filename = file.filename or "map.jpg"
-    ext = filename.rsplit(".", 1)[-1].lower()
-    if ext not in {"jpg", "jpeg", "png", "gif", "webp", "svg"}:
+    # 安全（#286 H1）：原本直接用 client 給的 file.filename 拼進 STATIC_DIR → path traversal
+    # / 絕對路徑 / 覆寫既有 JS·HTML（→ 儲存型 XSS·全站接管）。修法：副檔名白名單（移除 svg，
+    # 可內含 <script>）+ **server 端生成 uuid 檔名**，攻擊者對路徑與檔名零控制權；resolve()
+    # + is_relative_to 為縱深防禦（uuid hex 本就逃不出，雙保險）。
+    raw = file.filename or "map.jpg"
+    ext = raw.rsplit(".", 1)[-1].lower() if "." in raw else ""
+    if ext not in {"jpg", "jpeg", "png", "gif", "webp"}:
         raise HTTPException(400, f"invalid image extension: {ext}")
+    safe_name = f"map_upload_{uuid.uuid4().hex}.{ext}"
+    save_path = (STATIC_DIR / safe_name).resolve()
+    if not save_path.is_relative_to(STATIC_DIR.resolve()):
+        raise HTTPException(400, "invalid filename")
     content = await file.read()
-    save_path = STATIC_DIR / filename
     save_path.write_bytes(content)
-    return {"ok": True, "filename": filename}
+    return {"ok": True, "filename": safe_name}
 
 
 @router.get("/cert")

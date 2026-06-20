@@ -76,44 +76,54 @@ def get_chain(event_id: str, request: Request, exercise_id: int | None = None):
     return chain
 
 
+# #288 H3：寫入端點與讀取（get_ev/get_chain）對稱套 resolve_scope——operator/observer 被鎖
+# 當前 active 場（帶任意 exercise_id 也被 resolve_scope 忽略），commander 可顯式帶歷史場；
+# 前端不帶 exercise_id → 預設當前場（日常寫入不受影響）。repo 層以 scope_clause 把目標 row
+# 限在 scope 內，跨演習 event → 視同不存在（404），堵 IDOR + 跨場越權。
 @router.patch("/{event_id}")
-def patch_ev(event_id: str, body: EventPatch):
+def patch_ev(event_id: str, body: EventPatch, request: Request, exercise_id: int | None = None):
+    scope = resolve_scope(request.state.session, exercise_id)
     updates = {}
     if body.assigned_unit is not None:
         updates["assigned_unit"] = body.assigned_unit or None
     if body.location_desc is not None:
         updates["location_desc"] = body.location_desc
     if updates:
-        patch_event(event_id, updates)
+        if not patch_event(event_id, updates, scope):
+            raise HTTPException(404, "event not found")
         log.info("event_updated", msg="事件更新", detail={"event_id": event_id, "fields": list(updates.keys())})
     return {"ok": True}
 
 
 @router.patch("/{event_id}/deadline")
-def patch_deadline(event_id: str, body: DeadlinePatch):
-    events = get_events()
+def patch_deadline(event_id: str, body: DeadlinePatch, request: Request, exercise_id: int | None = None):
+    scope = resolve_scope(request.state.session, exercise_id)
+    # limit 放大避免 scope 內 event 落在預設 50 筆外造成誤 404
+    events = get_events(limit=100000, exercise_id=scope)
     ev = next((e for e in events if e["id"] == event_id), None)
     if not ev:
         raise HTTPException(404, "event not found")
     current = ev.get("response_deadline")
     base = datetime.fromisoformat(current.replace("Z", "+00:00")) if current else datetime.now(UTC)
     new_dl = (base + timedelta(minutes=body.delta_minutes)).strftime("%Y-%m-%dT%H:%M:%SZ")
-    patch_event(event_id, {"response_deadline": new_dl})
+    patch_event(event_id, {"response_deadline": new_dl}, scope)
     return {"ok": True, "new_deadline": new_dl}
 
 
 @router.patch("/{event_id}/status")
-def patch_status(event_id: str, status: str, operator: str):
+def patch_status(event_id: str, status: str, operator: str, request: Request, exercise_id: int | None = None):
+    scope = resolve_scope(request.state.session, exercise_id)
     try:
-        update_event_status(event_id, status, operator)
+        update_event_status(event_id, status, operator, scope)
     except ValueError as e:
         raise HTTPException(400, str(e)) from e
     return {"ok": True}
 
 
 @router.post("/{event_id}/notes")
-def add_note(event_id: str, body: EventNoteIn):
+def add_note(event_id: str, body: EventNoteIn, request: Request, exercise_id: int | None = None):
+    scope = resolve_scope(request.state.session, exercise_id)
     try:
-        return add_event_note(event_id, body.text, body.operator)
+        return add_event_note(event_id, body.text, body.operator, scope)
     except ValueError as e:
         raise HTTPException(404, str(e)) from e

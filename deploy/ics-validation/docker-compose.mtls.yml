@@ -19,7 +19,9 @@ services:
       - DOCKER_STEPCA_INIT_NAME=ICS mTLS CA
       - DOCKER_STEPCA_INIT_DNS_NAMES=step-ca,localhost
       - DOCKER_STEPCA_INIT_PROVISIONER_NAME=ics
-      - DOCKER_STEPCA_INIT_PASSWORD=icsprov
+      # #290 H6：CA provisioner 密碼，blast radius 最大（能簽任意 CN 憑證繞 mTLS）→ 不給預設，
+      # 未設即 compose 報錯（fail-closed）。與 ca-bootstrap 的 STEP_CA_PASSWORD 同值。
+      - DOCKER_STEPCA_INIT_PASSWORD=${STEP_CA_PASSWORD:?STEP_CA_PASSWORD 必須設定（見 .env.example，勿用預設）}
     volumes:
       - ca-data:/home/step
     networks: [icsnet]
@@ -35,7 +37,7 @@ services:
     environment:
       - STEP_CA_URL=https://step-ca:9000
       - STEP_CA_PROVISIONER=ics
-      - STEP_CA_PASSWORD=icsprov
+      - STEP_CA_PASSWORD=${STEP_CA_PASSWORD:?STEP_CA_PASSWORD 必須設定（見 .env.example，勿用預設）}  # #290 H6
       # 外網驗證：設你的公網 IP/網域（空白分隔多個）寫進 server 憑證 SAN
       - ICS_SERVER_SANS=${ICS_SERVER_SANS:-}
     volumes:
@@ -66,8 +68,9 @@ services:
       # 驗證棧 CA 預設 maxTLSCertDuration=24h → 用 23h；prod per-customer CA 設 2160h（90 天）
       - STEP_CLIENT_CERT_DURATION=23h
       # #280 紅隊修補：與 nginx 同值的共享密鑰，後端據此判 X-Client-Cert-* 是否真來自 nginx
-      # （防內網直打後端偽造 cert header 繞 mTLS）。prod 務必改隨機（setup.sh 產）。
-      - ICS_PROXY_SHARED_SECRET=${ICS_PROXY_SHARED_SECRET:-ics-stack-proxy-secret-change-me}
+      # （防內網直打後端偽造 cert header 繞 mTLS）。#290 H6：不給預設（公開預設=沒密鑰），
+      # 未設即 compose 報錯（fail-closed）。隨機產法見 .env.example。
+      - ICS_PROXY_SHARED_SECRET=${ICS_PROXY_SHARED_SECRET:?ICS_PROXY_SHARED_SECRET 必須設定（見 .env.example，勿用預設）}
     volumes:
       - ics-data:/app/data
       - ics-tiles:/app/static/tiles:ro
@@ -88,7 +91,7 @@ services:
     environment:
       # #280：nginx 用 envsubst 把 ${ICS_PROXY_SHARED_SECRET} 注入 X-Proxy-Auth；
       # FILTER 限定只替換此變數，不動 nginx 自身 $vars（$remote_addr 等）。
-      - ICS_PROXY_SHARED_SECRET=${ICS_PROXY_SHARED_SECRET:-ics-stack-proxy-secret-change-me}
+      - ICS_PROXY_SHARED_SECRET=${ICS_PROXY_SHARED_SECRET:?ICS_PROXY_SHARED_SECRET 必須設定（見 .env.example）}  # #290 H6
       - NGINX_ENVSUBST_FILTER=ICS_PROXY_SHARED_SECRET
     volumes:
       # 官方 nginx 入口會 envsubst templates/*.template → conf.d/，填入上面的 secret
@@ -110,7 +113,7 @@ services:
       - CERT_CN=${CERT_CN:-}
       - STEP_CA_URL=https://step-ca:9000
       - STEP_CA_PROVISIONER=ics
-      - ICS_CLIENT_P12_PASS=${ICS_CLIENT_P12_PASS:-icsclient}
+      - ICS_CLIENT_P12_PASS=${ICS_CLIENT_P12_PASS:?ICS_CLIENT_P12_PASS 必須設定（client p12 匯入密碼，見 .env.example）}  # #290 H6
     volumes:
       - ca-share:/share:ro
       - ./out:/out

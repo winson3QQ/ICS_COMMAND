@@ -2,7 +2,7 @@ import uuid
 
 from core.database import get_conn
 
-from ._helpers import NULL_SCOPE, audit, now_utc, row_to_dict
+from ._helpers import NULL_SCOPE, audit, now_utc, row_to_dict, scope_clause
 
 
 def create_decision(data: dict, exercise_id: int | None = None) -> dict:
@@ -61,15 +61,17 @@ def decide(decision_id: str, action: str, decided_by: str,
         raise ValueError(f"Invalid action: {action}")
 
     now = now_utc()
+    # #288 H3：scope 併入存在性查詢——跨演習的 decision 視同不存在（router 將回 404）。
+    sc, sp = scope_clause(exercise_id)
     with get_conn() as conn:
-        row = conn.execute("SELECT status FROM decisions WHERE id=?", (decision_id,)).fetchone()
+        row = conn.execute(f"SELECT status FROM decisions WHERE id=?{sc}", [decision_id] + sp).fetchone()
         if not row:
             raise ValueError("Decision not found")
         if row["status"] != "pending":
             raise ValueError(f"Decision already decided: {row['status']}")
         conn.execute(
-            "UPDATE decisions SET status=?, decided_by=?, decided_at=?, execution_note=? WHERE id=?",
-            (action, decided_by, now, execution_note, decision_id))
+            f"UPDATE decisions SET status=?, decided_by=?, decided_at=?, execution_note=? WHERE id=?{sc}",  # nosec B608
+            [action, decided_by, now, execution_note, decision_id] + sp)
 
     audit(decided_by, None, "decision_made", "decisions", decision_id,
           {"action": action}, exercise_id)

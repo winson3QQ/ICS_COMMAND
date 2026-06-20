@@ -22,8 +22,11 @@ def get_dec(request: Request, status: str | None = None, exercise_id: int | None
 
 
 @router.post("/{decision_id}/decide")
-def do_decide(decision_id: str, body: DecideIn):
+def do_decide(decision_id: str, body: DecideIn, request: Request, exercise_id: int | None = None):
+    # #288 H3：與 get_dec 對稱套 resolve_scope——operator/observer 鎖當前場、commander 可帶
+    # 歷史場；跨演習的 decision 在 repo 層視同不存在 → 不可越權裁示他場待裁指令。
+    scope = resolve_scope(request.state.session, exercise_id)
     try:
-        return decide(decision_id, body.action, body.decided_by, body.execution_note)
+        return decide(decision_id, body.action, body.decided_by, body.execution_note, scope)
     except ValueError as e:
         raise HTTPException(400, str(e)) from e

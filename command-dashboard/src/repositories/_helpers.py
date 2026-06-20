@@ -22,6 +22,25 @@ from core.database import get_conn
 NULL_SCOPE = object()
 
 
+def scope_clause(exercise_id, col: str = "exercise_id") -> tuple[str, list]:
+    """三態 exercise scope 的 SQL 片段（與 get_events/get_decisions 的 WHERE 一致）。
+
+    回傳 `(sql_fragment, params)`，sql_fragment 以 ` AND ...` 開頭可直接接在既有 WHERE 後：
+      - `None`       → `("", [])`              不過濾（內部 caller）
+      - `NULL_SCOPE` → `(" AND col IS NULL", [])`
+      - `int`        → `(" AND col=?", [id])`
+
+    #288 H3：用於「寫入前驗證目標 row 落在 caller 的 resolve_scope 內」，把跨演習 IDOR
+    收斂到與讀取同一條邊界——row 不在 scope 即視同不存在（router → 404），且為同一查詢內
+    原子判斷（無 TOCTOU）。
+    """
+    if exercise_id is None:
+        return "", []
+    if exercise_id is NULL_SCOPE:
+        return f" AND {col} IS NULL", []
+    return f" AND {col}=?", [exercise_id]
+
+
 def now_utc() -> str:
     return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -88,6 +107,12 @@ def audit(
     from core.logging import get_correlation_id
 
     cid = correlation_id if correlation_id is not None else get_correlation_id()
+    # #288 H3：caller 可能傳入 resolve_scope 的三態 sentinel NULL_SCOPE（＝實戰/未分場池）。
+    # 它是 object()，不可直接綁 SQL（sqlite3.ProgrammingError）→ 中央收斂成 None（語意＝
+    # exercise_id NULL）。NULL_SCOPE 僅在「無 active 場」時由 resolve_scope 產生，故轉 None 後
+    # 下方 Model B 查 active 亦回 None，行為一致。所有寫入 caller（events/decisions）受益於此處。
+    if exercise_id is NULL_SCOPE:
+        exercise_id = None
     # GAP-AUDIT-04: hash_prev = prev record canonical hash (NIST AU-9(3))
     sql = """
         INSERT INTO audit_log
