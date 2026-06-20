@@ -1,0 +1,74 @@
+# docker-compose.mtls.yml — #275 wave A：Windows/Docker 全角色 mTLS 端到端驗證棧
+#
+# 目的：在「真正連公網的 Windows/Docker」上驗 mTLS——持證裝置可登入、不持證握手即擋。
+# 與同目錄 docker-compose.yml（非 mTLS 自簽快測）並存；這份才開 ssl_verify_client on。
+#
+# 流程見 mtls/README.md。核心：
+#   1. pki-init（one-shot）：step-ca 離線建 CA + 簽 nginx server 憑證 → pki volume
+#   2. ics-command：ICS_MTLS_REQUIRED=true（cert = AAL2 第二因子）
+#   3. nginx：ssl_verify_client on，CA 鑰不進後端（符 (ii) 離線簽決策）
+services:
+  pki-init:
+    image: smallstep/step-cli:latest
+    user: root                      # 寫 named volume（fresh volume 為 root-owned）
+    environment:
+      - ICS_SERVER_DNS=${ICS_SERVER_DNS:-localhost}
+    volumes:
+      - pki:/pki
+      - ./mtls/pki-init.sh:/pki-init.sh:ro
+    entrypoint: ["sh", "/pki-init.sh"]
+    restart: "no"
+
+  ics-command:
+    image: ics-command:dev
+    restart: unless-stopped
+    environment:
+      - ICS_ENV=prod
+      - ICS_MTLS_REQUIRED=${ICS_MTLS_REQUIRED:-true}   # 驗證時可先 false 做 bootstrap 綁定
+      - ICS_IDLE_TIMEOUT_SECONDS=86400
+    volumes:
+      - ics-data:/app/data
+      - ics-tiles:/app/static/tiles:ro
+    networks: [icsnet]
+    # 不對 host publish；只有同網路的 nginx 進得來（後端只經 nginx 可達）
+
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    depends_on:
+      pki-init:
+        condition: service_completed_successfully
+      ics-command:
+        condition: service_started
+    ports:
+      - "443:443"                   # 唯一對外入口
+    volumes:
+      - ./mtls/nginx.mtls.conf:/etc/nginx/conf.d/default.conf:ro
+      - pki:/pki:ro
+    networks: [icsnet]
+
+  # 簽 per-device client 憑證（一次性，按需跑）：
+  #   docker compose -f docker-compose.mtls.yml run --rm -e CERT_CN=commander-phone-01 issue-client
+  # 產物寫到 host 的 ./out/<CN>/<CN>.p12
+  issue-client:
+    image: smallstep/step-cli:latest
+    user: root
+    profiles: ["tools"]             # 預設不隨 up 起，只在 run 時用
+    environment:
+      - CERT_CN=${CERT_CN:-}
+      - ICS_CLIENT_P12_PASS=${ICS_CLIENT_P12_PASS:-icsclient}
+    volumes:
+      - pki:/pki
+      - ./out:/out
+      - ./mtls/issue-client.sh:/issue-client.sh:ro
+    entrypoint: ["sh", "/issue-client.sh"]
+
+volumes:
+  pki:
+  ics-data:
+    external: true
+  ics-tiles:
+    external: true
+
+networks:
+  icsnet:

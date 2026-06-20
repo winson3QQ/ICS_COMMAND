@@ -153,7 +153,10 @@ def test_mtls_conf_enforces_client_cert():
     assert "ssl_client_certificate ROOT_CA_PATH_PLACEHOLDER;" in conf
     assert "listen 443 ssl;" in conf  # 單埠 443（非舊 8443 tier3）
     assert "8443" not in conf
-    assert "proxy_set_header X-Client-Cert-CN     $ssl_client_s_dn_cn;" in conf
+    # CN 須經 map 從 $ssl_client_s_dn 抽（stock nginx 無 $ssl_client_s_dn_cn，直用會 emerg）
+    assert "map $ssl_client_s_dn $ics_client_cn" in conf
+    assert "$ssl_client_s_dn_cn" not in conf
+    assert "proxy_set_header X-Client-Cert-CN     $ics_client_cn;" in conf
     assert "proxy_set_header X-Client-Cert-Verify $ssl_client_verify;" in conf
 
 

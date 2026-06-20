@@ -21,6 +21,14 @@ upstream command_backend {
     keepalive 32;
 }
 
+# client 憑證 CN 抽取：stock nginx 無「s_dn_cn」式的單欄位變數（用了會 emerg 起不來，
+# 2026-06-20 Docker 實證），只有 $ssl_client_s_dn（RFC2253 全 DN，如 "CN=foo,O=bar"）。
+# 以 map 從全 DN regex 出 CN → $ics_client_cn（map 屬 http context，conf.d 已在 http 內）。
+map $ssl_client_s_dn $ics_client_cn {
+    default "";
+    ~CN=(?<cn>[^,]+) $cn;
+}
+
 # HTTP → HTTPS 強制轉址（與 command.conf 同）
 server {
     listen 80;
@@ -72,7 +80,7 @@ server {
 
         # #275 wave 2 trusted-header：從 nginx 驗證結果注入真值（覆寫 client 自帶 =
         # 等同剝除偽造）。後端據此驗 SUCCESS + CN 綁定帳號為 AAL2 第二因子。
-        proxy_set_header X-Client-Cert-CN     $ssl_client_s_dn_cn;
+        proxy_set_header X-Client-Cert-CN     $ics_client_cn;
         proxy_set_header X-Client-Cert-Verify $ssl_client_verify;
 
         proxy_http_version 1.1;
@@ -89,7 +97,7 @@ server {
         access_log off;
         proxy_pass http://command_backend;
         proxy_set_header Host $host;
-        proxy_set_header X-Client-Cert-CN     $ssl_client_s_dn_cn;
+        proxy_set_header X-Client-Cert-CN     $ics_client_cn;
         proxy_set_header X-Client-Cert-Verify $ssl_client_verify;
     }
 }
