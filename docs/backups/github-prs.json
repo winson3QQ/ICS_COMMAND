@@ -3681,7 +3681,7 @@
     "number": 235,
     "state": "OPEN",
     "title": "feat(backup): P1-12b 整包 data/ 加密備份 + GUI 還原 + 三層觸發 + OP-2/OP-4",
-    "updatedAt": "2026-06-20T23:24:36Z",
+    "updatedAt": "2026-06-20T23:52:21Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/235"
   },
   {

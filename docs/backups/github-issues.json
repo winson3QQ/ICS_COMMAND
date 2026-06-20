@@ -4187,5 +4187,45 @@
     "title": "build(infra): 本機 docker build 受阻於 OneDrive 殘留 cloud reparse point — repo 搬出同步路徑",
     "updatedAt": "2026-06-20T23:16:39Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/300"
+  },
+  {
+    "assignees": [],
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "body": "## 背景\n2026-06-20/21 兩批紅隊為**白箱靜態源碼審查**(讀 code,非對活跑實例實打)。以下殘留**只有黑箱/runtime 才驗得到**,目前僅在 `docs/security-audit/redteam-2026-06-20.md`「需 runtime 確認」記錄,無開單 → 此單收口。\n\n## 待驗(在 Windows/Docker prod,非 Mac/dev)\n1. **#289 H4 — nginx 實際吐的 header**:`curl -kI https://1.34.230.218/` → HSTS / X-Frame-Options / X-Content-Type-Options / Referrer-Policy 都在。\n2. **#289 H4 — TLS cipher/版本**:`nmap --script ssl-enum-ciphers -p 443 <host>` → 只剩 ECDHE+AEAD、TLS1.2/1.3。\n3. **#290 M1 — prod env**:確認 `ICS_PROXY_SHARED_SECRET` 實際非預設/非空。\n4. **黑箱補白箱盲區**:對活靶實打 #286 upload traversal、#288 events/decisions 跨場 IDOR、TTX 越權 → 確認真擋。\n\n## 完成判準\n4 項在 prod 機實測通過,回填 audit log。前置:prod image 可跑(#300)+ deploy/prod。",
+    "closedAt": null,
+    "comments": [],
+    "createdAt": "2026-06-20T23:53:10Z",
+    "labels": [],
+    "milestone": null,
+    "number": 301,
+    "state": "OPEN",
+    "title": "test(security): Windows prod runtime 安全驗證(黑箱) — H4 header/cipher + M1 prod secret + IDOR/traversal 活靶",
+    "updatedAt": "2026-06-20T23:53:10Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/301"
+  },
+  {
+    "assignees": [],
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "body": "## 定位(重要)\n**商業 IP 保護(防抄),非資安。** 前端可讀是 Web 物理定律、藏不掉;安全不依賴藏前端(那是 #292/#294/#296:後端授權+輸出編碼+減攻擊面)。本單只為「讓前端不值得抄」。\n\n## 分層(CP 值序,2026-06-21 討論)\n1. **build step(先做)**:bundle + 砍繁中設計註解 + minify + prod 不出 source map。最大洩漏是註解(送決策脈絡給競品)。工具鏈現成(lockfile 已有 vite/esbuild)。解 ~80% 焦慮。\n2. **選擇性 obfuscate(更硬才做)**:只對核心模組。⚠ 可逆(嚇阻非保險)+ 現場除錯地獄(C2 慎)+ **obfuscator 套件先查中國紅線**(terser/esbuild 可用)。\n3. **值錢邏輯下沉後端**:真護城河,前端只當顯示層,核心留 Python src。\n4. **法律層**:版權+授權+禁逆向;mTLS 已使只有持證客戶載得到前端。\n\n## 完成判準\n至少 ① build step 落地。②③④ 視商用化進度。",
+    "closedAt": null,
+    "comments": [],
+    "createdAt": "2026-06-20T23:53:11Z",
+    "labels": [],
+    "milestone": null,
+    "number": 302,
+    "state": "OPEN",
+    "title": "feat(build): 商用化前端 IP 保護 — build step(砍註解+minify+no-sourcemap)+ 選擇性 obfuscate + 值錢邏輯下沉",
+    "updatedAt": "2026-06-20T23:53:11Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/302"
   }
 ]
