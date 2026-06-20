@@ -259,6 +259,21 @@ Command **信任 TAK Server 轉發的所有 CoT** —— 即使傳輸加密（§
 > **方法論限制**：本批為**白箱 SAST**，未做黑箱實打。runtime 面（H4 nginx 實際 header/cipher、prod env 是否真設 proxy secret、IDOR/traversal 對活靶）仍待 Windows/Docker prod 黑箱驗證（見稽核 log「需 runtime 確認」）。
 > **正面（已查無虞）**：SQLi（全參數化 + 白名單動態欄位/表名）、XXE（defusedxml 三關）、SSRF（`_join_url` 拒絕絕對 URL）、CoT 跨源 uid 覆寫（已守門）、機密無入 git、供應鏈無中國套件。
 
+#### 8.7.1 前端駭客視角 + perimeter（mTLS/VPN/真實IP）防禦對照（2026-06-20）
+
+攻擊者讀「暴露的前端」（mTLS 下＝持證者/被擄裝置/外洩 build）能推出的攻法，與 perimeter 控制的覆蓋對照。**結論：perimeter 關掉「網路層/外部」整面；殘留＝圈內人 + 資料毒化，須 app 層縱深。皆為已知類別、有標準解（無新題）。**
+
+| 攻法 | perimeter（mTLS + VPN前置 + 真實IP還原）擋多少 | 殘留（app 層）→ issue | 業界類別 / 標準解 |
+|---|---|---|---|
+| ① 直打 API 掃 IDOR/越權 | 外部全擋（無證連不到）；縮到持證內部人 | 內部人/被擄裝置仍可掃 → 後端 authz（#286–288 已修）+ 回歸矩陣 #296 | OWASP A01；deny-by-default + 每端點授權 |
+| ② client 翻角色 | 無關（後端認 session，已守） | — | "never trust client"（ASVS V1/V4）|
+| ③ XSS 偷 token | 偷到難重放（cert-bound + IP/24，真實IP還原使 IP 綁定生效）；當場操作不擋 | 輸出編碼 #292 + token httpOnly #293 + CSP #294 | OWASP A03/CWE-79；脈絡編碼 + CSP + httpOnly |
+| ④ CoT 注入毒化（無需帳號） | **擋不住**（毒源與受害者皆圈內） | input_safety + #292 + #294 | A03；輸出編碼 + CSP |
+| ⑤ 鎖死指揮官（DoS） | **大幅改善**：真實IP還原 → 鎖來源不鎖帳號；mTLS → 無證打不到 login | per-source / 高權不硬鎖 #295 | ASVS V2.2 / NIST 800-63B |
+| ⑥ WS scope 探測 | 外部全擋；縮到內部人 | 後端 gate（已守：standing=COMMAND + resolve_scope）| A01 |
+
+> **doctrine（NIST 800-207 zero-trust）**：perimeter 必要但不充分。C2 威脅模型**必含「被擄的合法裝置」**（前線平板被繳獲＝合法憑證落敵手）→ 圈內不可預設信任，① 內部掃與 ③/④ 毒化只有 app 層縱深擋得住。**最高 CP＝先落地 IP 整理（Tailscale 前置 + 真實IP還原，#280），其餘殘留循 #292–296 修。皆標準解，無未解難題。**
+
 ---
 
 ## 9. 審查歷程
@@ -272,3 +287,4 @@ Command **信任 TAK Server 轉發的所有 CoT** —— 即使傳輸加密（§
 | 2026-06-08 | 0.5 | 新增 §8.4「同機部署 at-rest 與統一金鑰託管」（TAK Server 與 ICS 同機 → TAK PostgreSQL 同碟明文使「只加密 ICS DB」不一致；**LUKS 整碟翻為主控必備、SQLCipher 退內層**；P1-12a key 階層加 `disk-v1` child 統一 FIDO2 unlock；私鑰明文落地；blast radius）+ §8.5「憑證撤銷控制缺口」（被擄裝置 cert 在信任邊界內可注入/刪 COP；無 CRL/OCSP / 撤銷 SOP）。源於 dogfood 安全策略對話 |
 | 2026-06-20 | 0.6 | 新增 §8.6「公網直曝對外存取信任邊界」：驗證部署(cmd dashboard 經 AirPort 443 直曝公網)實測 — `/static` 免認證洩資料檔(`facilities.seed.json` 2.4MB)+ 全前端 JS；`/api/version\|health` 洩漏；6 位 PIN：**線上爆破已被帳號鎖定擋(連錯 5 次鎖 15 分;原「無帳號鎖定」評估更正)**,殘留=鎖定-DoS 向量 + XFF 最左值可偽造削弱 IP 限速 + PIN 離線弱點。正解=不直曝(VPN/mTLS，已預留 tier3-mtls)。緩解 #3(seed 擋除,已修)/#4(gate version·health)/#2(XFF·鎖定-DoS·PIN KDF)/#1(mTLS·VPN) |
 | 2026-06-20 | 0.7 | 新增 §8.7「應用層紅隊批次」(白箱源碼審查,#286–290 已修,PR #291,backend 2.7.1)：H1 `upload_map_image` 任意檔寫入(→ 儲存型 XSS/全站接管)、H2 TTX router 無授權 gate(broken access control + 跨場)、H3 events/decisions 寫入 IDOR + 跨演習越權(讀有 scope 寫沒有)、H6 compose 公開預設密碼、M1 mTLS-on-但-secret-空 fail-open。標明方法論限制(白箱未黑箱;runtime 面待驗)+ 正面查核(SQLi/XXE/SSRF/CoT 覆寫/供應鏈中國紅線皆過)|
+| 2026-06-20 | 0.8 | 新增 §8.7.1「前端駭客視角 + perimeter 防禦對照」：攻法①–⑥ × mTLS/VPN/真實IP 覆蓋 × app 層殘留(#292–296)。結論=perimeter 關「網路層/外部」整面,殘留=圈內人+資料毒化須 app 縱深;皆已知類別有標準解。doctrine：zero-trust(NIST 800-207)——C2 威脅含被擄合法裝置,圈內不可預設信任 |
