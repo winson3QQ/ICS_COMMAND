@@ -13,14 +13,14 @@ from contextlib import asynccontextmanager, suppress
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from auth.first_run_gate import first_run_gate_middleware
 from auth.middleware import auth_middleware
 from auth.rate_limit import auth_rate_limit_middleware
 from auth.service import cleanup_expired_sessions
-from core.config import ALLOWED_ORIGINS, APP_VERSION, STATIC_DIR
+from core.config import ALLOWED_ORIGINS, APP_VERSION, DOCS_ENABLED, IS_PROD, STATIC_DIR
 from core.database import init_db
 from core.logging import correlation_middleware, init_logging
 from core.security_headers import security_headers_middleware
@@ -129,7 +129,10 @@ init_logging()  # C1-D：structlog 初始化，在 app 建立前呼叫
 app = FastAPI(
     title="ICS 指揮部 API",
     version=APP_VERSION,
-    docs_url="/docs",
+    # dev：API 文件全開（開發方便）；prod（ICS_ENV=prod）：關閉，不對外曝光 API 介面
+    docs_url="/docs" if DOCS_ENABLED else None,
+    redoc_url="/redoc" if DOCS_ENABLED else None,
+    openapi_url="/openapi.json" if DOCS_ENABLED else None,
     lifespan=lifespan,
 )
 
@@ -159,7 +162,15 @@ class _NoCacheJsStaticFiles(StaticFiles):
     production 由 nginx（deploy/）服務靜態並自管 header，不走此 mount。
     """
 
+    # 伺服端專用、不對外的資料檔（factory seed）：即使位於 static/ 目錄下也不得經 web 取得。
+    # 前端取 facilities / taxonomy / map 設定走 /api/*（auth-gated），不需這些 seed 檔。
+    # （§8.6 修補：原 AUTH_EXEMPT_PREFIXES=("/static/",) 使整個 static 免認證，洩漏 *.seed.json）
+    _DENY_SUFFIXES = (".seed.json",)
+
     async def get_response(self, path, scope):
+        # 與「檔案不存在」一致回 404（不洩漏該檔存在）
+        if path.endswith(self._DENY_SUFFIXES):
+            return PlainTextResponse("Not Found", status_code=404)
         resp = await super().get_response(path, scope)
         if path.endswith(".js"):
             resp.headers["Cache-Control"] = "no-store"
@@ -198,6 +209,9 @@ for router in (
 # ── 首頁 ──────────────────────────────────────────────────────────────────────
 @app.get("/", response_class=HTMLResponse)
 def index():
+    # prod：不曝光 dev 導覽頁（含 admin / docs 連結）→ 直接導向登入/儀表板
+    if IS_PROD:
+        return RedirectResponse(url="/static/commander_dashboard.html")
     return f"""<html><head><meta charset="UTF-8"><title>ICS 指揮部</title></head>
     <body style="font-family:monospace;padding:20px;background:#0a0e1a;color:#9ab0c8">
     <h2 style="color:#fff">ICS 指揮部 command-{APP_VERSION}</h2>

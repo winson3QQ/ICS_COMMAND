@@ -1,0 +1,17 @@
+# 縮小 build context + 避免把 runtime / 巨大資產烤進 image
+data/                    # runtime user data（走 volume，不入 image）
+static/tiles/            # 巨大 basemap pmtiles/mbtiles（gitignored；驗證不需要底圖）
+node_modules/
+.pytest_cache/
+__pycache__/
+*.pyc
+tests/
+docs/
+scenarios/
+.git/
+.pre-commit-config.yaml
+.secrets.baseline
+eslint.config.js
+package*.json
+requirements-test.txt
+pytest.ini

@@ -35,7 +35,7 @@ import {
   initMap, renderMapOverlay, refreshLeafletMarkers,
   getMapConfig, findZoneByEventId, saveMapConfig,
 } from './map.js';
-import { getCurrentOperator, closeSettings, getAdminPin, closeAdminPanel } from './auth.js';
+import { getCurrentOperator, closeSettings, getAdminPin, closeAdminPanel, getToken } from './auth.js';
 import { takLightState, takConnState } from './tak_light_state.js';
 
 const API_BASE = location.origin;
@@ -279,7 +279,11 @@ function _setHealthDot(level, title) {
 // initCop() 以 setInterval 每 5s 呼叫一次
 async function _refreshCommandHealthLight() {
   try {
-    const resp = await fetch(API_BASE + '/api/health', { signal: AbortSignal.timeout(3000) });
+    // 有 session 就帶 token → 後端回完整 health（含磁碟/延遲）；無則 plain（登入頁只拿粗略狀態）
+    const token = getToken();
+    const opts = { signal: AbortSignal.timeout(3000) };
+    if (token) opts.headers = { 'X-Session-Token': token };
+    const resp = await fetch(API_BASE + '/api/health', opts);
     if (!resp.ok) throw new Error(resp.status);
     const health = await resp.json();
     const level = _healthLightLevel(health);

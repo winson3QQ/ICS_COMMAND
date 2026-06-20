@@ -1,0 +1,36 @@
+# deploy/ics-validation/ — ICS cmd dashboard 對外驗證棧（ICS + nginx TLS）
+# 目的：驗證「外網 → 容器 → cmd dashboard」，host 只露 nginx 443 一個口。
+# 正式上線時改用 deploy/nginx + step-ca 憑證（這裡是自簽快測）。
+services:
+  ics-command:
+    image: ics-command:dev
+    restart: unless-stopped
+    environment:
+      - ICS_ENV=prod        # 佈署模式：關閉 /docs、ReDoc、OpenAPI、dev 導覽頁
+      - ICS_IDLE_TIMEOUT_SECONDS=86400   # 驗證便利：idle 逾時拉到 24h（正式勿永久關）
+    volumes:
+      - ics-data:/app/data
+      - ics-tiles:/app/static/tiles:ro    # provisioned 底圖（taiwan.pmtiles），唯讀
+    networks: [icsnet]
+    # 不對 host publish；只有同網路的 nginx 進得來
+
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    depends_on:
+      - ics-command
+    ports:
+      - "443:443"          # 唯一對外入口
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./certs:/etc/nginx/certs:ro
+    networks: [icsnet]
+
+volumes:
+  ics-data:
+    external: true          # 沿用先前建立的 ics-data volume
+  ics-tiles:
+    external: true          # provisioned 底圖 volume（taiwan.pmtiles，sha256 對過 manifest）
+
+networks:
+  icsnet:

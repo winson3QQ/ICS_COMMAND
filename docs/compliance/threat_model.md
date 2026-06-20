@@ -232,6 +232,16 @@ Command **信任 TAK Server 轉發的所有 CoT** —— 即使傳輸加密（§
 - **ICS 端可加的縱深**：來源標註（哪張 cert/裝置推的）+ 異常偵測（同 uid 位置跳變 / 大量刪除），留 P2-12/P2-19。
 - **[2026-06-08 admin UI 實證]**：TAK Server admin GUI（`Administrative → Client Certificates`）**有內建撤銷功能**（`Revoke Selected` + `Show Revoked` 過濾）→ 撤銷機制存在。**但關鍵限制**：該清單對本部署顯示 **"No Certificates Found"**——現行 `icscop`/`admin`/`itak` 等 cert 由 **`makeCert.sh` 離線簽發（CA 信任鏈通，但未經 TAK enrollment 註冊）** → **TAK 不視為 managed cert、此 GUI 撤銷不到它們**。**意涵**：被擄裝置 cert 的撤銷，現行離線 cert 模型下**只能靠 CA 層 CRL 或改 truststore**（非 GUI 一鍵）。**修正方向**：場端裝置 cert 應走 **TAK enrollment（:8446）發行**（才進 managed 清單、可 GUI 撤銷 + `Show Revoked` 稽核），或建 CA CRL 並確認 ICS/TAK mTLS 驗證會 honor。
 
+### 8.6 公網直曝的對外存取信任邊界（驗證部署實測 2026-06-20）
+
+驗證部署把 cmd dashboard 經 AirPort 443 port-forward **直接暴露公網**（`https://<公網IP>/`）實測,暴露面與認證強度的缺口:
+
+- **未登入即可取 `/static` 全目錄（資訊揭露）**：`AUTH_EXEMPT_PREFIXES = ("/static/",)` 把整個 `/static` 免認證,但該目錄**混了 UI 資源與伺服端資料檔**。實測未登入可下載 **`facilities.seed.json`(2.4MB,設施資料)**、`event_taxonomy.seed.json`、`map_config.seed.json`,以及**全部前端 JS**(→ API 端點結構/客戶端邏輯全攤開)。前端取 facilities/taxonomy 實走 `/api/facilities`、`/api/event_taxonomy`(auth-gated),**seed 檔純 factory 預設,前端從不直取** → 不該對外 serve。**修補方向**：/static 服務層擋 `*.seed.json`(#3,修中)。COP 實體/演習/tracks/底圖 pmtiles 已正確 gate(423),未洩。
+- **`/api/version`、`/api/health` 未登入可取(#4 已修)**：原洩版本(利於針對性攻擊)與系統健康(磁碟/DB 狀態)。**修補**：`/api/health` 未登入只回 `status`/`db_writable`/`version`(狀態燈所需),`db_path`/磁碟/DB 延遲/`schema_version` 改為**僅帶有效 session token 才附**;狀態燈輪詢(cop.js)有 session 即帶 token→tooltip 完整,無則 plain(登入頁仍顯示粗略狀態)。`/api/version` **維持公開**(build 戳記顯示於登入頁,版本揭露為刻意取捨)。
+- **6 位數字 PIN — 線上爆破已被帳號鎖定擋住(原評估有誤,更正)**：`accounts` 表有 `failed_login_count` + `locked_until`,**連錯 5 次鎖 15 分**(`LOCKOUT_THRESHOLD=5` / `LOCKOUT_DURATION_MIN=15`,`unlock_account()` 解)→ **線上分散式爆破不可行**(不論攻擊者 IP,帳號自身會鎖)。另有 `/api/auth/login` IP 滑窗限速(60s/10 次→429)為輔。**先前「無帳號鎖定」評估錯誤,在此更正。** **殘留**：(a)**鎖定反成 DoS 向量** —— 每 15 分丟 5 次失敗即可**持續鎖死合法 admin**(單一 admin 的 C2 在事件中失去存取 = 可用性風險;本次驗證即意外自鎖,靠 `unlock_account` 救回);(b)`_client_ip` 取 `X-Forwarded-For` **最左值**可偽造,削弱 IP 限速層(惟真正防線是帳號鎖定);(c)6 位 PIN 實際弱點轉為**離線**(若 `pin_hash` 外洩,6 位數空間離線可秒破 → 須確認 hash 為慢 KDF)。**PIN 非設計失誤**(戰術平板 UX,LAN/VPN 後合理)。**修補方向(#2)**：修 XFF 信任、緩解鎖定-DoS(per-source 鎖定 / admin 復原路徑)、確認 PIN hash KDF 強度。
+- **正解（#1，正規做法）**：**C2 不該直曝公網**。擺 **VPN(WireGuard) 後**或強制 **mTLS client 憑證**(repo 已預留 `deploy/nginx/conf.d/tier3-mtls.conf.disabled`)→ 只有持證裝置連得到登入,屆時「6 位 PIN + LAN 模型」即站得住。自簽憑證亦僅限驗證,正式需真 CA 憑證 + HSTS。
+- **本次驗證範圍**：以上係**臨時驗證**(throwaway box,空 DB、無正式敏資料),完成後應移除 AirPort 443 forward。**正式對外前必須先落地 #1。**
+
 ---
 
 ## 9. 審查歷程
@@ -243,3 +253,4 @@ Command **信任 TAK Server 轉發的所有 CoT** —— 即使傳輸加密（§
 | 2026-06-07 | 0.3 | 新增 §8「TAK 介面信任邊界」：上行/下行傳輸加密（fail-closed cert 驗證 + check_hostname 取捨 + at-rest 明文邊界）、STRIDE TAK-A~F 處理（TAK-B 來源所有權守門已修、TAK-A HMAC inbound 決策延後、C/D/E/F 歸屬）、裝置准入信任假設（缺口 #7）|
 | 2026-06-07 | 0.4 | §8.2 TAK-B 反向缺口已修（#146）：cop PUT/DELETE 來源所有權 + 情境守門（實戰鎖死外部來源、演習 TTX 可編輯，server 權威）；TAK-A 補強內部威脅洞見（已認證 operator 可經 POST /api/tak/events 注入 → 順手收緊 COMMAND_ROLES）|
 | 2026-06-08 | 0.5 | 新增 §8.4「同機部署 at-rest 與統一金鑰託管」（TAK Server 與 ICS 同機 → TAK PostgreSQL 同碟明文使「只加密 ICS DB」不一致；**LUKS 整碟翻為主控必備、SQLCipher 退內層**；P1-12a key 階層加 `disk-v1` child 統一 FIDO2 unlock；私鑰明文落地；blast radius）+ §8.5「憑證撤銷控制缺口」（被擄裝置 cert 在信任邊界內可注入/刪 COP；無 CRL/OCSP / 撤銷 SOP）。源於 dogfood 安全策略對話 |
+| 2026-06-20 | 0.6 | 新增 §8.6「公網直曝對外存取信任邊界」：驗證部署(cmd dashboard 經 AirPort 443 直曝公網)實測 — `/static` 免認證洩資料檔(`facilities.seed.json` 2.4MB)+ 全前端 JS；`/api/version\|health` 洩漏；6 位 PIN：**線上爆破已被帳號鎖定擋(連錯 5 次鎖 15 分;原「無帳號鎖定」評估更正)**,殘留=鎖定-DoS 向量 + XFF 最左值可偽造削弱 IP 限速 + PIN 離線弱點。正解=不直曝(VPN/mTLS，已預留 tier3-mtls)。緩解 #3(seed 擋除,已修)/#4(gate version·health)/#2(XFF·鎖定-DoS·PIN KDF)/#1(mTLS·VPN) |

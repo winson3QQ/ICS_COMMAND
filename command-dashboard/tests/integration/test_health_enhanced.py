@@ -18,8 +18,9 @@ def test_health_no_auth_required(client):
     assert r.status_code == 200
 
 
-def test_health_contains_required_fields(client):
-    r = client.get("/api/health")
+def test_health_contains_required_fields(client, auth):
+    # §8.6：完整運維欄位僅已登入可取（未登入只回 status/db_writable/version/timestamp）
+    r = client.get("/api/health", headers=auth)
     body = r.json()
     assert set(body) == {
         "status",
@@ -60,24 +61,24 @@ def test_health_status_degraded_on_unwritable_db(client, monkeypatch):
     assert body["db_writable"] is False
 
 
-def test_health_status_degraded_on_low_disk(client, monkeypatch):
+def test_health_status_degraded_on_low_disk(client, monkeypatch, auth):
     from routers import dashboard
 
     # disk_free_pct < HEALTH_DISK_DEGRADED_PCT_THRESHOLD（預設 20%）→ degraded
     monkeypatch.setattr(dashboard, "_disk_free_pct", lambda _path: 5.0)
-    r = client.get("/api/health")
+    r = client.get("/api/health", headers=auth)
     assert r.status_code == 200
     body = r.json()
     assert body["status"] == "degraded"
     assert body["disk_free_pct"] == 5.0
 
 
-def test_health_status_degraded_on_high_db_latency(client, monkeypatch):
+def test_health_status_degraded_on_high_db_latency(client, monkeypatch, auth):
     from routers import dashboard
 
     # db_latency_ms > HEALTH_DB_LATENCY_DEGRADED_MS（預設 500ms）→ degraded
     monkeypatch.setattr(dashboard, "_db_latency_ms", lambda _path: 999.0)
-    r = client.get("/api/health")
+    r = client.get("/api/health", headers=auth)
     assert r.status_code == 200
     body = r.json()
     assert body["status"] == "degraded"
@@ -93,7 +94,7 @@ def test_health_status_ok_when_disk_and_latency_normal(client, monkeypatch):
     assert body["status"] == "ok"
 
 
-def test_health_disk_free_mb_reflects_var_lib_ics(client, monkeypatch):
+def test_health_disk_free_mb_reflects_var_lib_ics(client, monkeypatch, auth):
     from routers import dashboard
 
     seen = {}
@@ -103,18 +104,18 @@ def test_health_disk_free_mb_reflects_var_lib_ics(client, monkeypatch):
         return 1234
 
     monkeypatch.setattr(dashboard, "_disk_free_mb", fake_disk_free_mb)
-    assert client.get("/api/health").json()["disk_free_mb"] == 1234
+    assert client.get("/api/health", headers=auth).json()["disk_free_mb"] == 1234
     assert seen["path"] == Path(dashboard.DB_PATH).parent
 
 
-def test_health_schema_version_matches_db(client):
+def test_health_schema_version_matches_db(client, auth):
     from core.database import _MIGRATIONS
 
-    body = client.get("/api/health").json()
+    body = client.get("/api/health", headers=auth).json()
     assert body["schema_version"] == max(version for version, _, _ in _MIGRATIONS)
 
 
-def test_health_schema_version_null_when_table_missing(client, monkeypatch, tmp_path):
+def test_health_schema_version_null_when_table_missing(client, monkeypatch, tmp_path, auth):
     from routers import dashboard
 
     db_path = tmp_path / "no_schema_migrations.db"
@@ -122,15 +123,15 @@ def test_health_schema_version_null_when_table_missing(client, monkeypatch, tmp_
         conn.execute("CREATE TABLE sample (id INTEGER PRIMARY KEY)")
 
     monkeypatch.setattr(dashboard, "DB_PATH", db_path)
-    body = client.get("/api/health").json()
+    body = client.get("/api/health", headers=auth).json()
     assert body["schema_version"] is None
 
 
-def test_health_status_initializing_during_first_run(client, monkeypatch):
+def test_health_status_initializing_during_first_run(client, monkeypatch, auth):
     from routers import dashboard
 
     monkeypatch.setattr(dashboard, "_first_run_required", lambda: True)
-    body = client.get("/api/health").json()
+    body = client.get("/api/health", headers=auth).json()
     assert body["status"] == "initializing"
     assert body["schema_version"] is None
 

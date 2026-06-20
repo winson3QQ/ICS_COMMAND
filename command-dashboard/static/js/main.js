@@ -633,12 +633,14 @@ async function _loadVersion() {
   try {
     const resp = await fetch(API_BASE + '/api/version');
     if (!resp.ok) return;
-    const { cmd_version } = await resp.json();
+    const { cmd_version, build } = await resp.json();
     if (cmd_version) {
       document.body.dataset.cmdVersion = cmd_version;
       document.title = 'ICS 指揮部 ' + cmd_version;
+      // build 戳記（git sha + dirty + 時間）一併顯示 → 可辨識實際跑的 build；無則顯示 'dev'
+      const verText = 'cmd-' + cmd_version + '  ·  build ' + (build || 'dev');
       document.querySelectorAll('.h-ver').forEach(el => {
-        el.textContent = 'cmd-' + cmd_version;
+        el.textContent = verText;
       });
     }
   } catch (e) { /* 非關鍵，失敗不影響功能 */ }

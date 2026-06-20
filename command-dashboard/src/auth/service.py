@@ -26,6 +26,7 @@ EVENT_IDLE_KICKED = "IDLE_KICKED"
 EVENT_SESSION_EXPIRED = "SESSION_EXPIRED"
 EVENT_BINDING_MISMATCH_IP = "BINDING_MISMATCH_IP"
 EVENT_BINDING_MISMATCH_UA = "BINDING_MISMATCH_UA"
+EVENT_BINDING_MISMATCH_CERT = "BINDING_MISMATCH_CERT"  # #275 mTLS cert-bound session
 
 
 def _now() -> datetime:
@@ -76,13 +77,29 @@ def _request_binding(request: Request | None) -> tuple[str | None, str | None]:
     return ip, _ua_family(ua)
 
 
+def client_cert_cn(request: Request | None) -> str | None:
+    """mTLS 反代（nginx）注入的 client 憑證 CN（#275）。`X-Client-Cert-CN`。"""
+    if request is None:
+        return None
+    return (request.headers.get("X-Client-Cert-CN") or "").strip() or None
+
+
+def client_cert_verified(request: Request | None) -> bool:
+    """nginx `ssl_verify_client` 結果為 SUCCESS（憑證已過 CA 驗證）。`X-Client-Cert-Verify`。"""
+    if request is None:
+        return False
+    return (request.headers.get("X-Client-Cert-Verify") or "").upper() == "SUCCESS"
+
+
 def _session_dict(row) -> dict:
     d = dict(row)
     d["role"], d["role_detail"] = normalize_role_pair(d.get("role"), d.get("role_detail"))
     return d
 
 
-def create_session(account: dict, request: Request | None = None) -> str:
+def create_session(
+    account: dict, request: Request | None = None, cert_cn: str | None = None
+) -> str:
     token = secrets.token_urlsafe(32)
     role, role_detail = normalize_role_pair(account.get("role"), account.get("role_detail"))
     now = _now_iso()
@@ -92,8 +109,8 @@ def create_session(account: dict, request: Request | None = None) -> str:
         conn.execute(
             """INSERT INTO sessions
                (token, username, role, role_detail, display_name, last_active,
-                idle_at, expires_at, ip, user_agent, status)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')""",
+                idle_at, expires_at, ip, user_agent, cert_cn, status)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')""",
             (
                 token,
                 account["username"],
@@ -105,6 +122,7 @@ def create_session(account: dict, request: Request | None = None) -> str:
                 expires_at,
                 ip,
                 ua_family,
+                cert_cn,
             ),
         )
     return token
@@ -163,6 +181,15 @@ def check_session(
             return None, {"event": EVENT_BINDING_MISMATCH_IP, "session": sess}
         if stored_ua and request_ua and stored_ua != request_ua:
             return None, {"event": EVENT_BINDING_MISMATCH_UA, "session": sess}
+
+        # #275 mTLS：cert-bound session。MTLS_REQUIRED 時，session 必須綁定憑證 CN 且
+        # 與當前出示的 client cert CN 一致（token 被竊，無對應裝置憑證亦不可用）。
+        # 旗標開啟前建立的 session（cert_cn 為空）一律失效，強制帶憑證重新登入。
+        # 僅在有 request 可比對時強制：request-less 為內部可信呼叫（無 cert 可出示），
+        # 不套 per-request cert 防護，否則背景/狀態驗證會被誤殺。
+        if config.ICS_MTLS_REQUIRED and request is not None:
+            if not sess.get("cert_cn") or sess.get("cert_cn") != client_cert_cn(request):
+                return None, {"event": EVENT_BINDING_MISMATCH_CERT, "session": sess}
 
         if touch:
             now_iso = _now_iso()
