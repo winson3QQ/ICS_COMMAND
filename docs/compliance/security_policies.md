@@ -72,6 +72,12 @@ _Session A 填。草稿：_
 - Session timeout 依 role 風險級別（SYSTEM_ADMIN 30 min、其他 14 hours）
 - Account lockout：5 失敗 / 15 min（一般）或 5 失敗 / 30 min（admin PIN）
 
+**授權實施紅線（2026-06-20 紅隊 #287/#288 衍生；威脅依據 `threat_model` §8.7）**：
+
+- **中央 gate 必須登記每個 router**：授權由 `auth/role_enum.allowed_roles_for` 前綴比對集中決定；**未登記的 path 會落寬鬆預設（GET=READ / POST=WRITE）**＝靜默 broken access control（#287 TTX 即此患）。新增 router **必須**在此函式加明示 case；視為 code-review 檢查點（理想上加「每 router prefix 必有 case」測試斷言）。
+- **寫入路徑與讀取路徑授權須對稱**：凡讀取端點以 `resolve_scope` 做演習場隔離者，其對應**寫入端點亦須套同一 scope**（不可只認資源 id）；否則低權角色可跨演習場 IDOR 越權（#288 events/decisions 即「讀有 scope、寫沒有」）。scope 比對應在 repo 層與資料異動同一查詢內原子完成（跨場 row 視同不存在 → 404，不洩漏存在性）。
+- **使用者可控檔名/路徑不得直接用於檔案系統操作**：上傳/寫檔一律 server 端生成安全名（如 uuid）+ `resolve()`/`is_relative_to(base)` 二次守門；runtime 寫入物落 `data/` 不落 tracked 的 `static/`（#286 + User Data 紅線）。
+
 ### 2.4 AC-14 Permitted Actions Without Authentication（明確定義免驗清單）
 
 > 對應：NIST 800-53 AC-14；Evidence：`server/routes.js` `_FIRST_RUN_WHITELIST`、`server/ws_handler.js` `_STATE_CHANGING`

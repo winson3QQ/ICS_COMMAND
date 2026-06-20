@@ -244,6 +244,21 @@ Command **信任 TAK Server 轉發的所有 CoT** —— 即使傳輸加密（§
 - **#3 seed 擋除（已修）、#4 gate version/health（已修）**。
 - **本次（早上）驗證範圍**：原始實測係**臨時驗證**(throwaway box,空 DB、無正式敏資料)；該次完成後移除 forward。**正式對外現已具備 #1+#2**；mTLS 公網實證另見 #275（曝 1h 內即遭掃描 bot 打 `/config/.env` 等，全被 mTLS 擋 400）。
 
+### 8.7 應用層紅隊批次（白箱源碼審查 2026-06-20，#286–290 已修）
+
+§8.6 收的是「公網周邊 / 部署」面；本節為同日**白箱靜態源碼審查**（6 路並行讀 code，非黑箱實打）在**應用層**找到的破口。完整稽核見 `docs/security-audit/redteam-2026-06-20.md`；皆已修 + 測試（PR #291，backend 2.7.1）。
+
+| 代號 | STRIDE | 事實 | 修補 |
+|---|---|---|---|
+| H1 (#286) | Tampering / EoP | `routers/map.py upload_map_image` 直接用 client `file.filename` 拼 `STATIC_DIR` → path traversal / 覆寫前端 JS（儲存型 XSS → 全站接管，含污染 sysadmin session 提權）；允許 svg | server uuid 命名（client 對路徑零控制）+ `resolve()`/`is_relative_to` 守門 + 移除 svg；`.gitignore` 擋 runtime 上傳物 |
+| H2 (#287) | EoP | `auth/role_enum.allowed_roles_for` 無 `/api/ttx/` case → 落寬鬆預設（GET=READ/POST=WRITE）；observer 讀任意場 inject 腳本、operator 注入任意演習場（含已歸檔）→ broken access control + 跨場越權 | 比照 `/api/exercises/` 鎖 COMMAND_ROLES |
+| H3 (#288) | Tampering / Info Disclosure | `routers/events.py`·`decisions.py` 寫入端點（patch/status/notes/deadline/decide）只認 id、**無 `resolve_scope`**（讀取卻有）→ operator 可改/裁示**別演習場（含歷史場）**之事件與決策（IDOR + 跨場 PII 越權） | 寫入與讀取對稱套 `resolve_scope`；抽 `_helpers.scope_clause` 把目標 row 限 scope 內（跨場視同不存在 → 404） |
+| H6 (#290) | Spoofing | `docker-compose.mtls.yml` 寫死公開預設密碼（CA provisioner `icsprov` / proxy secret `…change-me` / p12 `icsclient`）→ 知 repo 者可簽任意憑證繞 mTLS / 偽造 cert header | compose 改 `${VAR:?}` fail-closed + `.env.example`；腳本同收緊 |
+| M1 (#290) | Spoofing | `IS_PROD && ICS_MTLS_REQUIRED && !ICS_PROXY_SHARED_SECRET` 時 `_proxy_trusted` fail-open 無條件信任 cert header（重開 #280 的內網偽造洞），且 silent | `main._assert_safe_mtls_config()` 啟動即拒此危險組合 |
+
+> **方法論限制**：本批為**白箱 SAST**，未做黑箱實打。runtime 面（H4 nginx 實際 header/cipher、prod env 是否真設 proxy secret、IDOR/traversal 對活靶）仍待 Windows/Docker prod 黑箱驗證（見稽核 log「需 runtime 確認」）。
+> **正面（已查無虞）**：SQLi（全參數化 + 白名單動態欄位/表名）、XXE（defusedxml 三關）、SSRF（`_join_url` 拒絕絕對 URL）、CoT 跨源 uid 覆寫（已守門）、機密無入 git、供應鏈無中國套件。
+
 ---
 
 ## 9. 審查歷程
@@ -256,3 +271,4 @@ Command **信任 TAK Server 轉發的所有 CoT** —— 即使傳輸加密（§
 | 2026-06-07 | 0.4 | §8.2 TAK-B 反向缺口已修（#146）：cop PUT/DELETE 來源所有權 + 情境守門（實戰鎖死外部來源、演習 TTX 可編輯，server 權威）；TAK-A 補強內部威脅洞見（已認證 operator 可經 POST /api/tak/events 注入 → 順手收緊 COMMAND_ROLES）|
 | 2026-06-08 | 0.5 | 新增 §8.4「同機部署 at-rest 與統一金鑰託管」（TAK Server 與 ICS 同機 → TAK PostgreSQL 同碟明文使「只加密 ICS DB」不一致；**LUKS 整碟翻為主控必備、SQLCipher 退內層**；P1-12a key 階層加 `disk-v1` child 統一 FIDO2 unlock；私鑰明文落地；blast radius）+ §8.5「憑證撤銷控制缺口」（被擄裝置 cert 在信任邊界內可注入/刪 COP；無 CRL/OCSP / 撤銷 SOP）。源於 dogfood 安全策略對話 |
 | 2026-06-20 | 0.6 | 新增 §8.6「公網直曝對外存取信任邊界」：驗證部署(cmd dashboard 經 AirPort 443 直曝公網)實測 — `/static` 免認證洩資料檔(`facilities.seed.json` 2.4MB)+ 全前端 JS；`/api/version\|health` 洩漏；6 位 PIN：**線上爆破已被帳號鎖定擋(連錯 5 次鎖 15 分;原「無帳號鎖定」評估更正)**,殘留=鎖定-DoS 向量 + XFF 最左值可偽造削弱 IP 限速 + PIN 離線弱點。正解=不直曝(VPN/mTLS，已預留 tier3-mtls)。緩解 #3(seed 擋除,已修)/#4(gate version·health)/#2(XFF·鎖定-DoS·PIN KDF)/#1(mTLS·VPN) |
+| 2026-06-20 | 0.7 | 新增 §8.7「應用層紅隊批次」(白箱源碼審查,#286–290 已修,PR #291,backend 2.7.1)：H1 `upload_map_image` 任意檔寫入(→ 儲存型 XSS/全站接管)、H2 TTX router 無授權 gate(broken access control + 跨場)、H3 events/decisions 寫入 IDOR + 跨演習越權(讀有 scope 寫沒有)、H6 compose 公開預設密碼、M1 mTLS-on-但-secret-空 fail-open。標明方法論限制(白箱未黑箱;runtime 面待驗)+ 正面查核(SQLi/XXE/SSRF/CoT 覆寫/供應鏈中國紅線皆過)|
