@@ -52,6 +52,24 @@ CERT_CN=my-pc docker compose -f docker-compose.mtls.yml run --rm issue-client
 # → ./out/my-pc/my-pc.p12，再到面板「僅綁定」CN
 ```
 
+## ⚠ iOS 必須用 Safari（實測 2026-06-20）
+
+iOS 上 **Chrome / Firefox / Edge（UA=CriOS 等）被 Apple 強制用 WebKit 殼，拿不到系統
+鑰匙圈的 client 憑證 → mTLS 出不了證 → 一律 400**。**只有原生 Safari** 能 client-cert mTLS。
+iOS 裝置用 `make-ios-profile.py` 產的 `.mobileconfig`（root CA + p12 + 內嵌密碼一包）最省事：
+```bash
+python3 mtls/make-ios-profile.py <CN> out/<CN>/<CN>.p12 <p12pass> out/<CN>/root_ca.crt \
+    https://<公網IP>/ out/<CN>/<CN>.mobileconfig
+```
+Android / 桌機（Edge/Chrome 用 OS 憑證庫）正常，無此限制。
+
+## 外網實機驗證（手機 4G）
+
+server 憑證 SAN 帶公網 IP：`ICS_SERVER_SANS=<公網IP> docker compose -f docker-compose.mtls.yml up -d`。
+手機（iOS 用 Safari）關 Wi-Fi 走 4G 開 `https://<公網IP>/static/commander_dashboard.html`
+→ 選憑證 → PIN。實測：dashboard/COP/WebSocket 全通。**驗完依 §8.6 收掉路由 443 forward**
+（曝出去一小時內即有掃描 bot 打 `/config/.env` 等，全被 mTLS 擋 400）。
+
 ## 匯入憑證到 Windows（瀏覽器才出示得了）
 
 - **root CA**（免伺服器憑證警告）：`./out/<CN>/root_ca.crt`（CLI 路徑）→ 安裝到
