@@ -125,7 +125,7 @@ _每次 role 變更、帳號建立 / 刪除均寫 audit log_
 - nginx `ssl_verify_client on`（全角色 mTLS 單埠 443 強制版 `deploy/nginx/conf.d/command-mtls.conf.disabled`，Wave 3 PKI 簽出 client cert 後啟用）→ 無有效 client cert 連不進登入（網路層即擋）。
 - 後端驗 `ssl_client_verify=SUCCESS` 並將 `X-Client-Cert-CN` **綁定帳號**（cert ↔ user = 第二因子）。
 - **✅ trusted-header 剝除（wave 2 已落地）**：非 mTLS block（`command.conf` 443、`deploy/ics-validation/nginx.conf`）以 `proxy_set_header X-Client-Cert-CN "";`／`X-Client-Cert-Verify "";` **剝除** client 自帶值；mTLS block 改以 `$ssl_client_s_dn_cn`／`$ssl_client_verify` **覆寫**注入真值。後端（uvicorn）**只經 nginx 可達**：bare-metal systemd 已改 bind `127.0.0.1`、容器 compose 不 publish 後端埠。否則攻擊者直連後端偽造 cert header 可繞第二因子（AAL2→AAL1）。後端側 `X-Client-Cert-*` 信任已 env-gated（`ICS_MTLS_REQUIRED`）。
-- PKI：per-user / 裝置 client cert 簽發 + 撤銷（step-ca；複用 TAK `gen-device-dp.sh` pattern）。
+- **✅ PKI（wave 3 已落地）**：**per-device** 裝置憑證（一帳號可綁多台，`account_certs` 表 = SoT，migration v29）。簽發：`deploy/step-ca/issue-client-cert.sh`（step-ca offline 簽 client cert + p12，複用 TAK `gen-device-dp.sh` pattern）。綁定/撤銷管理面：`/api/admin/accounts/{username}/certs`（GET/POST/DELETE，sysadmin only）。**撤銷採 App 層綁定撤銷**（`status='revoked'`）：login 查 active 綁定、`check_session` 每 request 查 `is_cert_active` → 撤銷後活躍 session **下一個 request 即失效**（不依賴 CRL 分發）。網路層 CRL（`ssl_crl` 握手即擋）留作後續客戶威脅模型加固。
 - PIN KDF：PBKDF2-HMAC-SHA256 現 100k → 升 OWASP 2023 建議 600k。
 - IP 信任：`_client_ip` 改信任反代設定的可信 hop（非 `X-Forwarded-For` 最左值），防偽造繞限速。
 - 鎖定-DoS：帳號鎖定（§2.3，5/15min）保留，加 per-source / admin 復原路徑，避免攻擊者鎖死單一 admin。

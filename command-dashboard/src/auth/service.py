@@ -190,6 +190,11 @@ def check_session(
         if config.ICS_MTLS_REQUIRED and request is not None:
             if not sess.get("cert_cn") or sess.get("cert_cn") != client_cert_cn(request):
                 return None, {"event": EVENT_BINDING_MISMATCH_CERT, "session": sess}
+            # wave 3：App 層撤銷即時生效——綁定的 CN 一旦被撤（status≠active），
+            # 活躍 session 下一個 request 即失效（不必等 token 過期）。
+            from repositories.account_cert_repo import is_cert_active
+            if not is_cert_active(sess["cert_cn"]):
+                return None, {"event": EVENT_BINDING_MISMATCH_CERT, "session": sess}
 
         if touch:
             now_iso = _now_iso()

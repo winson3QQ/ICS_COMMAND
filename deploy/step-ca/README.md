@@ -49,6 +49,27 @@ deploy/step-ca/issue-cert.sh medical.ics.local 192.168.100.10
 
 證會產在 `deploy/step-ca/certs/<hostname>/`，含 `cert.pem` + `key.pem`。
 
+## 裝置 client 憑證（#275 wave 3 — mTLS 第二因子）
+
+`issue-cert.sh` 簽的是 **server** 憑證；mTLS 要的 **per-device client** 憑證用：
+
+```bash
+deploy/step-ca/issue-client-cert.sh <cert-cn> [<output-dir>]
+# 例：deploy/step-ca/issue-client-cert.sh commander-phone-01
+```
+
+產出 `certs/clients/<cert-cn>/`：`client.crt`、`client.key`、`<cert-cn>.p12`（瀏覽器/裝置匯入，含私鑰）、`root_ca.crt`（nginx `ssl_client_certificate` truststore）。CN 即裝置身份，效期 90 天，step-ca offline 簽（daemon 不需跑，複用 TAK `pki/gen-device-dp.sh` pattern）。
+
+簽完到後端綁定（= App 層第二因子授權，sysadmin only）：
+
+```
+POST   /api/admin/accounts/<username>/certs   {"cert_cn":"commander-phone-01","label":"..."}   # 綁定
+GET    /api/admin/accounts/<username>/certs                                                      # 列出（含已撤銷）
+DELETE /api/admin/accounts/<username>/certs/<cert_id>                                            # 撤銷（即時失效）
+```
+
+一帳號可綁多台裝置（per-device）；撤銷採 App 層綁定撤銷，活躍 session 下一個 request 即失效。見 `docs/compliance/security_policies.md` §2.8。
+
 ## 與既有 mkcert 憑證的關係
 
 `certs/192.168.100.10+2.pem` 等 mkcert 產物**保留**，作為 fallback：

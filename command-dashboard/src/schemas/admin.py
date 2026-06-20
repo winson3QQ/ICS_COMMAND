@@ -35,6 +35,12 @@ class PiNodeCreateIn(BaseModel):
     label: str
 
 
+class AccountCertBindIn(BaseModel):
+    # #275 wave 3：綁定一張裝置 client cert 的 CN（= step-ca 簽發時的 subject CN）
+    cert_cn: str
+    label: str | None = None
+
+
 class ConfigIn(BaseModel):
     value: str
 

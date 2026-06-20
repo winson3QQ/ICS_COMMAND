@@ -12,6 +12,12 @@ from auth.service import validate_session
 from core.database import get_conn, get_schema_version
 from core.input_safety import validate_no_unsafe_strings
 from repositories._helpers import audit
+from repositories.account_cert_repo import (
+    account_id_for_username,
+    bind_cert,
+    list_certs,
+    revoke_cert,
+)
 from repositories.account_repo import (
     clear_default_pin_flag,
     create_account,
@@ -34,6 +40,7 @@ from repositories.pi_node_repo import (
     revoke_pi_node_key,
 )
 from schemas.admin import (
+    AccountCertBindIn,
     AccountCreateIn,
     AccountStatusIn,
     AdminPinIn,
@@ -359,3 +366,42 @@ def set_retention(body: RetentionToggleIn, request: Request):
     retention_service.set_ttl_enabled(body.enabled)
     deleted = retention_service.cleanup_expired_tracks() if body.enabled else 0
     return {"ok": True, "enabled": body.enabled, "deleted_now": deleted}
+
+
+# ── #275 wave 3：per-device 裝置憑證綁定生命週期（sysadmin only）─────────────
+# cert 簽發（step-ca）在主機外執行（deploy/step-ca/issue-client-cert.sh）；本 API 管的是
+# 「CN ↔ 帳號」的綁定/撤銷（App 層第二因子授權）。撤銷即時失效（check_session 查表）。
+
+
+@router.get("/accounts/{username}/certs", tags=["account-admin"])
+def list_account_certs(username: str, request: Request):
+    _check_system_admin(request)
+    account_id = account_id_for_username(username)
+    if account_id is None:
+        raise HTTPException(404, "account not found")
+    return list_certs(account_id)
+
+
+@router.post("/accounts/{username}/certs", tags=["account-admin"])
+def bind_account_cert(username: str, body: AccountCertBindIn, request: Request):
+    sess = _check_system_admin(request)
+    account_id = account_id_for_username(username)
+    if account_id is None:
+        raise HTTPException(404, "account not found")
+    validate_no_unsafe_strings(body.cert_cn, body.label or "")
+    try:
+        return bind_cert(account_id, body.cert_cn, body.label, sess["username"])
+    except ValueError as e:
+        raise HTTPException(409, str(e))
+
+
+@router.delete("/accounts/{username}/certs/{cert_id}", tags=["account-admin"])
+def revoke_account_cert(username: str, cert_id: int, request: Request):
+    sess = _check_system_admin(request)
+    account_id = account_id_for_username(username)
+    if account_id is None:
+        raise HTTPException(404, "account not found")
+    result = revoke_cert(cert_id, sess["username"], account_id=account_id)
+    if result is None:
+        raise HTTPException(404, "active cert binding not found")
+    return result
