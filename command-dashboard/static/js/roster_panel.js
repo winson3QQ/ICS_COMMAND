@@ -25,10 +25,14 @@ function _isRosterUnit(e) {
 
 function _el(id) { return document.getElementById(id); }
 
-function _esc(s) {
-  const d = document.createElement('div');
-  d.textContent = s == null ? '' : String(s);
-  return d.innerHTML;
+// #292：完整跳脫（含引號）。原 textContent→innerHTML 技巧只跳脫 `< > &`、**不跳脫引號**，
+// 而本檔用於屬性脈絡 `data-uid="${_esc(e.uid)}"` → uid（來自 CoT，可被偽造裝置控制）含 `"`
+// 可突破屬性、注入事件處理器（屬性脈絡 XSS）。對齊 events.js/map.js 的完整跳脫。export 供測試。
+export function _esc(s) {
+  return String(s == null ? '' : s).replace(
+    /[&<>"']/g,
+    (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]),
+  );
 }
 
 const UNGROUPED = '未分組';

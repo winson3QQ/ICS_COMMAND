@@ -9,7 +9,7 @@
  */
 import { describe, expect, test } from 'vitest';
 
-import { rosterModel } from '../../static/js/roster_panel.js';
+import { _esc, rosterModel } from '../../static/js/roster_panel.js';
 
 const NOW = '2026-06-15T10:00:00Z';
 const U = (uid, team, online, extra = {}) => ({
@@ -67,6 +67,18 @@ describe('rosterModel', () => {
     const uids = rosterModel(units, NOW).groups.flatMap(([, l]) => l.map((e) => e.uid));
     expect(uids).toContain('in');
     expect(uids).toContain('stand'); // 常駐也列入（候選）
+  });
+
+  test('#292 _esc 完整跳脫含引號（屬性脈絡 XSS 防護）', () => {
+    // data-uid="${_esc(uid)}" 之屬性脈絡：引號必須跳脫，否則 CoT 偽造 uid 可突破屬性
+    expect(_esc('a"b')).toBe('a&quot;b');
+    expect(_esc("a'b")).toBe('a&#39;b');
+    expect(_esc('<script>')).toBe('&lt;script&gt;');
+    expect(_esc('a&b')).toBe('a&amp;b');
+    // 攻擊 payload：屬性突破 + 事件處理器
+    expect(_esc('x" onmouseover="alert(1)')).toBe('x&quot; onmouseover=&quot;alert(1)');
+    expect(_esc(null)).toBe('');
+    expect(_esc(undefined)).toBe('');
   });
 
   test('只列友軍：敵性/中立/不明接觸不入名冊', () => {
