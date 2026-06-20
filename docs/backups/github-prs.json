@@ -4187,5 +4187,26 @@
     "title": "feat(auth): #275 全角色 mTLS 鑑權（AAL2）— wave 2/3/4/A/B/B-2",
     "updatedAt": "2026-06-20T09:13:25Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/277"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "#280 perimeter hardening 開工首批。\n\n## 內容\n- `deploy/perimeter/README.md`：周邊防護分析 + **Docker-NAT 真實 IP 缺口實證**（外網 client 全顯示 bridge gateway → per-IP 控制失效）+ 依 CP 排序 A–H + **Tailscale 前置白話 runbook**。\n- nginx：掃描路徑 444 drop（command.conf 非 mTLS 有效）+ access log 補 `$ssl_client_verify`/CN（餵 fail2ban/監控）。\n\n## 誠實結論（實證）\n- **mTLS-everything 下 nginx location 硬化冗餘**：`/config/.env`（無證）實測回 **400**（mTLS 在 location 前擋），非 444。\n- **唯一對 live 公網棧有效的一步＝ Tailscale 前置**（埠不對外 + 還原真實 IP）→ runbook 已備，待使用者裝。\n- 後續 #280 項（C fail2ban / D geo / A limit_req）皆**依賴真實 IP 還原**（Tailscale 或 prod Linux host-net）；E 真 CA + OCSP 待公測前。\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+    "closedAt": null,
+    "comments": [],
+    "createdAt": "2026-06-20T09:38:59Z",
+    "headRefName": "feat/issue-280-perimeter-nginx",
+    "labels": [],
+    "mergedAt": null,
+    "number": 281,
+    "state": "OPEN",
+    "title": "feat(deploy): #280 周邊防護 — Tailscale runbook + nginx 掃描 drop/驗證日誌",
+    "updatedAt": "2026-06-20T09:44:23Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/281"
   }
 ]
