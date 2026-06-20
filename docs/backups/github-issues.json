@@ -3932,5 +3932,25 @@
     "title": "公網直曝周邊防護硬化（perimeter hardening，#275 衍生）",
     "updatedAt": "2026-06-20T10:10:47Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/280"
+  },
+  {
+    "assignees": [],
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "body": "#280 H（安全告警）目前只在**失敗/異常**觸發（帳號鎖定、第二因子失敗）。紅隊照出缺口：**成功但可疑的動作不會被標**——例如紅隊 bypass（已修 #284）在補之前是一條正常的 `login_success`，log 不會自己喊怪。\n\n## 缺口\n- 失敗面已覆蓋（nginx 400/444、login_failed、SECURITY_ALERT）。\n- **成功面無偵測規則**：資料都在 `audit_log`（誰做了什麼，含 hash 鏈），但沒有規則去判「這條成功動作異常」。\n\n## Scope（接 `services/security_monitor.py` + audit_log）\n成功動作的偵測規則 → 發 `SECURITY_ALERT`（+ 既有 webhook）：\n- [ ] **憑證生命週期**：cert 綁定/撤銷/發證（高權限、罕見）→ 告警（含 operator）。\n- [ ] **批次/異常帳號操作**：短時間多次 account 建立/停權/角色變更 / 大量 cert 撤銷。\n- [ ] **同帳號新裝置首次登入**（新 cert CN 首見）→ 告警（盜 PIN + 新裝置訊號）。\n- [ ] **非常時段 / 異常來源**（待 Tailscale 還原真實 IP 後才準，見 #280 Docker-NAT 缺口）。\n- [ ] **大量刪除**（COP entity / 演習）→ 完整性威脅（呼應 #232「ICS 端縱深·異常偵測」、#214 poison）。\n\n## 紀律\n- 以**帳號/事件**為主體（IP 不可靠，#280）；同主體反覆升 critical（沿用現有門檻）。\n- 誤報節流（狼來了）。每條規則對應測試。\n\n關聯：#280（H）、#232（ICS 端異常偵測接點）、#284（紅隊修補的事後偵測補強）。",
+    "closedAt": null,
+    "comments": [],
+    "createdAt": "2026-06-20T10:39:56Z",
+    "labels": [],
+    "milestone": null,
+    "number": 285,
+    "state": "OPEN",
+    "title": "安全監控 H 擴充：成功動作的異常偵測（不只失敗）",
+    "updatedAt": "2026-06-20T10:39:56Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/285"
   }
 ]

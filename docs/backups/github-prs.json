@@ -4250,5 +4250,26 @@
     "title": "docs(roadmap): #280 mTLS 網路層憑證撤銷（CRL/OCSP）提為正式項",
     "updatedAt": "2026-06-20T10:10:45Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/283"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "## 🔴 紅隊找到的真漏洞（自驗漏看）\n獨立對抗測試（8 攻擊，對實際在跑的系統）發現：容器拓樸下後端 bind `0.0.0.0:8000` 在共享網路，**任何同網路容器直打後端 + 偽造 `X-Client-Cert-Verify:SUCCESS`+`X-Client-Cert-CN:<綁定CN>`+對 PIN → 拿 sysadmin session**（對照不偽造→401）。mTLS 第二因子失效，退回 6 碼 PIN。\n\n## 修法\nnginx↔後端共享密鑰 `ICS_PROXY_SHARED_SECRET`：後端只在請求帶相符 `X-Proxy-Auth` 時採信 cert header（`_proxy_trusted` 中央把關、hmac.compare_digest）；未配置=back-compat。nginx envsubst 注入（驗證棧）/ setup.sh 產隨機值（prod）；command.conf 剝除 client 自帶值。\n\n## 驗證\n- **重打紅隊**：合法經 nginx→200；直打偽造(無 secret)→**401（補上）**；偽造+猜對 secret→200。\n- 測試 test_proxy_secret_gate 5 + deploy 3；broad sweep exit 0。\n\n對應 #280（紅隊修補）。\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+    "closedAt": "2026-06-20T10:33:18Z",
+    "comments": [],
+    "createdAt": "2026-06-20T10:32:51Z",
+    "headRefName": "feat/issue-280-proxy-secret-redteam",
+    "labels": [],
+    "mergedAt": "2026-06-20T10:33:18Z",
+    "number": 284,
+    "state": "MERGED",
+    "title": "fix(auth): #280 紅隊修補 — nginx↔後端共享密鑰（堵內網偽造 cert header 繞 mTLS）",
+    "updatedAt": "2026-06-20T10:33:18Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/284"
   }
 ]
