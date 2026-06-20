@@ -491,6 +491,11 @@ P3 整合的前提是 WaveInk 採以下五原則設計訓練 / 運行資料平�
 | ⛔ #295 | 鎖定-DoS：per-source 節流 / 高權不硬鎖 | **卡 #280**：per-source 需先「真實 client IP 還原」（Tailscale/Headscale 前置 + 非 Docker-NAT）才有意義 |
 
 > 結論：可立即做的前端面資安單全收（#292/#294/#296）。#293/#295 依設計判斷緩做/有前置依賴。下一步周邊防護 = #280 軸 2（**Headscale 前置**，供應鏈已查過紅線：見 perimeter README）。
+>
+> **衍生待辦（已開單留痕）**：
+> - [#301](https://github.com/winson3QQ/ICS_COMMAND/issues/301) Windows prod **runtime 黑箱驗證**（H4 header/cipher、M1 prod secret、IDOR/traversal 活靶）——補白箱盲區，前置 #300。
+> - [#302](https://github.com/winson3QQ/ICS_COMMAND/issues/302) **商用化前端 IP 保護**（build step 砍註解+minify+no-sourcemap / 選擇性 obfuscate / 值錢邏輯下沉）——**IP 防抄，非資安**，與資安線正交。
+> - 部署：[`deploy/prod/`](../deploy/prod/) 單機 TAK+ICS 合併棧（profile toggle，相同佈署不同 delivery）已 scaffold，待 #300 後實證。
 
 ### 現役（command-dashboard，已部署）— 需排程修補
 
