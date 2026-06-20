@@ -30,7 +30,9 @@ CN_SUBJECT="$(printf '%s' "${ICS_SERVER_SANS:-localhost}" | awk '{print $1}')"
 step ca certificate "$CN_SUBJECT" /pki/server.crt /pki/server.key \
   --provisioner "$PROV" --provisioner-password-file /share/prov.pass \
   --ca-url "$CA" --root /tmp/root.crt \
-  $SAN_ARGS --not-after 23h -f >/dev/null
+  $SAN_ARGS --not-after "${ICS_SERVER_CERT_DURATION:-23h}" -f >/dev/null
+# ↑ 驗證棧 CA 預設 maxTLSCertDuration=24h → default 23h。公測長放：先把 CA provisioner
+#   調 2160h（step ca provisioner update ics --x509-max-dur=2160h）再設 ICS_SERVER_CERT_DURATION=2160h。
 
 # 3. nginx client-cert truststore = daemon root + intermediate（公開憑證，供 ssl_verify_depth 2）
 cat /ca/certs/root_ca.crt /ca/certs/intermediate_ca.crt > /pki/ca-bundle.crt

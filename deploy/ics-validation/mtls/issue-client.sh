@@ -22,7 +22,7 @@ FP="$(cat /share/fingerprint)"
 step ca root "$OUT/root_ca.crt" --ca-url "$CA" --fingerprint "$FP" -f >/dev/null
 step ca certificate "$CN" "$OUT/client.crt" "$OUT/client.key" \
   --provisioner "$PROV" --provisioner-password-file /share/prov.pass \
-  --ca-url "$CA" --root "$OUT/root_ca.crt" --not-after 23h -f >/dev/null
+  --ca-url "$CA" --root "$OUT/root_ca.crt" --not-after "${ICS_CLIENT_CERT_DURATION:-23h}" -f >/dev/null
 step certificate p12 "$OUT/$CN.p12" "$OUT/client.crt" "$OUT/client.key" \
   --password-file <(printf '%s' "$P12_PASS") >/dev/null
 chmod 644 "$OUT/$CN.p12" "$OUT/root_ca.crt"
