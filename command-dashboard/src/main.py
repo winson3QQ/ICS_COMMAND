@@ -20,7 +20,15 @@ from auth.first_run_gate import first_run_gate_middleware
 from auth.middleware import auth_middleware
 from auth.rate_limit import auth_rate_limit_middleware
 from auth.service import cleanup_expired_sessions
-from core.config import ALLOWED_ORIGINS, APP_VERSION, DOCS_ENABLED, IS_PROD, STATIC_DIR
+from core.config import (
+    ALLOWED_ORIGINS,
+    APP_VERSION,
+    DOCS_ENABLED,
+    ICS_MTLS_REQUIRED,
+    ICS_PROXY_SHARED_SECRET,
+    IS_PROD,
+    STATIC_DIR,
+)
 from core.database import init_db
 from core.logging import correlation_middleware, init_logging
 from core.security_headers import security_headers_middleware
@@ -83,8 +91,24 @@ async def _periodic_retention_cleanup():
         await asyncio.sleep(_RETENTION_INTERVAL)
 
 
+def _assert_safe_mtls_config() -> None:
+    """#290 M1：fail-fast 組態安全閘。
+
+    prod 啟用 mTLS 但未設 proxy 共享密鑰時，後端的 _proxy_trusted() 會 fail-open 無條件
+    信任 X-Client-Cert-* header → 內網直打後端即可偽造 cert 繞 mTLS（正是 #280 想堵的洞）。
+    此組合危險且 silent → 啟動即拒，不退回信任模式。
+    """
+    if IS_PROD and ICS_MTLS_REQUIRED and not ICS_PROXY_SHARED_SECRET:
+        raise RuntimeError(
+            "組態錯誤：ICS_MTLS_REQUIRED=true 但 ICS_PROXY_SHARED_SECRET 未設。"
+            "後端會無條件信任 cert header（內網可偽造繞 mTLS）。"
+            "請設定 ICS_PROXY_SHARED_SECRET（與 nginx 同值）後再啟動。"
+        )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    _assert_safe_mtls_config()
     init_db()
     # C1-A：首次啟動產生隨機 PIN（取代舊的預設 1234），印 console + 寫 ~/.ics/first_run_token
     ensure_initial_admin_token()

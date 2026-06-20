@@ -12,7 +12,7 @@ set -e
 
 CA="${STEP_CA_URL:-https://step-ca:9000}"
 PROV="${STEP_CA_PROVISIONER:-ics}"
-PROV_PASS="${STEP_CA_PASSWORD:-icsprov}"
+PROV_PASS="${STEP_CA_PASSWORD:?STEP_CA_PASSWORD 必須設定（CA provisioner 密碼，勿用預設）}"  # #290 H6
 
 # 1. ICS 後端線上發證憑據（provisioner 密碼 + root 指紋）
 printf '%s' "$PROV_PASS" > /share/prov.pass

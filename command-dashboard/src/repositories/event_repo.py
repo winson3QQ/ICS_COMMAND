@@ -6,7 +6,7 @@ import uuid
 import structlog
 from core.database import get_conn
 
-from ._helpers import NULL_SCOPE, add_minutes, audit, iso_utc, now_utc, row_to_dict
+from ._helpers import NULL_SCOPE, add_minutes, audit, iso_utc, now_utc, row_to_dict, scope_clause
 
 _log = structlog.get_logger()
 
@@ -102,15 +102,19 @@ def get_events(status: str | None = None, limit: int = 50,
     return [row_to_dict(r) for r in rows]
 
 
-def patch_event(event_id: str, updates: dict):
+def patch_event(event_id: str, updates: dict, exercise_id: int | None = None) -> int:
+    # #288 H3：exercise_id 為 caller 的 resolve_scope；UPDATE WHERE 併入 scope 條件，
+    # 跨演習的 event 不會被更新（rowcount=0 → router 404）。回傳受影響列數供 router 判斷。
     allowed = {"assigned_unit", "response_deadline", "location_desc"}
     safe    = {k: v for k, v in updates.items() if k in allowed}
     if not safe:
-        return
+        return 0
     set_clause = ", ".join(f"{k}=?" for k in safe)
-    values     = list(safe.values()) + [event_id]
+    sc, sp     = scope_clause(exercise_id)
+    values     = list(safe.values()) + [event_id] + sp
     with get_conn() as conn:
-        conn.execute(f"UPDATE events SET {set_clause} WHERE id=?", values)  # nosec B608
+        cur = conn.execute(f"UPDATE events SET {set_clause} WHERE id=?{sc}", values)  # nosec B608
+        return cur.rowcount
 
 
 def update_event_status(event_id: str, status: str, operator: str,
@@ -125,8 +129,10 @@ def update_event_status(event_id: str, status: str, operator: str,
     label        = {"open":"未結","in_progress":"處理中","resolved":"已結案","closed":"已關閉"}.get(status, status)
     note_json    = json.dumps({"time": now, "text": f"狀態變更為「{label}」", "by": operator}, ensure_ascii=False)
 
+    # #288 H3：scope 併入存在性查詢——跨演習的 event 視同不存在（router 將回 404）。
+    sc, sp = scope_clause(exercise_id)
     with get_conn() as conn:
-        row = conn.execute("SELECT status FROM events WHERE id=?", (event_id,)).fetchone()
+        row = conn.execute(f"SELECT status FROM events WHERE id=?{sc}", [event_id] + sp).fetchone()
         if not row:
             raise ValueError(f"事件 {event_id} 不存在")
         if status not in valid_transitions.get(row["status"], set()):
@@ -134,16 +140,16 @@ def update_event_status(event_id: str, status: str, operator: str,
 
         if status in ("resolved", "closed"):
             conn.execute(
-                """UPDATE events SET status=?, resolved_at=?,
+                f"""UPDATE events SET status=?, resolved_at=?,
                    notes = json_insert(COALESCE(notes,'[]'), '$[#]', json(?))
-                   WHERE id=?""",
-                (status, now, note_json, event_id))
+                   WHERE id=?{sc}""",  # nosec B608
+                [status, now, note_json, event_id] + sp)
         else:
             conn.execute(
-                """UPDATE events SET status=?,
+                f"""UPDATE events SET status=?,
                    notes = json_insert(COALESCE(notes,'[]'), '$[#]', json(?))
-                   WHERE id=?""",
-                (status, note_json, event_id))
+                   WHERE id=?{sc}""",  # nosec B608
+                [status, note_json, event_id] + sp)
 
     audit(operator, None, "event_status_updated", "events", event_id, {"status": status}, exercise_id)
 
@@ -152,19 +158,21 @@ def add_event_note(event_id: str, text: str, operator: str,
                    exercise_id: int | None = None) -> dict:
     now       = now_utc()
     note_json = json.dumps({"time": now, "text": text, "by": operator}, ensure_ascii=False)
+    # #288 H3：scope 併入存在性查詢——跨演習的 event 視同不存在（router 將回 404）。
+    sc, sp = scope_clause(exercise_id)
     with get_conn() as conn:
-        row = conn.execute("SELECT status FROM events WHERE id=?", (event_id,)).fetchone()
+        row = conn.execute(f"SELECT status FROM events WHERE id=?{sc}", [event_id] + sp).fetchone()
         if not row:
             raise ValueError(f"Event {event_id} not found")
         new_status = "in_progress" if row["status"] == "open" else row["status"]
         conn.execute(
-            """UPDATE events SET
+            f"""UPDATE events SET
                notes  = json_insert(COALESCE(notes,'[]'), '$[#]', json(?)),
                status = ?
-               WHERE id=?""",
-            (note_json, new_status, event_id))
+               WHERE id=?{sc}""",  # nosec B608
+            [note_json, new_status, event_id] + sp)
         cnt_row = conn.execute(
-            "SELECT json_array_length(COALESCE(notes,'[]')) as cnt FROM events WHERE id=?",
-            (event_id,)).fetchone()
+            f"SELECT json_array_length(COALESCE(notes,'[]')) as cnt FROM events WHERE id=?{sc}",  # nosec B608
+            [event_id] + sp).fetchone()
     audit(operator, None, "event_note_added", "events", event_id, {"text": text[:50]}, exercise_id)
     return {"ok": True, "notes_count": cnt_row["cnt"] if cnt_row else 0}

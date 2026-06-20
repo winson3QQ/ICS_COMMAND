@@ -55,7 +55,9 @@ WARNING_THRESHOLD_SECONDS: int = int(os.getenv("ICS_WARNING_THRESHOLD_SECONDS", 
 # 修「TAK 重訂閱/resync 重播持久化 GeoChat → 同訊息每次重連多一筆」（dogfood 實證 42 筆）。
 # MINOR：#267 納編/退編 —— POST /api/exercises/{id}/enroll（限 COMMAND）改 cop_entity exercise_id
 # 進當前 active 場 / 退回 NULL；雙廣播（舊 scope delete / 新 scope create）+ CAS 重試 + audit。
-APP_VERSION = "2.7.0"
+# PATCH 2.7.1：紅隊公網曝面修補（#286 任意檔寫入 / #287 TTX 授權 / #288 events·decisions 跨場
+# IDOR / #289 nginx headers / #290 部署 fail-closed），行為變更（授權收緊 + 上傳清洗）。
+APP_VERSION = "2.7.1"
 
 # CMD_VERSION：前端 UI 功能版本（不同於後端 SemVer APP_VERSION；規則見 CLAUDE.md 版號規則）
 # 兩軌版本命名，不可混用。由 /api/version 提供給前端，是唯一 source-of-truth；release 時更新此值。

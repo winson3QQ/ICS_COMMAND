@@ -463,6 +463,21 @@ P3 整合的前提是 WaveInk 採以下五原則設計訓練 / 運行資料平�
 > ④ `server/config.js` 只認 `--unit shelter|medical`（PWA 單元，CLAUDE.md 明文不在本 repo 範圍）。
 > 故 `server/` = P1-04 保留的 federation infra（休眠），其內漏洞在 ICS_DMAS（PWA+Pi 真跑）才現役。
 
+### 紅隊批次 2026-06-20（公網曝面深掘 — #286–290，✅ 全修 merge）
+
+> 6 路並行靜態稽核（auth/session、mTLS header、RBAC/演習 scope、injection、secrets/供應鏈、網路周邊+Node relay），HIGH 級主稽核員親自對 code 二次查證。完整發現 + reality-check + 修補軌跡見 [`docs/security-audit/redteam-2026-06-20.md`](security-audit/redteam-2026-06-20.md)。本輪用 GitHub issue（非 RT 代號）追蹤；backend 2.7.0→2.7.1。
+
+| Issue | 發現 | 修補 |
+|---|---|---|
+| ✅ #286 | H1 `upload_map_image` 任意檔寫入（→ 儲存型 XSS / 全站接管） | server uuid 命名 + `resolve()`/`is_relative_to` 守門 + 移除 svg + `.gitignore`（`routers/map.py`） |
+| ✅ #287 | H2 TTX router 無授權 gate + 跨場（broken access control） | `/api/ttx/` 比照 `/api/exercises/` 鎖 COMMAND_ROLES（`auth/role_enum.py`） |
+| ✅ #288 | H3 events/decisions 寫入 IDOR + 跨演習越權（讀有 scope 寫沒有） | 寫入端點對稱套 `resolve_scope` + 抽 `_helpers.scope_clause` 把目標 row 限 scope 內（`event_repo`/`decision_repo`/`events.py`/`decisions.py`） |
+| ✅ #289 | H4 公網 docker nginx 缺 security headers + cipher | `nginx.mtls.conf`/`nginx.conf` 補 HSTS/X-Frame-Options/nosniff/Referrer-Policy + ECDHE/AEAD cipher（runtime 待 Windows `curl -kI` 驗） |
+| ✅ #290 | H6 compose 公開預設密碼 + M1 mTLS-on-但-secret-空 fail-open | compose `${VAR:?}` fail-closed + `.env.example` + `main._assert_safe_mtls_config()` 啟動斷言 |
+
+> 正面：SQLi/XXE/SSRF/CoT 跨源覆寫全防住、機密無入 git、**供應鏈無中國套件（紅線通過）**、mTLS 設計（配置正確時）健全。殘留 MEDIUM/LOW（M2 鎖定 DoS / M3 timing 枚舉 / M5 audit flood / L1 tile traversal / L3 token 明文 / CSP report-only 等）見稽核 log，未納本批。
+> 待開單（非安全、預存）：scenario_designer.html 呼叫已移除的 `/api/ttx/sessions/*` → TTX 設計器壞掉。
+
 ### 現役（command-dashboard，已部署）— 需排程修補
 
 | 編號 | 事實 | 性質 / 推論 | 動工時機（觸發）+ 怎麼動 |

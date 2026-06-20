@@ -66,6 +66,8 @@ command-dashboard/static/*.png
 !command-dashboard/static/badge.png
 !command-dashboard/static/臂章後製版.png
 command-dashboard/static/tiles/
+# 使用者上傳的底圖（#286 H1：runtime 寫入物，server 端 uuid 命名；勿入 git / snapshot）
+command-dashboard/static/map_upload_*
 
 # 本地暫存 / 實驗區（mockup、抓取腳本、中間檔；保留品已搬進 static/）
 _scratch/
