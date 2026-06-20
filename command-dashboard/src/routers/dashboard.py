@@ -9,7 +9,7 @@ from pathlib import Path
 from fastapi import APIRouter, Request
 
 from core.config import (
-    APP_VERSION, CMD_VERSION, DB_PATH,
+    APP_VERSION, BUILD_ID, CMD_VERSION, DB_PATH,
     HEALTH_DISK_DEGRADED_PCT_THRESHOLD, HEALTH_DB_LATENCY_DEGRADED_MS,
 )
 from core.database import get_health_schema_version
@@ -62,6 +62,7 @@ def version():
     return {
         "cmd_version":    CMD_VERSION,
         "server_version": APP_VERSION,
+        "build":          BUILD_ID,
     }
 
 

@@ -94,6 +94,20 @@ CSP_MODE: str = os.getenv("CSP_MODE", "enforce")  # "report-only" | "enforce"
 CSP_REPORT_URI: str = os.getenv("CSP_REPORT_URI", "/api/security/csp-report")
 ENABLE_SECURITY_HEADERS: bool = os.getenv("ENABLE_SECURITY_HEADERS", "true").lower() == "true"
 
+# ── 部署環境 dev / prod ───────────────────────────────────────────────────────
+# 同一份程式碼靠環境變數切行為。
+#   dev（預設，開發機）：/docs、ReDoc、OpenAPI、根 dev 導覽頁全開 → 開發方便。
+#   prod（佈署容器設 ICS_ENV=prod）：上述一律關閉，app 自身不對外吐出 API 探索面
+#                                    與 admin/docs 導覽，不依賴反代遮蔽（縱深防禦）。
+# DOCS_ENABLED 可單獨覆寫（如 staging 想開文件）：ICS_DOCS_ENABLED=true/false。
+ICS_ENV: str = os.getenv("ICS_ENV", "dev").lower()  # "dev" | "prod"
+IS_PROD: bool = ICS_ENV == "prod"
+DOCS_ENABLED: bool = os.getenv("ICS_DOCS_ENABLED", "false" if IS_PROD else "true").lower() == "true"
+
+# Build 戳記：build 時由 `--build-arg ICS_BUILD_ID`（git short sha + dirty + 時間）注入,dev 預設 "dev"。
+# /api/version 回傳、登入頁顯示 → 可辨識「實際跑的是哪個 build」(版號常數無法分辨每次 rebuild)。
+BUILD_ID: str = os.getenv("ICS_BUILD_ID", "dev")
+
 # ── 認證豁免路由 ──────────────────────────
 # (method, path) 完整匹配
 AUTH_EXEMPT_EXACT: frozenset[tuple[str, str]] = frozenset(
