@@ -4334,5 +4334,26 @@
     "title": "fix(security): #294 prod image 排除不用的孤兒 HTML 頁（減攻擊面）",
     "updatedAt": "2026-06-20T21:34:59Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/298"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "防 #287 類「新 router 漏登記 → 落寬鬆預設 → 靜默 broken access control」。威脅依據 threat_model §8.7.1（攻法①）。\n\n- **test_rbac_route_matrix**（unit，靜態）：全 107 條 /api route × `allowed_roles_for` 分類鎖成 golden。新 route / 改分類 → 失敗 → 強制人工確認分類正確再更新 golden。\n- **test_rbac_enforcement**（api，整合）：低權角色實打 16 個高權端點 → 斷言 403（證明 middleware 真執行分類，非只表正確；利用角色檢查早於 body 驗證、免備 body）+ 5 正向 + 無 token→401。\n\n純測試、無 source 改動、不動版號。23 新測試全綠；全套件僅餘 test_tak_events 預存環境失敗（本機 TAK_ENABLED=true，無關）。\n\nCloses #296\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+    "closedAt": "2026-06-20T22:14:24Z",
+    "comments": [],
+    "createdAt": "2026-06-20T22:14:12Z",
+    "headRefName": "fix/issue-296-rbac-test-matrix",
+    "labels": [],
+    "mergedAt": "2026-06-20T22:14:24Z",
+    "number": 299,
+    "state": "MERGED",
+    "title": "test(security): #296 RBAC 路由分類 golden 矩陣 + 端到端強制",
+    "updatedAt": "2026-06-20T22:14:27Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/299"
   }
 ]

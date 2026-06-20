@@ -4142,15 +4142,15 @@
       "name": ""
     },
     "body": "> 來源：2026-06-20 檢測（攻法①）+ security-review agent 建議。威脅依據 threat_model §8.7。\n\n## 檢測成果\n前端=零偵察攻擊地圖，攻擊者拿低權 token 對每端點掃 IDOR / 漏掛授權。中央 gate（role_enum）採前綴比對，**漏登記即落寬鬆預設**（#287 TTX 即此患）。本批已修已知端點，但缺**系統性回歸防線**。\n\n## 業界類別 / 標準解\nOWASP A01。標準解＝deny-by-default + **每端點 × 每角色 200/403 矩陣測試**，防未來新 router 靜默漏掛。\n\n## DoD\n建 integration 測試：列舉所有 /api/* 端點 × {observer/operator/commander/sysadmin}，斷言預期 200/403/404；加「每 router prefix 必在 allowed_roles_for 有 case」斷言；關閉。",
-    "closedAt": null,
+    "closedAt": "2026-06-20T22:14:25Z",
     "comments": [],
     "createdAt": "2026-06-20T13:20:36Z",
     "labels": [],
     "milestone": null,
     "number": 296,
-    "state": "OPEN",
+    "state": "CLOSED",
     "title": "test(security): RBAC × 角色 200/403 integration 測試矩陣（系統性堵 broken access control）",
-    "updatedAt": "2026-06-20T13:20:36Z",
+    "updatedAt": "2026-06-20T22:14:25Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/296"
   }
 ]
