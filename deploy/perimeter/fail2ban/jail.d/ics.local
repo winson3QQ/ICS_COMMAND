@@ -1,0 +1,22 @@
+# jail.d/ics.local — #280 C：對掃描/探測者自動 ban（prod Linux 部署）
+#
+# 安裝（prod Linux 主機）：
+#   apt install fail2ban
+#   cp deploy/perimeter/fail2ban/filter.d/ics-nginx-probe.conf /etc/fail2ban/filter.d/
+#   cp deploy/perimeter/fail2ban/jail.d/ics.local             /etc/fail2ban/jail.d/
+#   # 改 logpath 指向實際 nginx access log；systemctl restart fail2ban
+#
+# ⚠ 前提：nginx 須看到「真實 client IP」（非 Docker bridge gateway）——否則 ban 到 gateway
+#   = ban 全部人。見 deploy/perimeter/README「Docker port-publish 抹掉真實 IP」。
+#   → 先落地 Tailscale 前置 / Linux nginx host-net，fail2ban 才有效。
+#   Windows Docker 無原生 fail2ban；本檔為 prod Linux 用。
+
+[ics-nginx-probe]
+enabled  = true
+filter   = ics-nginx-probe
+logpath  = /var/log/nginx/access.log
+port     = https
+maxretry = 3
+findtime = 600
+bantime  = 86400
+# action 預設 iptables-multiport；雲端/容器可改 cloudflare/abuseipdb 等
