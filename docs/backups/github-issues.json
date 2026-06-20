@@ -3908,6 +3908,20 @@
         "minimizedReason": "",
         "reactionGroups": [],
         "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/280#issuecomment-4757265233"
+      },
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "**[2026-06-20 收斂 D/F — 認列了又談低估的不一致]**\n\n- **D（geo/IP allowlist）→ superseded（不做）**：決定走 **Tailscale 前置（B）** 後，公網入口已關、無公網連線可 geo-擋 → D 在此模型下多餘。列它時 Tailscale 未定案；現明確 **superseded**，非含糊 deferred。（真要保留公網路徑才需，屆時於前置層做。）\n- **F（網路層憑證撤銷 CRL/OCSP）→ 提為 ROADMAP 正式項（正解）**：原把 F 講小了。**憑證撤銷正解 = TLS 層 CRL/OCSP**（被撤證握手即拒）；App 層撤銷（#275，即時失效）是縱深、不是完整解。已修 ROADMAP「mTLS 憑證撤銷」列（含 code：step-ca 簽 CRL + revoke 連動 step-ca + nginx ssl_crl + 刷新），追 #232。\n\n#280 in-repo 可做項（A/C/E/H + B runbook）已全做完並 merge；D superseded、F 入 ROADMAP/#232、G=P1-12。",
+        "createdAt": "2026-06-20T10:10:47Z",
+        "id": "IC_kwDOSnBjpc8AAAABG46COw",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/280#issuecomment-4757291579"
       }
     ],
     "createdAt": "2026-06-20T09:27:32Z",
@@ -3916,7 +3930,7 @@
     "number": 280,
     "state": "OPEN",
     "title": "公網直曝周邊防護硬化（perimeter hardening，#275 衍生）",
-    "updatedAt": "2026-06-20T10:02:45Z",
+    "updatedAt": "2026-06-20T10:10:47Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/280"
   }
 ]

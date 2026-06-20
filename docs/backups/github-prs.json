@@ -4218,16 +4218,37 @@
     },
     "baseRefName": "main",
     "body": "#280 H。高訊號鑑權異常集中成 `SECURITY_ALERT` 結構化 log + 可選 webhook。\n\n- 觸發：帳號鎖定（持續爆破）、第二因子失敗（PIN 對但裝置證不符/缺/撤銷）。\n- 以帳號/事件為主體（非 IP——Docker NAT 下 IP 不可靠）；同主體 1h 內 ≥3 次 → critical。\n- webhook：`ICS_SECURITY_WEBHOOK_URL`（背景緒、失敗不影響鑑權）；空＝只進 log。\n- 測試 5；sweep 476 passed；eslint 0。\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
-    "closedAt": null,
+    "closedAt": "2026-06-20T10:04:57Z",
     "comments": [],
     "createdAt": "2026-06-20T10:02:23Z",
     "headRefName": "feat/issue-280-security-monitor",
     "labels": [],
-    "mergedAt": null,
+    "mergedAt": "2026-06-20T10:04:57Z",
     "number": 282,
-    "state": "OPEN",
+    "state": "MERGED",
     "title": "feat(auth): #280 H — 安全監控告警（SECURITY_ALERT + 可選 webhook）",
-    "updatedAt": "2026-06-20T10:02:23Z",
+    "updatedAt": "2026-06-20T10:04:57Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/282"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "審視 #280 D/F：F（網路層 CRL/OCSP）才是憑證撤銷正解，原 ROADMAP 誤標 ops/SOP·不碰 code → 修正為含 code 正式項（step-ca CRL + revoke 連動 + nginx ssl_crl）。App 層撤銷已落地（#275）。追 #232/#280-F。\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+    "closedAt": "2026-06-20T10:10:45Z",
+    "comments": [],
+    "createdAt": "2026-06-20T10:10:41Z",
+    "headRefName": "docs/280-cert-revocation-roadmap",
+    "labels": [],
+    "mergedAt": "2026-06-20T10:10:45Z",
+    "number": 283,
+    "state": "MERGED",
+    "title": "docs(roadmap): #280 mTLS 網路層憑證撤銷（CRL/OCSP）提為正式項",
+    "updatedAt": "2026-06-20T10:10:45Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/283"
   }
 ]
