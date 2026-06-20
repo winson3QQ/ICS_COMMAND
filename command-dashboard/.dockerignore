@@ -1,6 +1,21 @@
 # 縮小 build context + 避免把 runtime / 巨大資產烤進 image
-data/                    # runtime user data（走 volume，不入 image）
-static/tiles/            # 巨大 basemap pmtiles/mbtiles（gitignored；驗證不需要底圖）
+# 註解一律獨立成行：.dockerignore 只認「行首 #」為註解，行內 # 會被當 pattern 一部分
+# （buildkit 對含 CJK/空白的壞 pattern 會報 "invalid file request" 卡死整個 build）。
+
+# runtime user data（走 volume，不入 image）
+data/
+# 巨大 basemap pmtiles/mbtiles（gitignored；驗證不需要底圖）
+static/tiles/
+
+# #294 減攻擊面：prod 不用的孤兒 HTML 頁不烤進 image。
+# reality check：全 repo 無 workflow 連結；唯一 admin_backups 連結在 dev 導覽頁、被 prod redirect 蓋掉；
+# prod 備份走 systemd 自動。服務著卻沒人走到的頁＝多餘 XSS 面（qr_scanner 有未跳脫 QR innerHTML sink）。
+# dev 仍從 source 保留這些檔，僅 prod image 排除。admin_backups 待整合進 admin 設定頁後重來。
+static/qr_scanner.html
+static/scenario_designer.html
+static/icon_preview.html
+static/admin_backups.html
+
 node_modules/
 .pytest_cache/
 __pycache__/

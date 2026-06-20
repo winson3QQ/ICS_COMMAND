@@ -20,6 +20,29 @@ def read_repo_file(path: str) -> str:
     return (REPO_ROOT / path).read_text(encoding="utf-8")
 
 
+def test_dockerignore_excludes_orphan_static_pages():
+    """#294 減攻擊面：prod image 不烤進「無 workflow 連結」的孤兒 HTML 頁。
+
+    qr_scanner / scenario_designer / icon_preview / admin_backups 在 prod 無可達路徑
+    （reality check：全 repo 無連結；admin_backups 連結僅 dev 導覽頁、被 prod redirect 蓋掉；
+    prod 備份走 systemd ics-backup）。服務著卻沒人走到＝多餘 XSS 面。
+    """
+    lines = [ln.strip() for ln in read_repo_file("command-dashboard/.dockerignore").splitlines()]
+    for page in (
+        "static/qr_scanner.html",
+        "static/scenario_designer.html",
+        "static/icon_preview.html",
+        "static/admin_backups.html",
+    ):
+        assert page in lines, f"{page} 應列入 .dockerignore（prod image 排除）"
+    # prod 實際在用的頁不可被排除
+    assert "static/commander_dashboard.html" not in lines
+    assert "static/aar.html" not in lines
+    # data/ 與 tiles 須為獨立行（行內 # 非註解、會讓 pattern 失效 → 排除沒生效）
+    assert "data/" in lines, "data/ 須獨立成行才會真的被排除（勿用行內註解）"
+    assert "static/tiles/" in lines
+
+
 def test_setup_sh_idempotent():
     script = read_repo_file("deploy/setup.sh")
     assert 'if id "${INSTALL_USER}" >/dev/null 2>&1; then' in script
