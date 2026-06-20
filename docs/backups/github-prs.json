@@ -4166,5 +4166,26 @@
     "title": "feat(auth): #275 mTLS wave 1 + 公網安全收口（#3/#4 + §2.8）",
     "updatedAt": "2026-06-20T03:48:20Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/276"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "落地 `threat_model` §8.6「正解 #1（mTLS）」+「#2 機制面硬化」。全角色 PIN + 裝置憑證 = AAL2。\n\n## 內容\n- **wave 2**：nginx mTLS 單埠 443 強制 + trusted-header 剝除 + 後端 loopback 收口。\n- **wave 3**：per-device 裝置憑證（migration v29 `account_certs`）+ App 層即時撤銷 + admin API。\n- **wave A**：修 nginx `$ssl_client_s_dn_cn` 變數 bug（→ map 抽 CN）+ Windows/Docker mTLS 驗證棧。\n- **wave B / B-2**：admin console 裝置憑證面板 + 面板線上發證（step-ca daemon，CA 鑰不進後端）。\n- **wave 4**：XFF 信任修正 / 鎖定-DoS 緩解 / PBKDF2 600k。\n- iOS `.mobileconfig` 產生器 + 跨平台 enrollment 留痕。\n\n## 驗證\n- 後端 broad sweep exit 0；eslint 0；vitest 340。\n- `/code-review`（修 CN 注入防護 + p12 編碼 + 去重）；`/security-review` 0 HIGH/MED。\n- **對外實機驗證通過**：iPhone Safari 4G + mTLS → dashboard/COP/WebSocket 全通；不持證 → nginx 400。\n\n## 後續（非本 PR）\n- 跨平台 enrollment 安裝包接進面板發證 / CN 有意義命名 / 簽章 .mobileconfig。\n- 公測前憑證效期 23h→90 天（CA provisioner maxTLSCertDuration + env 覆寫）。\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+    "closedAt": "2026-06-20T09:13:25Z",
+    "comments": [],
+    "createdAt": "2026-06-20T09:13:08Z",
+    "headRefName": "feat/issue-275-mtls-wave2",
+    "labels": [],
+    "mergedAt": "2026-06-20T09:13:25Z",
+    "number": 277,
+    "state": "MERGED",
+    "title": "feat(auth): #275 全角色 mTLS 鑑權（AAL2）— wave 2/3/4/A/B/B-2",
+    "updatedAt": "2026-06-20T09:13:25Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/277"
   }
 ]

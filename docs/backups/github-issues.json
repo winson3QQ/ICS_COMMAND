@@ -3801,5 +3801,45 @@
     "title": "feat(auth): 角色分級 mTLS 鑑權 — 全角色 PIN + 裝置憑證 (AAL2)",
     "updatedAt": "2026-06-20T03:54:02Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/275"
+  },
+  {
+    "assignees": [],
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "body": "#275 衍生。面板「發憑證」目前吐裸 p12；交付給縣市政府現場人員需更完整的安裝包。\n\n## 範圍\n- 面板發證依平台吐對應包：iOS/iPadOS → `.mobileconfig`（含 root CA + p12 + 內嵌密碼，清楚名稱/說明，CA 自動信任）；Android/桌機 → p12 + root CA + 各平台安裝說明。\n- 產生器已有雛形：`deploy/ics-validation/mtls/make-ios-profile.py`（接進後端發證 endpoint）。\n- CN 用有意義命名（如「王小明-iPhone」，會顯示在安裝畫面 + 撤銷清單），非 `my-phone`。\n- 簽章 `.mobileconfig`（變綠字「已驗證」，需 Apple-trusted 簽章證）。\n- **iOS 限制留痕**：第三方瀏覽器（Chrome/Firefox=WebKit 殼）拿不到 client 憑證做 mTLS → 必須用原生 Safari（2026-06-20 實測）。安裝說明須明寫。\n\n關聯：#275、`deploy/ics-validation/mtls/`。",
+    "closedAt": null,
+    "comments": [],
+    "createdAt": "2026-06-20T09:14:46Z",
+    "labels": [],
+    "milestone": null,
+    "number": 278,
+    "state": "OPEN",
+    "title": "跨平台裝置憑證 enrollment 產品化（接進面板發證）",
+    "updatedAt": "2026-06-20T09:14:46Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/278"
+  },
+  {
+    "assignees": [],
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "body": "#275 衍生。驗證棧 CA 預設 `maxTLSCertDuration=24h` → 目前 server + client 憑證皆 **23h** 效期，擺著給人測**隔天即全過期連不上**。\n\n## 動工\n- step-ca daemon provisioner 調大：`step ca provisioner update ics --x509-max-dur=2160h --x509-default-dur=2160h`（90 天）+ restart step-ca。\n- 重簽 nginx server 憑證 + 重發 client 憑證（90 天）：`ICS_SERVER_CERT_DURATION=2160h` / `ICS_CLIENT_CERT_DURATION=2160h`（env 已參數化，見 `ca-bootstrap.sh` / `issue-client.sh`）。\n- 既裝裝置（如 my-phone）需重發 + 重裝。\n- 正式交付：每場域獨立 step-ca instance + 真 CA + HSTS。\n\n關聯：#275、`deploy/ics-validation/docker-compose.mtls.yml`。",
+    "closedAt": null,
+    "comments": [],
+    "createdAt": "2026-06-20T09:14:47Z",
+    "labels": [],
+    "milestone": null,
+    "number": 279,
+    "state": "OPEN",
+    "title": "mTLS 公測前：憑證效期 23h → 90 天（step-ca maxTLSCertDuration）",
+    "updatedAt": "2026-06-20T09:14:47Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/279"
   }
 ]
