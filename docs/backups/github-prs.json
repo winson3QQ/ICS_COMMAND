@@ -4145,5 +4145,26 @@
     "title": "feat(cop): #267 納編/退編 — 把單位移進 active 場 / 退回 NULL 常駐",
     "updatedAt": "2026-06-15T09:06:23Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/274"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "## 摘要\n公網安全 campaign + #275 mTLS 鑑權 wave 1。源於驗證部署（cmd dashboard 直曝公網）實測（threat_model §8.6）。\n\n含 commits：\n- **#3** `/static` 的 `*.seed.json` 404 收口（facilities.seed 2.4MB 等不再外洩）+ ICS 容器化 + ICS_ENV=prod 收口（/docs 等）+ build 戳記\n- **#4** `/api/health` 未登入收口（運維細節僅已登入可取）\n- **§2.8 policy** 角色分級鑑權（AAL2 / 全角色 mTLS 決策）\n- **#275 wave 1** 後端消費 `X-Client-Cert-CN`：migration v28（accounts/sessions.cert_cn）+ `ICS_MTLS_REQUIRED` 旗標 + login 第二因子 + cert-bound session\n\n## 驗證\n- **unit/integration/security 全套：`1016 passed, 11 skipped`**（排除 CI-only `test_roadmap_sync` 環境路徑）\n- **/code-review**：1 finding（check_session request=None 誤殺）→ 已修 + 補測\n- **/security-review**：無 HIGH/MEDIUM 可利用漏洞；trusted-header 剝除列為 wave-2 nginx 要求（§2.8 已記）\n\n## 範圍邊界\n- `ICS_MTLS_REQUIRED` 預設 off → wave-1 cert binding 現行 dormant、零行為改變。\n- 後續 wave 2（nginx mTLS 落地）/ 3（PKI per-user cert）/ 4（XFF·鎖定-DoS·PIN KDF 600k）見 #275。\n\n對應 #275。\n",
+    "closedAt": "2026-06-20T03:48:20Z",
+    "comments": [],
+    "createdAt": "2026-06-20T03:47:44Z",
+    "headRefName": "feat/issue-275-mtls-auth",
+    "labels": [],
+    "mergedAt": "2026-06-20T03:48:20Z",
+    "number": 276,
+    "state": "MERGED",
+    "title": "feat(auth): #275 mTLS wave 1 + 公網安全收口（#3/#4 + §2.8）",
+    "updatedAt": "2026-06-20T03:48:20Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/276"
   }
 ]

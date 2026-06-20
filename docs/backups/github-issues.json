@@ -3777,14 +3777,29 @@
     },
     "body": "## 背景 / 決策\n驗證部署（cmd dashboard 經 AirPort 443 直曝公網）實測發現鑑權缺口（見 `threat_model` §8.6）。決策：**所有角色都走公網 → 全部都要 mTLS**。每角色 = PIN（知道）+ 裝置 client cert（持有）= MFA / NIST 800-63B **AAL2**，且無任何角色裸曝公網。\n\n## 業界標準對齊\n- **NIST SP 800-63B** AAL2（MFA，中高影響必須）；**OWASP ASVS V2** L2；**CJIS §5.6** advanced authentication（公安/政府 C2）。\n- **RBAC（授權）已實作完整**（READ/WRITE/COMMAND_ROLES）；本 item 補的是**鑑權 assurance**（authentication），非授權。\n\n## Reality check（進實作前盤點，2026-06-20）\n| # | 項目 | 事實 | 意義 |\n|---|---|---|---|\n| 1 | PIN KDF | **PBKDF2-HMAC-SHA256, 100k 迭代**（`repositories/_helpers.py:136`） | 已是慢 KDF（非裸 sha256）；6 位數空間小，hash 外洩離線仍可破 → 可升 OWASP 2023 建議 600k，mTLS 另護 hash |\n| 2 | nginx mTLS | `deploy/nginx/conf.d/tier3-mtls.conf.disabled` 架構已備：`ssl_verify_client on`、`ssl_verify_depth 2`，傳 `X-Client-Cert-CN` 給 FastAPI | 地基現成，rename + 填真實 cert/CA 路徑即可 |\n| 3 | PKI | step-ca 可簽（90 天）；TAK `gen-device-dp.sh` 已有裝置 client cert/p12 生成 pattern | 可複用，缺 per-user ICS client cert 簽發/撤銷管理面 |\n| 4 | 後端消費 cert | **尚未** 有 code 讀 `X-Client-Cert-CN`（只有 ICS→TAK 方向 client cert） | 要新建：驗 `ssl_client_verify=SUCCESS` + **CN↔帳號綁定**（cert=MFA 第二因子） |\n| 5 | XFF / 鎖定 | `_client_ip` 取 `X-Forwarded-For` **最左值**（可偽造）；帳號鎖定 5 次/15 分（亦為 DoS 向量） | 機制面修補 |\n\n**結論**：「全角色 mTLS」地基齊備（nginx 架構 + PKI + 裝置憑證 pattern），主缺口=後端把 client cert 綁進鑑權，加機制面三補。\n\n## Scope / 分波\n1. **後端消費 `X-Client-Cert-CN`**：驗 `ssl_client_verify=SUCCESS` + CN↔帳號綁定（cert=第二因子，與 PIN 構成 MFA）+ 單元/整合測。\n2. **nginx 啟用 tier3-mtls**：stub → 驗證棧落地（真實 cert/CA 路徑、root CA truststore）。\n3. **PKI**：per-user/裝置 ICS client cert 簽發 + 撤銷（複用 device-dp pattern；連動「ICS TAK admin console」cert 生命週期）。\n4. **機制面**：`_client_ip` XFF 信任修正（信任 nginx 設的可信 hop）、鎖定-DoS 緩解（per-source / admin 復原）、PBKDF2 100k→600k。\n5. **文件**：`threat_model` 擴 §8.6 + `security_policies.md` 寫「角色→AAL→authenticator」對照 + ROADMAP item tick。\n\n## 關聯\n- `threat_model` §8.6（公網直曝對外存取信任邊界）\n- 先前已修（branch `claude/ecstatic-knuth-295684`）：#3 `/static` seed 收口、#4 `/api/health` 收口\n- 複用：`deploy/nginx/conf.d/tier3-mtls.conf.disabled`、`deploy/step-ca/`、TAK `gen-device-dp.sh`\n",
     "closedAt": null,
-    "comments": [],
+    "comments": [
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## Wave 1 完成（PR #276，squash → main `0a3490f`）\n\n後端消費 `X-Client-Cert-CN`：migration v28（`accounts/sessions.cert_cn` + down helper）+ `ICS_MTLS_REQUIRED` 旗標（預設 off → dormant）+ login 第二因子 + cert-bound session（request-less 不套，code-review fix）。\n\n- 全套 **1016 passed**；`/code-review` 1 finding（request=None 誤殺）已修+補測；`/security-review` 無 HIGH/MEDIUM（trusted-header 剝除列入 wave 2 要求，已記 security_policies §2.8）。\n\n### 剩餘分波\n- [ ] **Wave 2**：nginx mTLS 落地（`tier3-mtls.conf.disabled` → live + `X-Client-Cert-*` trusted-header 剝除 + 後端只經 nginx 可達）\n- [ ] **Wave 3**：PKI — per-user / 裝置 client cert 簽發 + 撤銷（step-ca；複用 `gen-device-dp.sh`，與 TAK 共用 enrollment）\n- [ ] **Wave 4**（原 #2 機制面）：`_client_ip` XFF 信任修正、鎖定-DoS 緩解（per-source / admin 復原）、PBKDF2 100k→600k\n- [ ] **Wave 5**：docs + ROADMAP tick（#275 全完成時）\n\n### UX 可驗里程碑\nWave 1 為純後端 dormant，**現無 UX 可驗**。**Wave 2+3 完成**（持證裝置端到端連入登入）後再通知驗證。\n",
+        "createdAt": "2026-06-20T03:54:02Z",
+        "id": "IC_kwDOSnBjpc8AAAABG3-BtA",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/275#issuecomment-4756308404"
+      }
+    ],
     "createdAt": "2026-06-20T02:59:38Z",
     "labels": [],
     "milestone": null,
     "number": 275,
     "state": "OPEN",
     "title": "feat(auth): 角色分級 mTLS 鑑權 — 全角色 PIN + 裝置憑證 (AAL2)",
-    "updatedAt": "2026-06-20T02:59:38Z",
+    "updatedAt": "2026-06-20T03:54:02Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/275"
   }
 ]
