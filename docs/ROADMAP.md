@@ -525,14 +525,15 @@ P3 整合的前提是 WaveInk 採以下五原則設計訓練 / 運行資料平�
 |---|---|---|---|
 | **P1-12** key 管理 + LUKS/SQLCipher + backup（+ §8.4 `disk-v1`）| 後端 + ops | ❌ 零撞 | FIDO2 token（真驗收）；部署 at-rest 策略 |
 | **#136** TAK ingest XSS | code | render 在新 panel | **併 P2-12**（panel `textContent` = 主防線；勿 escape-at-ingest，見 [#136 comment](https://github.com/winson3QQ/ICS_COMMAND/issues/136)）|
-| **§8.5 cert 撤銷 + TAK 硬化** | ops / SOP | ❌ 不碰 code | step-ca、P2-15 |
+| **mTLS 憑證撤銷 — 網路層 CRL/OCSP（正解，[#232](https://github.com/winson3QQ/ICS_COMMAND/issues/232) / [#280](https://github.com/winson3QQ/ICS_COMMAND/issues/280)-F）** | 後端 + nginx + step-ca（**含 code，非純 ops**）| ❌ | **App 層撤銷已落地（#275，撤銷即時失效）**；**網路層 CRL/OCSP = 完整解**（被撤證 TLS 握手即拒、連 app 都到不了）＝ step-ca 簽 CRL + 撤銷連動 step-ca revoke（存 cert serial）+ nginx `ssl_crl` + 定期刷新。連 TAK 端被擄裝置撤銷（#232 原範圍，偏 TAK）。step-ca、P2-15 |
 | **PII retention**（track 90 天 TTL，缺口 #13）| 後端 | 🟡 碰 track 寫入 | 可併 P2-20 |
 | **TAK-D** `visible_to`/`access` 映射 | code | — | 併 P2-12 |
 | **Audit 簽章 key**（HKDF `child[2]` 預留）| 後端 | ❌ | P1-12 之後 |
 
 ### 並行軸（依能否與 active TAK sessions（P2-13/14/#161）並行排）
 - **🟢 軸 1 — P1-12（現可開，零熱區撞，丟專屬後端 session）**：`12a`（key 基建 + `disk-v1` child，mock/env 全綠）→ `12b`（backup 加密 + GUI，掛既有演習面板）→ `12c`（SQLCipher）。前置：① 訂部署 at-rest 策略（threat_model §8.4）② FIDO2 token 採購（真驗收用，mock 先行）。
-- **🟢 軸 2 — 部署硬化（現可開，純 ops/config，不碰 app code）**：TAK PG 強密碼（汰 `takdevpass123`）+ 只綁 localhost；§8.5 step-ca CRL/OCSP + 被擄裝置撤銷 SOP；部署目標機 LUKS 整碟。可與任何 code session 並行。
+- **🟢 軸 2 — 部署硬化（現可開，純 ops/config，不碰 app code）**：TAK PG 強密碼（汰 `takdevpass123`）+ 只綁 localhost；被擄裝置撤銷 SOP；部署目標機 LUKS 整碟。可與任何 code session 並行。
+  - ⚠ **例外（含 code，非純 ops）**：mTLS **網路層憑證撤銷（CRL/OCSP）= 正解完整解**，見上表「mTLS 憑證撤銷」列（#232/#280-F）；App 層撤銷已落地（#275）。
 - **🟡 序列 — #136**：併 P2-12（panel `textContent`）。修完連帶解 **TAK-D**（`visible_to`）+ COP poison 縱深（來源標註 / 異常偵測，→ P2-12/P2-19）。
 - **⚪ 後段（依賴前項）**：PII TTL（併 P2-20）→ Audit 簽章（P1-12 後，用 key 階層 `child[2]`）。
 
