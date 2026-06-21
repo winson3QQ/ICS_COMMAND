@@ -206,6 +206,7 @@ document.addEventListener('click', function (e) {
     case 'adm-change-pin': admChangeAdminPin(); break;
     case 'adm-toggle-tak': import('./auth.js').then(m => m.admToggleTak()); break;
     case 'adm-issue-tak-device': import('./auth.js').then(m => m.admIssueTakDevice()); break;
+    case 'adm-revoke-tak-device': import('./auth.js').then(m => m.admRevokeTakDevice(btn.dataset.certId)); break;
     case 'unlockPinLock':  unlockPinLock(); break;
     case 'adm-toggle-edit': import('./auth.js').then(m => m.admToggleEdit(btn.dataset.username)); break;
     case 'adm-save-edit': import('./auth.js').then(m => m.admSaveEdit(btn.dataset.username)); break;

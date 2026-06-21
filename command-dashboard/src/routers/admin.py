@@ -550,9 +550,15 @@ def issue_tak_device_cert(request: Request, callsign: str, mode: str = "atak"):
     from services.tak_device_cert import build_device_package
 
     try:
-        pkg = build_device_package(cn, mode, config.TAK_DEVICE_CONNECT_HOST, config.TAK_DEVICE_CONNECT_PORT, ca_dir)
+        pkg, serial = build_device_package(
+            cn, mode, config.TAK_DEVICE_CONNECT_HOST, config.TAK_DEVICE_CONNECT_PORT, ca_dir
+        )
     except CertIssuanceError as e:
         raise HTTPException(502, f"發證失敗：{e}") from e
+    # #317：盤點記錄（ICS 自建 SoT；TAK 不記 offline 證）+ serial（#318 CRL 前置）。
+    from repositories.tak_device_cert_repo import record_issued
+
+    record_issued(cn, serial, mode, sess["username"])
     # 強制 audit（不得 best-effort）：誰發了哪個 callsign 的 TAK 裝置證。私鑰/密碼不進 audit。
     audit(
         sess["username"],
@@ -560,7 +566,7 @@ def issue_tak_device_cert(request: Request, callsign: str, mode: str = "atak"):
         "tak_device_cert_issue",
         "tak",
         cn,
-        {"callsign": cn, "mode": mode, "connect_host": config.TAK_DEVICE_CONNECT_HOST},
+        {"callsign": cn, "mode": mode, "serial": serial, "connect_host": config.TAK_DEVICE_CONNECT_HOST},
     )
     safe = "".join(c for c in cn if c.isalnum() or c in "-_.") or "device"
     return Response(
@@ -568,3 +574,24 @@ def issue_tak_device_cert(request: Request, callsign: str, mode: str = "atak"):
         media_type="application/zip",
         headers={"Content-Disposition": f'attachment; filename="{safe}-dp.zip"'},
     )
+
+
+@router.get("/tak/device-certs", tags=["account-admin"])
+def list_tak_device_certs(request: Request):
+    """#317：列出 dashboard 發過的 TAK 裝置證（盤點）。sysadmin only。"""
+    _check_system_admin(request)
+    from repositories.tak_device_cert_repo import list_device_certs
+
+    return list_device_certs()
+
+
+@router.post("/tak/device-certs/{cert_id}/revoke", tags=["account-admin"])
+def revoke_tak_device_cert(cert_id: int, request: Request):
+    """#317：標記裝置證為已撤銷（**帳面 flag，不阻擋連線**——真撤銷見 #318 CRL）。sysadmin only。"""
+    sess = _check_system_admin(request)
+    from repositories.tak_device_cert_repo import mark_revoked
+
+    result = mark_revoked(cert_id, sess["username"])
+    if result is None:
+        raise HTTPException(404, "active tak device cert not found")
+    return result

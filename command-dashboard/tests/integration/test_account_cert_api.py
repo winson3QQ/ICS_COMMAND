@@ -198,12 +198,40 @@ class TestTakDeviceCert:
         (tmp_path / "tak-ca.pem").write_text("PEM", encoding="ascii")
         monkeypatch.setattr(config, "TAK_DEVICE_CONNECT_HOST", "1.2.3.4")
         monkeypatch.setattr(config, "TAK_DEVICE_CA_DIR", str(tmp_path))
-        monkeypatch.setattr(tdc, "build_device_package", lambda cn, mode, host, port, ca_dir: b"ZIP-DP-BYTES")
+        monkeypatch.setattr(
+            tdc, "build_device_package", lambda cn, mode, host, port, ca_dir: (b"ZIP-DP-BYTES", "S3R1AL")
+        )
         r = client.post("/api/admin/tak/device-cert?callsign=atak-01&mode=atak", headers=auth)
         assert r.status_code == 200, r.text
         assert r.headers["content-type"] == "application/zip"
         assert "atak-01-dp.zip" in r.headers.get("content-disposition", "")
         assert r.content == b"ZIP-DP-BYTES"
+        # #317：發證後進盤點表（serial 記下）
+        listing = client.get("/api/admin/tak/device-certs", headers=auth).json()
+        assert any(x["callsign"] == "atak-01" and x["serial"] == "S3R1AL" and x["status"] == "active" for x in listing)
+
+    def test_list_and_revoke_flag(self, client, auth, monkeypatch, tmp_path):
+        """#317：列管 + 撤銷-flag（帳面，不 enforce）。"""
+        import core.config as config
+        import services.tak_device_cert as tdc
+
+        (tmp_path / "tak-ca.key").write_text("KEY", encoding="ascii")
+        (tmp_path / "tak-ca.pem").write_text("PEM", encoding="ascii")
+        monkeypatch.setattr(config, "TAK_DEVICE_CONNECT_HOST", "1.2.3.4")
+        monkeypatch.setattr(config, "TAK_DEVICE_CA_DIR", str(tmp_path))
+        monkeypatch.setattr(tdc, "build_device_package", lambda *a: (b"Z", "SER-X"))
+        client.post("/api/admin/tak/device-cert?callsign=itak-rev&mode=aware", headers=auth)
+        rec = next(
+            x for x in client.get("/api/admin/tak/device-certs", headers=auth).json() if x["callsign"] == "itak-rev"
+        )
+        # 撤銷標記
+        r = client.post(f"/api/admin/tak/device-certs/{rec['id']}/revoke", headers=auth)
+        assert r.status_code == 200 and r.json()["status"] == "revoked"
+        # 已撤再撤 → 404
+        assert client.post(f"/api/admin/tak/device-certs/{rec['id']}/revoke", headers=auth).status_code == 404
+
+    def test_list_requires_auth(self, client):
+        assert client.get("/api/admin/tak/device-certs").status_code == 401
 
     def test_503_when_no_ca_dir(self, client, auth, monkeypatch):
         import core.config as config
