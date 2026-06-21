@@ -1305,17 +1305,30 @@ export async function admLoadCerts(username) {
     return;
   }
   const certs = await resp.json();
-  let rows = '';
-  for (const c of certs) {
+  const certRow = (c) => {
     const active = c.status === 'active';
-    rows += '<div style="display:flex;align-items:center;gap:6px;padding:4px 0;border-bottom:1px solid var(--border,#222);font-size:12px;">' +
+    return '<div style="display:flex;align-items:center;gap:6px;padding:4px 0;border-bottom:1px solid var(--border,#222);font-size:12px;">' +
         '<span style="font-family:monospace;flex:1;' + (active ? '' : 'text-decoration:line-through;color:var(--text3);') + '">' + _escAudit(c.cert_cn) + '</span>' +
         (c.label ? '<span style="color:var(--text3);">' + _escAudit(c.label) + '</span>' : '') +
         '<span class="adm-badge ' + (active ? 'active' : 'suspended') + '">' + (active ? '有效' : '已撤銷') + '</span>' +
         (active ? '<button class="adm-btn" data-action="adm-revoke-cert" data-username="' + username + '" data-cert-id="' + c.id + '">撤銷</button>' : '') +
       '</div>';
-  }
+  };
+  // #307 缺口 2：active 恆顯示；revoked 預設摺疊（toggle 展開）+ 可一鍵清除。
+  const actives = certs.filter(c => c.status === 'active');
+  const revoked = certs.filter(c => c.status !== 'active');
+  let rows = actives.map(certRow).join('');
   if (!certs.length) rows = '<div style="color:var(--text3);font-size:12px;padding:6px;">尚無裝置憑證</div>';
+  if (revoked.length) {
+    rows +=
+      '<div style="display:flex;align-items:center;gap:6px;margin-top:6px;">' +
+        '<button class="adm-btn" data-action="adm-toggle-revoked" data-username="' + username + '">已撤銷（' + revoked.length + '）▾</button>' +
+        '<button class="adm-btn" data-action="adm-purge-revoked" data-username="' + username + '" title="永久刪除所有已撤銷列（audit log 保留）">清除已撤銷</button>' +
+      '</div>' +
+      '<div id="adm-revoked-' + username + '" style="display:none;margin-top:4px;">' +
+        revoked.map(certRow).join('') +
+      '</div>';
+  }
   box.innerHTML =
     rows +
     '<div style="display:flex;gap:4px;margin-top:8px;flex-wrap:wrap;">' +
@@ -1368,6 +1381,20 @@ export async function admRevokeCert(username, certId) {
   if (!confirm('撤銷此裝置憑證？該裝置將立即無法登入（活躍 session 一併失效）。')) return;
   const resp = await authFetch(API_BASE + '/api/admin/accounts/' + username + '/certs/' + certId, { method: 'DELETE' });
   if (!resp.ok) { alert('撤銷失敗（' + resp.status + '）'); return; }
+  admLoadCerts(username);
+}
+
+// #307 缺口 2：展開/摺疊已撤銷列。
+export function admToggleRevoked(username) {
+  const box = el('adm-revoked-' + username);
+  if (box) box.style.display = box.style.display === 'none' ? '' : 'none';
+}
+
+// #307 缺口 2：清除所有已撤銷列（audit log 保留）。
+export async function admPurgeRevoked(username) {
+  if (!confirm('永久刪除此帳號所有「已撤銷」的憑證記錄？\n（稽核日誌會保留，僅清掉列表死記錄）')) return;
+  const resp = await authFetch(API_BASE + '/api/admin/accounts/' + username + '/certs/revoked', { method: 'DELETE' });
+  if (!resp.ok) { alert('清除失敗（' + resp.status + '）'); return; }
   admLoadCerts(username);
 }
 

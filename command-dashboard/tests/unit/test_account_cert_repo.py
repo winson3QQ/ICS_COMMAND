@@ -4,6 +4,7 @@ unit/test_account_cert_repo.py — #275 wave 3：per-device 裝置憑證綁定 +
 涵蓋：bind / list / revoke、唯一 active CN、cert_active_for_account（login 第二因子）、
 is_cert_active（check_session 撤銷即時失效）、check_session 撤銷後 session 失效。
 """
+
 from types import SimpleNamespace
 
 import pytest
@@ -26,6 +27,7 @@ def _req(cert_cn=None, cert_verify=None, ip="10.0.0.5", ua="pytest"):
 def _mk_account(username="alice", role="操作員"):
     from repositories.account_cert_repo import account_id_for_username
     from repositories.account_repo import create_account
+
     create_account(username, "123456", role=role, operator="system")
     return {"username": username, "id": account_id_for_username(username)}
 
@@ -33,6 +35,7 @@ def _mk_account(username="alice", role="操作員"):
 class TestBindRepo:
     def test_bind_then_list(self, tmp_db):
         from repositories.account_cert_repo import bind_cert, list_certs
+
         acct = _mk_account()
         rec = bind_cert(acct["id"], "alice-phone", "私人手機", "system")
         assert rec["cert_cn"] == "alice-phone" and rec["status"] == "active"
@@ -41,6 +44,7 @@ class TestBindRepo:
 
     def test_bind_multiple_devices_per_account(self, tmp_db):
         from repositories.account_cert_repo import bind_cert, list_certs
+
         acct = _mk_account()
         bind_cert(acct["id"], "alice-phone", None, "system")
         bind_cert(acct["id"], "alice-tablet", None, "system")
@@ -48,6 +52,7 @@ class TestBindRepo:
 
     def test_duplicate_active_cn_rejected(self, tmp_db):
         from repositories.account_cert_repo import bind_cert
+
         acct = _mk_account()
         bind_cert(acct["id"], "dup-cn", None, "system")
         with pytest.raises(ValueError):
@@ -55,6 +60,7 @@ class TestBindRepo:
 
     def test_empty_cn_rejected(self, tmp_db):
         from repositories.account_cert_repo import bind_cert
+
         acct = _mk_account()
         with pytest.raises(ValueError):
             bind_cert(acct["id"], "   ", None, "system")
@@ -63,6 +69,7 @@ class TestBindRepo:
 class TestRevoke:
     def test_revoke_flips_status_and_frees_cn(self, tmp_db):
         from repositories.account_cert_repo import bind_cert, revoke_cert
+
         acct = _mk_account()
         rec = bind_cert(acct["id"], "gone-device", None, "system")
         out = revoke_cert(rec["id"], "system")
@@ -73,10 +80,12 @@ class TestRevoke:
 
     def test_revoke_unknown_returns_none(self, tmp_db):
         from repositories.account_cert_repo import revoke_cert
+
         assert revoke_cert(9999, "system") is None
 
     def test_revoke_scoped_to_account(self, tmp_db):
         from repositories.account_cert_repo import bind_cert, revoke_cert
+
         a = _mk_account("alice")
         b = _mk_account("bob")
         rec = bind_cert(a["id"], "alice-dev", None, "system")
@@ -85,9 +94,51 @@ class TestRevoke:
         assert revoke_cert(rec["id"], "system", account_id=a["id"]) is not None
 
 
+class TestPurgeRevoked:
+    def test_purge_removes_only_revoked(self, tmp_db):
+        from repositories.account_cert_repo import (
+            bind_cert,
+            list_certs,
+            purge_revoked_certs,
+            revoke_cert,
+        )
+
+        acct = _mk_account()
+        keep = bind_cert(acct["id"], "alice-phone", None, "system")  # 保持 active
+        gone = bind_cert(acct["id"], "alice-tablet", None, "system")
+        revoke_cert(gone["id"], "system")
+        assert len(list_certs(acct["id"])) == 2
+        n = purge_revoked_certs(acct["id"], "system")
+        assert n == 1
+        rows = list_certs(acct["id"])
+        assert len(rows) == 1 and rows[0]["id"] == keep["id"] and rows[0]["status"] == "active"
+
+    def test_purge_empty_returns_zero(self, tmp_db):
+        from repositories.account_cert_repo import bind_cert, purge_revoked_certs
+
+        acct = _mk_account()
+        bind_cert(acct["id"], "alice-phone", None, "system")  # 只有 active
+        assert purge_revoked_certs(acct["id"], "system") == 0
+
+    def test_purge_scoped_to_account(self, tmp_db):
+        from repositories.account_cert_repo import bind_cert, list_certs, purge_revoked_certs, revoke_cert
+
+        a = _mk_account("alice")
+        b = _mk_account("bob")
+        ra = bind_cert(a["id"], "alice-dev", None, "system")
+        rb = bind_cert(b["id"], "bob-dev", None, "system")
+        revoke_cert(ra["id"], "system")
+        revoke_cert(rb["id"], "system")
+        # 清 alice 的不動 bob 的
+        assert purge_revoked_certs(a["id"], "system") == 1
+        assert len(list_certs(a["id"])) == 0
+        assert len(list_certs(b["id"])) == 1  # bob 的 revoked 列還在
+
+
 class TestActiveLookups:
     def test_cert_active_for_account(self, tmp_db):
         from repositories.account_cert_repo import bind_cert, cert_active_for_account
+
         acct = _mk_account()
         bind_cert(acct["id"], "alice-phone", None, "system")
         assert cert_active_for_account(acct["id"], "alice-phone") is True
@@ -96,6 +147,7 @@ class TestActiveLookups:
 
     def test_is_cert_active_after_revoke(self, tmp_db):
         from repositories.account_cert_repo import bind_cert, is_cert_active, revoke_cert
+
         acct = _mk_account()
         rec = bind_cert(acct["id"], "alice-phone", None, "system")
         assert is_cert_active("alice-phone") is True
@@ -106,11 +158,13 @@ class TestActiveLookups:
 class TestCertCnValidation:
     def test_valid_cns(self, tmp_db):
         from repositories.account_cert_repo import is_valid_cert_cn
+
         for cn in ("my-phone", "commander-phone-01", "王小明-iPhone", "a.b_c@d", "夜鷹 平板"):
             assert is_valid_cert_cn(cn) is True, cn
 
     def test_invalid_cns(self, tmp_db):
         from repositories.account_cert_repo import is_valid_cert_cn
+
         # 空、逗號（破壞 nginx [^,]+ CN 抽取）、前導 dash（step CLI flag injection）、控制/引號
         for cn in ("", "   ", "a,b", "-flag", "--not-after=8760h", 'a"b', "a\nb", "x" * 65):
             assert is_valid_cert_cn(cn) is False, repr(cn)
@@ -120,6 +174,7 @@ class TestRevokeKillsLiveSession:
     def test_revoked_cert_invalidates_active_session(self, tmp_db, monkeypatch):
         """撤銷後活躍 session 下一個 request 即失效（不必等 token 過期）。"""
         import core.config as config
+
         monkeypatch.setattr(config, "ICS_MTLS_REQUIRED", True)
         from auth.service import EVENT_BINDING_MISMATCH_CERT, check_session, create_session
         from repositories.account_cert_repo import bind_cert, revoke_cert

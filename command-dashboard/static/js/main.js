@@ -215,6 +215,8 @@ document.addEventListener('click', function (e) {
     case 'adm-bind-cert': import('./auth.js').then(m => m.admBindCert(btn.dataset.username)); break;
     case 'adm-issue-cert': import('./auth.js').then(m => m.admIssueCert(btn.dataset.username)); break;
     case 'adm-revoke-cert': import('./auth.js').then(m => m.admRevokeCert(btn.dataset.username, btn.dataset.certId)); break;
+    case 'adm-toggle-revoked': import('./auth.js').then(m => m.admToggleRevoked(btn.dataset.username)); break;
+    case 'adm-purge-revoked': import('./auth.js').then(m => m.admPurgeRevoked(btn.dataset.username)); break;
     case 'adm-add-account': import('./auth.js').then(m => m.admAddAccount()); break;
     case 'adm-create-pi-node': import('./auth.js').then(m => m.admCreatePiNode()); break;
     case 'adm-rekey-pi-node': import('./auth.js').then(m => m.admRekeyPiNode(btn.dataset.unitId)); break;
