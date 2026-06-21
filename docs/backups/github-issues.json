@@ -4352,14 +4352,29 @@
     },
     "body": "## 目標\n在乾淨（非 OneDrive 同步）環境，把 `deploy/prod/` 單機交付棧 **ICS + TAK 同機**從 build 到跑起來做端到端實證。目前 `deploy/prod/` 只是 scaffold、未在乾淨環境驗過（見 [`deploy/prod/README.md`](deploy/prod/README.md)）。\n\n## 範圍\n同一份 `deploy/prod/docker-compose.yml`，Docker profile + `.env` toggle 切交付形態。本單聚焦 **ICS + TAK 同機**（`--profile tak`，`TAK_ENABLED=true`）；純 ICS 形態順帶 smoke。\n\n## 前置（依序，README §前置）\n1. **乾淨 build 環境** — repo 在非同步路徑：**blocked by #300**。\n2. **TAK release** 解壓到 `deploy/tak-server/release/` + 設 `deploy/tak-server/.env`。\n3. `docker build -t ics-command:dev command-dashboard`；TAK image 由 compose `--profile tak` 首 up 時 build。\n4. `cp .env.example .env` 填密鑰、`ICS_SERVER_SANS`（含公網 IP）、TAK toggle。\n5. 憑證：nginx server cert（`ca-bootstrap` 自動）；TAK server cert + ICS→TAK client cert 跑 `deploy/tak-server/pki/issue-tak-certs.sh`（同一條 step-ca），放進 `deploy/prod/tak-certs/`。\n\n## 完成判準（README §驗證）\n- [ ] `docker compose --env-file .env --profile tak up -d` 全起，`docker compose ps` 全 healthy（`tak-database` healthy、`takserver` :8089 listen）。\n- [ ] 操作端 `https://<公網IP>/static/commander_dashboard.html` → 憑證 + PIN 登入成功。\n- [ ] ICS `/api/tak/status` 回 connected；COP 收到 ATAK 推的 CoT。\n- [ ] 純 ICS 形態（不加 `--profile tak`、`TAK_ENABLED=false`）也能 up + 登入（確認 toggle 兩態都成立）。\n- [ ] 對外 port 對齊 README（443 nginx / 8089 CoT / 8446 發證 / 8443 admin 不轉發）。\n\n## 依賴 / 關聯\n- **Blocked by**: #300（本機 docker build 受阻於 OneDrive 殘留 reparse point）— 不解此單跑不起來。\n- **Follow-up（跑起來後）**: #301（prod runtime 黑箱安全驗證）、#280（公網周邊硬化）、#279（公測前憑證效期 23h→90d）。\n- **非本棧範圍縱深**: 周邊 VPN 前置（#280）、image 釘 digest（供應鏈）。\n\n> 性質：環境/部署實證工作。改動預期集中在「跑通 + 視需要修 compose/.env.example/runbook」，非大規模 code 變更。\n",
     "closedAt": null,
-    "comments": [],
+    "comments": [
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## Phase 1 ✅ — deploy/prod ICS 半（公網 prod）up + 驗證通過\n\n2026-06-21。乾淨環境（#300 已解）build 的 ics-command:dev + 統一棧 ICS 半起來：\n\n- `docker compose --env-file .env up -d`（純 ICS，不帶 `--profile tak`）全綠：step-ca healthy、ca-bootstrap Exited(0) 簽證成功、ics-command healthy、nginx up。\n- **mTLS 強制**：`:443` 無 client cert → HTTP 400（No required SSL certificate）。\n- **server cert SAN 含公網 IP**：`DNS:localhost, IP:127.0.0.1, IP:1.34.230.218`（ca-bootstrap 由 `ICS_SERVER_SANS` 簽入）。\n\n### 方向定案（與既存 tak-runtime 的關係）\n發現 `C:\\Users\\yello\\tak-runtime\\` 有一套獨立、已 dogfood 的 TAK（專案 `ics-tak`，跨 29h，官方 openssl CA、SAN=localhost）。決議：**改用 deploy/prod 統一棧取代之**，TAK 憑證**用 step-ca 重建整條鏈**（含公網 IP SAN），既存 ics-tak 以 `compose stop` 保留卷可回滾。\n\n### Phase 2（進行中）：TAK 半\n1. step-ca provisioner 效期 24h→2160h（TAK 長跑）。\n2. 容器化 step-ca 簽 TAK server cert（RSA、SAN 含 1.34.230.218）+ client certs（fullchain）。\n3. keytool（temurin 容器）產 takserver.jks / truststore-root.jks / fed-truststore.jks。\n4. 補 release CoreConfig + certs；client fullchain + root 進 deploy/prod/tak-certs/。\n5. 停 ics-tak → build deploy/prod takserver image → `--profile tak up`。\n6. 重發裝置包（iTAK/ATAK，新 step-ca root）。\n",
+        "createdAt": "2026-06-21T05:27:43Z",
+        "id": "IC_kwDOSnBjpc8AAAABG8dQQg",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/305#issuecomment-4761014338"
+      }
+    ],
     "createdAt": "2026-06-21T03:44:37Z",
     "labels": [],
     "milestone": null,
     "number": 305,
     "state": "OPEN",
     "title": "deploy(prod): ICS + TAK 同機交付棧乾淨環境端到端實證（build + up + smoke）",
-    "updatedAt": "2026-06-21T03:44:37Z",
+    "updatedAt": "2026-06-21T05:27:43Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/305"
   }
 ]
