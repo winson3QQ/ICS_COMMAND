@@ -4540,15 +4540,30 @@
       "name": ""
     },
     "body": "## 現象\n2026-06-21 公網 prod，iPad（外網）面板發證後安裝 .p12，iOS 報「**憑證密碼不正確**」（密碼其實對）。#307 把 p12 密碼從固定 `icsclient` 改為**每張隨機混合大小寫**（如 `TqbuGrjSdULTYfi0`）後出現。\n\n## Reality check（已驗，非格式 bug）\n用 prod step-ca 實際重簽一張 p12，openssl 驗證：\n- **格式**：`pbeWithSHA1And40BitRC2-CBC` + `MAC sha1` → **是 legacy**（`--legacy` 沒掉、iOS 相容，#307 gap1 修復仍在）。\n- **密碼 roundtrip**：用面板顯示的同一密碼 → openssl `→ 密碼正確、可解開`。\n\n→ p12 與密碼皆正確。「密碼不對」根因 = **iOS 安裝描述檔提示框要手打那串 16 字隨機混合大小寫密碼**，被自動大寫/打錯。屬 #307 把密碼改隨機的**可用性副作用**（文件早記 `.mobileconfig` 內嵌密碼「免打、免被自動大寫卡」）。\n\n## 立即 workaround\niOS 安裝密碼框**用貼上**（長按→貼上），勿手打——面板「複製密碼」鈕已把密碼放進剪貼簿。\n\n## Durable 修法（二選一）\n- **(a) 易打密碼方案**：隨機但限好打字元（全小寫+數字，或 `字-字-數字` 詞組），仍夠熵但 iOS 不卡。小改 `cert_issuance._p12_password()`。\n- **(b) `.mobileconfig` 內嵌密碼**（文件 blessed，零打字）：面板對 iOS UA 產 `.mobileconfig`（root CA + p12 + 密碼一包，`application/x-apple-aspen-config`），點開直接裝、不問密碼。較完整，需後端產 profile（可參 `deploy/ics-validation/mtls/make-ios-profile.py`）。\n\n## 完成判準\n- iPhone/iPad 從面板發證後能順利安裝 .p12（不再因密碼手打失敗）。\n\n關聯：#307（隨機密碼來源）、`command-dashboard/src/services/cert_issuance.py`、`command-dashboard/static/js/auth.js`、`deploy/prod/README.md §裝置憑證`。",
-    "closedAt": null,
-    "comments": [],
+    "closedAt": "2026-06-21T12:06:10Z",
+    "comments": [
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## ✅ 落地（公網 iPad dogfood PASS，PR #313 `a339df6`）\n\n面板發證「格式」可選「iOS 描述檔」→ 後端產 `.mobileconfig`（root CA + p12 + **內嵌密碼**）→ iOS 開啟即裝、免打憑證密碼。採方案 (b)。\n\n- 後端：`build_mobileconfig` + `fetch_root_ca_pem` + `/certs/issue?fmt=mobileconfig`；CN/密碼/URL 全 XML escape、密碼不進 audit/log。\n- 前端：格式下拉 + 描述檔下載/分享流程（無密碼欄）。\n- 版號：`backend-v2.8.0` / `frontend-v1.8.0`。\n- `/code-review` 0 / `/security-review` 0；測試 26 passed。\n\n### reality check（dogfood 實證的誤解點，已澄清進 UI/README）\niPad 安裝描述檔時 iOS 跳的「輸入密碼」是**裝置螢幕解鎖碼**（裝置層授權），**不是憑證密碼**；「簽署者 未簽署」屬正常（自建描述檔未簽章）。內嵌密碼使憑證密碼完全免打。\n\n完成判準：iPhone/iPad 從面板發證後能順利安裝（不再因密碼手打失敗）✓。",
+        "createdAt": "2026-06-21T12:06:09Z",
+        "id": "IC_kwDOSnBjpc8AAAABG9SrgA",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/312#issuecomment-4761889664"
+      }
+    ],
     "createdAt": "2026-06-21T11:27:28Z",
     "labels": [],
     "milestone": null,
     "number": 312,
-    "state": "OPEN",
+    "state": "CLOSED",
     "title": "fix(auth): iOS 安裝 .p12 隨機密碼難手打 → 「密碼不正確」（#307 隨機密碼副作用）",
-    "updatedAt": "2026-06-21T11:27:28Z",
+    "updatedAt": "2026-06-21T12:06:10Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/312"
   }
 ]

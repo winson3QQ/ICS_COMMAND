@@ -4523,5 +4523,26 @@
     "title": "fix(deploy): #279 憑證效期 23h→90d（含 reality check 根因修正）",
     "updatedAt": "2026-06-21T11:26:39Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/311"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "關聯 [#312](https://github.com/winson3QQ/ICS_COMMAND/issues/312)。\n\n## 問題\n#307 把 p12 密碼改隨機後，iOS 安裝裸 `.p12` 須**手打 16 字混合大小寫密碼**（iOS 鍵盤易卡、安裝框不可貼上）→ 公網 iPad 實證死路。\n\n## 解\n面板發證「格式」可選「**iOS 描述檔**」→ 後端產 `.mobileconfig`（root CA + p12 + **內嵌密碼**一包）→ iOS 開啟即裝、**免打憑證密碼**。\n\n**後端**\n- `cert_issuance.build_mobileconfig()`（port `make-ios-profile.py` 的 plist）+ `fetch_root_ca_pem()`；CN/密碼/URL 全 `xml.sax.saxutils.escape`；密碼不進 audit/log。\n- `/certs/issue` 加 `fmt` 查詢參數（`p12` 預設 / `mobileconfig`）；單次 issue+bind、`fmt` 非法 422、mobileconfig 不回 `X-P12-Password`（密碼內嵌）。\n\n**前端**\n- 發證格式下拉 + `_showMobileconfigResult`（下載 / Web Share，無密碼欄）；`_makeP12File`→`_makeFile` 泛化。\n- 澄清：iOS 安裝描述檔要的「密碼」是**裝置解鎖碼**（非憑證密碼）、「未簽署」屬正常 → 補進面板提示 + README。\n\n**版號**：`backend-v2.8.0`（MINOR，新發證格式）+ `frontend-v1.8.0`（MINOR，iOS 接入 UI）。\n\n## 測試 / Review\n- `pytest` 26 passed（mobileconfig 內嵌密碼 + payloads、XML escape、`fmt` 422、自動綁定）、eslint 0、doc_sync 綠、pre-commit 全 Passed。\n- `/code-review` **0**、`/security-review` **0**（XML escape、密碼不洩、sysadmin-gated、新 import 全 stdlib `base64/ssl/uuid/xml`）。\n\n## §8 Verification（公網 iPad dogfood，2026-06-21）\n- 格式選「iOS 描述檔」發證 → 面板「⬇下載描述檔 / 📤分享」（無密碼欄）。\n- iPad 安裝描述檔（含憑證 2：root CA + 裝置身分）→ **未問憑證密碼**（內嵌生效）→ 輸入 iPad 裝置解鎖碼 → 安裝成功 → Safari 連 `https://1.34.230.218/` 出示憑證 + PIN 登入 → **PASS**（截圖）。",
+    "closedAt": "2026-06-21T12:04:39Z",
+    "comments": [],
+    "createdAt": "2026-06-21T12:04:28Z",
+    "headRefName": "feat/issue-312-ios-mobileconfig",
+    "labels": [],
+    "mergedAt": "2026-06-21T12:04:39Z",
+    "number": 313,
+    "state": "MERGED",
+    "title": "feat(auth): #312 iOS 零打憑證密碼接入（.mobileconfig 內嵌密碼）",
+    "updatedAt": "2026-06-21T12:04:44Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/313"
   }
 ]
