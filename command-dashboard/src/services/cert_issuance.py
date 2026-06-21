@@ -9,10 +9,14 @@ client 憑證，回傳 p12 bytes。CA 簽發鑰始終只在 daemon。未配置�
 
 from __future__ import annotations
 
+import base64
 import os
 import secrets
+import ssl
 import subprocess  # nosec B404 - 受控參數呼叫 step CLI（無 shell=True，無使用者字串拼接）
 import tempfile
+import uuid
+from xml.sax.saxutils import escape
 
 import core.config as config
 
@@ -108,6 +112,82 @@ def issue_p12(cert_cn: str) -> tuple[bytes, str]:
 
         with open(p12, "rb") as f:
             return f.read(), p12_pass
+
+
+def fetch_root_ca_pem() -> str:
+    """取 step-ca root CA 憑證 PEM（mobileconfig 內嵌信任根用）。fingerprint 驗證。"""
+    if not config.step_ca_configured():
+        raise CertIssuanceError("step-ca 線上發證未配置")
+    with tempfile.TemporaryDirectory(prefix="ics-root-") as td:
+        root = os.path.join(td, "root.crt")
+        r = _run(
+            ["ca", "root", root, "--ca-url", config.STEP_CA_URL, "--fingerprint", config.step_ca_fingerprint(), "-f"]
+        )
+        if r.returncode != 0:
+            raise CertIssuanceError(f"取 root 失敗：{_tail(r.stderr)}")
+        with open(root, encoding="ascii") as f:
+            return f.read()
+
+
+def build_mobileconfig(cert_cn: str, p12_bytes: bytes, p12_pass: str, root_pem: str, server_url: str) -> bytes:
+    """#312：把 root CA + 裝置 p12（含內嵌密碼）包成 iOS .mobileconfig 設定描述檔。
+
+    iOS 點開直接安裝「信任根 + mTLS 身分」，**密碼已內嵌→免手打**（隨機混合大小寫密碼
+    在 iOS 安裝框手打/貼上皆卡的根治）。port 自 deploy/ics-validation/mtls/make-ios-profile.py。
+    密碼隨檔內嵌＝此 .mobileconfig 敏感度同 p12，只走 mTLS 回 sysadmin、不進 log。
+    """
+    root_der = ssl.PEM_cert_to_DER_cert(root_pem)
+    ca_uuid, id_uuid, top_uuid = (str(uuid.uuid4()).upper() for _ in range(3))
+    cn_x = escape(cert_cn)
+    url_x = escape(server_url)
+    ca_b64 = base64.b64encode(root_der).decode("ascii")
+    p12_b64 = base64.b64encode(p12_bytes).decode("ascii")
+    pass_x = escape(p12_pass)
+    top_desc = (
+        f"安裝後本裝置即可從 {url_x} 登入 ICS 指揮儀表板（仍需登入 PIN）。"
+        f"內含：信任根憑證 + 本裝置 mTLS 身分憑證（{cn_x}）。遺失裝置請通知管理員撤銷此憑證。"
+    )
+    plist = f"""<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>PayloadContent</key>
+  <array>
+    <dict>
+      <key>PayloadType</key><string>com.apple.security.root</string>
+      <key>PayloadVersion</key><integer>1</integer>
+      <key>PayloadIdentifier</key><string>local.ics.ca.{ca_uuid}</string>
+      <key>PayloadUUID</key><string>{ca_uuid}</string>
+      <key>PayloadDisplayName</key><string>ICS 指揮部 根憑證 (CA)</string>
+      <key>PayloadDescription</key><string>信任 ICS 內部憑證簽發機構，使本裝置能驗證指揮伺服器並出示裝置憑證。</string>
+      <key>PayloadCertificateFileName</key><string>ics-root-ca.crt</string>
+      <key>PayloadContent</key>
+      <data>{ca_b64}</data>
+    </dict>
+    <dict>
+      <key>PayloadType</key><string>com.apple.security.pkcs12</string>
+      <key>PayloadVersion</key><integer>1</integer>
+      <key>PayloadIdentifier</key><string>local.ics.identity.{id_uuid}</string>
+      <key>PayloadUUID</key><string>{id_uuid}</string>
+      <key>PayloadDisplayName</key><string>ICS 裝置憑證 — {cn_x}</string>
+      <key>PayloadDescription</key><string>本裝置登入 ICS 指揮儀表板的 mTLS 身分憑證（第二因子）。</string>
+      <key>PayloadCertificateFileName</key><string>{cn_x}.p12</string>
+      <key>Password</key><string>{pass_x}</string>
+      <key>PayloadContent</key>
+      <data>{p12_b64}</data>
+    </dict>
+  </array>
+  <key>PayloadType</key><string>Configuration</string>
+  <key>PayloadVersion</key><integer>1</integer>
+  <key>PayloadIdentifier</key><string>local.ics.enroll.{top_uuid}</string>
+  <key>PayloadUUID</key><string>{top_uuid}</string>
+  <key>PayloadOrganization</key><string>ICS 指揮部</string>
+  <key>PayloadDisplayName</key><string>ICS 指揮部 裝置接入 — {cn_x}</string>
+  <key>PayloadDescription</key><string>{top_desc}</string>
+</dict>
+</plist>
+"""
+    return plist.encode("utf-8")
 
 
 def _tail(s: str | None, n: int = 200) -> str:

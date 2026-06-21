@@ -97,6 +97,35 @@ class TestOnlineIssue:
         certs = client.get("/api/admin/accounts/grace/certs", headers=auth).json()
         assert any(c["cert_cn"] == "grace-laptop" and c["status"] == "active" for c in certs)
 
+    def test_issue_mobileconfig(self, client, auth, monkeypatch):
+        """#312：fmt=mobileconfig → 回 .mobileconfig（描述檔），密碼內嵌不回 header，仍自動綁定。"""
+        import core.config as config
+        import services.cert_issuance as ci
+
+        monkeypatch.setattr(config, "step_ca_configured", lambda: True)
+        monkeypatch.setattr(ci, "issue_p12", lambda cn: (b"P12", "embedded-pw"))
+        monkeypatch.setattr(ci, "fetch_root_ca_pem", lambda: "-----BEGIN CERTIFICATE-----X")
+        monkeypatch.setattr(ci, "build_mobileconfig", lambda cn, p12, pw, root, url: b"<plist>MC</plist>")
+        _mk_account(client, auth, "iris")
+        r = client.post(
+            "/api/admin/accounts/iris/certs/issue?fmt=mobileconfig", json={"cert_cn": "iris-ipad"}, headers=auth
+        )
+        assert r.status_code == 200, r.text
+        assert r.headers["content-type"] == "application/x-apple-aspen-config"
+        assert "iris-ipad.mobileconfig" in r.headers.get("content-disposition", "")
+        assert r.content == b"<plist>MC</plist>"
+        assert "x-p12-password" not in {k.lower() for k in r.headers}  # 密碼內嵌、不另回
+        certs = client.get("/api/admin/accounts/iris/certs", headers=auth).json()
+        assert any(c["cert_cn"] == "iris-ipad" and c["status"] == "active" for c in certs)
+
+    def test_issue_invalid_fmt_422(self, client, auth, monkeypatch):
+        import core.config as config
+
+        monkeypatch.setattr(config, "step_ca_configured", lambda: True)
+        _mk_account(client, auth, "jack")
+        r = client.post("/api/admin/accounts/jack/certs/issue?fmt=xml", json={"cert_cn": "jack-x"}, headers=auth)
+        assert r.status_code == 422
+
     def test_issue_409_when_cn_already_active(self, client, auth, monkeypatch):
         import core.config as config
         import services.cert_issuance as ci
