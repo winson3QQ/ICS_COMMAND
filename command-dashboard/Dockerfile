@@ -1,6 +1,16 @@
 # command-dashboard/Dockerfile — ICS 指揮部後端容器化（驗證 / 佈署用）
 # 設計：static/（factory default）烤進 image；data/（runtime user data）走 volume。
 # 啟動方式對齊 setup.sh：從 src/ 跑 uvicorn main:app（main.py 用 src 為根的扁平 import）。
+
+# ── #302 layer-1：前端 IP 保護（prod 才砍註解 + minify；dev 源碼保持可讀）──────────
+# 逐檔 esbuild --minify（**不 bundle** → 保留 import 路徑/export 名、不動 42 個 dynamic import、
+# CSP `script-src 'self'` safe、無 eval/inline）。砍掉 ~1394 行繁中設計註解（最大 IP 洩漏）。
+# 只在 image build 跑 → repo 的 static/js 維持可讀（dev 不受影響）。esbuild=美國 npm，pinned。
+FROM node:20-alpine AS jsmin
+WORKDIR /jsmin
+COPY static/js/ ./js/
+RUN npx --yes esbuild@0.24.0 ./js/*.js --minify --legal-comments=none --outdir=./min --log-level=warning
+
 FROM python:3.12-slim
 
 # #275 wave B-2：step CLI（線上發證用——後端呼叫 step-ca daemon 簽 client 憑證，
@@ -19,6 +29,8 @@ RUN pip install --no-cache-dir -U pip && pip install --no-cache-dir -r requireme
 # 程式 + factory default 靜態資源（不含 data/、不含巨大的 static/tiles，見 .dockerignore）
 COPY src/ ./src/
 COPY static/ ./static/
+# #302：用 minified JS 覆蓋 raw（同檔名，import 路徑/dynamic import 不變）。HTML/CSS/seed 不動。
+COPY --from=jsmin /jsmin/min/ ./static/js/
 
 # runtime 資料夾（DATA_DIR = BASE_DIR/data）。掛 named volume；先建好並交給 ics 使用者，
 # 新 named volume 首次使用會繼承此目錄 owner，確保非 root 可寫。
