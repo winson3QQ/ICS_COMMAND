@@ -4481,5 +4481,26 @@
     "title": "fix(auth): #307 缺口2 — 裝置憑證列表可清除/摺疊 revoked 記錄",
     "updatedAt": "2026-06-21T09:25:21Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/309"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "關聯 issue #307 缺口 1（iOS 取證死路）+ 衍生子缺口（面板不顯示 p12 密碼）。收尾 #307。\n\n## 改了什麼\n**後端**\n- p12 匯入密碼改「每張隨機」（`secrets.token_urlsafe`）；廢除弱默認 `icsclient`（對齊 threat_model H6）。顯式設 `STEP_CLIENT_CERT_P12_PASS` 才用固定值（runbook 相容）。\n- `issue_p12()` 回 `(bytes, password)`；`/certs/issue` 經 `X-P12-Password` header 回前端。密碼**不進** audit / log / stderr（`--password-file` 非 argv）。\n\n**前端（裝置憑證面板）**\n- **不再自動下載**。iOS 一拿到 .p12 即攔成本機安裝、蓋掉畫面 → 改「先顯示密碼、手動觸發」：綠框常駐顯示隨機密碼 + 複製鈕。\n- 「⬇ 下載/安裝」走本機安裝；「📤 分享/存檔」用 Web Share API（File）→ iOS 原生分享單可「儲存到檔案 / AirDrop」轉交別台（修正先前「iOS 存不了檔」的錯誤假設）。\n- 全程 `textContent`（XSS 防線在 sink）。\n\n**版號**：`backend-v2.7.3`（PATCH，行為變更非新介面）+ `frontend-v1.7.1`（PATCH，面板 UX）。\n\n## 測試 / Review\n- `pytest` 37 passed（`_p12_password` 隨機/固定、`X-P12-Password` header、tuple mock）、eslint 0、doc_sync 綠、pre-commit 全 Passed。\n- `/code-review` **0**（tuple 兩 caller 都改、`_p12_password` None 處理正確、token_urlsafe header-safe、同源無需 expose-header、banner 順序正確、Web Share 有 guard）。\n- `/security-review` **0**（密碼不洩、不可 header injection、sysadmin-gated、唯一新 import 是 stdlib `secrets`、無中國依賴）。\n\n## §8 Verification（公網 prod dogfood，2026-06-21，iPhone 4G 外網）\n逐版 build（BUILD_ID 注入登入頁可辨識）→ `--force-recreate ics-command` 上線 → iPhone 外網實機驗：\n- 子缺口：發證後面板綠框顯示隨機密碼 `TqbuGrjSdULTYfi0`（非 icsclient）+ 複製鈕 → **PASS**（截圖）。\n- 缺口 1：不自動跳安裝、密碼先可見；「📤 分享/存檔」跳 iOS 分享單可儲存到檔案/AirDrop → **PASS**。\n\n> #307 四段（legacy / revoked 清除 / 密碼顯示 / iOS 取證）全落地，merge 後關閉 issue。",
+    "closedAt": "2026-06-21T10:39:30Z",
+    "comments": [],
+    "createdAt": "2026-06-21T10:39:21Z",
+    "headRefName": "fix/issue-307-p12-password",
+    "labels": [],
+    "mergedAt": "2026-06-21T10:39:30Z",
+    "number": 310,
+    "state": "MERGED",
+    "title": "fix(auth): #307 缺口1+子缺口 — p12 隨機密碼顯示 + iOS 取證路徑",
+    "updatedAt": "2026-06-21T10:39:35Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/310"
   }
 ]
