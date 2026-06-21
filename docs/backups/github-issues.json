@@ -4409,7 +4409,7 @@
       "name": ""
     },
     "body": "## 目標\n在乾淨（非 OneDrive 同步）環境，把 `deploy/prod/` 單機交付棧 **ICS + TAK 同機**從 build 到跑起來做端到端實證。目前 `deploy/prod/` 只是 scaffold、未在乾淨環境驗過（見 [`deploy/prod/README.md`](deploy/prod/README.md)）。\n\n## 範圍\n同一份 `deploy/prod/docker-compose.yml`，Docker profile + `.env` toggle 切交付形態。本單聚焦 **ICS + TAK 同機**（`--profile tak`，`TAK_ENABLED=true`）；純 ICS 形態順帶 smoke。\n\n## 前置（依序，README §前置）\n1. **乾淨 build 環境** — repo 在非同步路徑：**blocked by #300**。\n2. **TAK release** 解壓到 `deploy/tak-server/release/` + 設 `deploy/tak-server/.env`。\n3. `docker build -t ics-command:dev command-dashboard`；TAK image 由 compose `--profile tak` 首 up 時 build。\n4. `cp .env.example .env` 填密鑰、`ICS_SERVER_SANS`（含公網 IP）、TAK toggle。\n5. 憑證：nginx server cert（`ca-bootstrap` 自動）；TAK server cert + ICS→TAK client cert 跑 `deploy/tak-server/pki/issue-tak-certs.sh`（同一條 step-ca），放進 `deploy/prod/tak-certs/`。\n\n## 完成判準（README §驗證）\n- [ ] `docker compose --env-file .env --profile tak up -d` 全起，`docker compose ps` 全 healthy（`tak-database` healthy、`takserver` :8089 listen）。\n- [ ] 操作端 `https://<公網IP>/static/commander_dashboard.html` → 憑證 + PIN 登入成功。\n- [ ] ICS `/api/tak/status` 回 connected；COP 收到 ATAK 推的 CoT。\n- [ ] 純 ICS 形態（不加 `--profile tak`、`TAK_ENABLED=false`）也能 up + 登入（確認 toggle 兩態都成立）。\n- [ ] 對外 port 對齊 README（443 nginx / 8089 CoT / 8446 發證 / 8443 admin 不轉發）。\n\n## 依賴 / 關聯\n- **Blocked by**: #300（本機 docker build 受阻於 OneDrive 殘留 reparse point）— 不解此單跑不起來。\n- **Follow-up（跑起來後）**: #301（prod runtime 黑箱安全驗證）、#280（公網周邊硬化）、#279（公測前憑證效期 23h→90d）。\n- **非本棧範圍縱深**: 周邊 VPN 前置（#280）、image 釘 digest（供應鏈）。\n\n> 性質：環境/部署實證工作。改動預期集中在「跑通 + 視需要修 compose/.env.example/runbook」，非大規模 code 變更。\n",
-    "closedAt": null,
+    "closedAt": "2026-06-21T22:46:27Z",
     "comments": [
       {
         "author": {
@@ -4452,15 +4452,29 @@
         "minimizedReason": "",
         "reactionGroups": [],
         "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/305#issuecomment-4761115110"
+      },
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## ✅ 端到端實證 PASS（本機 Docker prod 棧，2026-06-21）\n\nDB 證據復盤（prod 容器 `ics-prod-ics-command-1`，`/app/data/ics.db` migration **30**）。\n\n**乾淨 build**：`ICS_BUILD_ID=release-5ec7190-0622.0633`（merge sha `5ec7190` 的 release marker，非 OneDrive-dirty）→ #300 的同步路徑顧慮在這顆 image 上不成立。`backend-v2.11.0` / `frontend-v1.9.1`。\n\n**同機交付棧全 up**（一台機器）：\n\n| 容器 | 狀態 |\n|---|---|\n| ics-prod-ics-command-1 | Up (healthy) |\n| takserver 5.7 | Up（:8089 / :8446 對外）|\n| tak-database | Up (healthy) |\n| ics-prod-nginx-1 | Up（:443 對外，mTLS）|\n| ics-prod-step-ca-1 | Up (healthy) |\n\n**smoke 種子實體在場**（`cop_entities`）：\n- `ICS-SMOKE-TEST-001` (ICS-SMOKE) 25.04,121.56\n- `ISO-CHECK-9` (ISO9) 25.0,121.0 — received 2026-06-21T07:36:39Z\n\n**真 iTAK 位置流進 COP**（ICS↔TAK CoT 端到端）：\n```\nuid: AC4B3A0B-E4DE-401C-B34B-011EF8FF0B59\ncallsign: 3QQ:ITAK   type: a-f-G-U-C\nlat 24.8134 / lon 121.0402   received_at: 2026-06-21T14:36:43Z\narchived=0, deleted=0\n```\n\n**裝置證自助發放 + 撤銷 + 強制 audit**（`tak_device_certs` + `audit_log`）：\n- 證 callsign `Test`（mode=aware）已發、已 revoked\n- audit：`tak_device_cert_issue`（6/21 多筆）/ `tak_device_cert_mark_revoked` / `cert_issue·bind·revoke·purge`\n\ndoc 留痕已在 main：ROADMAP〈交付實證〉行 502/506 ✅ + `deploy/prod/README.md`〈首次 onboarding／裝置憑證／內網 LAN／憑證效期〉四節（merge `8d2a5c4`）。\n\n關閉本單。後續細項另有獨立 issue：憑證效期 90 天 #279、真撤銷 CRL #318、ATAK(Android) 真機驗。\n",
+        "createdAt": "2026-06-21T22:46:25Z",
+        "id": "IC_kwDOSnBjpc8AAAABG-2Z9Q",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/305#issuecomment-4763523573"
       }
     ],
     "createdAt": "2026-06-21T03:44:37Z",
     "labels": [],
     "milestone": null,
     "number": 305,
-    "state": "OPEN",
+    "state": "CLOSED",
     "title": "deploy(prod): ICS + TAK 同機交付棧乾淨環境端到端實證（build + up + smoke）",
-    "updatedAt": "2026-06-21T06:20:35Z",
+    "updatedAt": "2026-06-21T22:46:27Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/305"
   },
   {
