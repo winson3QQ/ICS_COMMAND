@@ -3266,6 +3266,20 @@
         "minimizedReason": "",
         "reactionGroups": [],
         "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/229#issuecomment-4760537331"
+      },
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## 收尾 + 策略定位留痕（2026-06-21）\n\n### code-complete（branch `feat/issue-229-p1-12c-sqlcipher`，待 merge/CI）\n\n| 件 | commit |\n|---|---|\n| driver 抽象（`get_conn` 明文/SQLCipher 雙路）+ health/backup 收口 | da8e492 |\n| migration（明文→加密 CLI）/ restore re-encrypt / encrypt_db / deps + CI + 加密整合測試 | a0b85b8 |\n\n- 收口點修正：非單一 `get_conn`，含 dashboard health ×2 + backup online ×2（前已留痕）。\n- restore 正確性洞補上：產物恆「明文 .db 包 Fernet」，加密部署 restore 後 `reencrypt_in_place` 轉回加密。\n- 依賴 `sqlcipher3-binary==0.6.0`（coleifer/美國，非中國，security-review 過）；Windows 無 wheel → platform marker 排除，本機明文 + mock，加密整合測試走 **CI ubuntu**（`test_db_encryption.py` 真 round-trip；CI 加 assert 步驟防靜默 skip）。\n- 本機明文 1183 passed、pyflakes 乾淨（2 既有失敗非本項回歸）。\n\n### ⚠ 策略定位（threat_model §8.4）——本項**降級為 L2 內層縱深，非 at-rest 主控**\n\ndogfood 結論：**同機部署下 SQLCipher 給假安全感**——TAK PostgreSQL 同碟明文（同一批敵我位置）+ 私鑰明文落地，偷碟直接讀 TAK PG 繞過 SQLCipher。**完整 at-rest 必須整碟加密（LUKS/BitLocker）= 主控、必備**（[#231](https://github.com/winson3QQ/ICS_COMMAND/issues/231)）；runtime 被入侵時兩者皆被繞過（§7）。\n\n**決議**：\n- P1-12c **default-off**（`ICS_DB_ENCRYPTED` 未設），是否真開**待整碟策略 + 交付模式定案**。\n- **優先順序讓位給 #231（整碟）**——先砌外牆再裝櫃子鎖。\n- 硬體驗收（真 FIDO2 token / Pi SQLCipher benchmark）= [#230](https://github.com/winson3QQ/ICS_COMMAND/issues/230)。\n- 交付模式（整機 / 預封碟+token / image+token / 建議硬體 + fail-closed 安裝）為 #231 前置商業決策，另立留痕。",
+        "createdAt": "2026-06-21T02:56:21Z",
+        "id": "IC_kwDOSnBjpc8AAAABG8Lntw",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/229#issuecomment-4760725431"
       }
     ],
     "createdAt": "2026-06-11T23:42:31Z",
@@ -3274,7 +3288,7 @@
     "number": 229,
     "state": "OPEN",
     "title": "P1-12c SQLCipher live DB at-rest 加密：driver 抽象 + 明文→加密 migration + CI 驗證",
-    "updatedAt": "2026-06-21T01:22:51Z",
+    "updatedAt": "2026-06-21T02:56:21Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/229"
   },
   {
