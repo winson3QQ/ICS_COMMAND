@@ -3211,15 +3211,15 @@
       "name": ""
     },
     "body": "P1-12 子項 A（umbrella #226）。`scripts/keymgmt/` 全 greenfield。\n\n## Scope\n\n- `enroll_fido2.py`：FIDO2（CTAP2 hmac-secret）註冊 N≥2 token；master key 32B 隨機產生，per-token AES-GCM wrap 存 `master-key.enc`（JSON：credential_id / salt / nonce / wrapped）\n- `unlock_key.py`：任一已註冊 token 解出 master → HKDF 推 child keys → 寫 env file（`/run/ics/keys.env`，0600）供 systemd `EnvironmentFile=` 消費\n- `derive_child.py`：HKDF-SHA256 label-based 衍生 lib（單一收口）\n- **Key 階層**：`child[0]=backup-v1`（Fernet）/ `child[1]=db-v1`（SQLCipher）/ `child[2]=audit-v1` 預留 / **`child[3]=disk-v1`（LUKS unlock，threat_model §8.4 決議）**\n- Rescue：BIP-39 24 字助記詞紙本輸出；由助記詞 re-enroll（失去全部 token 的後路）\n- Env fallback（dev / no-FIDO2 場景）：`ICS_MASTER_KEY` 直供，啟動警示明顯\n- `systemd/ics-command.service` 加 `EnvironmentFile=-/run/ics/keys.env` 接點（`-` = optional，非破壞）\n\n## 測試門檻（本機 Windows 全 mock，不需實體金鑰）\n\n- HKDF RFC 5869 KAT 向量\n- mock backend：多 token 任一可解 / 未註冊 token 拒 / wrap 檔竄改偵測（AESGCM auth fail）/ 助記詞 roundtrip / env fallback\n- pyflakes 0、pytest 全綠\n- **真 token 整合驗收 → 硬體尾巴 issue（不阻塞本項）**\n\n## 依賴（供應鏈，CLAUDE.md 紅線）\n\n- `fido2==2.2.0`（Yubico，BSD-2，非中國）；`cryptography` 已在 requirements\n- BIP-39 english wordlist vendored（bitcoin/bips 上游，public domain）+ sha256 完整性測試",
-    "closedAt": null,
+    "closedAt": "2026-06-21T01:00:42Z",
     "comments": [],
     "createdAt": "2026-06-11T23:42:29Z",
     "labels": [],
     "milestone": null,
     "number": 227,
-    "state": "OPEN",
+    "state": "CLOSED",
     "title": "P1-12a key management 基建：FIDO2 enroll/unlock + HKDF 階層（含 disk-v1）+ env fallback + mock 測試",
-    "updatedAt": "2026-06-11T23:42:29Z",
+    "updatedAt": "2026-06-21T01:00:42Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/227"
   },
   {

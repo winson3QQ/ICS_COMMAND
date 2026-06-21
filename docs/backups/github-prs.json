@@ -3523,7 +3523,7 @@
     },
     "baseRefName": "main",
     "body": "## ROADMAP item\n\nP1-12a — 統一 key management 基礎建設（umbrella #226）\n- Closes #227\n\n## What changed\n\n`scripts/keymgmt/` 全新套件：FIDO2（CTAP2 hmac-secret）enroll/unlock + HKDF-SHA256 label 衍生（`backup-v1`/`db-v1`/`audit-v1` 預留/`disk-v1` LUKS 預留，threat_model §8.4 拍板）+ BIP-39 rescue 助記詞 + `ICS_MASTER_KEY` dev fallback。systemd 加 `EnvironmentFile=-/run/ics/keys.env` 接點（非破壞）。文件：threat_model v0.6 拍板記錄、ROADMAP P1-12 ⏳、規格動工修訂、`docs/security/key-management.md` SOP。\n\n## DoD checklist\n\n- [x] Tests added / updated（19 個 mock 測試：RFC 5869 KAT / 多 token 冗餘 / 竄改偵測 / 助記詞 roundtrip / 失 token 演練協定層 / env fallback）\n- [x] `pytest` green（1004 passed, 1 skipped — skip 為既有）\n- [ ] `npm test` green（無 JS 改動，N/A）\n- [x] 規格書更新（p1-key-management.md 動工修訂 + key-management.md 新建 + threat_model v0.6）\n- [x] ROADMAP item 對應 sub-item 完成（P1-12 標 ⏳ + issue 連結）\n\n## §8 Human Verification Script\n\n```bash\n# Step 1: keymgmt 測試全綠（mock，不需實體金鑰）\ncd command-dashboard && python -m pytest tests/unit/test_keymgmt.py -v\n# 預期：19 passed\n\n# Step 2: pyflakes 乾淨\npython -m pyflakes src/ ../scripts/keymgmt/*.py\n# 預期：無輸出，exit 0\n\n# Step 3: env fallback 全流程 — 解鎖 → 衍生 → env file → Fernet 可用\ncd ..\nexport ICS_MASTER_KEY=$(python -c \"import secrets;print(secrets.token_bytes(32).hex())\")\npython scripts/keymgmt/unlock_key.py --output ./.tmp-keys.env\n# 預期：stderr 出現「⚠⚠ ICS_MASTER_KEY fallback 模式」警示 + ✔ 寫入訊息\npython - <<'PY'\nfrom pathlib import Path\nfrom cryptography.fernet import Fernet\nkv = dict(l.split(\"=\",1) for l in Path(\"./.tmp-keys.env\").read_text().splitlines() if \"=\" in l)\nf = Fernet(kv[\"BACKUP_KEY\"].encode())\nassert f.decrypt(f.encrypt(b\"verify\")) == b\"verify\"\nassert len(bytes.fromhex(kv[\"DB_KEY\"])) == 32\nprint(\"VERIFY OK: BACKUP_KEY Fernet 可用 / DB_KEY 32 bytes hex\")\nPY\n# 預期：VERIFY OK\n\n# Step 4: doc_sync gate\npython scripts/doc_sync_check.py\n# 預期：✓ doc-sync check passed\n```\n\n## Out of scope / known limitations\n\n- **真實 FIDO2 token 路徑未經硬體驗證**（`backends.RealFido2Backend`）— 硬體驗收 + 失 token 實機演練 → #230（已在 code 註記）\n- 12b backup 整合（BACKUP_KEY 消費）→ #228；12c SQLCipher（DB_KEY 消費）→ #229\n- LUKS（disk-v1 消費端）→ #231\n\n## Notes for reviewer\n\n- 供應鏈新 dep：`fido2==2.2.0`（Yubico AB，BSD-2，非中國）；BIP-39 wordlist vendored 自 bitcoin/bips（public domain），sha256 釘在 mnemonic.py + 測試，.gitattributes 鎖 LF 防 EOL 轉換破 hash\n- keystore wrap：AES-256-GCM，aad 綁 credential_id；檔案本身無 token 不可解\n- `derive_child` info 帶 `ics-keymgmt/v1/` 前綴（domain separation，有測試釘住）\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
-    "closedAt": null,
+    "closedAt": "2026-06-21T01:00:41Z",
     "comments": [
       {
         "author": {
@@ -3599,11 +3599,11 @@
     "createdAt": "2026-06-12T00:03:06Z",
     "headRefName": "feat/issue-227-p1-12a-keymgmt",
     "labels": [],
-    "mergedAt": null,
+    "mergedAt": "2026-06-21T01:00:41Z",
     "number": 234,
-    "state": "OPEN",
+    "state": "MERGED",
     "title": "feat(keymgmt): P1-12a FIDO2 enroll/unlock + HKDF 階層（含 disk-v1）+ mock 測試",
-    "updatedAt": "2026-06-20T23:18:22Z",
+    "updatedAt": "2026-06-21T01:00:44Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/234"
   },
   {
@@ -3615,7 +3615,7 @@
     },
     "baseRefName": "feat/issue-227-p1-12a-keymgmt",
     "body": "## ROADMAP item\n\nP1-12b — 整包 data/ 備份/還原（umbrella #226）\n- Closes #228\n- **Stacked on #234（12a）**：消費 12a 的 `BACKUP_KEY`（HKDF child[0]）。base = `feat/issue-227-p1-12a-keymgmt`；12a merge 後改 base main 並 rebase。\n\n## What changed\n\n整包 `data/`（非 DB-only）加密備份 + GUI 還原。三層觸發（L1 手動 / L2 archive 自動 / L3 reset+shutdown 防呆）、OP-2（reset 強制 confirm）、OP-4（restore-cmd deprecated）、drift bug（API 觸發 DB-only 備份過去產明文）一併修。\n\n## DoD checklist\n\n- [x] Tests added（service 層 7 + API 層 14：role gate / 加密 / manifest / restore 409&422 / OP-2 confirm + RBAC 序 / L2 archive）\n- [x] `pytest` green（1025 passed / 2 skipped）\n- [ ] `npm test`（無 vitest 對應；HTML 為 presentational，待 GUI human-verify）\n- [x] 規格更新（p1-key-management.md 進度段）\n- [ ] ROADMAP tick（P1-12 umbrella，待 12a/b/c 全 merge）\n\n## §8 Human Verification Script\n\n```bash\n# Step 1: 後端測試全綠\ncd command-dashboard && python -m pytest tests/api/test_backup_restore_api.py tests/integration/test_user_data_backup.py -v\n# 預期：全 pass（win32 skip 1：restore 熱 DB e2e）\n\n# Step 2: pyflakes\npython -m pyflakes src/\n# 預期：無輸出\n\n# Step 3（★需 Human 瀏覽器 — GUI 里程碑）:\n#   登入儀表板（sysadmin）→ 同分頁開 /static/admin_backups.html → 登入並載入\n#   (a) 按「立即整包備份」→ 清單出現 userdata-*.tar.gz.enc，「預覽 manifest」顯示檔案清單/演習\n#   (b) 建並 activate 一場演習 → archive → 清單應多一筆 archive-trigger 備份（manifest 帶演習）\n#   (c) 選一個 .tar.gz.enc → 上傳並還原 → 顯示「還原完成 + pre-restore-*」+「需重啟」提示\n#   (d) 有 active 演習時上傳還原 → 應 409「有進行中演習」\n#   (e) reset-db 不帶 confirm → 422；帶 {\"confirm\":\"RESET\"} → 200\n```\n\n## Out of scope / known limitations\n\n- **GUI human-verify 待使用者返回**（Step 3）。restore 熱 DB e2e 在 Windows 因檔案鎖無法跑 → win32 skip，由 CI Linux + service 層測試覆蓋。\n- 整包備份與既有 DB-only 備份（systemd timer）**並存**（附加式，不破壞既有端點/測試）；面板統一為後續。\n- 12c SQLCipher（DB_KEY 消費）→ #229。\n\n## Notes for reviewer\n\n- restore 安全：先 `read_manifest`（解密+schema 驗證）失敗即止不動 current；`_safe_extract` 逐 member 擋 `..`/絕對路徑 + `filter=\"data\"`。\n- OP-2 刻意在 `_check_system_admin` 之後手讀 body（非必填 Pydantic）→ 保留「RBAC 403 先於 body 422」語意（既有 RBAC 測試靠此）。\n- key 來源：encrypt 用 BACKUP_KEY→legacy fallback；decrypt 兩 key 都試（過渡期舊 backup 仍可解）。\n- .gitignore 修了 latent bug：`data/backups/` 錨 repo root，match 不到 `command-dashboard/data/backups/`。\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
-    "closedAt": null,
+    "closedAt": "2026-06-21T01:00:43Z",
     "comments": [
       {
         "author": {
@@ -3679,9 +3679,9 @@
     "labels": [],
     "mergedAt": null,
     "number": 235,
-    "state": "OPEN",
+    "state": "CLOSED",
     "title": "feat(backup): P1-12b 整包 data/ 加密備份 + GUI 還原 + 三層觸發 + OP-2/OP-4",
-    "updatedAt": "2026-06-20T23:52:21Z",
+    "updatedAt": "2026-06-21T01:00:43Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/235"
   },
   {
