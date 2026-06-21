@@ -4502,5 +4502,26 @@
     "title": "fix(auth): #307 缺口1+子缺口 — p12 隨機密碼顯示 + iOS 取證路徑",
     "updatedAt": "2026-06-21T10:39:35Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/310"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "關聯 [#279](https://github.com/winson3QQ/ICS_COMMAND/issues/279)。deploy/docs only，無 code/版號變更。\n\n## Reality check（2026-06-21 公網 prod 實測）—— 推翻 issue 原根因\n- issue 寫「step-ca provisioner `maxTLSCertDuration=24h` 上限卡關」→ **過時**。prod provisioner claims **已**放寬為 `2160h`；我實簽 `--not-after 2160h` 確得 **90 天**證 → provisioner **非**限制。\n- **真正限制**：compose duration env 預設 `23h` + ca-bootstrap service **未** passthrough `ICS_SERVER_CERT_DURATION` → `.env` 設了也不生效。\n- server cert 實測 `notAfter=Jun 22 06:50`（約 23h，**明天過期**）→ 真且急。\n\n## 改了什麼（committed）\n- `docker-compose.yml`：ca-bootstrap 加 `ICS_SERVER_CERT_DURATION` passthrough；兩處 duration 註解改準確（指向 README）。\n- `.env.example`：加 `STEP_CLIENT_CERT_DURATION` / `ICS_SERVER_CERT_DURATION`（註解，預設 23h，fresh-deploy 安全）。\n- `README.md §憑證效期`：90 天**三步 runbook**（放寬 claims → .env 2160h → 重簽+重發）+ reality-check 殘留說明。\n\n## §8 Verification（live prod，operational，`.env` gitignored 不在 diff）\n```\n# 重簽前：notAfter=Jun 22 06:50（~23h）\ndocker compose --env-file .env up -d --force-recreate ca-bootstrap ics-command nginx\n# 重簽後：\n$ openssl s_client -connect 1.34.230.218:443 | openssl x509 -noout -dates\nnotAfter=Sep 19 11:24:48 2026 GMT   ← +90 天 ✓\n$ docker exec ics-prod-ics-command-1 sh -c 'echo $STEP_CLIENT_CERT_DURATION'\n2160h   ← 之後線上發證皆 90 天 ✓\n```\n容器健康檢查綠。\n\n## 殘留（issue 不全關）\n- provisioner claims 仍**手動**（未進 step-ca init）→ fresh deploy 退 24h，須照 runbook 步驟 1。reproducible 化 = 待辦。\n- 既有 23h 裝置證需面板重發。",
+    "closedAt": "2026-06-21T11:26:35Z",
+    "comments": [],
+    "createdAt": "2026-06-21T11:26:26Z",
+    "headRefName": "fix/issue-279-cert-duration-90d",
+    "labels": [],
+    "mergedAt": "2026-06-21T11:26:35Z",
+    "number": 311,
+    "state": "MERGED",
+    "title": "fix(deploy): #279 憑證效期 23h→90d（含 reality check 根因修正）",
+    "updatedAt": "2026-06-21T11:26:39Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/311"
   }
 ]

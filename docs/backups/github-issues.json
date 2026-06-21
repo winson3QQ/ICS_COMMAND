@@ -3932,6 +3932,20 @@
         "minimizedReason": "",
         "reactionGroups": [],
         "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/279#issuecomment-4761399453"
+      },
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## Reality check + 部分落地（2026-06-21 公網 prod，PR #311 `df60666`）\n\n### 推翻本 issue 原根因\n- 本 issue 前提「step-ca provisioner `maxTLSCertDuration=24h` 上限卡關」→ **在 prod 過時**。實測 prod provisioner claims **已**放寬為 `maxTLSCertDuration/defaultTLSCertDuration = 2160h`；我用服務的同一條路徑實簽 `--not-after 2160h` 確得 **90 天**證 → **provisioner 不是限制**。\n- **真正限制**：`deploy/prod/docker-compose.yml` 的 duration env 預設 `23h`，且 **ca-bootstrap service 根本沒把 `ICS_SERVER_CERT_DURATION` passthrough** → `.env` 設了也不生效。\n- 問題真且急：重簽前 server cert `notAfter=Jun 22 06:50`（約 23h，隔天過期）。\n\n### 已做\n- **live prod 套用**：`.env` 設 `STEP_CLIENT_CERT_DURATION=2160h` + `ICS_SERVER_CERT_DURATION=2160h` → 重簽 server cert（`notAfter=Sep 19`，+90d）+ recreate ics-command（之後線上發證皆 90d）。健康檢查綠。\n- **committed**：ca-bootstrap 加 server-dur passthrough；`.env.example` 加兩 duration 變數；`README §憑證效期` 改為 90d 三步 runbook（放寬 claims → .env 2160h → 重簽+重發）。\n\n### 殘留（故不直接關閉本 issue）\n1. **provisioner claims 仍是手動**（存 ca-data 卷、recreate 不丟，但**未進 step-ca init** → 砍 ca-data 或 fresh deploy 退回 24h）。reproducible 化（claims 寫進 init）= 待辦。\n2. **既有 23h 裝置證**（iPhone/iPad/桌機）仍會過期 → 面板「發憑證」重發 + 重裝。\n\n建議：本 issue 保留追蹤殘留 (1)，或另開 issue 收斂。",
+        "createdAt": "2026-06-21T11:27:04Z",
+        "id": "IC_kwDOSnBjpc8AAAABG9MwMg",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/279#issuecomment-4761792562"
       }
     ],
     "createdAt": "2026-06-20T09:14:47Z",
@@ -3940,7 +3954,7 @@
     "number": 279,
     "state": "OPEN",
     "title": "mTLS 公測前：憑證效期 23h → 90 天（step-ca maxTLSCertDuration）",
-    "updatedAt": "2026-06-21T08:33:45Z",
+    "updatedAt": "2026-06-21T11:27:04Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/279"
   },
   {
