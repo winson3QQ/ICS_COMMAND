@@ -464,10 +464,11 @@ def issue_account_cert(username: str, body: AccountCertBindIn, request: Request)
     from services.cert_issuance import CertIssuanceError, issue_p12
 
     try:
-        p12 = issue_p12(cn)
+        p12, p12_pass = issue_p12(cn)
     except CertIssuanceError as e:
         raise HTTPException(502, f"發證失敗：{e}") from e
     bind_cert(account_id, cn, body.label, sess["username"])
+    # #307：密碼不進 audit / log（與 p12 同走 TLS 回管理者，由面板顯示供轉交）。
     audit(
         sess["username"],
         None,
@@ -478,10 +479,14 @@ def issue_account_cert(username: str, body: AccountCertBindIn, request: Request)
     )
     # cn 已過 is_valid_cert_cn（無逗號/控制字元）；filename 再收斂為 alnum+-_.
     safe = "".join(c for c in cn if c.isalnum() or c in "-_.") or "client"
+    # X-P12-Password：同源回應，前端可直接讀 header 顯示密碼（#307 衍生子缺口）。
     return Response(
         content=p12,
         media_type="application/x-pkcs12",
-        headers={"Content-Disposition": f'attachment; filename="{safe}.p12"'},
+        headers={
+            "Content-Disposition": f'attachment; filename="{safe}.p12"',
+            "X-P12-Password": p12_pass,
+        },
     )
 
 

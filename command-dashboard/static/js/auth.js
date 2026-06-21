@@ -1366,15 +1366,97 @@ export async function admIssueCert(username) {
   if (resp.status === 503) { alert('線上發證未配置（step-ca daemon 未接）。請改用 deploy/step-ca 離線簽好後按「僅綁定」。'); return; }
   if (resp.status === 409) { alert('此 CN 已被有效綁定（撤銷後才可重發）'); return; }
   if (!resp.ok) { alert('發證失敗（' + resp.status + '）：' + (await resp.text()).slice(0, 200)); return; }
-  // 下載簽出的 p12（含私鑰，匯入裝置/瀏覽器）
+  // #307：p12 匯入密碼每張隨機，由後端 X-P12-Password header 帶回（同源可讀）。
+  const p12pass = resp.headers.get('X-P12-Password') || '';
+  // #307 缺口1：不自動下載。iOS 一拿到 .p12 即攔成安裝、蓋掉畫面 → 改成「先顯示密碼、
+  // 手動點下載」，確保使用者在 iOS 安裝 modal 跳出前已看到並複製密碼。
   const blob = await resp.blob();
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url; a.download = cn + '.p12';
-  document.body.appendChild(a); a.click(); a.remove();
-  URL.revokeObjectURL(url);
-  alert('已簽發並下載 ' + cn + '.p12（匯入密碼見部署設定，預設 icsclient）。已自動綁定此帳號。');
-  admLoadCerts(username);
+  const blobUrl = URL.createObjectURL(blob);
+  await admLoadCerts(username);
+  _showP12Result(username, cn, p12pass, blob, blobUrl);
+}
+
+// iPhone / iPad（含 iPadOS 13+ 偽裝成 MacIntel）偵測。
+function _isIOS() {
+  return /iP(hone|ad|od)/.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+}
+
+// #307 缺口1+衍生子缺口：發證後常駐顯示密碼 + 手動下載/分享鈕（textContent 防 XSS）。
+function _showP12Result(username, cn, pass, blob, blobUrl) {
+  const box = el('adm-certs-' + username);
+  if (!box) { URL.revokeObjectURL(blobUrl); return; }
+  const banner = document.createElement('div');
+  banner.style.cssText = 'border:1px solid var(--green,#2ea043);border-radius:6px;padding:8px;margin-bottom:8px;font-size:12px;';
+
+  const label = document.createElement('div');
+  label.style.cssText = 'color:var(--text2);margin-bottom:6px;line-height:1.5;';
+  label.textContent = '✅ 已簽發並自動綁定 ' + cn + '。請先複製下方密碼，再點「下載 / 安裝」'
+    + '（iOS 點下載即跳安裝、屆時需輸入此密碼）。本訊息關閉後密碼無法再取得：';
+
+  const row = document.createElement('div');
+  row.style.cssText = 'display:flex;align-items:center;gap:6px;flex-wrap:wrap;';
+  const code = document.createElement('code');
+  code.style.cssText = 'flex:1;min-width:140px;font-size:14px;user-select:all;word-break:break-all;background:var(--bg2,#161b22);padding:4px 6px;border-radius:4px;';
+  code.textContent = pass || '(未取得密碼，請改用 CLI 發證)';
+  const copyBtn = document.createElement('button');
+  copyBtn.className = 'adm-btn';
+  copyBtn.textContent = '複製密碼';
+  copyBtn.addEventListener('click', () => {
+    if (pass) navigator.clipboard?.writeText(pass);
+    copyBtn.textContent = '已複製';
+  });
+  const dlBtn = document.createElement('button');
+  dlBtn.className = 'adm-btn';
+  dlBtn.textContent = '⬇ 下載 / 安裝 .p12';
+  dlBtn.addEventListener('click', () => {
+    const a = document.createElement('a');
+    a.href = blobUrl; a.download = cn + '.p12';
+    document.body.appendChild(a); a.click(); a.remove();
+  });
+  row.appendChild(code);
+  row.appendChild(copyBtn);
+  row.appendChild(dlBtn);
+
+  // #307 缺口1：iOS 上「下載」會被攔成本機安裝、存不了檔。Web Share API 走 iOS 原生
+  // 分享單 → 可「儲存到檔案 / AirDrop」轉交別台裝置。支援檔案分享時才顯示此鈕。
+  const p12File = _makeP12File(cn, blob);
+  const canShare = p12File && navigator.canShare?.({ files: [p12File] });
+  if (canShare) {
+    const shareBtn = document.createElement('button');
+    shareBtn.className = 'adm-btn';
+    shareBtn.textContent = '📤 分享 / 存檔（轉交別台）';
+    shareBtn.addEventListener('click', async () => {
+      try {
+        await navigator.share({ files: [p12File], title: cn + '.p12' });
+      } catch (e) {
+        if (e?.name !== 'AbortError') alert('分享失敗：' + (e?.message || e));
+      }
+    });
+    row.appendChild(shareBtn);
+  }
+
+  banner.appendChild(label);
+  banner.appendChild(row);
+
+  if (_isIOS()) {
+    const hint = document.createElement('div');
+    hint.style.cssText = 'color:var(--text3);margin-top:6px;line-height:1.5;';
+    hint.textContent = '⚠ iOS：「下載 / 安裝」會直接裝到「本機這支裝置」。'
+      + '若要發證給「別台」裝置，請用「分享 / 存檔」→ 儲存到檔案或 AirDrop 給目標機。';
+    banner.appendChild(hint);
+  }
+
+  box.insertBefore(banner, box.firstChild);
+}
+
+// 把 p12 blob 包成 File（Web Share 需要 File 物件）；不支援 File 建構則回 null。
+function _makeP12File(cn, blob) {
+  try {
+    return new window.File([blob], cn + '.p12', { type: 'application/x-pkcs12' });
+  } catch {
+    return null;
+  }
 }
 
 export async function admRevokeCert(username, certId) {

@@ -55,7 +55,7 @@ mTLS 登入要求「PIN ＋ **綁定本帳號的裝置憑證**」雙因子。但
 ```
 # A. CLI（host）— 產 ./out/<CN>/<CN>.p12 + root_ca.crt；p12 密碼 = ICS_CLIENT_P12_PASS（.env 那串）。不自動綁定 → 再到面板「僅綁定」CN。
 docker compose run --rm -e CERT_CN=<CN> issue-client
-# B. 面板「發憑證」— step-ca 線上簽 + 自動綁定 + 下載 p12。p12 密碼 = STEP_CLIENT_CERT_P12_PASS（預設 icsclient，非上面那串；面板目前不顯示密碼，見 #307）。
+# B. 面板「發憑證」— step-ca 線上簽 + 自動綁定 + 下載 p12。p12 密碼預設「每張隨機」，發證後面板會常駐顯示（可複製，請記下轉交持證人）；關閉訊息後無法再取得。需固定密碼才設 STEP_CLIENT_CERT_P12_PASS env（runbook 相容）。#307 已落地。
 ```
 
 裝置安裝：

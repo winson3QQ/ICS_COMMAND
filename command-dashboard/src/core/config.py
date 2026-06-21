@@ -69,15 +69,19 @@ WARNING_THRESHOLD_SECONDS: int = int(os.getenv("ICS_WARNING_THRESHOLD_SECONDS", 
 # IDOR / #289 nginx headers / #290 部署 fail-closed），行為變更（授權收緊 + 上傳清洗）。
 # PATCH 2.7.2：線上發證 p12 改 --legacy（PBE+SHA1+3DES/RC2）—— iOS 不吃 openssl3/step 預設
 # PBES2/AES-256 p12（誤報密碼錯），dogfood 公網實機定位；桌機相容不變（#307）。
-APP_VERSION = "2.7.2"
+# PATCH 2.7.3：p12 匯入密碼改每張隨機（廢弱默認 icsclient，對齊 threat_model H6）+ 經
+# X-P12-Password header 回前端顯示（行為變更，非新介面）（#307 衍生子缺口）。
+APP_VERSION = "2.7.3"
 
 # CMD_VERSION：前端 UI 功能版本（不同於後端 SemVer APP_VERSION；規則見 CLAUDE.md 版號規則）
 # 兩軌版本命名，不可混用。由 /api/version 提供給前端，是唯一 source-of-truth；release 時更新此值。
 # v1.0.0：拆分自 ICS_DMAS 後首個完整可用形態（MapLibre 地圖引擎全換 P1-10b + PWA 移除 P1-11
 #         + 演習/放置/稽核 UI P1-13/14/16/#93 + 分類編輯器 #66）→ 0.x 畢業為 MAJOR 紀元。
 CMD_VERSION: str = os.getenv(
-    "CMD_VERSION", "v1.7.0"
-)  # MINOR：P2-24 前端尾（#164）TAK runtime 控制 UI 功能組 —— 系統 tab sysadmin 開/關 toggle
+    "CMD_VERSION", "v1.7.1"
+)  # PATCH v1.7.1：裝置憑證面板 UX（#307）—— 發證後常駐顯示隨機密碼+複製、手動下載/安裝、
+# iOS Web Share 存檔/AirDrop 轉交、revoked 摺疊+清除。MINOR：P2-24 前端尾（#164）TAK runtime
+# 控制 UI 功能組 —— 系統 tab sysadmin 開/關 toggle
 # + 唯讀連線狀態行 + header 燈號認實化（running/configured 區分，消除「沒 task 卻顯斷線重連」謊報）
 # PATCH(v1.4.1)：#265 —— 切換演習後不再需硬重整即即時 render（cop_stream onclose identity guard +
 # stop() backoff 重置 + _refreshAfterExerciseSwitch 改就地 resync 不清快取，消雙 socket race）。
@@ -152,7 +156,9 @@ STEP_CA_PROVISIONER_PASSWORD_FILE: str = os.getenv("STEP_CA_PROVISIONER_PASSWORD
 STEP_CA_FINGERPRINT: str = os.getenv("STEP_CA_FINGERPRINT", "")  # root_ca.crt 指紋（直給）
 # 指紋每次 CA init 變動，容器棧難寫死 → 也支援從檔讀（bootstrap 寫進共享 volume）
 STEP_CA_FINGERPRINT_FILE: str = os.getenv("STEP_CA_FINGERPRINT_FILE", "")
-STEP_CLIENT_CERT_P12_PASS: str = os.getenv("STEP_CLIENT_CERT_P12_PASS", "icsclient")
+# #307：未設＝每張發證隨機產 p12 密碼（廢除弱默認 icsclient，對齊 threat_model H6）；
+# 顯式設了才用固定值（runbook / 自動化相容）。實際採用值見 cert_issuance._p12_password()。
+STEP_CLIENT_CERT_P12_PASS: str | None = os.getenv("STEP_CLIENT_CERT_P12_PASS") or None
 STEP_CLIENT_CERT_DURATION: str = os.getenv("STEP_CLIENT_CERT_DURATION", "2160h")  # 90 天
 
 
