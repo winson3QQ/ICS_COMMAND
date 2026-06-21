@@ -70,6 +70,9 @@ services:
       # ── TAK 整合（toggle；純 ICS delivery 下全空、TAK_ENABLED=false）──────────────
       - TAK_ENABLED=${TAK_ENABLED:-false}
       - TAK_COT_URL=${TAK_COT_URL:-}              # tls://takserver:8089（容器內網）
+      - TAK_DEVICE_CONNECT_HOST=${TAK_DEVICE_CONNECT_HOST:-}  # #315 對外 TAK 位址（裝置 data package connectString，非容器內網名）
+      - TAK_DEVICE_CONNECT_PORT=${TAK_DEVICE_CONNECT_PORT:-8089}
+      - TAK_DEVICE_CA_DIR=${TAK_DEVICE_CA_DIR:-}  # #315 TAK 裝置 CA dir（含 tak-ca.pem/key；TAK 只信此 CA，非 step-ca）。如 /tak-certs/_ca
       - TAK_CLIENT_CERT=${TAK_CLIENT_CERT:-}      # /tak-certs/...（step-ca 簽，fullchain）
       - TAK_CLIENT_KEY=${TAK_CLIENT_KEY:-}
       - TAK_CAFILE=${TAK_CAFILE:-}                # step-ca root，驗 TAK server cert

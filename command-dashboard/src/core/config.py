@@ -75,15 +75,20 @@ WARNING_THRESHOLD_SECONDS: int = int(os.getenv("ICS_WARNING_THRESHOLD_SECONDS", 
 # p12 + 內嵌密碼一包，iOS 安裝免打憑證密碼）+ build_mobileconfig/fetch_root_ca_pem（#312）。
 # MINOR 2.9.0：mTLS bootstrap 窗口（#306）—— 全新部署（唯一帳號 + account_certs 零 row 單向閂）
 # 下首位 admin 用 CA 已驗的證即可登入+綁第一張證，免手動翻 ICS_MTLS_REQUIRED；綁定後自動關窗。
-APP_VERSION = "2.9.0"
+# MINOR 2.10.0：TAK 裝置證自助發放（#315 P2-26 L2）—— POST /api/admin/tak/device-cert：
+# 由 ICS-TAK-SVC-CA（offline，TAK 自己的 CA）簽 + 組 ATAK/iTAK data package（p12+truststore+pref，
+# 密碼內嵌）；sysadmin+audit。reality check：TAK 只信此 CA、非 step-ca（與 ICS 登入證隔離）。
+APP_VERSION = "2.10.0"
 
 # CMD_VERSION：前端 UI 功能版本（不同於後端 SemVer APP_VERSION；規則見 CLAUDE.md 版號規則）
 # 兩軌版本命名，不可混用。由 /api/version 提供給前端，是唯一 source-of-truth；release 時更新此值。
 # v1.0.0：拆分自 ICS_DMAS 後首個完整可用形態（MapLibre 地圖引擎全換 P1-10b + PWA 移除 P1-11
 #         + 演習/放置/稽核 UI P1-13/14/16/#93 + 分類編輯器 #66）→ 0.x 畢業為 MAJOR 紀元。
 CMD_VERSION: str = os.getenv(
-    "CMD_VERSION", "v1.8.0"
-)  # MINOR v1.8.0：iOS 零打憑證密碼接入（#312）—— 發證格式選單 + .mobileconfig 流程（下載/分享，
+    "CMD_VERSION", "v1.9.0"
+)  # MINOR v1.9.0：admin TAK tab（#315 P2-26 L2）—— TAK 連線開關搬入 + TAK 裝置證自助發放 UI
+# （callsign + ATAK/iTAK 平台 + 下載/分享 data package）。
+# v1.8.0：iOS 零打憑證密碼接入（#312）—— 發證格式選單 + .mobileconfig 流程（下載/分享，
 # 密碼內嵌、安裝免打）。v1.7.1：裝置憑證面板 UX（#307）發證顯密碼/下載/分享、revoked 摺疊+清除。
 # MINOR：P2-24 前端尾（#164）TAK runtime
 # 控制 UI 功能組 —— 系統 tab sysadmin 開/關 toggle
@@ -221,6 +226,16 @@ TAK_CLIENT_KEY: str = os.getenv("TAK_CLIENT_KEY", "")  # client 私鑰 PEM
 TAK_CAFILE: str | None = os.getenv("TAK_CAFILE") or None  # 驗 server 憑證的 CA（step-ca root）；正式部署必填
 # 顯式允許「無 cafile → 完全不驗 server」（僅 dev/PoC，有 MITM 風險，build_subscribe_config 會 warn）
 TAK_ALLOW_INSECURE_TLS: bool = os.getenv("TAK_ALLOW_INSECURE_TLS", "false").lower() == "true"
+# #315 P2-26 L2：TAK 裝置證 data package 的 connectString 用「對外可達 TAK 位址」——
+# 不是容器內網 TAK_COT_URL（takserver:8089）；裝置（ATAK/iTAK）連的是公網/LAN IP。
+# 空 → 發證端點回 503（部署層未設對外位址）。port 預設 8089（TAK CoT streaming）。
+TAK_DEVICE_CONNECT_HOST: str = os.getenv("TAK_DEVICE_CONNECT_HOST", "")  # 對外 TAK IP/網域
+TAK_DEVICE_CONNECT_PORT: int = int(os.getenv("TAK_DEVICE_CONNECT_PORT", "8089"))
+# #315 reality check：TAK 裝置證**必須由 TAK 自己的 CA（ICS-TAK-SVC-CA）簽**——TAK truststore
+# 只信它、不信 step-ca（step-ca 證被 peer not verified）。此 dir 含 tak-ca.pem + tak-ca.key
+# （offline 簽，同 deploy/.../gen-device-pkg.sh）。空 → 發 TAK 裝置證回 503。與 ICS 登入證的
+# step-ca **刻意隔離**（#305：儀表板 cert 碰不到 TAK）。
+TAK_DEVICE_CA_DIR: str = os.getenv("TAK_DEVICE_CA_DIR", "")  # 如 /tak-certs/_ca
 
 # ── TAK Marti REST API（P2-11 / #138）──────────────────────────────────────
 # 指揮部「主動查」TAK Server :8443 Marti REST（vs :8089 被動收串流）。M2M 認證 =

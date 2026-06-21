@@ -1,4 +1,5 @@
 import asyncio  # noqa: E402 — P1-12b L3 pre-destructive backup
+import os  # noqa: E402 — #315 TAK_DEVICE_CA_DIR 路徑檢查
 
 import structlog  # noqa: E402
 from fastapi import APIRouter, HTTPException, Request, Response
@@ -523,3 +524,47 @@ def revoke_account_cert(username: str, cert_id: int, request: Request):
     if result is None:
         raise HTTPException(404, "active cert binding not found")
     return result
+
+
+@router.post("/tak/device-cert", tags=["account-admin"])
+def issue_tak_device_cert(request: Request, callsign: str, mode: str = "atak"):
+    """#315 P2-26 L2：dashboard 線上發 TAK 裝置證 data package（ATAK/iTAK）。
+
+    證由 TAK 自己的 CA（ICS-TAK-SVC-CA，offline，TAK_DEVICE_CA_DIR）簽——TAK 只信它、非 step-ca
+    （與 ICS 登入證隔離，doctrine 見 threat_model §8.3）。回 .zip（p12 + truststore + pref，密碼內嵌）。
+    sysadmin only；每張強制 audit。未設對外位址 / CA dir → 503。"""
+    sess = _check_system_admin(request)
+    if mode not in ("atak", "aware"):
+        raise HTTPException(422, "mode 須為 atak 或 aware")
+    cn = (callsign or "").strip()
+    validate_no_unsafe_strings(cn, label="callsign")
+    if not is_valid_cert_cn(cn):
+        raise HTTPException(422, "callsign 不合法（不可含逗號、不可 - 開頭，限字母/數字/空白/-_.@）")
+    if not config.TAK_DEVICE_CONNECT_HOST:
+        raise HTTPException(503, "對外 TAK 位址未設（部署層設 TAK_DEVICE_CONNECT_HOST）")
+    # #315：TAK 裝置證由 TAK 自己的 CA（ICS-TAK-SVC-CA）簽——TAK 只信它（非 step-ca）。
+    ca_dir = config.TAK_DEVICE_CA_DIR
+    if not ca_dir or not os.path.isfile(os.path.join(ca_dir, "tak-ca.key")):
+        raise HTTPException(503, "TAK 裝置 CA 未備（部署層設 TAK_DEVICE_CA_DIR，含 tak-ca.pem/key）")
+    from services.cert_issuance import CertIssuanceError
+    from services.tak_device_cert import build_device_package
+
+    try:
+        pkg = build_device_package(cn, mode, config.TAK_DEVICE_CONNECT_HOST, config.TAK_DEVICE_CONNECT_PORT, ca_dir)
+    except CertIssuanceError as e:
+        raise HTTPException(502, f"發證失敗：{e}") from e
+    # 強制 audit（不得 best-effort）：誰發了哪個 callsign 的 TAK 裝置證。私鑰/密碼不進 audit。
+    audit(
+        sess["username"],
+        None,
+        "tak_device_cert_issue",
+        "tak",
+        cn,
+        {"callsign": cn, "mode": mode, "connect_host": config.TAK_DEVICE_CONNECT_HOST},
+    )
+    safe = "".join(c for c in cn if c.isalnum() or c in "-_.") or "device"
+    return Response(
+        content=pkg,
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{safe}-dp.zip"'},
+    )

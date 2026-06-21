@@ -187,6 +187,54 @@ class TestPurgeRevoked:
         assert r.status_code == 404
 
 
+class TestTakDeviceCert:
+    """#315 P2-26 L2：dashboard 發 TAK 裝置證 data package。"""
+
+    def test_issue_returns_zip_and_audits(self, client, auth, monkeypatch, tmp_path):
+        import core.config as config
+        import services.tak_device_cert as tdc
+
+        (tmp_path / "tak-ca.key").write_text("KEY", encoding="ascii")
+        (tmp_path / "tak-ca.pem").write_text("PEM", encoding="ascii")
+        monkeypatch.setattr(config, "TAK_DEVICE_CONNECT_HOST", "1.2.3.4")
+        monkeypatch.setattr(config, "TAK_DEVICE_CA_DIR", str(tmp_path))
+        monkeypatch.setattr(tdc, "build_device_package", lambda cn, mode, host, port, ca_dir: b"ZIP-DP-BYTES")
+        r = client.post("/api/admin/tak/device-cert?callsign=atak-01&mode=atak", headers=auth)
+        assert r.status_code == 200, r.text
+        assert r.headers["content-type"] == "application/zip"
+        assert "atak-01-dp.zip" in r.headers.get("content-disposition", "")
+        assert r.content == b"ZIP-DP-BYTES"
+
+    def test_503_when_no_ca_dir(self, client, auth, monkeypatch):
+        import core.config as config
+
+        monkeypatch.setattr(config, "TAK_DEVICE_CONNECT_HOST", "1.2.3.4")
+        monkeypatch.setattr(config, "TAK_DEVICE_CA_DIR", "")
+        r = client.post("/api/admin/tak/device-cert?callsign=x&mode=atak", headers=auth)
+        assert r.status_code == 503
+
+    def test_invalid_mode_422(self, client, auth):
+        r = client.post("/api/admin/tak/device-cert?callsign=x&mode=bogus", headers=auth)
+        assert r.status_code == 422
+
+    def test_invalid_callsign_422(self, client, auth, monkeypatch):
+        import core.config as config
+
+        monkeypatch.setattr(config, "TAK_DEVICE_CONNECT_HOST", "1.2.3.4")
+        r = client.post("/api/admin/tak/device-cert?callsign=a,b&mode=atak", headers=auth)
+        assert r.status_code == 422
+
+    def test_503_when_no_connect_host(self, client, auth, monkeypatch):
+        import core.config as config
+
+        monkeypatch.setattr(config, "TAK_DEVICE_CONNECT_HOST", "")
+        r = client.post("/api/admin/tak/device-cert?callsign=x&mode=atak", headers=auth)
+        assert r.status_code == 503
+
+    def test_requires_auth(self, client):
+        assert client.post("/api/admin/tak/device-cert?callsign=x&mode=atak").status_code == 401
+
+
 class TestAuthz:
     def test_requires_auth(self, client):
         assert client.get("/api/admin/accounts/alice/certs").status_code == 401

@@ -850,7 +850,7 @@ function _applyAdminTabVisibility() {
 export function admShowTab(tab) {
   if (!_isSysadminSession() && !['list','add'].includes(tab)) tab = 'list';
   _applyAdminTabVisibility();
-  const tabs = ['list','add','pi','log','data','sys'];
+  const tabs = ['list','add','pi','log','data','sys','tak'];
   document.querySelectorAll('.adm-tab').forEach((t, i) => {
     t.classList.toggle('active', tabs[i] === tab);
   });
@@ -861,10 +861,29 @@ export function admShowTab(tab) {
   if (tab === 'log') admLoadLog();
   if (tab === 'data') admShowData();
   if (tab === 'sys') admShowSys();
+  if (tab === 'tak') admShowTak();
 }
 
 export function admShowSys() {
   el('adm-panel-sys').innerHTML = `
+    <div style="margin-bottom:24px;">
+      <div style="font-size:13px;font-weight:600;margin-bottom:12px;color:var(--text);">🔑 更改 Admin PIN</div>
+      <div style="display:flex;flex-direction:column;gap:8px;max-width:320px;">
+        <input id="adm-sys-old-pin" class="login-input" type="password" inputmode="numeric"
+               maxlength="6" placeholder="目前 Admin PIN">
+        <input id="adm-sys-new-pin" class="login-input" type="password" inputmode="numeric"
+               maxlength="6" placeholder="新 PIN（4-6 位數字）">
+        <input id="adm-sys-new-pin2" class="login-input" type="password" inputmode="numeric"
+               maxlength="6" placeholder="確認新 PIN">
+        <button class="login-btn" data-action="adm-change-pin" style="margin-top:4px;">更改 Admin PIN</button>
+        <div id="adm-sys-warn" style="font-size:12px;color:var(--red);min-height:16px;"></div>
+      </div>
+    </div>`;
+}
+
+// #315 P2-26 L2：TAK tab —— 連線開關（搬自系統 tab）+ TAK 裝置證自助發放。
+export function admShowTak() {
+  el('adm-panel-tak').innerHTML = `
     <div style="margin-bottom:24px;">
       <div style="font-size:13px;font-weight:600;margin-bottom:8px;color:var(--text);">📡 TAK 連線</div>
       <div style="font-size:11px;color:var(--text2);margin-bottom:10px;line-height:1.6;max-width:360px;">
@@ -879,19 +898,75 @@ export function admShowSys() {
       <div id="adm-tak-status" style="font-size:11px;color:var(--text2);margin-top:8px;min-height:16px;"></div>
     </div>
     <div style="margin-bottom:24px;border-top:1px solid var(--border);padding-top:16px;">
-      <div style="font-size:13px;font-weight:600;margin-bottom:12px;color:var(--text);">🔑 更改 Admin PIN</div>
-      <div style="display:flex;flex-direction:column;gap:8px;max-width:320px;">
-        <input id="adm-sys-old-pin" class="login-input" type="password" inputmode="numeric"
-               maxlength="6" placeholder="目前 Admin PIN">
-        <input id="adm-sys-new-pin" class="login-input" type="password" inputmode="numeric"
-               maxlength="6" placeholder="新 PIN（4-6 位數字）">
-        <input id="adm-sys-new-pin2" class="login-input" type="password" inputmode="numeric"
-               maxlength="6" placeholder="確認新 PIN">
-        <button class="login-btn" data-action="adm-change-pin" style="margin-top:4px;">更改 Admin PIN</button>
-        <div id="adm-sys-warn" style="font-size:12px;color:var(--red);min-height:16px;"></div>
+      <div style="font-size:13px;font-weight:600;margin-bottom:8px;color:var(--text);">📦 TAK 裝置憑證（data package）</div>
+      <div style="font-size:11px;color:var(--text2);margin-bottom:10px;line-height:1.6;max-width:420px;">
+        為 ATAK／iTAK 操作員裝置線上簽發 data package（憑證 + 信任根 + 連線設定一包，密碼內嵌免打）。
+        裝置開啟即匯入並連上 TAK Server。憑證由 step-ca 簽（後端不持 CA 鑰）。
       </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;max-width:420px;">
+        <input id="adm-tak-callsign" placeholder="callsign（如 atak-phone-01）" style="flex:2;min-width:180px;font-family:monospace;">
+        <select id="adm-tak-mode" title="目標平台">
+          <option value="atak">ATAK（Android）</option>
+          <option value="aware">iTAK / TAK Aware（iOS）</option>
+        </select>
+        <button class="adm-btn" data-action="adm-issue-tak-device" title="線上簽發並下載 data package">發裝置證</button>
+      </div>
+      <div id="adm-tak-device-result"></div>
     </div>`;
   _admLoadTakConn();
+}
+
+// #315：發 TAK 裝置 data package（不自動下載；先給結果框 + 下載/分享）。
+export async function admIssueTakDevice() {
+  const callsign = el('adm-tak-callsign')?.value.trim();
+  const mode = el('adm-tak-mode')?.value || 'atak';
+  if (!callsign) { alert('請輸入 callsign'); return; }
+  const resp = await authFetch(API_BASE + '/api/admin/tak/device-cert?callsign='
+    + encodeURIComponent(callsign) + '&mode=' + mode, { method: 'POST' });
+  if (resp.status === 503) { alert('TAK 裝置發證未配置（step-ca daemon 未接，或對外 TAK 位址未設 TAK_DEVICE_CONNECT_HOST）。'); return; }
+  if (resp.status === 422) { alert('callsign 不合法或平台錯誤'); return; }
+  if (!resp.ok) { alert('發證失敗（' + resp.status + '）：' + (await resp.text()).slice(0, 200)); return; }
+  const blob = await resp.blob();
+  const blobUrl = URL.createObjectURL(blob);
+  _showTakDeviceResult(callsign, mode, blob, blobUrl);
+}
+
+function _showTakDeviceResult(callsign, mode, blob, blobUrl) {
+  const box = el('adm-tak-device-result');
+  if (!box) { URL.revokeObjectURL(blobUrl); return; }
+  box.innerHTML = '';
+  const banner = document.createElement('div');
+  banner.style.cssText = 'border:1px solid var(--green,#2ea043);border-radius:6px;padding:8px;margin-top:8px;font-size:12px;';
+  const label = document.createElement('div');
+  label.style.cssText = 'color:var(--text2);margin-bottom:6px;line-height:1.5;';
+  const plat = mode === 'aware' ? 'iTAK / TAK Aware（iOS）' : 'ATAK（Android）';
+  label.textContent = '✅ 已簽發 ' + callsign + ' 的 ' + plat + ' data package（密碼內嵌、免打）。'
+    + '把 .zip 弄到裝置 → TAK app 匯入 data package → 自動帶憑證連上 TAK Server。';
+  const row = document.createElement('div');
+  row.style.cssText = 'display:flex;align-items:center;gap:6px;flex-wrap:wrap;';
+  const dlBtn = document.createElement('button');
+  dlBtn.className = 'adm-btn';
+  dlBtn.textContent = '⬇ 下載 .zip';
+  dlBtn.addEventListener('click', () => {
+    const a = document.createElement('a');
+    a.href = blobUrl; a.download = callsign + '-dp.zip';
+    document.body.appendChild(a); a.click(); a.remove();
+  });
+  row.appendChild(dlBtn);
+  const file = _makeFile(callsign + '-dp.zip', blob, 'application/zip');
+  if (file && navigator.canShare?.({ files: [file] })) {
+    const shareBtn = document.createElement('button');
+    shareBtn.className = 'adm-btn';
+    shareBtn.textContent = '📤 分享 / 存檔（轉交裝置）';
+    shareBtn.addEventListener('click', async () => {
+      try { await navigator.share({ files: [file], title: callsign + '-dp.zip' }); }
+      catch (e) { if (e?.name !== 'AbortError') alert('分享失敗：' + (e?.message || e)); }
+    });
+    row.appendChild(shareBtn);
+  }
+  banner.appendChild(label);
+  banner.appendChild(row);
+  box.appendChild(banner);
 }
 
 // ── P1-12b（#228）「備份／重設」tab（in-dashboard，取代 orphaned admin_backups.html）──
