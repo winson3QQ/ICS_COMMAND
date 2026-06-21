@@ -4439,5 +4439,47 @@
     "title": "feat(db): P1-12c SQLCipher live DB at-rest 加密（default-off，L2 內層）(#229)",
     "updatedAt": "2026-06-21T03:14:27Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/304"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "## 摘要\n2026-06-21 公網 prod 端到端 dogfood（#305 通過）定位並修復裝置憑證踩坑，並把 onboarding 流程固化進 runbook，避免後續 session 重踩。\n\n## 變更\n- **fix（#307）**：`cert_issuance.issue_p12` 加 `--legacy` —— `step certificate p12` 預設產 PBES2/AES-256 p12，**iOS（iPhone/iPad）讀不了、誤報「密碼不正確」**。改 legacy（PBE+SHA1+3DES/RC2）後 iOS 可裝，桌機相容不變。`backend-v2.7.2`。\n  - 驗證：改後 `issue_p12` 產出 `pbeWithSHA1And3-KeyTripleDES-CBC` + `MAC sha1`（openssl 確認），已 rebuild 在公網棧實證。\n- **docs**：`deploy/prod/README` 補〈首次 onboarding（mTLS bootstrap）〉〈裝置憑證〉〈內網/LAN〉〈憑證效期〉四節（防踩坑 runbook）；ROADMAP tick #305 + 本輪 dogfood。\n- **config**：`docker-compose` `STEP_CLIENT_CERT_DURATION` 維持 23h + 警示註解（90d 需先放寬 step-ca provisioner claims，#279 — 我先前誤把 runtime patch 當成可重現，已回退避免乾淨佈署發證被拒）。\n- **dev**：`deploy/dev/run-dev.ps1` dev 容器熱重載腳本。\n\n## 仍開（已記錄，非本 PR 範圍）\n- #306 首次 admin 免 env-toggle 的 mTLS bootstrap\n- #307 子缺口：面板不顯示 p12 密碼（預設 icsclient）、revoked UI 清除\n- #279 裝置/server cert 90d 效期（provisioner claims 可重現化）\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n",
+    "closedAt": "2026-06-21T08:36:37Z",
+    "comments": [],
+    "createdAt": "2026-06-21T08:36:22Z",
+    "headRefName": "fix/issue-307-ios-cert-legacy",
+    "labels": [],
+    "mergedAt": "2026-06-21T08:36:37Z",
+    "number": 308,
+    "state": "MERGED",
+    "title": "fix(auth): 線上發證 p12 改 --legacy 修 iOS 安裝 + prod onboarding runbook",
+    "updatedAt": "2026-06-21T08:36:42Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/308"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "關聯 issue #307 缺口 2（revoked 記錄 UI 清不掉）。\n\n## 改了什麼\n**後端**\n- `account_cert_repo.purge_revoked_certs(account_id, operator)`：只刪 `status='revoked'` 列（active 不動），account_id 綁定查詢防越權，audit log 獨立表保留（記 `cert_purge_revoked` + 被清的 `cert_cns`）。\n- `DELETE /api/admin/accounts/{username}/certs/revoked`（sysadmin only）。**刻意宣告在 `/certs/{cert_id}` 之前** —— literal path 須贏過 `{cert_id:int}`，否則 `\"revoked\"` 撞 int 路由被 422。\n\n**前端**\n- revoked 預設摺疊；有 revoked 才顯示「已撤銷(N) ▾」toggle + 「清除已撤銷」鈕（雙重 confirm）。active 恆顯示。\n\n**順手**：修 `admin.py` 既有 ruff debt（碰檔連帶觸發）2× B904 / 1× E501，無行為改變。\n\n## 測試\n- unit 3（只刪 revoked / 空回 0 / account scoping）+ integration 4（清除保留 active / 路由不被 int 遮蔽 / scoping / unknown 404 / 401）\n- `pytest` 30 passed、eslint 0、doc_sync 綠、pre-commit 全 Passed\n\n## §8 Verification（公網 prod dogfood，2026-06-21）\n已 build branch image + `--force-recreate ics-command` 上線公網容器，使用者實機驗證 PASS：\n\n\\`\\`\\`\nDELETE /api/admin/accounts/3QQ/certs/5        200 OK   ← 撤銷製造死記錄\nDELETE /api/admin/accounts/3QQ/certs/revoked  200 OK   ← 清除（非 422，路由序正確）\n\\`\\`\\`\n\naudit_log 確認問責留痕：\n\\`\\`\\`\n09:17:46  cert_revoke         id=5   {\"account_id\":2,\"cert_cn\":\"iPad-01\"}\n09:17:52  cert_purge_revoked  acc=2  {\"account_id\":2,\"count\":1,\"cert_cns\":[\"iPad-01\"]}\n\\`\\`\\`\n→ 列雖刪，audit 仍記下被清的 CN；audit_log 列本身保留。\n\n> 註：#307 缺口 1（p12 密碼顯示）另 PR 處理；本 PR 只收缺口 2。issue 待兩缺口齊再關。",
+    "closedAt": "2026-06-21T09:25:16Z",
+    "comments": [],
+    "createdAt": "2026-06-21T09:25:08Z",
+    "headRefName": "fix/issue-307-revoked-purge",
+    "labels": [],
+    "mergedAt": "2026-06-21T09:25:16Z",
+    "number": 309,
+    "state": "MERGED",
+    "title": "fix(auth): #307 缺口2 — 裝置憑證列表可清除/摺疊 revoked 記錄",
+    "updatedAt": "2026-06-21T09:25:21Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/309"
   }
 ]

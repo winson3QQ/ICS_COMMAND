@@ -4478,6 +4478,20 @@
         "minimizedReason": "",
         "reactionGroups": [],
         "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/307#issuecomment-4761377289"
+      },
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## 缺口 2（revoked 記錄 UI 清不掉）✅ 落地（2026-06-21）\n\nPR #309（squash `7ecd6cf`）merged。\n\n- 後端：`purge_revoked_certs` + `DELETE /accounts/{username}/certs/revoked`（sysadmin only，account scoping 防越權，audit 記 `cert_purge_revoked` 含被清 `cert_cns`，audit_log 列保留）。路由刻意宣告在 `/certs/{cert_id}` 之前（literal 贏過 int param，否則 422）。\n- 前端：revoked 預設摺疊 + 「已撤銷(N) ▾」toggle + 「清除已撤銷」鈕（雙重 confirm）。\n- 測試 30 passed（含路由序、scoping、active 不誤刪）；公網 prod dogfood PASS（`DELETE /certs/revoked` 200、audit `{count:1, cert_cns:[\"iPad-01\"]}`）。\n\n### 完成判準對照\n- [x] 列表能清除/隱藏 revoked 記錄，不需 DB 介入 ← **本 PR 達成**\n- [ ] iOS 上「發憑證」有明確引導或可用取證路徑（缺口 1 + 衍生子缺口：p12 密碼顯示）← **下一個 PR**\n\nissue 待缺口 1（p12 密碼）落地後再關。",
+        "createdAt": "2026-06-21T09:36:25Z",
+        "id": "IC_kwDOSnBjpc8AAAABG89sIQ",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/307#issuecomment-4761545761"
       }
     ],
     "createdAt": "2026-06-21T08:07:20Z",
@@ -4486,7 +4500,7 @@
     "number": 307,
     "state": "OPEN",
     "title": "feat(auth): 裝置憑證管理 UX — iOS 發證限制 + revoked 記錄清除",
-    "updatedAt": "2026-06-21T08:24:19Z",
+    "updatedAt": "2026-06-21T09:36:25Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/307"
   }
 ]
