@@ -4544,5 +4544,26 @@
     "title": "feat(auth): #312 iOS 零打憑證密碼接入（.mobileconfig 內嵌密碼）",
     "updatedAt": "2026-06-21T12:04:44Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/313"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "關聯 [#306](https://github.com/winson3QQ/ICS_COMMAND/issues/306)。方案 b（code）。純後端。\n\n## 問題\nfresh deploy + `ICS_MTLS_REQUIRED=true` → 第一個 admin 撞雞生蛋（登入要綁定的證、綁證要先登入）。原唯一解＝手動翻 env 兩次 + restart。\n\n## 機制\n- `is_mtls_bootstrap()`：窗口 = 首位 admin 尚未綁過任何證。**主判據＝持久旗標 `mtls_bootstrap_done`**（首張綁定落於 config 表），輔以 accounts==1 + account_certs 空。\n- **login**：窗口內 + nginx 已 CA 驗證的證 → 放行登入並暫綁進 session（略過 `cert_active_for_account`）。\n- **check_session**：窗口內 + CA 驗證的證 → 略過 `is_cert_active`；`cert_cn` 一致性仍強制。\n- 綁第一張即落旗 → 窗口**永久關**，免翻 env/restart。\n\n## 安全（security-review 對應）\n- **V1（purge 重開窗）已修**：以持久旗標而非 `account_certs` row 判窗 → `purge_revoked_certs` 實刪 row 也清不掉旗標 → bind→revoke→purge **不重開窗**（回歸測試覆蓋）。\n- **V2（header 偽造）已註記**：bootstrap 依賴 `client_cert_verified`（`_proxy_trusted` gate）→ 前提 `ICS_PROXY_SHARED_SECRET` 必設；prod compose 已 `${VAR:?}` 強制。\n- 仍需 first-run PIN + CA-signed cert 雙前提；多帳號永久關窗。\n\n## 版號 / 測試 / Review\n- `backend-v2.9.0`（MINOR；純後端，前端不動）。\n- 全套測試 **exit 0**（bootstrap 放行 / 撤證不重開 / bind-revoke-purge 仍關窗 V1 回歸 / 需 CA 驗證的證）；`/code-review` **0**；`/security-review` V1 修 + V2 註記。\n- README §首次 onboarding 改為免 toggle 流程 + 安全邊界。\n\n## §8 Verification\n⚠ **無法在現役 prod 驗**（已 bootstrap、旗標已會落）。須 **fresh deploy（隔離測試棧）** 演練：CLI 簽第一張 admin 證 → mTLS=true 全程不翻 → 登入（bootstrap 放行）→ 改 PIN → 綁第一張證 → 窗口自動關 → 正常發其他裝置證。drill runbook 另補（使用者待從頭驗）。",
+    "closedAt": "2026-06-21T12:53:15Z",
+    "comments": [],
+    "createdAt": "2026-06-21T12:53:06Z",
+    "headRefName": "feat/issue-306-mtls-bootstrap",
+    "labels": [],
+    "mergedAt": "2026-06-21T12:53:15Z",
+    "number": 314,
+    "state": "MERGED",
+    "title": "feat(auth): #306 首次 admin 免 env-toggle mTLS bootstrap",
+    "updatedAt": "2026-06-21T12:53:19Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/314"
   }
 ]
