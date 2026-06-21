@@ -188,8 +188,12 @@ def create_backup(
     exercise: dict | None = None,
     timestamp: datetime | None = None,
     filename_pattern: str = FILENAME_PATTERN,
+    prune: bool = True,
 ) -> BackupResult:
-    """打包 data/ 整包 → gzip tar（含 MANIFEST.json）→ Fernet 加密 → atomic 寫出。"""
+    """打包 data/ 整包 → gzip tar（含 MANIFEST.json）→ Fernet 加密 → atomic 寫出。
+
+    prune=True（預設）建立後跑滾動保留；測試 setup 可關閉以免清掉刻意造的老檔。
+    """
     if not data_dir.exists():
         raise FileNotFoundError(f"data 目錄不存在：{data_dir}")
 
@@ -239,6 +243,14 @@ def create_backup(
         msg=f"data/ 備份完成 {final_path.stat().st_size} bytes / {n_files} 檔 / {duration_ms}ms",
         detail={"path": str(final_path), "trigger": trigger, "files": n_files, "sha256": digest},
     )
+    # 滾動保留：每次建立後在此單一點 prune（涵蓋全部觸發 —— 手動 / archive / shutdown /
+    # pre-reset，否則自動觸發路徑會無限累積）。pre-restore 略過：還原進行中不額外加延遲/
+    # 風險（且它受保護不會被刪，跳過無損）。best-effort，不擋備份本身。
+    if prune and trigger != "pre-restore":
+        try:
+            cleanup_user_data_backups(backup_dir)
+        except Exception:
+            log.warning("userdata_backup_cleanup_failed", msg="滾動保留清理失敗（best-effort）", exc_info=True)
     return BackupResult(
         path=final_path,
         size_bytes=final_path.stat().st_size,

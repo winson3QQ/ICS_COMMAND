@@ -199,7 +199,8 @@ def test_retention_protects_archive_and_pre_restore(key, tmp_path):
 
     def mk(trigger, day, pattern=uds.FILENAME_PATTERN):
         ts = base + timedelta(days=day)
-        return uds.create_backup(data, bd, trigger=trigger, timestamp=ts, filename_pattern=pattern,
+        # prune=False：setup 不自動清，否則刻意造的老檔會在建立時就被清掉
+        return uds.create_backup(data, bd, trigger=trigger, timestamp=ts, filename_pattern=pattern, prune=False,
                                  exercise={"id": 1, "name": "E", "type": "ttx", "status": "archived"} if trigger == "archive" else None).path
 
     old_manual = mk("manual", 0)          # 最老 manual → 應被刪
