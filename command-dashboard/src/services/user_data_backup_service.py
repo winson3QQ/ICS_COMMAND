@@ -348,6 +348,15 @@ def restore_backup(
             log.error("userdata_restore_interrupted", msg=f"還原中斷，data/ 可能不完整{hint}", exc_info=True)
             raise RuntimeError(f"還原寫入中斷，data/ 可能不完整 — 請以 pre-restore 備份救回{hint}：{e}") from e
 
+    # P1-12c #229：backup 內的 ics.db 恆為明文（產物設計）；加密部署下還原到 data/ 後須
+    # re-encrypt，否則下次 get_conn 以 PRAGMA key 開明文檔會失敗。
+    from core.config import DB_ENCRYPTED, DB_PATH
+
+    if DB_ENCRYPTED:
+        from core.database import reencrypt_in_place
+
+        reencrypt_in_place(data_dir / DB_PATH.name)
+
     log.info(
         "userdata_restored",
         msg=f"data/ 已從 {backup_path.name} 還原",

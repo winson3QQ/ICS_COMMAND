@@ -151,6 +151,46 @@ def online_snapshot(src_db: Path, dst: Path) -> None:
         src.close()
 
 
+def encrypt_db(plaintext_src: Path, encrypted_dst: Path) -> None:
+    """明文 SQLite → SQLCipher 加密 DB（P1-12c #229，`online_snapshot` 的反向）。
+
+    open 明文 src（sqlcipher3 無 key）→ ATTACH `encrypted_dst KEY <DB_KEY>` +
+    `sqlcipher_export()` → encrypted_dst 為加密 DB。供 ① migration（明文→加密一次性轉換）
+    ② 加密模式 restore re-encrypt（restore 解出的明文快照寫回前轉回加密）共用。
+    `encrypted_dst` 應為不存在的新路徑（ATTACH 會以該 key 新建）。僅加密模式有意義。
+    """
+    sqlcipher3 = _import_sqlcipher()
+    key = _db_key()
+    plain = sqlcipher3.connect(str(plaintext_src))
+    try:
+        # KEY 子句需 x'..' raw key 字面值（bind 參數會被當 passphrase）；key 已過 64-hex
+        # 白名單，路徑用 bind 參數。 # nosec B608 — key 限定 64 hex（_DB_KEY_RE）
+        plain.execute(f"ATTACH DATABASE ? AS encrypted KEY \"x'{key}'\"", (str(encrypted_dst),))
+        try:
+            plain.execute("SELECT sqlcipher_export('encrypted')")
+        finally:
+            plain.execute("DETACH DATABASE encrypted")
+    finally:
+        plain.close()
+
+
+def reencrypt_in_place(db_file: Path) -> None:
+    """就地把明文 DB 檔 re-encrypt 成 SQLCipher 加密（加密模式 restore 用，P1-12c #229）。
+
+    restore 解出的快照恆為明文（產物設計：明文 .db 包 Fernet）。加密部署下還原到 DB_PATH
+    後需轉回加密，否則下次 `get_conn` 以 `PRAGMA key` 開明文檔會失敗。流程：move 明文到
+    暫存 → `encrypt_db` 寫回原位。呼叫端自行判斷 `DB_ENCRYPTED`（明文模式不需此步）。
+    """
+    if not db_file.exists():
+        return
+    tmp_plain = db_file.with_name(db_file.name + ".plain-tmp")
+    db_file.replace(tmp_plain)
+    try:
+        encrypt_db(tmp_plain, db_file)
+    finally:
+        tmp_plain.unlink(missing_ok=True)
+
+
 def _ensure_db_permissions() -> None:
     """DB 檔案權限強制 0600（trusted_keys 含 HMAC secret 明文）。
     Windows 跳過（NTFS ACL 由 OS 管理）。

@@ -332,5 +332,13 @@ def restore_backup(
     target_db_path.parent.mkdir(parents=True, exist_ok=True)
     with gzip.open(backup_path, "rb") as fin, target_db_path.open("wb") as fout:
         shutil.copyfileobj(fin, fout)
+    # P1-12c #229：backup 內恆為明文 .db；加密部署下還原到 live DB 後須 re-encrypt，
+    # 否則下次 get_conn 以 PRAGMA key 開明文檔會失敗。
+    from core.config import DB_ENCRYPTED
+
+    if DB_ENCRYPTED:
+        from core.database import reencrypt_in_place
+
+        reencrypt_in_place(target_db_path)
     log.info("backup_restored", msg="備份還原成功", detail={"from": str(backup_path), "to": str(target_db_path)})
     return target_db_path

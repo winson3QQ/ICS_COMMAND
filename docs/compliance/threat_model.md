@@ -174,7 +174,7 @@ _Session D 填入。例：Pi 實體被盜之資料外洩風險無法完全消除
 
 **傳輸加密殘餘**：上行 `check_hostname=False`（`tak_service.py`）—— 驗「憑證由我方 CA 簽發」但**不驗「憑證簽給此連線位址」**。在全自簽、單一內網 PKI（所有 cert 由同一 step-ca 發放且皆受控）下可接受；嚴格收緊需開啟 hostname 檢查（程式已寫明此取捨原因）。
 
-**At-rest（落地）**：CoT 收進後存 `cop_entities` 為**明文**（同 §3.4 at-rest 邊界）。硬碟被盜 / 備份外洩 / 主機被入侵時可讀。緩解 = P1-12c SQLCipher（**尚未實作**）。見 TAK-F。
+**At-rest（落地）**：CoT 收進後存 `cop_entities` 為**明文**（同 §3.4 at-rest 邊界）。硬碟被盜 / 備份外洩 / 主機被入侵時可讀。緩解 = P1-12c SQLCipher（**code 落地 [#229](https://github.com/winson3QQ/ICS_COMMAND/issues/229)**：`get_conn` driver 抽象 + 明文→加密 migration + backup/restore 鏈；**預設 off**，加密整合測試走 CI ubuntu，硬體驗收 [#230](https://github.com/winson3QQ/ICS_COMMAND/issues/230)；**待 merge/CI-green**）。**同機部署完整 at-rest 仍需 LUKS [#231](https://github.com/winson3QQ/ICS_COMMAND/issues/231)**（§8.4：SQLCipher 為內層縱深，TAK PG 同碟明文不受其保護）。見 TAK-F。
 
 ### 8.2 STRIDE — TAK 介面（紅隊 2026-06-05 審查 → 2026-06-07 處理）
 
@@ -185,7 +185,7 @@ _Session D 填入。例：Pi 實體被盜之資料外洩風險無法完全消除
 | **TAK-C** | — | `opex` 決定演習/實戰歸屬 | **❌ 不採**：違反 server-authoritative；模式由指揮部 active exercise 決定，不信 client `opex`（見 commit `74db9e8`）|
 | **TAK-D** | Info Disclosure | `visible_to` 預設 `["all"]`，TAK entity 全可見（含 observer）；`cop_hub` 無分級過濾 | **🔶 重歸屬 P2-12**：UI 分層時建 CoT `access`→`visible_to` 映射；現況 observer=read-only、無多分類部署下無害 |
 | **TAK-E** | DoS | :8089 訂閱無流量管制，多 uid 高頻 burst（單 uid 已有 1s 保護）| **✅ 已修（[#151](https://github.com/winson3QQ/ICS_COMMAND/issues/151)，2026-06-07）**：全域 token bucket（`TAK_INGEST_MAX_EVENTS_PER_SEC`，預設 60）套 `_consume_cot`，超量丟棄該筆 + 節流 warning、不中斷串流；跨重連共用同桶。**per-exercise uid cap descope**（受信任 mTLS 源價值低、每筆 create 多一 COUNT query；速率桶已涵蓋持續高率 DoS）|
-| **TAK-F** | Info Disclosure | CoT `<detail>`（含 MEDEVAC 9-line）明文存 attributes + 廣播 | **🔶 部分處理**：9-line 釐清為**聚合後送態勢非個資**（P2-09 設計 B，不開 medical_records 表）；殘餘 = 明文 at-rest 邊界（→ P1-12c）+ ingest 無 server-side XSS escape（→ [#136](https://github.com/winson3QQ/ICS_COMMAND/issues/136)）|
+| **TAK-F** | Info Disclosure | CoT `<detail>`（含 MEDEVAC 9-line）明文存 attributes + 廣播 | **🔶 部分處理**：9-line 釐清為**聚合後送態勢非個資**（P2-09 設計 B，不開 medical_records 表）；殘餘(1) 明文 at-rest 邊界 —— **P1-12c（[#229](https://github.com/winson3QQ/ICS_COMMAND/issues/229)）緩解 code 落地、待 merge/CI**（ICS DB SQLCipher；預設 off，完整 at-rest 仍需 LUKS [#231](https://github.com/winson3QQ/ICS_COMMAND/issues/231)，見 §8.4）；殘餘(2) ingest 無 server-side XSS escape（→ [#136](https://github.com/winson3QQ/ICS_COMMAND/issues/136)）|
 
 ### 8.3 裝置准入信任假設（缺口 #7）
 
