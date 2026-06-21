@@ -4586,5 +4586,26 @@
     "title": "feat(tak): #315 P2-26 L2 — admin TAK tab + 裝置證自助發放（真機 iTAK PASS）",
     "updatedAt": "2026-06-21T20:38:16Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/316"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "關聯 [#317](https://github.com/winson3QQ/ICS_COMMAND/issues/317)。#315 後續，「至少要知道發過什麼出去」。\n\n## 緣起（reality check）\nTAK **不記** offline 簽的證（TAK `certificate` 表實測 `count=0`、CoreConfig 無 CRL、truststore 信整個 CA 無 per-cert 拒絕）→ ICS 自建 SoT。\n\n## 改了什麼\n- 後端 `m030 tak_device_certs` 表 + `tak_device_cert_repo`（record/list/mark_revoked，皆 audit）。\n- 簽發時讀回 cert **serial**（`openssl x509 -serial`），`build_device_package` 回 `(zip, serial)`；serial = #318 CRL 前置。\n- `GET /tak/device-certs`（盤點）+ `POST .../{id}/revoke`（標記）。\n- 前端 TAK tab「已發裝置證」列表 + 撤銷鈕。\n\n## ⚠ 明確邊界\n**撤銷 = 帳面 flag、不阻擋連線**（UI banner + confirm + 文件三處標明）。真撤銷（CRL）= [#318](https://github.com/winson3QQ/ICS_COMMAND/issues/318) 獨立大項。\n\n## 測試 / Review\n- `pytest` 全套 **exit 0**（repo record/list/revoke、發證後進表、撤銷→404、需 auth）、eslint 0、doc_sync 綠、pre-commit 全 Passed。\n- `/code-review` + `/security-review` 合併 **0 finding**（migration idempotent、tuple caller 全改、RBAC sysadmin、SQL 參數化、revoke 404、callsign XSS escape）。\n- 版號 `backend-v2.11.0` / `frontend-v1.9.1`。\n\n## §8 Verification（公網 prod）\n已部署（build `fix317-inventory-…0516`）→ m030 套用（schema v30、表建好）。發證後即進清單、撤銷變「已撤銷」刪除線。盤點可見「發過哪些 / 誰發 / 何時」。",
+    "closedAt": "2026-06-21T21:31:58Z",
+    "comments": [],
+    "createdAt": "2026-06-21T21:31:46Z",
+    "headRefName": "feat/issue-317-tak-cert-inventory",
+    "labels": [],
+    "mergedAt": "2026-06-21T21:31:58Z",
+    "number": 319,
+    "state": "MERGED",
+    "title": "feat(tak): #317 TAK 裝置證盤點 — 自建記錄表 + 列表/撤銷-flag",
+    "updatedAt": "2026-06-21T21:32:02Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/319"
   }
 ]
