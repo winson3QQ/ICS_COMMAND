@@ -36,6 +36,11 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt -r requirements-test.txt pyflakes
 
+      - name: Assert SQLCipher present (P1-12c 加密整合測試不得在 CI 靜默 skip)
+        run: |
+          cd command-dashboard
+          python -c "import sqlcipher3; print('sqlcipher3 ok — encrypted tests will run')"
+
       - name: pyflakes (broken imports / unused vars)
         run: |
           cd command-dashboard

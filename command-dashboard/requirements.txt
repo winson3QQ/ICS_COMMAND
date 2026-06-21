@@ -18,3 +18,9 @@ aiohttp>=3.9
 # 維護者 Yubico AB（瑞典），BSD-2-Clause，非中國。lazy import：無金鑰的
 # dev / CI 場景走 ICS_MASTER_KEY fallback 或 mock，不觸發此套件。
 fido2==2.2.0
+# P1-12c (#229) — SQLCipher at-rest 加密 driver（模組名 sqlcipher3；-binary 變體含 bundled
+# SQLCipher，免系統 libsqlcipher）。維護者 Charles Leifer / coleifer（美國），SQLCipher 本體
+# Zetetic LLC（美國），BSD-style，非中國。app runtime 僅「加密模式」lazy import（core.database）。
+# ⚠ Windows 無 wheel（已實測）→ platform marker 排除，本機跑明文模式；Linux/CI（ubuntu）才裝、
+# 跑加密整合測試（tests/integration/test_db_encryption.py，sqlcipher3 缺則 importorskip）。
+sqlcipher3-binary==0.6.0; sys_platform != "win32"

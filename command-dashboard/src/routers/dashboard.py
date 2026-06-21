@@ -1,7 +1,6 @@
 
 import os
 import shutil
-import sqlite3
 import time
 from datetime import UTC, datetime
 from pathlib import Path
@@ -12,7 +11,7 @@ from core.config import (
     APP_VERSION, BUILD_ID, CMD_VERSION, DB_PATH,
     HEALTH_DISK_DEGRADED_PCT_THRESHOLD, HEALTH_DB_LATENCY_DEGRADED_MS,
 )
-from core.database import get_health_schema_version
+from core.database import get_health_schema_version, open_readonly_live
 from repositories.audit_repo import get_audit_log
 from repositories.snapshot_repo import get_latest_snapshot
 from services.dashboard_service import build_dashboard
@@ -138,13 +137,17 @@ def _db_latency_ms(path: Path) -> float | None:
     """對 DB 執行 SELECT 1 的往返時間（ms）。DB 不存在時回傳 None。"""
     if not path.exists():
         return None
+    # 加密模式（P1-12c）：open_readonly_live 走 sqlcipher3，錯誤型別為 sqlcipher3.Error
+    # 非 sqlite3.Error；health 探針任何 DB 連線/解密問題一律回 None（degraded 判斷）。
     try:
         t0 = time.monotonic()
-        uri = f"file:{path}?mode=ro"
-        with sqlite3.connect(uri, uri=True, timeout=1) as conn:
+        conn = open_readonly_live(path, timeout=1)
+        try:
             conn.execute("SELECT 1")
+        finally:
+            conn.close()
         return round((time.monotonic() - t0) * 1000, 1)
-    except sqlite3.Error:
+    except Exception:
         return None
 
 
@@ -158,10 +161,12 @@ def _schema_version(path: Path) -> int | None:
     if not path.exists():
         return None
     try:
-        uri = f"file:{path}?mode=ro"
-        with sqlite3.connect(uri, uri=True) as conn:
+        conn = open_readonly_live(path)
+        try:
             return get_health_schema_version(conn)
-    except sqlite3.Error:
+        finally:
+            conn.close()
+    except Exception:
         return None
 
 

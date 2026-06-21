@@ -121,23 +121,18 @@ def _is_sqlite(path: Path) -> bool:
 
 
 def _online_backup_db(src_db: Path, dst: Path) -> None:
-    """以 SQLite online backup API 取一致快照（即使 DB 正被寫入）。
+    """以一致快照把 live DB 匯出為**明文** .db（即使 DB 正被寫入）。
 
     取代「raw 複製 ics.db + 各別 tar -wal/-shm」—— 後者在 live DB 下會 torn snapshot
-    （db 與 wal 讀取時間差→還原後不一致甚至損毀）。online backup 內部 checkpoint，
-    產出單一自洽 .db，故備份**不再含 -wal/-shm**（已 fold 進 db）。
-    """
-    import sqlite3
+    （db 與 wal 讀取時間差→還原後不一致甚至損毀）。
 
-    src = sqlite3.connect(str(src_db))
-    try:
-        dst_conn = sqlite3.connect(str(dst))
-        try:
-            src.backup(dst_conn)
-        finally:
-            dst_conn.close()
-    finally:
-        src.close()
+    P1-12c #229：收口至 core.database.online_snapshot —— 明文 live DB 走 SQLite online
+    backup API（內部 checkpoint，產出單一自洽 .db、不再含 -wal/-shm）；加密 live DB 走
+    sqlcipher_export 解成明文。產物恆明文（外層 gzip+Fernet 保護），restore 路徑一致。
+    """
+    from core.database import online_snapshot
+
+    online_snapshot(src_db, dst)
 
 
 def _build_manifest(data_dir: Path, files: list[Path], *, trigger: str, exercise: dict | None) -> dict:
@@ -352,6 +347,15 @@ def restore_backup(
             hint = f"（請用 {pre_restore_path.name} 還原）" if pre_restore_path else "（無 pre-restore 可救）"
             log.error("userdata_restore_interrupted", msg=f"還原中斷，data/ 可能不完整{hint}", exc_info=True)
             raise RuntimeError(f"還原寫入中斷，data/ 可能不完整 — 請以 pre-restore 備份救回{hint}：{e}") from e
+
+    # P1-12c #229：backup 內的 ics.db 恆為明文（產物設計）；加密部署下還原到 data/ 後須
+    # re-encrypt，否則下次 get_conn 以 PRAGMA key 開明文檔會失敗。
+    from core.config import DB_ENCRYPTED, DB_PATH
+
+    if DB_ENCRYPTED:
+        from core.database import reencrypt_in_place
+
+        reencrypt_in_place(data_dir / DB_PATH.name)
 
     log.info(
         "userdata_restored",

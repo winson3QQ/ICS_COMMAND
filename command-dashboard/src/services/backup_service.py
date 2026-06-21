@@ -31,6 +31,8 @@ from pathlib import Path
 
 import structlog
 
+from core.database import online_snapshot
+
 log = structlog.get_logger()
 
 # #41 Sync v2: 7 天 default (從 30 校準, 對齊 production 演練週期 + storage 成本)
@@ -213,15 +215,9 @@ def create_backup(
         raw_tmp_path = Path(raw_tmp.name)
 
     try:
-        src = sqlite3.connect(str(db_path))
-        try:
-            dst = sqlite3.connect(str(raw_tmp_path))
-            try:
-                src.backup(dst)
-            finally:
-                dst.close()
-        finally:
-            src.close()
+        # P1-12c #229：online_snapshot 收口——明文 live DB 走 sqlite3 backup API（原行為），
+        # 加密 live DB 走 sqlcipher_export 解成明文。產物恆為明文 .db（外層 gzip+Fernet 保護）。
+        online_snapshot(db_path, raw_tmp_path)
 
         with raw_tmp_path.open("rb") as fin, gzip.open(tmp_gz, "wb", compresslevel=6) as fout:
             shutil.copyfileobj(fin, fout)
@@ -336,5 +332,13 @@ def restore_backup(
     target_db_path.parent.mkdir(parents=True, exist_ok=True)
     with gzip.open(backup_path, "rb") as fin, target_db_path.open("wb") as fout:
         shutil.copyfileobj(fin, fout)
+    # P1-12c #229：backup 內恆為明文 .db；加密部署下還原到 live DB 後須 re-encrypt，
+    # 否則下次 get_conn 以 PRAGMA key 開明文檔會失敗。
+    from core.config import DB_ENCRYPTED
+
+    if DB_ENCRYPTED:
+        from core.database import reencrypt_in_place
+
+        reencrypt_in_place(target_db_path)
     log.info("backup_restored", msg="備份還原成功", detail={"from": str(backup_path), "to": str(target_db_path)})
     return target_db_path

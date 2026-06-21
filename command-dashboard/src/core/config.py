@@ -15,6 +15,16 @@ MBTILES_DIR = STATIC_DIR / "tiles"
 _ics_db_path_env = os.getenv("ICS_DB_PATH")
 DB_PATH: Path = Path(_ics_db_path_env) if _ics_db_path_env else DATA_DIR / "ics.db"
 
+# ── Live DB at-rest 加密（P1-12c / #229）──────────────────────────────────
+# ICS_DB_ENCRYPTED=1 → live DB 走 SQLCipher driver，連線後立即 PRAGMA key。
+#   金鑰來源 = DB_KEY env（P1-12a unlock_key.py 提供 = HKDF child[1] db-v1，
+#   child.hex() → 剛好 64 hex 字元 = 256-bit raw key，PRAGMA key 用 x'..' 形式
+#   直接當 raw key、不再經 SQLCipher KDF）。
+# 未設（預設）→ 原生 sqlite3（dev / CI / Windows 無 wheel / 漸進部署）。
+# ⚠ Windows 無 sqlcipher3 wheel（已實測）→ 本機只能跑明文，加密路徑由 CI（ubuntu）驗。
+DB_ENCRYPTED: bool = os.getenv("ICS_DB_ENCRYPTED", "false").lower() in ("1", "true", "yes")
+DB_KEY_ENV = "DB_KEY"
+
 # ── map_config（P1-13 seed/runtime 分離）──────────────────────────────
 # SEED：tracked，factory default（issue/PR snapshot 期間維持版本控管）
 # PATH：gitignored，runtime 實檔（user data 邊界，未來進 P1-12b backup + P1-12c SQLCipher 加密邊界）
