@@ -8,8 +8,8 @@
 # 全服務同一張 icsnet → TAK on 時 ics-command 以容器名 takserver:8089 / :8443 直連（內網，不經公網 IP）。
 # 對外（單一公網 IP 多 port）：443→nginx(ICS mTLS)、8089/8446→takserver（現場 ATAK）；8443 admin 不轉發。
 #
-# ⚠ 前置 1（build）：本機若在 OneDrive 同步路徑 build 會失敗（invalid file request）→ 見 issue #300 /
-#                    deploy/build-env.md，先把 repo 弄到非同步路徑（C:\dev）再 build。
+# 前置 1（build）：#300 OneDrive reparse 殘渣已解，Desktop 現可直接 build。僅當 repo 再被 OneDrive
+#                  同步污染才會 invalid file request → 屆時見 deploy/build-env.md（移非同步路徑或重 clone）。
 # ⚠ 前置 2（TAK release）：tak-server 需官方包解壓到 ../tak-server/release/（見 deploy/tak-server/README）。
 # ⚠ 前置 3（憑證）：step-ca 簽 nginx server cert 由 ca-bootstrap 自動；TAK server cert + ICS→TAK client
 #                    cert 需先跑 ../tak-server/pki/issue-tak-certs.sh，產物放 ./tak-certs/（見 README）。

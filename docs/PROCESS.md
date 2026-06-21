@@ -34,7 +34,7 @@
 **機制**（兩段都一樣，差別只在 `ICS_BUILD_ID` 標記）：
 ```bash
 cd deploy/prod
-# 1. build（OneDrive 同步路徑會失敗，見 deploy/build-env.md / #300）
+# 1. build（#300 OneDrive reparse 殘渣已解；僅當 repo 再被 OneDrive 同步污染才會失敗，見 deploy/build-env.md）
 #    BUILD_ID 注入登入頁 → 公網/真機可辨識「實際跑哪個 build」（版號常數分不出每次 rebuild）
 docker build --build-arg ICS_BUILD_ID="<marker>" -t ics-command:dev ../../command-dashboard
 #    dogfood（4.5）：marker = fix<NN>-<sha>-dirty-<MMDD.HHMM>（未 merge、working tree dirty）

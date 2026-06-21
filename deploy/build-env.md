@@ -1,4 +1,16 @@
-# 本機 build 環境問題 — OneDrive 殘留 cloud reparse point
+# 本機 build 環境問題 — OneDrive 殘留 cloud reparse point（✅ 已解 / 歷史記錄）
+
+> ✅ **狀態:已解（#300）。** 2026-06-22 實測 `C:\Users\yello\Desktop\ICS_COMMAND`
+> 主 repo 與各 worktree 的 reparse-point 檔數**皆為 0**(`requirements.txt` 等抽樣屬性
+> 僅 `Archive`、無 `ReparsePoint`)→ 檔案系統層的 OneDrive 殘渣已清除,`docker build`
+> 不再受此阻擋。`deploy/prod/README.md` 亦記 #300 已解。
+>
+> **本文件保留為歷史記錄 + 復發排錯參考。** 下方〈症狀〉〈根因〉〈怎麼驗〉〈怎麼清〉
+> 描述的是**當時(2026-06-21)的故障狀態**;若日後 repo 再被 OneDrive 同步污染可循此處理。
+
+---
+
+## 當時影響(歷史)
 
 > 影響:**在 `C:\Users\yello\Desktop\ICS_COMMAND` 這份 working tree 直接 `docker build`(ICS 或 TAK image)會失敗**。
 > 範圍:**只卡 `docker build`**;dev server(uvicorn)、git、pytest、vitest 全正常。
@@ -67,8 +79,9 @@ working repo + 並行 session **完全不動**。代價:runtime bind-mount(如 T
 
 ### ⚠ 不要用 `fsutil reparsepoint delete`(cloud placeholder 會掉內容)。
 
-## 完成判準
+## 完成判準（✅ 已達成）
 `docker build` ICS + TAK image 成功;`(Get-Item requirements.txt -Force).Attributes` 不含 `ReparsePoint`。
+→ 2026-06-22 全 repo reparse-point 檔數實測為 0,判準滿足。
 
 > 並行 session 顧慮:**用方案 A(同路徑)或方案 B(不動 Desktop)**,都不會讓其他 session 找不到 repo。
 > 唯有「永久搬到 `C:\dev`」才會改變路徑——那需同步更新所有 session 的 repo 根,非必要不做。
