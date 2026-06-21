@@ -4404,5 +4404,25 @@
     "title": "deploy(prod): ICS + TAK 同機交付棧乾淨環境端到端實證（build + up + smoke）",
     "updatedAt": "2026-06-21T06:20:35Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/305"
+  },
+  {
+    "assignees": [],
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "body": "## 問題\n公網 prod（deploy/prod，`ICS_MTLS_REQUIRED=true`）首次佈署時，**第一個 admin 無法登入**：登入要求「PIN + 綁定本帳號的裝置憑證」，但憑證綁定要先登入才能在面板做 → 雞生蛋。\n\n目前唯一解是**手動翻 env 兩次**的 bootstrap 舞蹈：\n1. 部署時先 `ICS_MTLS_REQUIRED=false`\n2. admin 用 first-run token 登入（只驗 PIN）→ 改 PIN → 面板綁自己的裝置憑證\n3. 改回 `ICS_MTLS_REQUIRED=true` 重啟\n\n這步驟無文件、易錯、且需要佈署者能改 .env + restart（2026-06-21 實機驗證確認此為目前唯一路徑）。\n\n## 建議（方案 b：免 env-toggle）\n**first-run gate 期間（`is_default_pin=1` 且帳號數=1）允許第一個 admin 在 mTLS=true 下綁定第一張裝置憑證** —— 即「首次設定」流程內含「綁定本機憑證」一步，gate 解除後恢復強制「已綁憑證」。雞生蛋直接消失，不需翻 env。\n\n安全考量：僅限 (a) is_default_pin=1 的初始 admin、(b) 尚無任何 active 綁定時、(c) nginx 已 CA 驗證該 cert（`X-Client-Cert-Verify=SUCCESS`）→ 把「已 CA 信任但未綁定」的 cert 綁給初始 admin。風險面：佈署窗口內任何持 CA-signed cert 者可搶綁初始 admin → 緩解：限「DB 全新（accounts=1 且 is_default_pin=1）」窗口，且綁定後立即關窗。\n\n## 備選（方案 a，低成本）\n若不改 code，至少把 bootstrap 舞蹈寫進 `deploy/prod/README` 的 onboarding runbook（讀 token → 綁證 → 翻 env），並在 `.env.example` 的 `ICS_MTLS_REQUIRED` 註解補指引。\n\n## 完成判準\n- 乾淨佈署後，第一個 admin 能在**不手動翻 `ICS_MTLS_REQUIRED`** 下完成「登入 + 綁定本機憑證 + 上鎖」。\n- 或（方案 a）runbook 文件化此流程並通過一次乾淨佈署演練。\n",
+    "closedAt": null,
+    "comments": [],
+    "createdAt": "2026-06-21T07:47:02Z",
+    "labels": [],
+    "milestone": null,
+    "number": 306,
+    "state": "OPEN",
+    "title": "feat(auth): 首次 admin 免 env-toggle 的 mTLS bootstrap（first-run gate 期間允許綁證）",
+    "updatedAt": "2026-06-21T07:47:02Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/306"
   }
 ]
