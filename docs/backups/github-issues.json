@@ -4575,15 +4575,30 @@
       "name": ""
     },
     "body": "P2-26 L2 主體具體化（接 [#177](https://github.com/winson3QQ/ICS_COMMAND/issues/177) / [#255](https://github.com/winson3QQ/ICS_COMMAND/issues/255)）。admin 設定頁加獨立「TAK」tab，集中 TAK 連線開關 + TAK client 裝置證發放，量產時操作員不必裸跑 CLI。\n\n## 目標\n1. admin 設定頁新增 **TAK tab**（sysadmin-only、PIN-gated）。\n2. 既有 **TAK 連線 toggle + 狀態行**（P2-24 #164）搬入此 tab（純前端重組）。\n3. **TAK 裝置證自助發放**：dashboard 線上發 ATAK/iTAK 的 data package（取代 deploy-time CLI `gen-device-dp.sh` 的逐台手動），交付場域可自助。\n\n## Reality check（2026-06-21，讀 `deploy/tak-server/pki/gen-device-dp.sh` 全文）\n**🔴 更正設計**：`gen-device-dp.sh` 用 `step certificate create --ca-key ~/.step/secrets/intermediate_ca_key` **offline 直接持 CA 私鑰簽**。**照抄到後端＝後端持 CA 鑰＝踩穿 `issue_p12` 守的「後端不持鑰」紅線。** → 正解：**證走 step-ca daemon 簽**（reuse `cert_issuance` 的 provisioner-token 路徑，後端永不碰 CA 鑰），**只 port「組 data package」段**（zip + pref + manifest）。\n\n**⚠ 三個 gotcha**：\n1. **connectString 要對外可達的 TAK 位址**。package `connectString0=<host>:8089:ssl`，但後端 `TAK_COT_URL=tls://takserver:8089` 是**容器內網名**，裝置連不到 → 需另開「對外 TAK 位址」config（env `TAK_DEVICE_CONNECT_HOST`，= #255「TAK URL 進 config」起點）。\n2. **p12 要 fullchain（leaf+intermediate）**，因 TAK truststore 只有 root → 後端需 intermediate **憑證**（公開可取、非鑰）補鏈。\n3. **truststore 原用 keytool（JDK）建** → 後端 Python 容器無 JDK，改 **openssl/Python**（truststore = 裝 root+intermediate 兩張公開證的 p12）。\n\n**✅ 確認可行**：後端有 step+openssl+python3+provisioner 憑據（`/ca-share`）、無 CA 鑰（正確姿態）；p12 密碼 `atakatak` 是 TAK 慣例且**內嵌進 pref**（裝置免打密碼，同 .mobileconfig 模型）；package = 即產即交 zip、私鑰在內、**不落 DB**（守紅線）；組 zip 用 Python `zipfile`。\n\n## Scope / 計畫\n- [ ] 後端 service：daemon 簽 cert + 取 intermediate 補 fullchain p12 + openssl 建 truststore p12 + Python 組 data package（atak 嵌套 zip / aware flat zip，pref + manifest 對齊 `gen-device-dp.sh`）。\n- [ ] `POST /api/admin/tak/device-cert`（sysadmin、**audit-first 強制**、回 `.zip`，`fmt=atak|aware`）。\n- [ ] config：`TAK_DEVICE_CONNECT_HOST`（對外 TAK 位址，env；DB/UI 化留後續 #255）。\n- [ ] 前端：新 TAK tab + toggle 搬入 + 發證 UI（callsign + 平台 + 下載/分享，沿用 #312 下載/Web Share）。\n- [ ] threat_model §8 更新 + security-review。\n\n## Doctrine（拍板留痕）\n推翻 #255「UI 不簽證、deploy 管 secret」對「TAK 裝置證」的部分：改為 **sysadmin 線上簽 TAK 裝置證 + 每張強制 audit**。理由：CA 鑰仍在 daemon（後端不持鑰，同 ICS 證）；「誰拿 TAK 證」本就是 sysadmin 蓄意+audit 決定，CLI/dashboard 同信任決定。\n\n## 紅線（不變）\n- ❌ 後端持 CA 鑰（走 daemon 簽）\n- ❌ cert/key **內容**進明文 DB（卡 P1-12 #226；package 即產即交不落盤）\n- ❌ TAK 內建 :8446 enrollment（CA 已換 step-ca）\n- COP-poisoning（TAK-trusted 證可注 COP）blast radius 最大 → sysadmin-only + 強制 audit 緩解，threat_model 文件化\n\n關聯：#177 / #255 / #164（P2-24 toggle）/ `gen-device-dp.sh` / memory `tak-server-marti-cert-not-oauth` `tak-marti-authz-model`。",
-    "closedAt": null,
-    "comments": [],
+    "closedAt": "2026-06-21T20:39:44Z",
+    "comments": [
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## ✅ 落地（真機 iTAK dogfood PASS，PR #316 `2445a4e`）\n\nadmin TAK tab（連線開關搬入 + TAK 裝置證自助發放）。`backend-v2.10.0` / `frontend-v1.9.0`。\n\n### 5 個 reality check（逐個推翻假設，真機/容器/TAK log 實證）\n1. iTAK 吃 **legacy p12**（modern PBES2/AES 匯入沒反應，同 #307）\n2. **flat zip**（cert/pref/MANIFEST 子目錄 iTAK 不認；借使用者 OpenTAKServer 樣本格式）\n3. truststore = TAK server CA（裝置驗 server）\n4. **🔑 client 證必須 ICS-TAK-SVC-CA（offline `tak-ca.key`）簽** —— TAK truststore 只信它、step-ca 證回 `peer not verified`（log 實證）→ 後端用 offline TAK CA 私鑰簽，與 ICS 登入證 step-ca **刻意隔離**（#305）。**推翻初稿「後端不持鑰」**，threat_model §8.3 改正。\n5. 8089 對外 forward（部署）\n\n→ TAK log `Added Subscription` + iTAK 位置上 ICS COP 地圖。\n\n### review\n`/code-review`（FileNotFoundError→502 順序 + callsign 防禦驗證）+ `/security-review`（clean：callsign allowlist 擋 openssl `-subj` DN 注入、CA 鑰不外洩、sysadmin-gated）。\n\n### 仍 ⏳（不在本 issue scope，後續）\n- ATAK(Android) 真機驗\n- TAK 裝置證 lifecycle（撤銷/列管）—— 不像 ICS 登入證可即時撤\n- #255 連線設定 DB/UI 化、role/group 管理、federation 治理（P2-26 主體續做）",
+        "createdAt": "2026-06-21T20:39:43Z",
+        "id": "IC_kwDOSnBjpc8AAAABG-kQ0w",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/315#issuecomment-4763226323"
+      }
+    ],
     "createdAt": "2026-06-21T13:21:31Z",
     "labels": [],
     "milestone": null,
     "number": 315,
-    "state": "OPEN",
+    "state": "CLOSED",
     "title": "feat(tak): P2-26 L2 — admin TAK tab（toggle 搬入 + TAK 裝置證自助發放 data package）",
-    "updatedAt": "2026-06-21T13:21:31Z",
+    "updatedAt": "2026-06-21T20:39:44Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/315"
   }
 ]

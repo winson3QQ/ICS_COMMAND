@@ -4565,5 +4565,26 @@
     "title": "feat(auth): #306 首次 admin 免 env-toggle mTLS bootstrap",
     "updatedAt": "2026-06-21T12:53:19Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/314"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "關聯 [#315](https://github.com/winson3QQ/ICS_COMMAND/issues/315)。P2-26 L2 第一刀。\n\n## 做了什麼\nadmin 設定頁加 **TAK tab**（sysadmin-only）：TAK 連線開關搬入（P2-24 #164）+ **dashboard 線上發 ATAK/iTAK device cert data package**，取代 deploy-time CLI `gen-device-pkg.sh`。\n\n- 後端 `services/tak_device_cert.py`：**ICS-TAK-SVC-CA（offline `tak-ca.key`）簽** device 證 + Python 組 data package（client p12 + truststore + pref，密碼內嵌 `atakatak`）。`POST /api/admin/tak/device-cert`（sysadmin、強制 audit、回 .zip）。config `TAK_DEVICE_CONNECT_HOST` + `TAK_DEVICE_CA_DIR`。\n- 前端 `admShowTak`（TAK tab）+ `admIssueTakDevice`（callsign + 平台 + 下載/分享）。\n\n## 5 個 reality check（真機/容器/TAK log 實證，逐個推翻假設）\n1. iTAK 吃 **legacy p12**（modern PBES2/AES 匯入沒反應，同 #307）\n2. **flat zip**（cert/pref/MANIFEST 子目錄 iTAK 不認；借使用者提供的 OpenTAKServer 成功樣本格式）\n3. truststore = TAK server CA（裝置驗 server）\n4. **🔑 client 證必須 ICS-TAK-SVC-CA 簽** —— TAK truststore 只信它、**step-ca 證 TAK 回 `peer not verified`**（log 實證）→ 後端用 offline TAK CA 私鑰簽，**與 ICS 登入證 step-ca 刻意隔離**（#305）；推翻初稿「後端不持鑰」，threat_model §8.3 改正\n5. 8089 對外 forward（部署）\n\n→ 最終 TAK log `Added Subscription` + **iTAK 位置上 ICS COP 地圖**。\n\n## Doctrine\n推翻 #255「UI 不簽證」對裝置證的部分 → sysadmin 線上簽 + 強制 audit。CA 隔離：ICS 登入證（step-ca）外洩也連不上 TAK（TAK 不信 step-ca），反之亦然。\n\n## 測試 / Review\n- `pytest` 全套 **exit 0**（assemble_package 結構、503 guards、callsign 422、mode 422）、eslint 0、doc_sync 綠、pre-commit 全 Passed。\n- `/code-review`（修：`FileNotFoundError`→502 順序 + callsign 防禦驗證移進 service）+ `/security-review`（clean；callsign allowlist 擋 openssl `-subj` DN 注入、CA 鑰不外洩、sysadmin-gated）。\n- 版號 `backend-v2.10.0` / `frontend-v1.9.0`。\n\n## §8 Verification（公網 prod dogfood，iPhone iTAK 4G）\n逐版 build + `--force-recreate` → iTAK 匯入 dashboard 發的 package → **Connected** → CoT 位置回傳 → ICS COP 顯示 `3QQ:ITAK` 藍點。**真機 PASS**（截圖）。\n\n> **仍 ⏳**：ATAK(Android) 真機驗、裝置證 lifecycle（撤銷/列管）、#255 連線設定 DB/UI 化、role/group、federation 治理。",
+    "closedAt": "2026-06-21T20:38:12Z",
+    "comments": [],
+    "createdAt": "2026-06-21T20:38:01Z",
+    "headRefName": "feat/issue-315-tak-admin-tab",
+    "labels": [],
+    "mergedAt": "2026-06-21T20:38:12Z",
+    "number": 316,
+    "state": "MERGED",
+    "title": "feat(tak): #315 P2-26 L2 — admin TAK tab + 裝置證自助發放（真機 iTAK PASS）",
+    "updatedAt": "2026-06-21T20:38:16Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/316"
   }
 ]
