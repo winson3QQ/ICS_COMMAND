@@ -40,6 +40,7 @@ services:
       - STEP_CA_PROVISIONER=ics
       - STEP_CA_PASSWORD=${STEP_CA_PASSWORD:?STEP_CA_PASSWORD 必須設定}
       - ICS_SERVER_SANS=${ICS_SERVER_SANS:-}   # 公網 IP/網域寫進 nginx server cert SAN（空白分隔）
+      - ICS_SERVER_SANS_ALLOW_PRIVATE=${ICS_SERVER_SANS_ALLOW_PRIVATE:-false}   # #321 L9：預設過濾 RFC1918 內網 IP（防公網 cert 洩拓樸）；純 LAN/dev 才設 true
       - ICS_SERVER_CERT_DURATION=${ICS_SERVER_CERT_DURATION:-23h}   # nginx server cert 效期；90 天須先放寬 provisioner claims（見 README §憑證效期 / #279）
     volumes:
       - ca-data:/ca:ro

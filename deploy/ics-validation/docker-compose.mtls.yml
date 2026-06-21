@@ -40,6 +40,7 @@ services:
       - STEP_CA_PASSWORD=${STEP_CA_PASSWORD:?STEP_CA_PASSWORD 必須設定（見 .env.example，勿用預設）}  # #290 H6
       # 外網驗證：設你的公網 IP/網域（空白分隔多個）寫進 server 憑證 SAN
       - ICS_SERVER_SANS=${ICS_SERVER_SANS:-}
+      - ICS_SERVER_SANS_ALLOW_PRIVATE=${ICS_SERVER_SANS_ALLOW_PRIVATE:-false}   # #321 L9：預設過濾 RFC1918 內網 IP（防 cert 洩拓樸）；純 LAN/dev 才設 true
     volumes:
       - ca-data:/ca:ro            # 只讀 daemon 公開 root/intermediate（非 CA 鑰）
       - pki:/pki                  # nginx server 憑證 + ca-bundle
