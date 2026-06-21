@@ -4418,5 +4418,26 @@
     "title": "feat(backup): P1-12b 整包 data/ 加密備份 + GUI 還原（取代自動關閉的 #235）",
     "updatedAt": "2026-06-21T01:03:22Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/303"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "## 摘要\n\nP1-12c：live DB at-rest 加密（SQLCipher）driver 抽象 + 明文→加密 migration + restore re-encrypt + CI 加密整合測試。**預設 off（`ICS_DB_ENCRYPTED` 未設 → 原生 sqlite3，零行為變更）。**\n\n## 內容\n\n| 件 | 說明 |\n|---|---|\n| **driver 抽象** | `core/database.py` `_connect`：未設旗標→sqlite3（預設）；設→lazy import `sqlcipher3` + `PRAGMA key=\"x'<DB_KEY 64hex>'\"`（raw key 免 KDF，64-hex 白名單驗證）。DB_KEY = 12a HKDF child[1] db-v1 的 `child.hex()` |\n| **收口修正** | reality-check 推翻原規格「`get_conn` 單一收口」假設：實際 dashboard health ×2（`open_readonly_live`）+ backup online ×2（`online_snapshot`，加密走 `sqlcipher_export` 解明文）直連 live DB，一併改 |\n| **正確性洞** | 備份產物恆「明文 .db 包 Fernet」→ 加密部署 restore 後 `get_conn` 以 PRAGMA key 開明文檔會失敗 → 兩 restore 路徑 `reencrypt_in_place` 收口 |\n| **migration** | `scripts/migrate_encrypt_db.py` 明文→加密一次性轉換（idempotent + fail-safe：先驗加密暫存可解才 atomic swap，原明文留 `.pre-encrypt` 備援）|\n| **deps** | `sqlcipher3-binary==0.6.0`（Charles Leifer/coleifer，美國；非中國，security-review 過）；Windows 無 wheel → `sys_platform != \"win32\"` marker，本機跑明文 |\n| **CI** | 加「assert sqlcipher3 present」防加密測試靜默 skip + `tests/integration/test_db_encryption.py` 真 SQLCipher round-trip（Windows `importorskip` 跳過、CI ubuntu 實跑）|\n\n## 驗證\n\n- 本機（Windows，無 wheel）明文路徑 **1183 passed**、pyflakes 乾淨、doc-sync 過。\n- **加密路徑由本 PR 的 CI（ubuntu）驗** —— 這是加密邏輯的唯一驗證機制（本機跑不了）。**merge 前等 CI 綠。**\n- security-review（da8e492 / a0b85b8 diff）**0 finding**（PRAGMA key f-string 由 64-hex 白名單中和）。\n- 既有 2 local 失敗非本 PR 回歸：`test_tak_events`（本機 env TAK_ENABLED）、`test_restore_bad_payload`（stash 後在 clean main 一樣掛、deterministic pre-existing；CI Linux 應綠）。\n\n## ⚠ 策略定位（threat_model §8.4）\n\n**SQLCipher = L2 內層縱深，非 at-rest 主控。** 同機部署下 TAK PostgreSQL 同碟明文 + 私鑰明文落地 → 偷碟直接讀 TAK PG 繞過 SQLCipher。**完整 at-rest 需整碟加密（LUKS/BitLocker，#231）。** 故本項 **default-off**，是否真開 + 交付模式待 #231 前置策略定案。硬體驗收（真 token / Pi benchmark）= #230。\n\n## 關聯\n\nRefs #229（code-complete；是否關閉 issue 待整碟策略定案，見 #229 留痕）。umbrella #226 仍 ⏳。\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+    "closedAt": "2026-06-21T03:13:54Z",
+    "comments": [],
+    "createdAt": "2026-06-21T03:03:36Z",
+    "headRefName": "feat/issue-229-p1-12c-sqlcipher",
+    "labels": [],
+    "mergedAt": "2026-06-21T03:13:54Z",
+    "number": 304,
+    "state": "MERGED",
+    "title": "feat(db): P1-12c SQLCipher live DB at-rest 加密（default-off，L2 內層）(#229)",
+    "updatedAt": "2026-06-21T03:14:27Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/304"
   }
 ]

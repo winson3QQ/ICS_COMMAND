@@ -3251,7 +3251,7 @@
       "name": ""
     },
     "body": "P1-12 子項 C（umbrella #226）。\n\n## Scope\n\n- `core/database.py` `get_conn()` 抽 driver（單一收口點，已確認全 repo 連線走這裡）：`ICS_DB_ENCRYPTED=1` → SQLCipher driver + `PRAGMA key`（HKDF `child[1]`，12a 提供）；未設 → 原生 sqlite3（dev / 漸進部署）\n- 明文 → 加密一次性 migration script（`sqlcipher_export`）\n- backup 鏈調整：加密 DB 的 online backup 需先 `PRAGMA key` 才能讀（`backup_service.create_backup` 對齊）\n- threat_model TAK-F 殘餘風險(1)（CoT attributes 明文 at-rest）以本項關閉\n\n## Driver 供應鏈決策（動工時定案，security-review 把關）\n\n- 規格原指名 `pysqlcipher3`：**最後 release 2019，維護幾近停擺**\n- 候選替代 `sqlcipher3`（coleifer / Charles Leifer，美國，活躍維護）；SQLCipher 本體 Zetetic LLC（美國）\n- 兩者供應鏈紅線皆過，維護狀態差異大 → 傾向 `sqlcipher3`\n\n## 平台限制（已實測）\n\n- **Windows 無 wheel**（`sqlcipher3-binary` no matching distribution；`pysqlcipher3` 僅 sdist 需自編 SQLCipher）\n- → 本機（Windows）跑明文模式 + key 注入 mock 測試；**加密整合測試在 CI（ubuntu）跑，merge 前等 CI 綠**\n\n## DoD carve-out\n\n- Pi 500 效能 benchmark（+20% latency 門檻）→ 硬體尾巴 issue（不阻塞本項 merge，threat_model 註記殘留驗證）",
-    "closedAt": null,
+    "closedAt": "2026-06-21T03:15:04Z",
     "comments": [
       {
         "author": {
@@ -3280,15 +3280,29 @@
         "minimizedReason": "",
         "reactionGroups": [],
         "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/229#issuecomment-4760725431"
+      },
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "✅ **code merged**：PR [#304](https://github.com/winson3QQ/ICS_COMMAND/pull/304)（merge commit `fd413ea`）併入 main，CI 綠（**加密整合測試在 ubuntu 實跑、`sqlcipher3` 真 round-trip 通過**，1195 passed）。\n\n關閉理由：12c 的 **code scope 完成**（driver 抽象 / 收口修正 / migration / restore re-encrypt / deps + CI 加密測試 / threat_model）。\n\n**仍 default-off**（`ICS_DB_ENCRYPTED` 未設）—— 「是否真開 + 交付模式」屬部署策略，**不在本 issue code scope**，由 umbrella [#226](https://github.com/winson3QQ/ICS_COMMAND/issues/226) + 整碟前置 [#231](https://github.com/winson3QQ/ICS_COMMAND/issues/231) 承接；硬體驗收（真 token / Pi benchmark）= [#230](https://github.com/winson3QQ/ICS_COMMAND/issues/230)。",
+        "createdAt": "2026-06-21T03:15:03Z",
+        "id": "IC_kwDOSnBjpc8AAAABG8N1eQ",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/229#issuecomment-4760761721"
       }
     ],
     "createdAt": "2026-06-11T23:42:31Z",
     "labels": [],
     "milestone": null,
     "number": 229,
-    "state": "OPEN",
+    "state": "CLOSED",
     "title": "P1-12c SQLCipher live DB at-rest 加密：driver 抽象 + 明文→加密 migration + CI 驗證",
-    "updatedAt": "2026-06-21T02:56:21Z",
+    "updatedAt": "2026-06-21T03:15:04Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/229"
   },
   {
