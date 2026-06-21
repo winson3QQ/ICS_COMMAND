@@ -135,6 +135,62 @@ class TestPurgeRevoked:
         assert len(list_certs(b["id"])) == 1  # bob 的 revoked 列還在
 
 
+class TestMtlsBootstrapWindow:
+    """#306：bootstrap 窗口 = 唯一帳號 + 零 active 綁定。"""
+
+    def test_true_single_account_no_certs(self, tmp_db):
+        from repositories.account_cert_repo import is_mtls_bootstrap
+
+        _mk_account("admin")
+        assert is_mtls_bootstrap() is True
+
+    def test_false_no_accounts(self, tmp_db):
+        from repositories.account_cert_repo import is_mtls_bootstrap
+
+        assert is_mtls_bootstrap() is False
+
+    def test_false_after_first_cert_bound(self, tmp_db):
+        from repositories.account_cert_repo import bind_cert, is_mtls_bootstrap
+
+        acct = _mk_account("admin")
+        bind_cert(acct["id"], "dev-1", None, "system")
+        assert is_mtls_bootstrap() is False  # 綁定後關窗
+
+    def test_false_latched_after_revoke_all(self, tmp_db):
+        """單向閂：綁過第一張後即使撤光證，窗口不重開（撤銷不可被 bootstrap 繞過）。"""
+        from repositories.account_cert_repo import bind_cert, is_mtls_bootstrap, revoke_cert
+
+        acct = _mk_account("admin")
+        rec = bind_cert(acct["id"], "dev-1", None, "system")
+        revoke_cert(rec["id"], "system")  # 撤光 → 0 active，但 row 仍在
+        assert is_mtls_bootstrap() is False
+
+    def test_false_latched_after_revoke_and_purge(self, tmp_db):
+        """security-review #306 V1：bind→revoke→purge 把 account_certs 清空，但持久旗標
+        mtls_bootstrap_done 仍在 → 窗口不重開（purge 清不掉旗標）。"""
+        from repositories.account_cert_repo import (
+            bind_cert,
+            is_mtls_bootstrap,
+            list_certs,
+            purge_revoked_certs,
+            revoke_cert,
+        )
+
+        acct = _mk_account("admin")
+        rec = bind_cert(acct["id"], "dev-1", None, "system")
+        revoke_cert(rec["id"], "system")
+        purge_revoked_certs(acct["id"], "system")
+        assert len(list_certs(acct["id"])) == 0  # account_certs 已清空
+        assert is_mtls_bootstrap() is False  # 但旗標擋住，窗口不重開
+
+    def test_false_multiple_accounts(self, tmp_db):
+        from repositories.account_cert_repo import is_mtls_bootstrap
+
+        _mk_account("admin")
+        _mk_account("op")
+        assert is_mtls_bootstrap() is False  # 多帳號永久關窗（撤光證也無法重開）
+
+
 class TestActiveLookups:
     def test_cert_active_for_account(self, tmp_db):
         from repositories.account_cert_repo import bind_cert, cert_active_for_account

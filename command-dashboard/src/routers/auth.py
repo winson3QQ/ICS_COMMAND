@@ -14,7 +14,7 @@ from auth.service import (
     validate_session,
 )
 from repositories._helpers import audit
-from repositories.account_cert_repo import account_id_for_username, cert_active_for_account
+from repositories.account_cert_repo import account_id_for_username, cert_active_for_account, is_mtls_bootstrap
 from repositories.account_repo import (
     clear_default_pin_flag,
     is_first_run_required,
@@ -42,22 +42,16 @@ def login(body: LoginIn, request: Request):
             bypass_lockout = True
     acct, reason = verify_login(body.username, body.pin, bypass_lockout=bypass_lockout)
     if reason == "locked":
-        log.warning("login_failed", msg="登入失敗 — 帳號鎖定",
-                    user=body.username,
-                    detail={"reason": reason})
+        log.warning("login_failed", msg="登入失敗 — 帳號鎖定", user=body.username, detail={"reason": reason})
         # #280 H：帳號鎖定 = 持續爆破訊號（與 IP 無關，可靠）
         security_alert("account_locked", "帳號鎖定（疑似密碼爆破）", user=body.username)
         raise HTTPException(423, "帳號暫時鎖定，請 15 分鐘後再試")
     if reason in {"suspended", "archived"}:
-        log.warning("login_failed", msg="登入失敗 — 帳號停權",
-                    user=body.username,
-                    detail={"reason": reason})
+        log.warning("login_failed", msg="登入失敗 — 帳號停權", user=body.username, detail={"reason": reason})
         raise HTTPException(403, "帳號已停權")
     if not acct:
         # no_user 與 bad_pin 同樣訊息（不洩漏帳號是否存在）
-        log.warning("login_failed", msg="登入失敗",
-                    user=body.username,
-                    detail={"reason": reason})
+        log.warning("login_failed", msg="登入失敗", user=body.username, detail={"reason": reason})
         raise HTTPException(401, "帳號或 PIN 錯誤")
     # #275 mTLS：第二因子（裝置憑證）。MTLS_REQUIRED 時須出示綁定本帳號的 client cert
     # （nginx 已 CA 驗證 → X-Client-Cert-Verify=SUCCESS；CN 須為本帳號 active 綁定）。
@@ -66,27 +60,28 @@ def login(body: LoginIn, request: Request):
     cert_cn = None
     if config.ICS_MTLS_REQUIRED:
         presented = client_cert_cn(request)
-        if (not client_cert_verified(request)
-                or not presented
-                or not cert_active_for_account(acct["id"], presented)):
-            log.warning("login_failed", msg="登入失敗 — 裝置憑證",
-                        user=body.username, detail={"reason": "cert"})
+        cert_verified = client_cert_verified(request)
+        # #306 bootstrap：全新部署（唯一帳號、零綁定）+ 出示 nginx 已 CA 驗證的證 → 放行
+        # 用該證登入並暫綁進 session，讓首位 admin 進面板綁第一張證（免手動翻 ICS_MTLS_REQUIRED）。
+        # 仍需 first-run PIN（上方 verify_login）+ CA-signed cert 雙重前提；綁定後窗口自動關。
+        if cert_verified and presented and is_mtls_bootstrap():
+            cert_cn = presented
+        elif not cert_verified or not presented or not cert_active_for_account(acct["id"], presented):
+            log.warning("login_failed", msg="登入失敗 — 裝置憑證", user=body.username, detail={"reason": "cert"})
             # #280 H：PIN 對但裝置證不符/缺/撤銷 = 盜 PIN 或裝置不符的高訊號
             security_alert("cert_factor_failed", "第二因子（裝置憑證）失敗", user=body.username)
             raise HTTPException(401, "帳號或 PIN 錯誤")
-        cert_cn = presented
+        else:
+            cert_cn = presented
     token = create_session(acct, request, cert_cn=cert_cn)
-    audit(acct["username"], None, "login", "accounts", acct["username"],
-          {"role": acct["role"]})
-    log.info("login_success", msg="登入成功",
-             user=acct["username"],
-             detail={"role": acct["role"]})
+    audit(acct["username"], None, "login", "accounts", acct["username"], {"role": acct["role"]})
+    log.info("login_success", msg="登入成功", user=acct["username"], detail={"role": acct["role"]})
     return {
-        "ok":           True,
-        "session_id":   token,
-        "username":     acct["username"],
-        "role":         acct["role"],
-        "role_detail":  acct.get("role_detail"),
+        "ok": True,
+        "session_id": token,
+        "username": acct["username"],
+        "role": acct["role"],
+        "role_detail": acct.get("role_detail"),
         "display_name": acct.get("display_name") or acct["username"],
         # C1-A：is_default_pin=1 → 前端強制改 PIN
         "must_change_pin": bool(acct.get("is_default_pin")),
@@ -106,7 +101,7 @@ def change_initial_pin(body: ChangeInitialPinIn, request: Request):
     if not is_first_run_required():
         raise HTTPException(403, "首次設定已完成，請使用帳號管理改 PIN")
 
-    if not re.match(r'^\d{4,6}$', body.new_pin):
+    if not re.match(r"^\d{4,6}$", body.new_pin):
         raise HTTPException(422, "PIN 必須是 4-6 位數字")
 
     # 驗證目前 PIN（防止 session 被盜用後直接改 PIN）
@@ -124,7 +119,7 @@ def change_initial_pin(body: ChangeInitialPinIn, request: Request):
 @router.post("/logout")
 def logout(request: Request):
     token = request.headers.get("X-Session-Token")
-    sess  = destroy_session(token) if token else None
+    sess = destroy_session(token) if token else None
     if sess:
         audit(sess["username"], None, "SESSION_LOGOUT", "sessions", sess["username"], {})
     return {"ok": True}
@@ -132,20 +127,24 @@ def logout(request: Request):
 
 @router.get("/heartbeat")
 def heartbeat(request: Request):
-    sess      = validate_session(request)
+    sess = validate_session(request)
     remaining = session_remaining(request.headers.get("X-Session-Token", ""))
-    return {"ok": True, "remaining": remaining,
-            "username": sess["username"], "role": sess["role"],
-            "role_detail": sess.get("role_detail")}
+    return {
+        "ok": True,
+        "remaining": remaining,
+        "username": sess["username"],
+        "role": sess["role"],
+        "role_detail": sess.get("role_detail"),
+    }
 
 
 @router.get("/me")
 def me(request: Request):
     sess = validate_session(request)
     return {
-        "username":     sess["username"],
-        "role":         sess["role"],
-        "role_detail":  sess.get("role_detail"),
+        "username": sess["username"],
+        "role": sess["role"],
+        "role_detail": sess.get("role_detail"),
         "display_name": sess.get("display_name", sess["username"]),
     }
 

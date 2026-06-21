@@ -63,6 +63,11 @@ def bind_cert(account_id: int, cert_cn: str, label: str | None, operator: str) -
         )
         cert_id = cur.lastrowid
         row = conn.execute("SELECT * FROM account_certs WHERE id=?", (cert_id,)).fetchone()
+    # #306：首張綁定即落持久旗標 → mTLS bootstrap 窗口永久關（purge 清不掉本旗標，真單向閂；
+    # 不依賴 account_certs row 存在）。idempotent，每次 bind 寫一律安全（只會更關、不會開）。
+    from .config_repo import set_config
+
+    set_config("mtls_bootstrap_done", "1", operator)
     audit(
         operator,
         None,
@@ -167,3 +172,27 @@ def cert_active_for_account(account_id: int, cert_cn: str) -> bool:
             (account_id, cert_cn),
         ).fetchone()
     return row is not None
+
+
+def is_mtls_bootstrap() -> bool:
+    """#306：全新部署 mTLS bootstrap 窗口 —— 首位 admin 尚未綁過任何裝置證。
+
+    此窗口內允許首位 admin 在 `ICS_MTLS_REQUIRED=true` 下，用 nginx 已 CA 驗證的證
+    登入並綁定第一張裝置證（解雞生蛋：綁證要先登入、登入要先綁證），免手動翻 env。
+
+    **真單向閂**：以持久旗標 `mtls_bootstrap_done`（首張綁定時落於 config 表）為主判據——
+    綁過第一張即永久關窗，**`purge_revoked_certs` 清不掉本旗標**（不像 account_certs row 會被
+    purge 實刪而誤重開窗＝安全洞，security-review #306 V1）。僅整碟/卷 wipe（連 config 一併清）
+    才回到 fresh。輔以 accounts==1 + account_certs 空（pre-旗標相容）。多帳號亦永久關窗。
+    仍需 first-run PIN + CA-signed cert 雙重前提。
+    """
+    from .config_repo import get_config
+
+    if get_config("mtls_bootstrap_done"):  # 持久旗標：綁過第一張即關、purge 清不掉
+        return False
+    with get_conn() as conn:
+        n_acct = conn.execute(
+            "SELECT COUNT(*) AS c FROM accounts WHERE COALESCE(status,'active') != 'archived'"
+        ).fetchone()["c"]
+        n_cert = conn.execute("SELECT COUNT(*) AS c FROM account_certs").fetchone()["c"]  # 任何狀態
+    return n_acct == 1 and n_cert == 0
