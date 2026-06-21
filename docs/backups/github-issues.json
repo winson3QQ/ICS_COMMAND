@@ -3231,15 +3231,15 @@
       "name": ""
     },
     "body": "P1-12 子項 B（umbrella #226）。基於既有 backup 基建**擴建**（reality check 見 #226）。\n\n## Scope\n\n- **修 drift bug**：`POST /api/admin/backups` 手動觸發現產**明文** .db.gz（CLI 路徑有加密、API 沒接 `encrypt_file`）→ 統一加密\n- backup 範圍 DB-only → **tar 整個 `data/`**（排除 `data/backups/` 防遞迴）+ manifest（含 exercise metadata，P1-14 地基現成）\n- key 來源 `BACKUP_ENCRYPTION_KEY` env → HKDF `child[0]`（12a 提供）；**舊 backup 仍可解**（legacy key 路徑保留讀）\n- **三層觸發**：L1 手動（既有按鈕）/ L2 `archive` 自動觸發（filename + manifest 帶演習 metadata）/ L3 防呆（`reset-db` 強制先 backup；lifespan shutdown best-effort，30s 放行）\n- **OP-2**：`reset-db` / `reset-exercise` 後端強制 body `confirm: \"RESET\"`（422，不依賴前端 dialog）\n- **GUI Restore**：`POST /api/admin/restore` 上傳 .enc → 解密驗 manifest → 預覽確認 → 自動先存 `pre-restore-{ts}` → 替換 `data/`；active exercise 拒 409；失敗不動 current\n- **OP-4**：`restore-cmd` 端點加「需先停服務」warning，GUI restore 落地後標 deprecated\n- `admin_backups.html` 擴充：restore 上傳 + manifest 預覽 + 確認 checkbox\n\n## 測試門檻\n\n- backup/restore 雙路 admin 200 / operator 403\n- L2 archive 觸發、L3 reset 防呆 + SIGTERM、restore 防呆三態（pre-restore 產生 / active 409 / 解密失敗不動 current）\n- 舊 key backup migration 可解\n- **GUI 人工瀏覽器驗收（Human Verification 里程碑，/verify 時人眼確認）**",
-    "closedAt": null,
+    "closedAt": "2026-06-21T01:02:27Z",
     "comments": [],
     "createdAt": "2026-06-11T23:42:30Z",
     "labels": [],
     "milestone": null,
     "number": 228,
-    "state": "OPEN",
+    "state": "CLOSED",
     "title": "P1-12b backup/restore：data/ 整包 + manifest + L1/L2/L3 觸發 + GUI restore + OP-2/OP-4 關洞",
-    "updatedAt": "2026-06-11T23:42:30Z",
+    "updatedAt": "2026-06-21T01:02:27Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/228"
   },
   {

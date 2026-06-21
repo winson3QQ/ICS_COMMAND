@@ -4397,5 +4397,26 @@
     "title": "test(security): #296 RBAC 路由分類 golden 矩陣 + 端到端強制",
     "updatedAt": "2026-06-20T22:14:27Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/299"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "## P1-12b — 整包 data/ 備份/還原（umbrella #226）\n- Closes #228\n- 取代 #235（其 base 為已合併刪除的 12a 分支，被 GitHub 自動關閉；內容與 review 留痕見 #235）\n\n12a（#227/#234）已併入 main；本 PR 為其上的 12b 變更。\n\n## 內容\n整包 `data/` 加密備份（SQLite online-backup 一致快照、Fernet、MANIFEST）+ in-dashboard admin「備份／重設」tab GUI（master-detail 收合清單、詳情/下載/還原此筆/上傳還原）+ 三層觸發（L1/L2/L3）+ OP-2/OP-4 + 滾動保留（保護 archive/pre-restore）+ drift bug 修。\n\n## 驗證\n- pytest **1185 passed / 2 skipped**（win32 restore_roundtrip + pyproj facilities）\n- eslint 0、vitest 341、pyflakes 0、doc_sync passed\n- /code-review（high）：findings 全修（retention 全觸發、WAL 一致快照、restore 原子性、XSS 跳脫…）\n- /security-review：無 HIGH/MED\n- Windows + macOS 雙平台測試綠（Mac 補跑熱 DB restore e2e）\n\n## 待續（非本 PR）\n12c SQLCipher #229、硬體驗收 #230、GUI 實機人眼驗收（Windows 熱 DB 還原平台限制）\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+    "closedAt": "2026-06-21T01:02:26Z",
+    "comments": [],
+    "createdAt": "2026-06-21T01:02:06Z",
+    "headRefName": "feat/issue-228-p1-12b-backup",
+    "labels": [],
+    "mergedAt": "2026-06-21T01:02:26Z",
+    "number": 303,
+    "state": "MERGED",
+    "title": "feat(backup): P1-12b 整包 data/ 加密備份 + GUI 還原（取代自動關閉的 #235）",
+    "updatedAt": "2026-06-21T01:02:26Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/303"
   }
 ]
