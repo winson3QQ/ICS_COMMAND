@@ -506,7 +506,7 @@ P3 整合的前提是 WaveInk 採以下五原則設計訓練 / 運行資料平�
 | ✅ [#305](https://github.com/winson3QQ/ICS_COMMAND/issues/305) | ICS+TAK 同機 build + up + smoke；mTLS :443；TAK server cert 用獨立 `ICS-TAK-SVC-CA`（與 step-ca 隔離，儀表板 cert 碰不到 TAK）；ICS↔TAK CoT 端到端；多裝置（iPhone 公網 / Windows LAN）登入全綠 |
 | ✅ [#307](https://github.com/winson3QQ/ICS_COMMAND/issues/307) | **裝置憑證管理 UX**（四段落地，全程公網 prod dogfood PASS）：(1) **iOS 發證根因**：`issue_p12` 加 `--legacy`（iOS 不吃 openssl3/step 預設 PBES2/AES p12，誤報密碼錯）`backend-v2.7.2`；(2) **revoked UI 清除**（PR #309 `7ecd6cf`）：`purge_revoked_certs` + `DELETE /certs/revoked`、前端摺疊+清除；(3) **p12 密碼顯示**：每張隨機（廢弱默認 `icsclient`，對齊 threat_model H6）+ `X-P12-Password` header + 面板常駐顯示（複製鈕）；(4) **iOS 取證路徑**：不自動下載（先顯示密碼再手動觸發，避開 iOS 安裝攔截蓋畫面）+ Web Share API「分享/存檔」→ 儲存到檔案 / AirDrop 轉交別台。`backend-v2.7.3` / `frontend-v1.7.1` |
 | ⏳ [#306](https://github.com/winson3QQ/ICS_COMMAND/issues/306) | 首次 admin 免 env-toggle 的 mTLS bootstrap（目前須手動翻 `ICS_MTLS_REQUIRED` false→true，runbook 已記） |
-| ⏳ [#279](https://github.com/winson3QQ/ICS_COMMAND/issues/279) | 裝置憑證效期 23h→90d：compose 預設仍 23h（step-ca provisioner `maxTLSCertDuration=24h` 上限；放寬 claims 才能調，runbook 已記） |
+| ✅ [#279](https://github.com/winson3QQ/ICS_COMMAND/issues/279) 部分 | **憑證效期 23h→90d**（live prod 已套用：server cert `notAfter` +90d、`STEP_CLIENT_CERT_DURATION=2160h`）。**reality check 修正 issue 根因**：prod provisioner claims 已（手動）放寬 2160h、非 24h 上限卡關 → 真正限制是 compose duration env 預設 23h + ca-bootstrap 未 passthrough `ICS_SERVER_CERT_DURATION`。committed：compose 加 server-dur passthrough + .env.example 兩 duration 變數 + README §憑證效期 三步 runbook。**殘留**：provisioner claims 仍手動（未進 step-ca init）→ fresh deploy 退 24h，須照 runbook 步驟 1；既有 23h 裝置證需面板重發。 |
 
 ### 現役（command-dashboard，已部署）— 需排程修補
 

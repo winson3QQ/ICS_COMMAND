@@ -66,9 +66,34 @@ docker compose run --rm -e CERT_CN=<CN> issue-client
 
 對外只認 `ICS_SERVER_SANS` 的位址。內網機器若用 host 的 LAN IP（如 `https://10.0.1.16/`）連，**該 LAN IP 必須在 `ICS_SERVER_SANS`**，否則 nginx server cert 名稱不符。加法：`.env` 的 `ICS_SERVER_SANS` 補上 LAN IP（空白分隔）→ `docker compose up -d --force-recreate ca-bootstrap` 重簽 → `restart nginx`。（公網 IP 走 hairpin NAT 多數家用路由器不支援，故內網建議直接用 LAN IP + SAN。）
 
-## 憑證效期
+## 憑證效期（23h → 90 天）
 
-`STEP_CLIENT_CERT_DURATION` 預設 **23h**（step-ca provisioner `maxTLSCertDuration` 預設 24h 上限）。長放（90 天，公測用）須先 `step ca provisioner update ics --x509-max-dur=2160h --x509-default-dur=2160h` 放寬 claims 再調此值 → [#279](https://github.com/winson3QQ/ICS_COMMAND/issues/279)。nginx server cert 的 `ICS_SERVER_CERT_DURATION` 同理。
+`STEP_CLIENT_CERT_DURATION`（client）/ `ICS_SERVER_CERT_DURATION`（nginx server）預設 **23h**。
+**fresh step-ca 的 provisioner `maxTLSCertDuration` 預設 24h** → 超過會被簽發拒絕，故預設留 23h 確保乾淨佈署不卡。
+
+90 天公測長放（[#279](https://github.com/winson3QQ/ICS_COMMAND/issues/279)），**三步缺一不可**：
+
+```bash
+# 1. 放寬 CA provisioner claims（一次性；改的是 ca.json，存在 ca-data 卷、recreate 不丟，
+#    但「砍 ca-data 重建 CA」會回 24h 預設 → 重跑本步）。改後 step-ca 需 reload。
+docker compose exec step-ca step ca provisioner update ics \
+  --x509-max-dur=2160h --x509-default-dur=2160h
+docker compose restart step-ca
+
+# 2. .env 設效期為 90 天（解註 .env.example 那兩行）
+#    STEP_CLIENT_CERT_DURATION=2160h
+#    ICS_SERVER_CERT_DURATION=2160h
+
+# 3. 重簽 nginx server cert（ca-bootstrap 讀新 .env）+ 套用 + 重發既有 client 證
+docker compose --env-file .env up -d --force-recreate ca-bootstrap
+docker compose --env-file .env up -d --force-recreate ics-command nginx
+#    既裝裝置（iPhone/iPad/桌機）的 23h 舊證仍會過期 → 面板「發憑證」重發 + 重裝。
+
+# 驗：server cert notAfter 應為 +90 天
+echo | openssl s_client -connect <公網IP>:443 2>/dev/null | openssl x509 -noout -dates
+```
+
+> reality check（2026-06-21，#279）：現役 prod 的 provisioner claims **已**手動放寬為 2160h（存於 ca-data 卷），但**未隨 committed config 走** → fresh deploy 仍是 24h，故上面步驟 1 不可略。把 claims 寫進 step-ca init（reproducible）= 待辦（[#279](https://github.com/winson3QQ/ICS_COMMAND/issues/279) 追蹤）。
 
 ## 驗證（乾淨環境跑起來後）
 - `docker compose ps` 全 healthy；`tak`（若啟）`tak-database` healthy、`takserver` :8089 listen。
