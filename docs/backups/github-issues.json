@@ -4424,5 +4424,25 @@
     "title": "feat(auth): 首次 admin 免 env-toggle 的 mTLS bootstrap（first-run gate 期間允許綁證）",
     "updatedAt": "2026-06-21T07:47:02Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/306"
+  },
+  {
+    "assignees": [],
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "body": "## 背景\n2026-06-21 公網 prod 實機測試裝置憑證發放/管理時撞到兩個 UX 缺口。\n\n## 缺口 1：iOS 無法發證（只能當被發證端）\nadmin 在 **iPhone Safari** 按「發憑證」下載 `.p12` 時，**iOS 攔截 .p12 當成要裝到本機的身分**，無法存成檔案轉交給別台機器 → 從 iPhone 發別台的憑證行不通。\n\n**影響**：cert 發放是 admin 管理動作，但 iOS 做不了（只適合「被發證、安裝自己那張」）。\n**建議**：\n- 面板「發憑證」偵測 iOS UA 時提示「請於桌機 console 發證」，或\n- 提供非 .p12 的取證路徑（如：發證後產一次性下載連結 / 顯示 PEM 文字可複製 / 產 .mobileconfig 直接給目標 iОС 裝）。\n- 文件層面：runbook 註明「發證在桌機，iOS 僅安裝」。\n\n## 缺口 2：revoked 憑證 UI 清不掉\n裝置憑證列表只提供「撤銷」（soft revoke）。撤銷後的記錄 **status=revoked 永久留在列表**，UI 無「刪除/清除」→ 死記錄越積越多、礙眼，目前只能直接 `DELETE FROM account_certs WHERE status='revoked'`（需 DB 介入，量產不可行）。\n\n**建議**：\n- 列表預設**摺疊/隱藏 revoked**（給「顯示已撤銷」toggle），且提供**「清除已撤銷」**動作（保留 audit log 即可，account_certs 列可清）。\n- 或 revoked 超過 N 天自動歸檔。\n\n## 完成判準\n- iOS 上「發憑證」有明確引導或可用的取證路徑（不再是死路）。\n- 列表能清除/隱藏 revoked 記錄，不需 DB 介入。\n\n> 關聯：mTLS 裝置憑證體系 #275；首次 bootstrap #306。實測脈絡：commander-01(iPhone) / windows-01(桌機) 多裝置發放。\n",
+    "closedAt": null,
+    "comments": [],
+    "createdAt": "2026-06-21T08:07:20Z",
+    "labels": [],
+    "milestone": null,
+    "number": 307,
+    "state": "OPEN",
+    "title": "feat(auth): 裝置憑證管理 UX — iOS 發證限制 + revoked 記錄清除",
+    "updatedAt": "2026-06-21T08:07:20Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/307"
   }
 ]
