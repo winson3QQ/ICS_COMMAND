@@ -4366,6 +4366,20 @@
         "minimizedReason": "",
         "reactionGroups": [],
         "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/305#issuecomment-4761014338"
+      },
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## Phase 2 ✅ — TAK 半接上，ICS↔TAK CoT 端到端通。#305 smoke 全綠\n\n2026-06-21。延續 Phase 1（ICS 半 mTLS）。\n\n### 完成項\n- **TAK 憑證 step-ca 重建整條鏈**：容器化 step-ca daemon 簽 server cert（**RSA 2048**、SAN 含 `1.34.230.218`+tak.ics.local+localhost+takserver+127.0.0.1、效期 **90d**）+ 3 張 client fullchain（ics-cot / ics-marti-read / ics-marti-write）。keytool（temurin 容器）產 takserver/truststore-root/fed-truststore.jks（truststore 含 root+intermediate）。provisioner 效期 24h→2160h（順帶解 #279 對 TAK 憑證部分）。\n- **CoreConfig**：複用 tak-runtime 已驗證版（JKS 名/pass/DB 全對齊）。\n- **TAK images build**：從乾淨 repo `deploy/tak-server/release` build `ics-takserver:5.7` + `ics-takserver-db:5.7`（#300 TAK 判準達成）。\n- **取代既存 ics-tak**：`compose down`（保留 `ics-tak_tak-db-data` 卷可回滾）。\n- **全棧 up**（`--profile tak`）：step-ca / ca-bootstrap / ics-command / nginx / tak-database / takserver 全 healthy。\n\n### Smoke 驗證（端到端）\n- takserver :8089 mTLS 握手（openssl + ICS client cert）→ **Verify return code 0**，server cert CN=tak.ics.local、issuer=step-ca。\n- ICS app subscribe task **常駐連線** takserver:8089（172.19.0.3→172.19.0.6:8089 ESTABLISHED）。\n- **推一筆測試 CoT 進 TAK → ICS tak_service ingest 成功**（uid=ICS-SMOKE-TEST-001 入 COP pipeline）。\n- **Marti REST 雙向 resync** 跑通（`tak.resync.done errors=0 fetched=1`，:8443 用 marti cert）。\n\n### 過程關鍵坑（已解，供 runbook）\n1. **stale 系統環境變數**：tak-runtime 時期把 `TAK_*` 設成 User-scope env，**優先於 `--env-file .env`**，毒化 compose（指向舊 localhost/Windows 路徑）。已移除 User+Process scope（備份 `C:\\ics-reclone-backup\\stale-tak-env-backup.txt`）。\n2. **harness 父程序繼承**：清 registry User scope 後子 shell 仍帶舊值（父程序記憶體 env block 早於清除）→ 須在同一條命令 `Remove-Item env:` 再跑 compose。\n3. **client key 權限**：step-cli 容器寫的 `*.key` 為 600 owner uid 1000，ICS app 為 uid 10001 → 讀不到私鑰，tak_service 靜默失敗。chmod 644 解。\n4. **觀測盲點**：ICS structlog 在 uvicorn 進程未進 docker stdout，TAK 連線 log（tak.connected 等）看不到 → 排障靠 /proc/net/tcp + 容器內重現。建議 follow-up：prod 讓 TAK 連線 log 進 container stdout。\n\n### 回滾\n`docker compose -f deploy/prod/docker-compose.yml --profile tak down` + `docker compose -f C:\\Users\\yello\\tak-runtime\\docker-compose.yml up -d`（卷都在）。\n",
+        "createdAt": "2026-06-21T06:01:50Z",
+        "id": "IC_kwDOSnBjpc8AAAABG8hGtg",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/305#issuecomment-4761077430"
       }
     ],
     "createdAt": "2026-06-21T03:44:37Z",
@@ -4374,7 +4388,7 @@
     "number": 305,
     "state": "OPEN",
     "title": "deploy(prod): ICS + TAK 同機交付棧乾淨環境端到端實證（build + up + smoke）",
-    "updatedAt": "2026-06-21T05:27:43Z",
+    "updatedAt": "2026-06-21T06:01:51Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/305"
   }
 ]
