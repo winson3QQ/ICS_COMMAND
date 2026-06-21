@@ -899,7 +899,18 @@ export function admShowSys() {
 
 export function admShowData() {
   el('adm-panel-data').innerHTML = `
-    <div style="margin-bottom:24px;">
+    <div style="margin-bottom:20px;">
+      <div style="font-size:13px;font-weight:600;margin-bottom:8px;color:var(--red);">⚠ 重設指揮部資料庫</div>
+      <div style="font-size:11px;color:var(--text2);margin-bottom:12px;line-height:1.6;">
+        清除所有快照、事件、裁示、演習、COP、Pi 批次資料。<br>
+        <b>帳號和 Pi 節點註冊不受影響</b>，Pi 端資料也不受影響。<br>
+        <span style="color:var(--yellow);">重設只清資料庫，<b>不會刪備份檔（下方清單）</b>；清空前會自動備份當前。</span><br>
+        <span style="color:var(--red);">此操作無法復原。</span>
+      </div>
+      <button class="login-btn" data-action="confirmResetDB"
+              style="background:var(--red);color:#fff;border:none;max-width:320px;">重設指揮部資料庫</button>
+    </div>
+    <div style="border-top:1px solid var(--border);padding-top:16px;">
       <div style="font-size:13px;font-weight:600;margin-bottom:8px;color:var(--text);">💾 整包資料備份 / 還原</div>
       <div style="font-size:11px;color:var(--text2);margin-bottom:10px;line-height:1.6;max-width:460px;">
         每個備份是整個 <code>data/</code> 的加密快照（資料庫 + 地圖設定 + 上傳檔）。<span style="color:var(--text3);">需部署層設定 BACKUP_KEY。</span><br>
@@ -911,24 +922,16 @@ export function admShowData() {
         <button class="login-btn" data-action="admRefreshBackups" style="max-width:120px;background:var(--bg3);">重新整理</button>
       </div>
       <div id="adm-backup-detail" style="margin-top:8px;font-size:11px;color:var(--text2);min-height:16px;"></div>
+      <div data-action="admToggleBackupList" style="margin-top:6px;font-size:12px;font-weight:600;color:var(--text);cursor:pointer;user-select:none;">
+        <span id="adm-bk-arrow">▾</span> 備份清單 <span id="adm-bk-count" style="color:var(--text3);font-weight:400;"></span>
+      </div>
       <div id="adm-backup-list" style="margin-top:6px;font-size:11px;max-height:280px;overflow-y:auto;border:1px solid var(--border);border-radius:4px;"></div>
       <div id="adm-backup-dir" style="margin-top:6px;font-size:10px;color:var(--text3);"></div>
       <div style="margin-top:14px;border-top:1px dashed var(--border);padding-top:12px;">
-        <div style="font-size:12px;color:var(--text2);margin-bottom:6px;">⤴ 從外部檔還原（USB / 異地拿回的 .enc）。覆蓋當前 data/、先自動備份當前、有進行中演習則拒絕、還原後需重啟。清單裡的備份請用該筆的「還原此筆」。</div>
+        <div style="font-size:12px;color:var(--text2);margin-bottom:6px;">⤴ 從外部檔還原（USB / 異地拿回的 .enc）。覆蓋當前 data/、先自動備份當前、有進行中演習則拒絕、還原後需重啟。清單裡的備份請用該筆的「還原」。</div>
         <input id="adm-restore-file" type="file" accept=".enc" style="font-size:11px;max-width:300px;">
         <button class="login-btn" data-action="admRestore" style="background:var(--red);color:#fff;border:none;max-width:160px;margin-top:4px;">上傳外部檔還原</button>
       </div>
-    </div>
-    <div style="border-top:1px solid var(--border);padding-top:16px;">
-      <div style="font-size:13px;font-weight:600;margin-bottom:8px;color:var(--red);">⚠ 重設指揮部資料庫</div>
-      <div style="font-size:11px;color:var(--text2);margin-bottom:12px;line-height:1.6;">
-        清除所有快照、事件、裁示、演習、COP、Pi 批次資料。<br>
-        <b>帳號和 Pi 節點註冊不受影響</b>，Pi 端資料也不受影響。<br>
-        <span style="color:var(--yellow);">重設只清資料庫，<b>不會刪上方的備份檔</b>；清空前會自動備份當前。</span><br>
-        <span style="color:var(--red);">此操作無法復原。</span>
-      </div>
-      <button class="login-btn" data-action="confirmResetDB"
-              style="background:var(--red);color:#fff;border:none;max-width:320px;">重設指揮部資料庫</button>
     </div>`;
   admRefreshBackups();
 }
@@ -952,6 +955,15 @@ function _triggerLabel(b) {
   }
 }
 
+export function admToggleBackupList() {
+  const box = el('adm-backup-list');
+  const arrow = el('adm-bk-arrow');
+  if (!box) return;
+  const open = box.style.display === 'none';
+  box.style.display = open ? '' : 'none';
+  if (arrow) arrow.textContent = open ? '▾' : '▸';
+}
+
 export async function admRefreshBackups() {
   const box = el('adm-backup-list');
   if (!box) return;
@@ -961,7 +973,8 @@ export async function admRefreshBackups() {
     const d = await r.json();
     const dir = el('adm-backup-dir');
     if (dir) dir.textContent = '伺服器備份目錄：' + (d.backup_dir || '—');
-    if (dir) dir.textContent += `　·　共 ${d.total} 筆`;
+    const cnt = el('adm-bk-count');
+    if (cnt) cnt.textContent = `（${d.total} 筆）`;
     if (!d.backups.length) { box.innerHTML = '<div style="padding:8px;color:var(--text3);">（尚無整包備份）</div>'; return; }
     const head = `<div style="position:sticky;top:0;background:var(--bg2);display:flex;gap:8px;color:var(--text3);font-weight:600;padding:4px 8px;border-bottom:1px solid var(--border);">
         <span style="flex:1;">檔名</span><span style="width:60px;">來源</span><span style="width:90px;">演習</span>
