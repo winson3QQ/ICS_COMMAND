@@ -495,7 +495,18 @@ P3 整合的前提是 WaveInk 採以下五原則設計訓練 / 運行資料平�
 > **衍生待辦（已開單留痕）**：
 > - [#301](https://github.com/winson3QQ/ICS_COMMAND/issues/301) Windows prod **runtime 黑箱驗證**（H4 header/cipher、M1 prod secret、IDOR/traversal 活靶）——補白箱盲區，前置 #300。
 > - [#302](https://github.com/winson3QQ/ICS_COMMAND/issues/302) **商用化前端 IP 保護**（build step 砍註解+minify+no-sourcemap / 選擇性 obfuscate / 值錢邏輯下沉）——**IP 防抄，非資安**，與資安線正交。
-> - 部署：[`deploy/prod/`](../deploy/prod/) 單機 TAK+ICS 合併棧（profile toggle，相同佈署不同 delivery）已 scaffold，待 #300 後實證。
+> - 部署：[`deploy/prod/`](../deploy/prod/) 單機 TAK+ICS 合併棧（profile toggle，相同佈署不同 delivery）。
+
+### ✅ 公網 prod 端到端實證 + dogfood（2026-06-21）
+
+> [`deploy/prod/`](../deploy/prod/) 單機棧在公網 Windows/Docker 首次乾淨實證通過（[#305](https://github.com/winson3QQ/ICS_COMMAND/issues/305)）。完整 onboarding 與裝置憑證踩坑已固化進 [`deploy/prod/README.md`](../deploy/prod/README.md)〈首次 onboarding〉〈裝置憑證〉〈內網/LAN〉〈憑證效期〉四節 + memory `ios-mtls-client-cert-packaging`。**動 prod 部署/憑證前先讀那份 runbook。**
+
+| 項目 | 狀態 |
+|---|---|
+| ✅ [#305](https://github.com/winson3QQ/ICS_COMMAND/issues/305) | ICS+TAK 同機 build + up + smoke；mTLS :443；TAK server cert 用獨立 `ICS-TAK-SVC-CA`（與 step-ca 隔離，儀表板 cert 碰不到 TAK）；ICS↔TAK CoT 端到端；多裝置（iPhone 公網 / Windows LAN）登入全綠 |
+| ✅ [#307](https://github.com/winson3QQ/ICS_COMMAND/issues/307) 部分 | **iOS 發證根因修復**：`cert_issuance.issue_p12` 加 `--legacy`（iOS 不吃 openssl3/step 預設 PBES2/AES p12，誤報密碼錯）；`backend-v2.7.2`。**仍開**：面板不顯示 p12 密碼（預設 `icsclient`）、revoked UI 清除 |
+| ⏳ [#306](https://github.com/winson3QQ/ICS_COMMAND/issues/306) | 首次 admin 免 env-toggle 的 mTLS bootstrap（目前須手動翻 `ICS_MTLS_REQUIRED` false→true，runbook 已記） |
+| ⏳ [#279](https://github.com/winson3QQ/ICS_COMMAND/issues/279) | 裝置憑證效期 23h→90d：compose 預設仍 23h（step-ca provisioner `maxTLSCertDuration=24h` 上限；放寬 claims 才能調，runbook 已記） |
 
 ### 現役（command-dashboard，已部署）— 需排程修補
 
