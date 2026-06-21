@@ -3,17 +3,82 @@ core/database.py — SQLite 連線管理與 schema 初始化
 """
 
 import os
+import re
 import sqlite3
 import sys
 from collections.abc import Generator
+from pathlib import Path
 
-from .config import DB_PATH
+from .config import DB_ENCRYPTED, DB_KEY_ENV, DB_PATH
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Driver 選擇（P1-12c #229）：明文 sqlite3（預設）/ 加密 SQLCipher
+# ─────────────────────────────────────────────────────────────────────────────
+# SQLCipher raw key：HKDF child[1]（db-v1）= child.hex() = 64 hex 字元（256-bit）
+_DB_KEY_RE = re.compile(r"\A[0-9a-fA-F]{64}\Z")
+
+
+def _db_key() -> str:
+    """讀取並驗證 `DB_KEY`（SQLCipher 256-bit raw key，64 hex）。
+
+    DB_KEY 由 P1-12a unlock_key.py 提供 = HKDF child[1] db-v1 的 `child.hex()`。
+    """
+    key = os.getenv(DB_KEY_ENV)
+    if not key:
+        raise RuntimeError(
+            f"ICS_DB_ENCRYPTED 已開但 {DB_KEY_ENV} 未設 —— 加密 live DB 必需此金鑰"
+            f"（P1-12a unlock_key.py 提供 db-v1 child）。"
+        )
+    if not _DB_KEY_RE.match(key):
+        raise RuntimeError(f"{DB_KEY_ENV} 必須為 64 hex 字元（SQLCipher 256-bit raw key）。")
+    return key
+
+
+def _import_sqlcipher():
+    """lazy import sqlcipher3——僅加密模式需要。
+
+    Windows 無 wheel（已實測），明文 / CI 明文路徑不需此套件，避免無謂硬依賴。
+    """
+    try:
+        import sqlcipher3  # type: ignore  # noqa: PLC0415
+    except ImportError as e:
+        raise RuntimeError(
+            "ICS_DB_ENCRYPTED 已開但 sqlcipher3 未安裝 —— Windows 無 wheel（本機請跑明文模式），"
+            "加密整合測試於 CI（ubuntu）。"
+        ) from e
+    return sqlcipher3
+
+
+def _apply_key(conn: sqlite3.Connection, key: str) -> None:
+    """SQLCipher `PRAGMA key`（必須早於任何其他語句）。
+
+    key 已過 `_DB_KEY_RE` 64-hex 白名單，`x'..'` 為 raw key 形式（非 passphrase，
+    免再經 SQLCipher KDF）—— 無 SQL injection 面（無字元能跳脫該字面值）。
+    """
+    conn.execute(f"PRAGMA key = \"x'{key}'\"")  # nosec B608 — key 限定 64 hex（_DB_KEY_RE）
+
+
+def _connect() -> sqlite3.Connection:
+    """`get_conn` 底層：依 `ICS_DB_ENCRYPTED` 選 driver。
+
+    未設（預設）→ 原生 sqlite3（dev / CI / Windows 無 wheel / 漸進部署）。
+    設 → SQLCipher driver + 連線後**立即** `PRAGMA key`。row_factory 用各 driver
+    自身的 Row 型別（`sqlite3.Row` 綁 sqlite3.Cursor，不可跨 driver 套用）。
+    """
+    if not DB_ENCRYPTED:
+        conn = sqlite3.connect(str(DB_PATH), check_same_thread=False)
+        conn.row_factory = sqlite3.Row
+        return conn
+    sqlcipher3 = _import_sqlcipher()
+    conn = sqlcipher3.connect(str(DB_PATH), check_same_thread=False)
+    _apply_key(conn, _db_key())
+    conn.row_factory = sqlcipher3.Row
+    return conn
 
 
 def get_conn() -> sqlite3.Connection:
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(DB_PATH), check_same_thread=False)
-    conn.row_factory = sqlite3.Row
+    conn = _connect()
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
     return conn
@@ -26,6 +91,64 @@ def get_db() -> Generator[sqlite3.Connection]:
         yield conn
     finally:
         conn.close()
+
+
+def open_readonly_live(path: Path, timeout: float | None = None) -> sqlite3.Connection:
+    """唯讀開啟指定 DB（加密-aware）—— health 探針用（P1-12c #229）。
+
+    明文：`file:..?mode=ro` URI（原行為）。加密：sqlcipher3 + `PRAGMA key` + `query_only`
+    （SQLCipher 無 `?mode=ro` URI 唯讀保證的對等，改用 `PRAGMA query_only`）。
+    `path` 由呼叫端傳入（health 探的是 live DB，但測試會 monkeypatch 指向別的檔）；
+    加密與否依全域 `ICS_DB_ENCRYPTED`。呼叫端負責關閉連線。
+    """
+    if not DB_ENCRYPTED:
+        kw: dict = {"uri": True}
+        if timeout is not None:
+            kw["timeout"] = timeout
+        return sqlite3.connect(f"file:{path}?mode=ro", **kw)
+    sqlcipher3 = _import_sqlcipher()
+    kw = {}
+    if timeout is not None:
+        kw["timeout"] = timeout
+    conn = sqlcipher3.connect(str(path), **kw)
+    _apply_key(conn, _db_key())
+    conn.execute("PRAGMA query_only=ON")
+    return conn
+
+
+def online_snapshot(src_db: Path, dst: Path) -> None:
+    """live DB → 一致性快照寫入 dst（**恆為明文** SQLite）—— backup 收口（P1-12c #229）。
+
+    明文 live DB：sqlite3 online backup API（原行為，WAL 相容 consistent snapshot）。
+    加密 live DB：sqlcipher3 開 src + `PRAGMA key` → ATTACH 一個 `KEY ''`（不加密）的
+    目標 + `sqlcipher_export()` 整庫匯出 → dst 為明文 SQLite。
+
+    產物恆為明文 .db（外層由既有 gzip + Fernet/BACKUP_KEY 保護），故 restore 路徑
+    不分 live DB 是否加密、一致。
+    """
+    if not DB_ENCRYPTED:
+        src = sqlite3.connect(str(src_db))
+        try:
+            dst_conn = sqlite3.connect(str(dst))
+            try:
+                src.backup(dst_conn)
+            finally:
+                dst_conn.close()
+        finally:
+            src.close()
+        return
+    sqlcipher3 = _import_sqlcipher()
+    src = sqlcipher3.connect(str(src_db))
+    try:
+        _apply_key(src, _db_key())
+        # ATTACH 明文目標（KEY '' = 不加密）+ sqlcipher_export 整庫匯出（事務內一致快照）
+        src.execute("ATTACH DATABASE ? AS plaintext KEY ''", (str(dst),))
+        try:
+            src.execute("SELECT sqlcipher_export('plaintext')")
+        finally:
+            src.execute("DETACH DATABASE plaintext")
+    finally:
+        src.close()
 
 
 def _ensure_db_permissions() -> None:

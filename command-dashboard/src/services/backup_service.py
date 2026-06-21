@@ -31,6 +31,8 @@ from pathlib import Path
 
 import structlog
 
+from core.database import online_snapshot
+
 log = structlog.get_logger()
 
 # #41 Sync v2: 7 天 default (從 30 校準, 對齊 production 演練週期 + storage 成本)
@@ -213,15 +215,9 @@ def create_backup(
         raw_tmp_path = Path(raw_tmp.name)
 
     try:
-        src = sqlite3.connect(str(db_path))
-        try:
-            dst = sqlite3.connect(str(raw_tmp_path))
-            try:
-                src.backup(dst)
-            finally:
-                dst.close()
-        finally:
-            src.close()
+        # P1-12c #229：online_snapshot 收口——明文 live DB 走 sqlite3 backup API（原行為），
+        # 加密 live DB 走 sqlcipher_export 解成明文。產物恆為明文 .db（外層 gzip+Fernet 保護）。
+        online_snapshot(db_path, raw_tmp_path)
 
         with raw_tmp_path.open("rb") as fin, gzip.open(tmp_gz, "wb", compresslevel=6) as fout:
             shutil.copyfileobj(fin, fout)
