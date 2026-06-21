@@ -4220,7 +4220,7 @@
       "name": ""
     },
     "body": "## 問題\n在 `C:\\Users\\yello\\Desktop\\ICS_COMMAND` 直接 `docker build`（ICS 或 TAK image）失敗:\n```\nERROR: failed to solve: invalid file request requirements.txt  （load build context 階段）\n```\n**只卡 docker build**;dev server(uvicorn)、git、pytest、vitest 全正常。非程式碼/`.dockerignore` 問題。\n\n## 根因（已查證 2026-06-21）\nrepo 檔案是**孤兒 Cloud-Files placeholder**(reparse tag `0x9000201a` / `IO_REPARSE_TAG_CLOUD_2`,`Microsoft`),\n是**以前 repo 放 OneDrive 同步留下的殘渣**。Desktop 現已不被 OneDrive 同步(`$env:OneDrive` 指向別處、\n`SyncRootManager` 無此路徑),但 ~2424 個舊檔仍帶 stale reparse metadata。buildkit 掃 context 讀不了\nreparse point → 報錯（移除整個 `.dockerignore` 也重現 → 確定非 code）。\n\n## 怎麼清（詳見 [`deploy/build-env.md`](deploy/build-env.md)）\n**方案 A（建議）**:重新 clone 到非同步路徑,git 寫出全純檔:\n```powershell\ngit clone https://github.com/winson3QQ/ICS_COMMAND.git C:\\dev\\ICS_COMMAND\ncd C:\\dev\\ICS_COMMAND\ngit config core.hooksPath .githooks\n# 重設 runtime(底圖/DB):照 README §換機器\ndocker build -t ics-command:dev command-dashboard\n```\n⚠ 不要用 `fsutil reparsepoint delete`(cloud placeholder 會掉內容)。\n\n## 驗證\n```powershell\n(Get-Item \"command-dashboard\\requirements.txt\" -Force).Attributes   # 不該含 ReparsePoint\n(Get-ChildItem . -Recurse -Force -File | ? { $_.Attributes -match 'ReparsePoint' }).Count  # ~0\n```\n\n## 完成判準\n在非同步路徑 `docker build` ICS + TAK image 皆成功;requirements.txt attribute 不含 ReparsePoint。\n\n## 影響 / 關聯\n擋住「prod image 本機 build 實證」——#294 的 docker 驗證、`deploy/prod/` 合併棧(TAK+ICS 單機)驗證都受此阻。\n解此單後,合併棧才能在本機 build + 跑起來驗。\n\n> 接手提示:這是**環境/ops 工作,非 repo 缺陷**。在乾淨 checkout 做即可,改動可能只有「確認能 build」+ 視需要更新 build runbook。",
-    "closedAt": null,
+    "closedAt": "2026-06-21T05:08:57Z",
     "comments": [
       {
         "author": {
@@ -4277,15 +4277,29 @@
         "minimizedReason": "",
         "reactionGroups": [],
         "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/300#issuecomment-4760976369"
+      },
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "根因已除（reparse 歸零 + ICS build OK，見上方驗證留言）；TAK image build 移交 #305。",
+        "createdAt": "2026-06-21T05:08:57Z",
+        "id": "IC_kwDOSnBjpc8AAAABG8bDxg",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/300#issuecomment-4760978374"
       }
     ],
     "createdAt": "2026-06-20T23:06:32Z",
     "labels": [],
     "milestone": null,
     "number": 300,
-    "state": "OPEN",
+    "state": "CLOSED",
     "title": "build(infra): 本機 docker build 受阻於 OneDrive 殘留 cloud reparse point — repo 搬出同步路徑",
-    "updatedAt": "2026-06-21T05:07:52Z",
+    "updatedAt": "2026-06-21T05:08:57Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/300"
   },
   {
