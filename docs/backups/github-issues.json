@@ -3904,14 +3904,29 @@
     },
     "body": "#275 衍生。驗證棧 CA 預設 `maxTLSCertDuration=24h` → 目前 server + client 憑證皆 **23h** 效期，擺著給人測**隔天即全過期連不上**。\n\n## 動工\n- step-ca daemon provisioner 調大：`step ca provisioner update ics --x509-max-dur=2160h --x509-default-dur=2160h`（90 天）+ restart step-ca。\n- 重簽 nginx server 憑證 + 重發 client 憑證（90 天）：`ICS_SERVER_CERT_DURATION=2160h` / `ICS_CLIENT_CERT_DURATION=2160h`（env 已參數化，見 `ca-bootstrap.sh` / `issue-client.sh`）。\n- 既裝裝置（如 my-phone）需重發 + 重裝。\n- 正式交付：每場域獨立 step-ca instance + 真 CA + HSTS。\n\n關聯：#275、`deploy/ics-validation/docker-compose.mtls.yml`。",
     "closedAt": null,
-    "comments": [],
+    "comments": [
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## deploy/prod 裝置憑證效期修復（dogfood 2026-06-21）\n\n`deploy/prod/docker-compose.yml` 的 `STEP_CLIENT_CERT_DURATION` 預設**覆寫成 `23h`**（蓋過 `config.py` 的 2160h 預設）→ 實機發出的 client 憑證（commander-01/windows-01）**約 23 小時就過期**，每天要重發，不可行。\n\n**修復**：compose 預設改 `23h → 2160h`（90 天）。step-ca provisioner 的 `maxTLSCertDuration` 已於本棧 ca.json 放寬到 2160h，daemon 允許。\n- 檔案：`deploy/prod/docker-compose.yml`（commit 待 user ok）。已 recreate 上線（`STEP_CLIENT_CERT_DURATION=2160h` 生效）。\n- 註：既存 commander-01/windows-01 是舊 23h 簽的，仍會過期；重發即得 90 天。nginx server cert 的 `ICS_SERVER_CERT_DURATION`（ca-bootstrap，亦 23h 預設）同類問題，未動，待評估。\n",
+        "createdAt": "2026-06-21T08:24:20Z",
+        "id": "IC_kwDOSnBjpc8AAAABG8zaTA",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/279#issuecomment-4761377356"
+      }
+    ],
     "createdAt": "2026-06-20T09:14:47Z",
     "labels": [],
     "milestone": null,
     "number": 279,
     "state": "OPEN",
     "title": "mTLS 公測前：憑證效期 23h → 90 天（step-ca maxTLSCertDuration）",
-    "updatedAt": "2026-06-20T09:14:47Z",
+    "updatedAt": "2026-06-21T08:24:20Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/279"
   },
   {
@@ -4435,14 +4450,29 @@
     },
     "body": "## 背景\n2026-06-21 公網 prod 實機測試裝置憑證發放/管理時撞到兩個 UX 缺口。\n\n## 缺口 1：iOS 無法發證（只能當被發證端）\nadmin 在 **iPhone Safari** 按「發憑證」下載 `.p12` 時，**iOS 攔截 .p12 當成要裝到本機的身分**，無法存成檔案轉交給別台機器 → 從 iPhone 發別台的憑證行不通。\n\n**影響**：cert 發放是 admin 管理動作，但 iOS 做不了（只適合「被發證、安裝自己那張」）。\n**建議**：\n- 面板「發憑證」偵測 iOS UA 時提示「請於桌機 console 發證」，或\n- 提供非 .p12 的取證路徑（如：發證後產一次性下載連結 / 顯示 PEM 文字可複製 / 產 .mobileconfig 直接給目標 iОС 裝）。\n- 文件層面：runbook 註明「發證在桌機，iOS 僅安裝」。\n\n## 缺口 2：revoked 憑證 UI 清不掉\n裝置憑證列表只提供「撤銷」（soft revoke）。撤銷後的記錄 **status=revoked 永久留在列表**，UI 無「刪除/清除」→ 死記錄越積越多、礙眼，目前只能直接 `DELETE FROM account_certs WHERE status='revoked'`（需 DB 介入，量產不可行）。\n\n**建議**：\n- 列表預設**摺疊/隱藏 revoked**（給「顯示已撤銷」toggle），且提供**「清除已撤銷」**動作（保留 audit log 即可，account_certs 列可清）。\n- 或 revoked 超過 N 天自動歸檔。\n\n## 完成判準\n- iOS 上「發憑證」有明確引導或可用的取證路徑（不再是死路）。\n- 列表能清除/隱藏 revoked 記錄，不需 DB 介入。\n\n> 關聯：mTLS 裝置憑證體系 #275；首次 bootstrap #306。實測脈絡：commander-01(iPhone) / windows-01(桌機) 多裝置發放。\n",
     "closedAt": null,
-    "comments": [],
+    "comments": [
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## 缺口 1（iOS 發證）根因定位 + 修復（2026-06-21 dogfood）\n\n**根因**：`services/cert_issuance.py` 的 `issue_p12` 用 `step certificate p12` 打包，預設產 **PBES2/AES-256-CBC/SHA256** 新式 PKCS#12 → **iOS 讀不了、誤報「憑證密碼不正確」**（密碼其實對）。桌機吃得下，所以只在 iPhone/iPad 爆。\n\n**修復**：`step certificate p12` 加 **`--legacy`**（PBE+SHA1+RC2 憑證 / PBE+SHA1+3DES 私鑰）。一行修正、無新依賴。桌機對 legacy 同樣相容，故統一用 legacy。\n- 驗證：改後 `issue_p12` 產出 `pbeWithSHA1And40BitRC2-CBC` + `pbeWithSHA1And3-KeyTripleDES-CBC` + `MAC sha1`（openssl 確認）。已 rebuild 上線 deploy/prod。\n- 檔案：`command-dashboard/src/services/cert_issuance.py`（commit 待 user ok）。\n\n### 衍生子缺口（本次新發現，仍開）\n**面板發證後不顯示 p12 密碼** → 使用者拿到 .p12 卻不知密碼，裝不了。\n- 線上發證 p12 密碼 = `STEP_CLIENT_CERT_P12_PASS`（**預設 `icsclient`**），與 CLI `issue-client` 用的 `ICS_CLIENT_P12_PASS`（隨機 hex）**不同** → 雙重困惑。\n- 建議：發證成功後**在面板顯示一次性密碼**（且改為**每張隨機**，非固定 `icsclient` 弱默認），或直接給 iOS 一鍵 `.mobileconfig`（內嵌密碼 + root CA，見 `make-ios-profile.py`）。\n\n### 缺口 2（revoked 清除）：仍開，未動。\n",
+        "createdAt": "2026-06-21T08:24:19Z",
+        "id": "IC_kwDOSnBjpc8AAAABG8zaCQ",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/307#issuecomment-4761377289"
+      }
+    ],
     "createdAt": "2026-06-21T08:07:20Z",
     "labels": [],
     "milestone": null,
     "number": 307,
     "state": "OPEN",
     "title": "feat(auth): 裝置憑證管理 UX — iOS 發證限制 + revoked 記錄清除",
-    "updatedAt": "2026-06-21T08:07:20Z",
+    "updatedAt": "2026-06-21T08:24:19Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/307"
   }
 ]
