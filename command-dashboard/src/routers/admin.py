@@ -1,5 +1,9 @@
+import asyncio  # noqa: E402 — P1-12b L3 pre-destructive backup
+
+import structlog  # noqa: E402
 from fastapi import APIRouter, HTTPException, Request, Response
 
+import core.config as config
 from auth.role_enum import (
     ROLE_COMMANDER,
     ROLE_OBSERVER,
@@ -10,7 +14,6 @@ from auth.role_enum import (
 )
 from auth.service import validate_session
 from core.database import get_conn, get_schema_version
-import core.config as config
 from core.input_safety import validate_no_unsafe_strings
 from repositories._helpers import audit
 from repositories.account_cert_repo import (
@@ -19,6 +22,7 @@ from repositories.account_cert_repo import (
     is_cert_active,
     is_valid_cert_cn,
     list_certs,
+    purge_revoked_certs,
     revoke_cert,
 )
 from repositories.account_repo import (
@@ -50,15 +54,11 @@ from schemas.admin import (
     DisplayNameUpdateIn,
     PiNodeCreateIn,
     PinResetIn,
+    RetentionToggleIn,
     RoleUpdateIn,
     SuspendAllIn,
-    RetentionToggleIn,
 )
 from services.realtime_hub import cop_hub  # issue #29 PR-G1b：reset 後廣播 resync
-
-import asyncio  # noqa: E402 — P1-12b L3 pre-destructive backup
-
-import structlog  # noqa: E402
 
 log = structlog.get_logger()
 
@@ -298,8 +298,7 @@ async def reset_exercise(request: Request):
     sess = _check_system_admin(request)
     await _require_reset_confirm(request)  # OP-2
     pre_backup = await _pre_destructive_backup("pre-reset-exercise")  # L3
-    ex_tables = ["ttx_injects", "exercises", "resource_snapshots", "aar_entries",
-                 "ai_recommendations", "exercise_kpis"]
+    ex_tables = ["ttx_injects", "exercises", "resource_snapshots", "aar_entries", "ai_recommendations", "exercise_kpis"]
     # issue #29 PR-G1b：cop_entities 有 exercise_id，演習重設一併清演習場域的 COP 圖釘
     # （事件/route/polygon）。tracks/links 無 exercise_id（references uid ON DELETE CASCADE）；
     # PRAGMA foreign_keys=ON，故刪 cop_entities 時 tracks/links 自動級聯，無 orphan。
@@ -319,7 +318,8 @@ async def reset_exercise(request: Request):
             except Exception:
                 pass
     audit(sess["username"], None, "exercise_reset", "system", "all", {"cleared": cleared, "pre_backup": pre_backup})
-    await cop_hub.broadcast_all({"op": "resync"})  # P1-14：strict wants 後改 broadcast_all 確保全連線收到  # 同 reset-db：各 client 對帳清掉演習場域圖釘
+    # P1-14：strict wants 後改 broadcast_all 確保全連線收到；同 reset-db：各 client 對帳清掉演習場域圖釘
+    await cop_hub.broadcast_all({"op": "resync"})
     return {"ok": True, "cleared": cleared, "pre_backup": pre_backup}
 
 
@@ -404,8 +404,9 @@ def set_retention(body: RetentionToggleIn, request: Request):
     sess = _check_system_admin(request)
     from services import retention_service
 
-    audit(sess["username"], None, "RETENTION_TOGGLE", "config",
-          "retention.tracks_ttl_enabled", {"enabled": body.enabled})
+    audit(
+        sess["username"], None, "RETENTION_TOGGLE", "config", "retention.tracks_ttl_enabled", {"enabled": body.enabled}
+    )
     retention_service.set_ttl_enabled(body.enabled)
     deleted = retention_service.cleanup_expired_tracks() if body.enabled else 0
     return {"ok": True, "enabled": body.enabled, "deleted_now": deleted}
@@ -446,7 +447,7 @@ def bind_account_cert(username: str, body: AccountCertBindIn, request: Request):
     try:
         return bind_cert(account_id, cn, body.label, sess["username"])
     except ValueError as e:
-        raise HTTPException(409, str(e))
+        raise HTTPException(409, str(e)) from e
 
 
 @router.post("/accounts/{username}/certs/issue", tags=["account-admin"])
@@ -461,13 +462,20 @@ def issue_account_cert(username: str, body: AccountCertBindIn, request: Request)
     if is_cert_active(cn):
         raise HTTPException(409, "此 CN 已被有效綁定")
     from services.cert_issuance import CertIssuanceError, issue_p12
+
     try:
         p12 = issue_p12(cn)
     except CertIssuanceError as e:
-        raise HTTPException(502, f"發證失敗：{e}")
+        raise HTTPException(502, f"發證失敗：{e}") from e
     bind_cert(account_id, cn, body.label, sess["username"])
-    audit(sess["username"], None, "cert_issue", "account_certs", cn,
-          {"account_id": account_id, "cert_cn": cn, "online": True})
+    audit(
+        sess["username"],
+        None,
+        "cert_issue",
+        "account_certs",
+        cn,
+        {"account_id": account_id, "cert_cn": cn, "online": True},
+    )
     # cn 已過 is_valid_cert_cn（無逗號/控制字元）；filename 再收斂為 alnum+-_.
     safe = "".join(c for c in cn if c.isalnum() or c in "-_.") or "client"
     return Response(
@@ -475,6 +483,17 @@ def issue_account_cert(username: str, body: AccountCertBindIn, request: Request)
         media_type="application/x-pkcs12",
         headers={"Content-Disposition": f'attachment; filename="{safe}.p12"'},
     )
+
+
+# 註：本路由須宣告在 /certs/{cert_id} 之前——否則 "revoked" 會先撞 {cert_id:int} 路由
+# 而被 422 攔下（literal path 必須贏過 int param）。
+@router.delete("/accounts/{username}/certs/revoked", tags=["account-admin"])
+def purge_account_revoked_certs(username: str, request: Request):
+    """#307 缺口 2：清除此帳號所有已撤銷的裝置憑證列（免 DB 介入）。audit log 保留。"""
+    sess = _check_system_admin(request)
+    account_id = _account_id_or_404(username)
+    count = purge_revoked_certs(account_id, sess["username"])
+    return {"purged": count}
 
 
 @router.delete("/accounts/{username}/certs/{cert_id}", tags=["account-admin"])
