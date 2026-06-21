@@ -4380,6 +4380,20 @@
         "minimizedReason": "",
         "reactionGroups": [],
         "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/305#issuecomment-4761077430"
+      },
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## 安全硬化（C / review #1）：TAK 改用獨立 CA，與 step-ca 隔離\n\nreview 發現「step-ca 統一鏈」讓 TAK truststore 信任 step-ca root → **儀表板裝置 cert 也能連 TAK :8089 注入 CoT，繞過 ICS 稽核**。已修：\n\n- 建獨立 **`ICS-TAK-SVC-CA`**（openssl 單層，與 step-ca 無關），重簽 TAK server cert（RSA、SAN 含 1.34.230.218）+ 3 張 ICS→TAK client cert。\n- TAK truststore（truststore-root.jks / fed-truststore.jks）**只含 ICS-TAK-SVC-CA**；ICS `TAK_CAFILE` 改 `tak-ca.pem`。step-ca 仍只管 ICS 儀表板（nginx + 裝置 cert）。\n\n### 隔離證明（pytak 實測）\n- 舊 step-ca 簽的 client cert 連 :8089 → **SSLError（TAK 拒絕）** ✅\n- 新 dedicated-CA client cert → 推+收 marker round-trip 成功（完整 session）✅\n\nstep-ca 版 JKS/cert 備份於 `tak-certs/_rollback_stepca/` 可回滾。\n",
+        "createdAt": "2026-06-21T06:20:35Z",
+        "id": "IC_kwDOSnBjpc8AAAABG8jZ5g",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/305#issuecomment-4761115110"
       }
     ],
     "createdAt": "2026-06-21T03:44:37Z",
@@ -4388,7 +4402,7 @@
     "number": 305,
     "state": "OPEN",
     "title": "deploy(prod): ICS + TAK 同機交付棧乾淨環境端到端實證（build + up + smoke）",
-    "updatedAt": "2026-06-21T06:01:51Z",
+    "updatedAt": "2026-06-21T06:20:35Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/305"
   }
 ]
