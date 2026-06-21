@@ -195,6 +195,12 @@ Command **信任 TAK Server 轉發的所有 CoT** —— 即使傳輸加密（§
 - **連到對的 server**（§8.1 憑證驗證）≠ **server 送的資料可信**（本節）。
 - Command 端對「資料內容」的最後防線 = **P2-10 內容層白名單**（座標越界拒絕 / callsign 字元白名單 / type prefix 白名單）+ TAK-B 來源所有權守門。
 
+**[2026-06-21 #315 — ICS 成為 TAK 裝置發證方（doctrine 拍板）]**：P2-26 L2 讓 admin 可從 dashboard 線上發 TAK 裝置證 data package（`POST /api/admin/tak/device-cert`）。此舉**把「裝置准入」部分責任從 TAK 管理員移到 ICS sysadmin**——ICS 發的證即被 TAK 信任 → 持證裝置能推 CoT 進共享 COP（**COP poisoning，本介面最大 blast radius**）。
+
+**🔑 CA 拓撲（reality check 2026-06-21，dogfood 實證）**：TAK truststore **只信 `ICS-TAK-SVC-CA`、不信 step-ca**（step-ca 簽的 client 證 TAK 回 `peer not verified`）。故 TAK 裝置證**必須由 ICS-TAK-SVC-CA（offline，`tak-ca.key` @ `TAK_DEVICE_CA_DIR`）簽**，**與 ICS 登入證的 step-ca 刻意隔離**（#305「儀表板 cert 碰不到 TAK」）。**這推翻本段初稿「CA 鑰仍在 step-ca daemon、後端不持鑰」**：TAK 裝置證簽發**後端確實用到 offline ICS-TAK-SVC-CA 私鑰**（該鑰本就掛載 `/tak-certs/_ca` 供 TAK 整合用、`gen-device-pkg.sh` 已在用，#315 非新增暴露）。ICS 登入證（step-ca daemon、後端不持鑰）不受影響、兩 CA 不相通。
+
+**緩解（皆已落地）**：(1) 端點 **sysadmin-only**（`_check_system_admin`）；(2) **每張強制 audit**（`tak_device_cert_issue`，不得 best-effort）——誰發了哪個 callsign 留痕，事後可究責/撤；(3) device 私鑰隨 package **即產即交、不落 DB**（守 #255 紅線，cert/key 內容入 DB 仍卡 P1-12）；(4) CA 隔離：ICS 登入證（step-ca）即使外洩也**連不上 TAK**（TAK 不信 step-ca），反之亦然。**殘餘**：(a) 發證是 sysadmin 蓄意決定，無法防「被盜 sysadmin session」濫發——與其他 sysadmin 破壞性動作同級，靠 audit + mTLS 第二因子 + PIN 緩解；(b) **offline ICS-TAK-SVC-CA 私鑰落地檔案系統**（同 §8.4 at-rest 邊界，偷碟可冒充發 TAK 裝置證）→ 緩解走 LUKS [#231](https://github.com/winson3QQ/ICS_COMMAND/issues/231)；(c) **發出的 TAK 裝置證無 app 層撤銷**（不像 ICS 登入證可即時撤）——撤銷須走 step-ca/TAK CRL 或重簽 CA，P2-26 cert lifecycle 未做。推翻 #255 原「UI 不簽證」對裝置證的部分，理由見 [#315](https://github.com/winson3QQ/ICS_COMMAND/issues/315)。
+
 ### 8.4 同機部署的 at-rest 與統一金鑰託管（缺口）
 
 **事實**：TAK Server 與 ICS Command **部署在同一台主機**。同一顆碟上同時有：ICS `cop_entities`（SQLite）、**TAK Server 的 PostgreSQL repository**（存每個 uid 最新 CoT、mission、GeoChat）、step-ca / TAK 憑證與**私鑰**、log、map_config、上傳檔。
