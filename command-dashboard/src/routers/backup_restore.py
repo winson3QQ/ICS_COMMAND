@@ -109,22 +109,22 @@ def download_backup(name: str, request: Request):
     """
     from fastapi.responses import FileResponse
 
-    _check_system_admin(request)
+    sess = _check_system_admin(request)
     path = _resolve(name)
-    audit("admin", None, "user_data_backup_downloaded", "system", name, {"size_bytes": path.stat().st_size})
+    audit(sess["username"], None, "user_data_backup_downloaded", "system", name, {"size_bytes": path.stat().st_size})
     return FileResponse(path, media_type="application/octet-stream", filename=path.name)
 
 
 @router.get("/user-data-backups/{name}/manifest")
 def preview_manifest(name: str, request: Request):
     """解密讀 MANIFEST.json（restore 前預覽：演習 metadata / 檔案清單 / 大小）。"""
-    _check_system_admin(request)
+    sess = _check_system_admin(request)
     path = _resolve(name)
     try:
         manifest = uds.read_manifest(path)
     except ValueError as e:
         raise HTTPException(422, f"無法讀取 manifest：{e}") from e
-    audit("admin", None, "user_data_backup_manifest_read", "system", name, {"schema": manifest.get("schema")})
+    audit(sess["username"], None, "user_data_backup_manifest_read", "system", name, {"schema": manifest.get("schema")})
     return {"name": name, "manifest": manifest}
 
 
