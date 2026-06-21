@@ -10,6 +10,7 @@ client 憑證，回傳 p12 bytes。CA 簽發鑰始終只在 daemon。未配置�
 from __future__ import annotations
 
 import os
+import secrets
 import subprocess  # nosec B404 - 受控參數呼叫 step CLI（無 shell=True，無使用者字串拼接）
 import tempfile
 
@@ -34,9 +35,16 @@ def _run(args: list[str]) -> subprocess.CompletedProcess:
     )
 
 
-def issue_p12(cert_cn: str) -> bytes:
-    """向 step-ca daemon 簽一張 CN=cert_cn 的 client 憑證，回傳 p12 bytes。
+def _p12_password() -> str:
+    """p12 匯入密碼。#307：未顯式設 STEP_CLIENT_CERT_P12_PASS → 每張隨機（廢弱默認
+    icsclient）；顯式設了才用固定值（runbook 相容）。token_urlsafe(12) ≈ 16 字元。"""
+    return config.STEP_CLIENT_CERT_P12_PASS or secrets.token_urlsafe(12)
 
+
+def issue_p12(cert_cn: str) -> tuple[bytes, str]:
+    """向 step-ca daemon 簽一張 CN=cert_cn 的 client 憑證，回傳 (p12 bytes, 匯入密碼)。
+
+    密碼預設每張隨機（呼叫端負責顯示給管理者轉交）；不寫 log、不進 audit。
     raise CertIssuanceError：未配置、daemon 不可達、或簽發被 CA 拒絕。
     """
     if not config.step_ca_configured():
@@ -49,6 +57,7 @@ def issue_p12(cert_cn: str) -> bytes:
     if not os.path.isfile(pw_file):
         raise CertIssuanceError("provisioner 密碼檔不存在")
 
+    p12_pass = _p12_password()
     with tempfile.TemporaryDirectory(prefix="ics-cert-") as td:
         root = os.path.join(td, "root.crt")
         crt = os.path.join(td, "client.crt")
@@ -56,7 +65,7 @@ def issue_p12(cert_cn: str) -> bytes:
         p12 = os.path.join(td, "client.p12")
         p12pw = os.path.join(td, "p12pw")
         with open(p12pw, "w", encoding="utf-8") as f:
-            f.write(config.STEP_CLIENT_CERT_P12_PASS)
+            f.write(p12_pass)
 
         # 1. 取 root（fingerprint 驗證，建立對 daemon API 的信任）
         r = _run(
@@ -98,7 +107,7 @@ def issue_p12(cert_cn: str) -> bytes:
             raise CertIssuanceError(f"p12 打包失敗：{_tail(r.stderr)}")
 
         with open(p12, "rb") as f:
-            return f.read()
+            return f.read(), p12_pass
 
 
 def _tail(s: str | None, n: int = 200) -> str:

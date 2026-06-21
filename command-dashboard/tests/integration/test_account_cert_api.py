@@ -82,7 +82,7 @@ class TestOnlineIssue:
         import services.cert_issuance as ci
 
         monkeypatch.setattr(config, "step_ca_configured", lambda: True)
-        monkeypatch.setattr(ci, "issue_p12", lambda cn: b"PKCS12-FAKE-BYTES")
+        monkeypatch.setattr(ci, "issue_p12", lambda cn: (b"PKCS12-FAKE-BYTES", "rand-pw-xyz"))
         _mk_account(client, auth, "grace")
         r = client.post(
             "/api/admin/accounts/grace/certs/issue", json={"cert_cn": "grace-laptop", "label": "工作機"}, headers=auth
@@ -91,6 +91,8 @@ class TestOnlineIssue:
         assert r.headers["content-type"] == "application/x-pkcs12"
         assert "grace-laptop.p12" in r.headers.get("content-disposition", "")
         assert r.content == b"PKCS12-FAKE-BYTES"
+        # #307：p12 密碼經 X-P12-Password header 回前端（不進 audit / body）
+        assert r.headers.get("x-p12-password") == "rand-pw-xyz"
         # 已自動綁定
         certs = client.get("/api/admin/accounts/grace/certs", headers=auth).json()
         assert any(c["cert_cn"] == "grace-laptop" and c["status"] == "active" for c in certs)
@@ -100,7 +102,7 @@ class TestOnlineIssue:
         import services.cert_issuance as ci
 
         monkeypatch.setattr(config, "step_ca_configured", lambda: True)
-        monkeypatch.setattr(ci, "issue_p12", lambda cn: b"X")
+        monkeypatch.setattr(ci, "issue_p12", lambda cn: (b"X", "pw"))
         _mk_account(client, auth, "heidi")
         client.post("/api/admin/accounts/heidi/certs", json={"cert_cn": "dupe-cn"}, headers=auth)
         r = client.post("/api/admin/accounts/heidi/certs/issue", json={"cert_cn": "dupe-cn"}, headers=auth)
