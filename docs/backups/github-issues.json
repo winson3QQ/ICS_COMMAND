@@ -4249,6 +4249,20 @@
         "minimizedReason": "",
         "reactionGroups": [],
         "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/300#issuecomment-4760807385"
+      },
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "交叉連結：本單 **blocks #305**（deploy/prod ICS + TAK 同機交付棧乾淨環境端到端實證）。#300 解阻後，#305 才能 build + up + smoke。",
+        "createdAt": "2026-06-21T03:48:00Z",
+        "id": "IC_kwDOSnBjpc8AAAABG8RxwQ",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/300#issuecomment-4760826305"
       }
     ],
     "createdAt": "2026-06-20T23:06:32Z",
@@ -4257,7 +4271,7 @@
     "number": 300,
     "state": "OPEN",
     "title": "build(infra): 本機 docker build 受阻於 OneDrive 殘留 cloud reparse point — repo 搬出同步路徑",
-    "updatedAt": "2026-06-21T03:37:59Z",
+    "updatedAt": "2026-06-21T03:48:00Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/300"
   },
   {
