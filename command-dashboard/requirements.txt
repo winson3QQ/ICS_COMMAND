@@ -14,3 +14,7 @@ pytak[with_takproto]==7.3.10
 # P2-11 (#138) — Marti REST HTTP client（aiohttp）。pytak 7.x 不再把 aiohttp 列為
 # 必填傳遞相依，需明確聲明。維護者 aio-libs（歐美開源社群），Apache-2.0，非中國。
 aiohttp>=3.9
+# P1-12a (#227) — FIDO2/CTAP2 hmac-secret（scripts/keymgmt 用，app runtime 不 import）。
+# 維護者 Yubico AB（瑞典），BSD-2-Clause，非中國。lazy import：無金鑰的
+# dev / CI 場景走 ICS_MASTER_KEY fallback 或 mock，不觸發此套件。
+fido2==2.2.0

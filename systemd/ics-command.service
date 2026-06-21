@@ -27,6 +27,12 @@ ExecStart=/home/ics/ics-command/command-dashboard/.venv/bin/uvicorn main:app --a
 Environment=ICS_DB_PATH=/var/lib/ics/ics.db
 Environment=ICS_LOG_DIR=/var/log/ics
 EnvironmentFile=-/etc/ics/command.env
+# P1-12a (#227) keymgmt：unlock_key.py 解 FIDO2 後寫入的 child keys
+# （BACKUP_KEY / DB_KEY）。manned C2 流程（threat_model §8.4）：開機後
+# operator 跑 `python scripts/keymgmt/unlock_key.py --store /etc/ics/master-key.enc
+# --output /run/ics/keys.env` 再 start 本服務。`-` 前綴：檔不存在不 fail
+# （未 enroll 的部署走舊 env / fallback，P1-12b 起消費）。
+EnvironmentFile=-/run/ics/keys.env
 
 StandardOutput=append:/var/log/ics/command.log
 StandardError=append:/var/log/ics/command.log

@@ -212,6 +212,11 @@ Command **信任 TAK Server 轉發的所有 CoT** —— 即使傳輸加密（§
 
 → **回饋 P1-12a 設計**：key 階層新增 `disk-v1` child（統一 unlock）。**動工前先訂部署 at-rest 策略，再讓 P1-12 照它做。**
 
+**[2026-06-12 拍板（P1-12 動工前決議，使用者核定）]**：採本節控制策略——
+- **L1 主控 = LUKS 整碟**，立為獨立 item（[issue #231](https://github.com/winson3QQ/ICS_COMMAND/issues/231)），P1-12 不含；**L2 縱深 = SQLCipher**（P1-12c，[#229](https://github.com/winson3QQ/ICS_COMMAND/issues/229)）。對外安全邊界陳述應寫明「at-rest 防護完整需 LUKS 到位」，**P1-12c 完成不等於偷碟免疫**（TAK PG 同碟明文仍在，見上）。
+- P1-12a key 階層**含 `child[3] = disk-v1`**（[#227](https://github.com/winson3QQ/ICS_COMMAND/issues/227)），LUKS 統一 FIDO2 unlock 預留位。
+- 部署形態定調 **manned C2**：接受開機需人持 FIDO2 token；無人值守（unattended Pi）的 escrow / TPM / 降級後路於 #231 內評估，不阻塞 P1-12。
+
 **[2026-06-08 retention 實證，連動 PII / 缺口 #13]**：同一顆碟上**兩個資料域目前都無界成長**（= 更多明文 PII 暴露面 + 磁碟耗盡 DoS）：① **TAK PG**——TAK 有 Data Retention GUI（per-type TTL：Cot/GeoChat/Mission(含 tracks)/Files + 排程），但**現況 TTL 全空、排程 `Never`**（預設留全部）；② **ICS `cop_entity_tracks`**（SQLite，TAK 保留管不到）。緩解：兩域各設 TTL（90 天 / exercise 刪除 cascade）——TAK 側開 GUI、ICS 側自管。
 
 **[2026-06-11 政策定案（P2-20 收尾 / issue #207，使用者拍板乙案）— 軌跡 PII retention policy]**：
@@ -230,7 +235,7 @@ Command **信任 TAK Server 轉發的所有 CoT** —— 即使傳輸加密（§
 - **現況**：step-ca 曾發 24h 短期 cert（ROADMAP #98 drift），但**無 CRL/OCSP、無被擄裝置撤銷 SOP**。
 - **緩解方向**：短 cert TTL + 自動續期 + **撤銷機制（CRL/OCSP）** + 「裝置遺失 → 立即撤銷」操作 SOP。撤銷責任在 TAK 管理員（cert enrollment 端），ICS 為下游消費者。連動 P2-15（federation peer cert profile）+ step-ca 90 天 patch。
 - **ICS 端可加的縱深**：來源標註（哪張 cert/裝置推的）+ 異常偵測（同 uid 位置跳變 / 大量刪除），留 P2-12/P2-19。
-- **[2026-06-08 admin UI 實證]**：TAK Server admin GUI（`Administrative → Client Certificates`）**有內建撤銷功能**（`Revoke Selected` + `Show Revoked` 過濾）→ 撤銷機制存在。**但關鍵限制**：該清單對本部署顯示 **"No Certificates Found"**——現行 `icscop`/`admin`/`itak` 等 cert 由 **`makeCert.sh` 離線簽發（CA 信任鏈通，但未經 TAK enrollment 註冊）** → **TAK 不視為 managed cert、此 GUI 撤銷不到它們**。**意涵**：被擄裝置 cert 的撤銷，現行離線 cert 模型下**只能靠 CA 層 CRL 或改 truststore**（非 GUI 一鍵）。**修正方向**：場端裝置 cert 應走 **TAK enrollment（:8446）發行**（才進 managed 清單、可 GUI 撤銷 + `Show Revoked` 稽核），或建 CA CRL 並確認 ICS/TAK mTLS 驗證會 honor。
+- **[2026-06-08 admin UI 實證]**：TAK Server admin GUI（`Administrative → Client Certificates`）**有內建撤銷功能**（`Revoke Selected` + `Show Revoked` 過濾）→ 撤銷機制存在。**但關鍵限制**：該清單對本部署顯示 **"No Certificates Found"**——現行 `icscop`/`admin`/`itak` 等 cert 由 **`makeCert.sh` 離線簽發（CA 信任鏈通，但未經 TAK enrollment 註冊）** → **TAK 不視為 managed cert、此 GUI 撤銷不到它們**。**意涵**：被擄裝置 cert 的撤銷，現行離線 cert 模型下**只能靠 CA 層 CRL 或改 truststore**（非 GUI 一鍵）。**修正方向**：場端裝置 cert 應走 **TAK enrollment（:8446）發行**（才進 managed 清單、可 GUI 撤銷 + `Show Revoked` 稽核），或建 CA CRL 並確認 ICS/TAK mTLS 驗證會 honor。**[2026-06-12 升優先]**：本缺口已開 [issue #232](https://github.com/winson3QQ/ICS_COMMAND/issues/232) 進工作佇列（SC7）。
 
 ### 8.6 公網直曝的對外存取信任邊界（驗證部署實測 2026-06-20）
 
@@ -288,3 +293,4 @@ Command **信任 TAK Server 轉發的所有 CoT** —— 即使傳輸加密（§
 | 2026-06-20 | 0.6 | 新增 §8.6「公網直曝對外存取信任邊界」：驗證部署(cmd dashboard 經 AirPort 443 直曝公網)實測 — `/static` 免認證洩資料檔(`facilities.seed.json` 2.4MB)+ 全前端 JS；`/api/version\|health` 洩漏；6 位 PIN：**線上爆破已被帳號鎖定擋(連錯 5 次鎖 15 分;原「無帳號鎖定」評估更正)**,殘留=鎖定-DoS 向量 + XFF 最左值可偽造削弱 IP 限速 + PIN 離線弱點。正解=不直曝(VPN/mTLS，已預留 tier3-mtls)。緩解 #3(seed 擋除,已修)/#4(gate version·health)/#2(XFF·鎖定-DoS·PIN KDF)/#1(mTLS·VPN) |
 | 2026-06-20 | 0.7 | 新增 §8.7「應用層紅隊批次」(白箱源碼審查,#286–290 已修,PR #291,backend 2.7.1)：H1 `upload_map_image` 任意檔寫入(→ 儲存型 XSS/全站接管)、H2 TTX router 無授權 gate(broken access control + 跨場)、H3 events/decisions 寫入 IDOR + 跨演習越權(讀有 scope 寫沒有)、H6 compose 公開預設密碼、M1 mTLS-on-但-secret-空 fail-open。標明方法論限制(白箱未黑箱;runtime 面待驗)+ 正面查核(SQLi/XXE/SSRF/CoT 覆寫/供應鏈中國紅線皆過)|
 | 2026-06-20 | 0.8 | 新增 §8.7.1「前端駭客視角 + perimeter 防禦對照」：攻法①–⑥ × mTLS/VPN/真實IP 覆蓋 × app 層殘留(#292–296)。結論=perimeter 關「網路層/外部」整面,殘留=圈內人+資料毒化須 app 縱深;皆已知類別有標準解。doctrine：zero-trust(NIST 800-207)——C2 威脅含被擄合法裝置,圈內不可預設信任 |
+| 2026-06-21 | 0.9 | §8.4 加「P1-12 動工前決議」拍板（2026-06-12；LUKS 主控 [#231](https://github.com/winson3QQ/ICS_COMMAND/issues/231) / SQLCipher 內層 [#229](https://github.com/winson3QQ/ICS_COMMAND/issues/229) / `disk-v1` child 入 12a [#227](https://github.com/winson3QQ/ICS_COMMAND/issues/227) / manned C2 形態）；§8.5 升優先開 [#232](https://github.com/winson3QQ/ICS_COMMAND/issues/232)（rebase 對齊：原 0.6 與安全批次撞號 → 改 0.9）|
