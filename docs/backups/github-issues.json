@@ -3335,14 +3335,29 @@
     },
     "body": "threat_model §8.4 + SC7 升優先項。**2026-06-12 拍板：LUKS 為同機部署 at-rest 主控必備，SQLCipher（#229）退內層縱深。**\n\n## 為什麼 P1-12 不夠（§8.4 論證）\n\n- TAK Server 與 ICS 同機：SQLCipher 只加密 ICS SQLite，**TAK PostgreSQL 同碟明文** → 偷碟者直接讀 TAK PG 拿同一批敵我位置，繞過 SQLCipher（per-app 加密在同機部署下給假安全感）\n- **mTLS 私鑰明文落地**（icscop-nopass.key / step-ca CA key / TAK keystore）→ 偷碟可冒充 ICS 對 TAK 注入/刪 CoT\n- LUKS 一次涵蓋：ICS SQLite + TAK PG + 憑證私鑰 + log\n\n## Scope\n\n- LUKS 整碟（Linux/Pi）；unlock key = P1-12a key 階層的 **`disk-v1` child（#227 已預留）** → 一次 FIDO2 unlock 開機碟 + app + backup，勿碎裂託管\n- 沿用 ICS_DMAS `initramfs/fido2-luks-hook` 移植，**需 Pi 硬體實機驗證**\n- **無人值守 trade-off 在本 issue 內評估**：manned C2 接受開機摸 token（已拍板）；unattended Pi 停電重啟會卡 → escrow / TPM / 降級方案評估後寫進 key-management.md\n\n## 前置\n\n- P1-12a（#227）merge 後才有 disk-v1 child 可接\n- Pi 硬體到位",
     "closedAt": null,
-    "comments": [],
+    "comments": [
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## 前置決策（2026-06-21）：交付方向定為**預封碟（pre-sealed disk + FIDO2 token）**\n\n### 第一道分叉已拍：威脅模型「要不要防到對手摸到硬體本身（需求 B）」→ **暫不走整機**\n\n- 「堅持整碟加密」**不等於**「只能交付整機」。逼到整機的是更高的需求 B（硬體來源/防拆/evil-maid/TPM 綁定），不是整碟本身。\n- 選 **預封碟**：vendor 把一顆碟做好 LUKS + 裝好棧 + 封到 token，出貨「碟 + token」，客戶提供機殼。**整碟加密由 vendor 親手設，但不交付整機。**\n- **與既有架構天生對口**：12a 的 `disk-v1` child 走 **FIDO2-LUKS（可攜、綁 token）**，非 TPM-BitLocker（綁機器、會逼整機）。預封碟插到客戶相容機器、持 token 即解 → 正是為「不必整機」而設計。\n- **維護優勢**（解掉整機交付的痛）：碟比整機好 RMA / 備援 / 寄送 / 重燒；客戶顧機殼壽命。\n- 後續若威脅模型升級到需求 B（要防硬體來源/防拆），再升整機 / 親手封碟 + 防拆封條。**此分叉可回頭。**\n\n### 預封碟方向下、待解的子問題\n\n1. **封的範圍**：整機唯一 boot/system 碟（涵蓋真整碟）vs 只 app+資料 payload 碟（客戶 host 跑自己 OS）？→ 決定是否含 OS root。\n2. **開機解鎖**：boot-time FIDO2-LUKS（initramfs）—— 移植 ICS_DMAS `fido2-luks` hook；**真機驗收 = [#230](https://github.com/winson3QQ/ICS_COMMAND/issues/230)**。\n3. **fail-closed**：無 token / 解不開 → 拒啟（已是 manned C2 形態，threat_model §8.4）。\n4. **客戶 host 相容性**：LUKS 可攜，但 boot 鏈/驅動需相容（→ 可能要「建議/認證機型」清單）。\n5. **token kit 交付儀式**：enroll 由 vendor 做、rescue 助記詞封條、custody chain；可選雙通道（碟/image 與 token 分渠道）。\n\n### 驗證路徑（不卡硬體先做）\n\n- **USB SSD 預封碟 prototype**（Linux VM，$0~一顆 SSD）：LUKS 格式化 + 12a `unlock_key.py` 產 `disk-v1` 餵 cryptsetup + Docker volume（ICS DB + TAK PG + keys）上加密卷 → 驗**交付模型 + 統一 unlock + 「拔碟=密文」偷碟 demo**。\n- **驗不到、要真硬體（#230）**：開機 root FIDO2 解鎖（initramfs）、目標平台效能（Pi 500 benchmark）、防拆。\n\n### 與 12c 的關係\n\n12c（SQLCipher，[#229](https://github.com/winson3QQ/ICS_COMMAND/issues/229) 已 merge）= **L2 內層、default-off**。本 issue（整碟）= **L1 主控**。預封碟把「L1 整碟」做成交付物；是否同時開 12c 內層另議（同機部署下 TAK PG 仍靠 L1 整碟保護，§8.4）。",
+        "createdAt": "2026-06-21T03:15:35Z",
+        "id": "IC_kwDOSnBjpc8AAAABG8N5jQ",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/231#issuecomment-4760762765"
+      }
+    ],
     "createdAt": "2026-06-11T23:43:20Z",
     "labels": [],
     "milestone": null,
     "number": 231,
     "state": "OPEN",
     "title": "P1-NN LUKS 整碟加密（threat_model §8.4 主控層）：FIDO2 disk-v1 child 統一 unlock",
-    "updatedAt": "2026-06-11T23:43:20Z",
+    "updatedAt": "2026-06-21T03:15:35Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/231"
   },
   {
