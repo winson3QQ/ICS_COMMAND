@@ -47,11 +47,17 @@ SYSADMIN POST   /api/admin/pi-nodes/{unit_id}/rekey
 SYSADMIN PUT    /api/admin/pin
 SYSADMIN POST   /api/admin/reset-db
 SYSADMIN POST   /api/admin/reset-exercise
+SYSADMIN POST   /api/admin/restore
 SYSADMIN GET    /api/admin/retention
 SYSADMIN POST   /api/admin/retention
 SYSADMIN GET    /api/admin/schema-migrations
 SYSADMIN GET    /api/admin/status
 SYSADMIN POST   /api/admin/suspend-all
+SYSADMIN GET    /api/admin/user-data-backups
+SYSADMIN POST   /api/admin/user-data-backups
+SYSADMIN GET    /api/admin/user-data-backups/{name}/download
+SYSADMIN GET    /api/admin/user-data-backups/{name}/manifest
+SYSADMIN POST   /api/admin/user-data-backups/{name}/restore
 COMMAND  GET    /api/ai/export/{exercise_id}
 WRITE    POST   /api/ai/recommend
 COMMAND  POST   /api/ai/recommendations/{rec_id}/outcome

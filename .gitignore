@@ -12,6 +12,10 @@ venv/
 *.db-wal
 *.db.gz
 data/backups/
+# P1-12b（#228）：runtime 備份目錄（整包 .tar.gz.enc / pre-restore / DB-only .db.gz.enc）。
+# 原 `data/backups/`（上行）錨定 repo root，match 不到 command-dashboard/data/backups/
+# → .db.gz.enc / .tar.gz.enc 漏網。補正確路徑（user-data 邊界紅線，不入版控）。
+command-dashboard/data/backups/
 
 # P1-13 (issue #27)：map_config runtime 檔在 data/，user data 邊界，不入版控；
 # factory default 走 static/map_config.seed.json（tracked）+ startup ensure() 兜底

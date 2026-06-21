@@ -850,7 +850,7 @@ function _applyAdminTabVisibility() {
 export function admShowTab(tab) {
   if (!_isSysadminSession() && !['list','add'].includes(tab)) tab = 'list';
   _applyAdminTabVisibility();
-  const tabs = ['list','add','pi','log','sys'];
+  const tabs = ['list','add','pi','log','data','sys'];
   document.querySelectorAll('.adm-tab').forEach((t, i) => {
     t.classList.toggle('active', tabs[i] === tab);
   });
@@ -859,6 +859,7 @@ export function admShowTab(tab) {
   if (tab === 'add') admShowAddForm();
   if (tab === 'pi') admLoadPiNodes();
   if (tab === 'log') admLoadLog();
+  if (tab === 'data') admShowData();
   if (tab === 'sys') admShowSys();
 }
 
@@ -889,18 +890,205 @@ export function admShowSys() {
         <button class="login-btn" data-action="adm-change-pin" style="margin-top:4px;">更改 Admin PIN</button>
         <div id="adm-sys-warn" style="font-size:12px;color:var(--red);min-height:16px;"></div>
       </div>
-    </div>
-    <div style="border-top:1px solid var(--border);padding-top:16px;">
+    </div>`;
+  _admLoadTakConn();
+}
+
+// ── P1-12b（#228）「備份／重設」tab（in-dashboard，取代 orphaned admin_backups.html）──
+// 端點走 _check_system_admin（session）；authFetch 自帶 X-Session-Token。
+
+export function admShowData() {
+  el('adm-panel-data').innerHTML = `
+    <div style="margin-bottom:20px;">
       <div style="font-size:13px;font-weight:600;margin-bottom:8px;color:var(--red);">⚠ 重設指揮部資料庫</div>
       <div style="font-size:11px;color:var(--text2);margin-bottom:12px;line-height:1.6;">
-        清除所有快照、事件、裁示、Pi 批次資料。<br>
+        清除所有快照、事件、裁示、演習、COP、Pi 批次資料。<br>
         <b>帳號和 Pi 節點註冊不受影響</b>，Pi 端資料也不受影響。<br>
+        <span style="color:var(--yellow);">重設只清資料庫，<b>不會刪備份檔（下方清單）</b>；清空前會自動備份當前。</span><br>
         <span style="color:var(--red);">此操作無法復原。</span>
       </div>
       <button class="login-btn" data-action="confirmResetDB"
               style="background:var(--red);color:#fff;border:none;max-width:320px;">重設指揮部資料庫</button>
+    </div>
+    <div style="border-top:1px solid var(--border);padding-top:16px;">
+      <div style="font-size:13px;font-weight:600;margin-bottom:8px;color:var(--text);">💾 整包資料備份 / 還原</div>
+      <div style="font-size:11px;color:var(--text2);margin-bottom:10px;line-height:1.6;max-width:460px;">
+        每個備份是整個 <code>data/</code> 的加密快照（資料庫 + 地圖設定 + 上傳檔）。<span style="color:var(--text3);">需部署層設定 BACKUP_KEY。</span><br>
+        <b>「來源」欄</b>：<b>手動</b>＝你按鈕建的；<b>演習結束 / 還原前 / 重設前 / 關機</b>＝系統在這些時機<b>自動備份</b>（防呆，怕你忘）。<br>
+        <b>備份到 USB / 異地</b>：按該筆「下載」存出 <code>.tar.gz.enc</code>（已加密，要有 BACKUP_KEY 才能還原），再複製到隨身碟。<br>
+        <span style="color:var(--text3);">自動保留：留最近 10 筆 / 30 天內；<b>演習結束與還原前備份永久保留</b>，其餘老檔在手動備份時自動清理。</span>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="login-btn" data-action="admBackupNow" style="max-width:160px;">立即整包備份</button>
+        <button class="login-btn" data-action="admRefreshBackups" style="max-width:120px;background:var(--bg3);">重新整理</button>
+      </div>
+      <div id="adm-backup-detail" style="margin-top:8px;font-size:11px;color:var(--text2);min-height:16px;"></div>
+      <div data-action="admToggleBackupList" style="margin-top:6px;font-size:12px;font-weight:600;color:var(--text);cursor:pointer;user-select:none;">
+        <span id="adm-bk-arrow">▾</span> 備份清單 <span id="adm-bk-count" style="color:var(--text3);font-weight:400;"></span>
+      </div>
+      <div id="adm-backup-list" style="margin-top:6px;font-size:11px;max-height:280px;overflow-y:auto;border:1px solid var(--border);border-radius:4px;"></div>
+      <div id="adm-backup-dir" style="margin-top:6px;font-size:10px;color:var(--text3);"></div>
+      <div style="margin-top:14px;border-top:1px dashed var(--border);padding-top:12px;">
+        <div style="font-size:12px;color:var(--text2);margin-bottom:6px;">⤴ 從外部檔還原（USB / 異地拿回的 .enc）。覆蓋當前 data/、先自動備份當前、有進行中演習則拒絕、還原後需重啟。清單裡的備份請用該筆的「還原」。</div>
+        <input id="adm-restore-file" type="file" accept=".enc" style="font-size:11px;max-width:300px;">
+        <button class="login-btn" data-action="admRestore" style="background:var(--red);color:#fff;border:none;max-width:160px;margin-top:4px;">上傳外部檔還原</button>
+      </div>
     </div>`;
-  _admLoadTakConn();
+  admRefreshBackups();
+}
+
+function _fmtBytes(n) {
+  if (n < 1024) return n + ' B';
+  if (n < 1048576) return (n / 1024).toFixed(1) + ' KB';
+  return (n / 1048576).toFixed(1) + ' MB';
+}
+
+function _triggerLabel(b) {
+  const tag = (color, text, tip) => `<span style="color:${color};" title="${tip}">${text}</span>`;
+  if (b.is_pre_restore) return tag('var(--yellow)', '還原前', '系統在還原前自動備份當前狀態（防呆）');
+  switch (b.trigger) {
+    case 'archive':  return tag('var(--green)', '演習結束', '演習歸檔時自動備份（含演習 metadata）');
+    case 'manual':   return tag('var(--text)', '手動', '你按「立即整包備份」建立');
+    case 'shutdown': return tag('var(--text2)', '關機', '服務正常關閉時自動備份');
+    case 'pre-reset-db':
+    case 'pre-reset-exercise': return tag('var(--yellow)', '重設前', '系統在重設資料庫前自動備份（防呆）');
+    default: return tag('var(--text3)', '整包', '');
+  }
+}
+
+export function admToggleBackupList() {
+  const box = el('adm-backup-list');
+  const arrow = el('adm-bk-arrow');
+  if (!box) return;
+  const open = box.style.display === 'none';
+  box.style.display = open ? '' : 'none';
+  if (arrow) arrow.textContent = open ? '▾' : '▸';
+}
+
+export async function admRefreshBackups() {
+  const box = el('adm-backup-list');
+  if (!box) return;
+  try {
+    const r = await authFetch(API_BASE + '/api/admin/user-data-backups');
+    if (!r.ok) { box.innerHTML = '<span style="color:var(--text3);">無法載入（需系統管理員）</span>'; return; }
+    const d = await r.json();
+    const dir = el('adm-backup-dir');
+    if (dir) dir.textContent = '伺服器備份目錄：' + (d.backup_dir || '—');
+    const cnt = el('adm-bk-count');
+    if (cnt) cnt.textContent = `（${d.total} 筆）`;
+    if (!d.backups.length) { box.innerHTML = '<div style="padding:8px;color:var(--text3);">（尚無整包備份）</div>'; return; }
+    const head = `<div style="position:sticky;top:0;background:var(--bg2);display:flex;gap:8px;color:var(--text3);font-weight:600;padding:4px 8px;border-bottom:1px solid var(--border);">
+        <span style="flex:1;">檔名</span><span style="width:60px;">來源</span><span style="width:90px;">演習</span>
+        <span style="width:52px;text-align:right;">大小</span><span style="width:182px;"></span>
+      </div>`;
+    box.innerHTML = head + d.backups.map((b, i) => {
+      const ex = b.exercise ? _escAudit(b.exercise) : '<span style="color:var(--text3);">—</span>';
+      const n = _escAudit(b.name);
+      return `<div style="display:flex;gap:8px;align-items:center;padding:4px 8px;border-bottom:1px solid var(--border);">
+        <span style="flex:1;word-break:break-all;cursor:pointer;" data-action="admToggleDetail" data-name="${n}" data-idx="${i}" title="點看詳情">${n}</span>
+        <span style="width:60px;">${_triggerLabel(b)}</span>
+        <span style="width:90px;word-break:break-all;">${ex}</span>
+        <span style="width:52px;text-align:right;color:var(--text3);">${_fmtBytes(b.size_bytes)}</span>
+        <span style="width:182px;display:flex;gap:4px;">
+          <button class="login-btn" data-action="admToggleDetail" data-name="${n}" data-idx="${i}"
+                  style="background:var(--bg3);font-size:10px;padding:2px 6px;" title="內容清單 / 演習 / 建立時間">詳情</button>
+          <button class="login-btn" data-action="admDownloadBackup" data-name="${n}"
+                  style="background:var(--bg3);font-size:10px;padding:2px 6px;">下載</button>
+          <button class="login-btn" data-action="admRestoreFromList" data-name="${n}"
+                  style="background:var(--red);color:#fff;border:none;font-size:10px;padding:2px 6px;">還原</button>
+        </span>
+      </div>
+      <div id="bk-det-${i}" style="display:none;padding:6px 12px;background:var(--bg);border-bottom:1px solid var(--border);color:var(--text2);"></div>`;
+    }).join('');
+  } catch { box.innerHTML = '<div style="padding:8px;color:var(--red);">載入失敗</div>'; }
+}
+
+// master-detail accordion：點檔名/詳情 → 在該列正下方展開 manifest（首開 lazy fetch）
+export async function admToggleDetail(name, idx) {
+  const box = el('bk-det-' + idx);
+  if (!box) return;
+  const opening = box.style.display === 'none';
+  box.style.display = opening ? '' : 'none';
+  if (opening && !box.dataset.loaded) {
+    box.textContent = '載入中…';
+    try {
+      const r = await authFetch(API_BASE + '/api/admin/user-data-backups/' + encodeURIComponent(name) + '/manifest');
+      if (!r.ok) { box.textContent = '無法讀取詳情（' + r.status + '）'; return; }
+      box.innerHTML = _renderManifest((await r.json()).manifest);
+      box.dataset.loaded = '1';
+    } catch (e) { box.textContent = '錯誤：' + e.message; }
+  }
+}
+
+// 下載加密備份檔（存 USB / 異地）。authFetch 取檔 → blob → 觸發瀏覽器下載。
+export async function admDownloadBackup(name) {
+  try {
+    const r = await authFetch(API_BASE + '/api/admin/user-data-backups/' + encodeURIComponent(name) + '/download');
+    if (!r.ok) { alert('下載失敗（' + r.status + '）'); return; }
+    const blob = await r.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  } catch (e) { alert('下載錯誤：' + e.message); }
+}
+
+export async function admBackupNow() {
+  if (!confirm('立即執行整包 data/ 備份？')) return;
+  const detail = el('adm-backup-detail');
+  try {
+    const r = await authFetch(API_BASE + '/api/admin/user-data-backups', { method: 'POST' });
+    if (!r.ok) { alert('備份失敗（' + r.status + '）：' + ((await r.json().catch(() => ({}))).detail || '')); return; }
+    const d = await r.json();
+    if (detail) detail.textContent = `✅ 備份完成：${_fmtBytes(d.size_bytes)}（${d.manifest.files.length} 檔）`;
+    admRefreshBackups();
+  } catch (e) { alert('錯誤：' + e.message); }
+}
+
+function _renderManifest(m) {
+  const ex = m.exercise
+    ? `演習：${_escAudit(m.exercise.name)}（${_escAudit(m.exercise.type)} / ${_escAudit(m.exercise.status)}）`
+    : '演習：（無 — 實戰池 / 系統層）';
+  const files = (m.files || []).map(f => `<li>${_escAudit(f)}</li>`).join('');
+  return `建立：${_escAudit(m.created_at)} · app ${_escAudit(m.app_version)} · 來源：${_escAudit(m.trigger)}<br>${ex}`
+    + ` · ${(m.files || []).length} 檔<ul style="columns:2;margin:4px 0;">${files}</ul>`;
+}
+
+function _renderRestoreResult(d) {
+  const detail = el('adm-backup-detail');
+  if (!detail) return;
+  detail.innerHTML = `<span style="color:var(--green);">✅ 還原完成`
+    + (d.pre_restore ? `（當前已備份為 <code>${_escAudit(d.pre_restore)}</code>）` : '') + '</span>'
+    + '<br><span style="color:var(--yellow);">⚠️ 請重啟指揮部服務讓新資料生效。</span><br>' + _renderManifest(d.manifest);
+}
+
+// 還原清單裡某一筆（伺服器端，免下載再上傳）
+export async function admRestoreFromList(name) {
+  if (!confirm(`確定以「${name}」覆蓋當前 data/？\n系統會先自動備份當前為 pre-restore-*，還原後需重啟服務。`)) return;
+  try {
+    const r = await authFetch(API_BASE + '/api/admin/user-data-backups/' + encodeURIComponent(name) + '/restore', { method: 'POST' });
+    if (!r.ok) { alert('還原失敗（' + r.status + '）：' + ((await r.json().catch(() => ({}))).detail || '')); return; }
+    _renderRestoreResult(await r.json());
+    admRefreshBackups();
+  } catch (e) { alert('錯誤：' + e.message); }
+}
+
+// 從外部檔（USB / 異地拿回）上傳還原
+export async function admRestore() {
+  const input = el('adm-restore-file');
+  if (!input || !input.files || !input.files[0]) { alert('請先選擇 .tar.gz.enc 備份檔'); return; }
+  const f = input.files[0];
+  if (!f.name.endsWith('.enc')) { alert('僅接受 .tar.gz.enc 整包備份檔'); return; }
+  if (!confirm(`確定以「${f.name}」覆蓋當前 data/？\n系統會先自動備份當前為 pre-restore-*，還原後需重啟服務。`)) return;
+  const fd = new FormData();
+  fd.append('file', f);
+  try {
+    const r = await authFetch(API_BASE + '/api/admin/restore', { method: 'POST', body: fd });
+    if (!r.ok) { alert('還原失敗（' + r.status + '）：' + ((await r.json().catch(() => ({}))).detail || '')); return; }
+    _renderRestoreResult(await r.json());
+    admRefreshBackups();
+  } catch (e) { alert('錯誤：' + e.message); }
 }
 
 // P2-24（#164）：把 status 物件描述成系統 tab 的唯讀連線狀態行。

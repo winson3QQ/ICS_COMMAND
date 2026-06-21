@@ -39,6 +39,9 @@ BACKUP_FILENAME_PATTERN = "ics-%Y-%m-%dT%H-%M-%SZ.db.gz"
 # #41 Sync v3: 加密 backup 檔名 = .db.gz + .enc 後綴疊加 (對齊既有 ISO 8601 + .enc)
 BACKUP_ENCRYPTED_FILENAME_PATTERN = "ics-%Y-%m-%dT%H-%M-%SZ.db.gz.enc"
 # #41 E-3: 加密 key 從 env var 讀取 (production 部署時 deploy SOP 設定)
+# P1-12b（#228）：統一金鑰來源 = BACKUP_KEY（HKDF child[0]，unlock_key.py 提供）優先，
+# fallback 舊 BACKUP_ENCRYPTION_KEY（過渡相容）。與 user_data_backup_service 同源。
+BACKUP_KEY_ENV = "BACKUP_KEY"
 BACKUP_ENCRYPTION_KEY_ENV = "BACKUP_ENCRYPTION_KEY"
 
 
@@ -101,11 +104,11 @@ def _load_encryption_key() -> bytes:
     Raises:
         RuntimeError: env var 未設定 (production deploy SOP 必須設此 env var)
     """
-    key = os.getenv(BACKUP_ENCRYPTION_KEY_ENV)
+    key = os.getenv(BACKUP_KEY_ENV) or os.getenv(BACKUP_ENCRYPTION_KEY_ENV)
     if not key:
         raise RuntimeError(
-            f"{BACKUP_ENCRYPTION_KEY_ENV} env var 未設定 — "
-            f"加密 backup 必需此 key (E-3 frozen)。"
+            f"{BACKUP_KEY_ENV}（或舊 {BACKUP_ENCRYPTION_KEY_ENV}）env var 未設定 — "
+            f"加密 backup 必需此 key。P1-12a unlock_key.py 提供 BACKUP_KEY，或"
             f"產生: python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())'"
         )
     return key.encode() if isinstance(key, str) else key

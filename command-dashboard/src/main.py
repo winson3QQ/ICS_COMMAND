@@ -40,6 +40,7 @@ from routers import (
     admin,
     ai,
     auth,
+    backup_restore,
     backups,
     chat,
     config_router,
@@ -146,6 +147,27 @@ async def lifespan(app: FastAPI):
     from services.realtime_hub import cop_hub
 
     await cop_hub.close_all()
+    # P1-12b（#228）L3 防呆：正常 shutdown 前 best-effort 備份整包 data/。
+    # 失敗不擋關機（資料保護是加分，非阻斷）；未設 BACKUP_KEY 的部署直接略過。
+    await _best_effort_shutdown_backup()
+
+
+async def _best_effort_shutdown_backup() -> None:
+    import os
+
+    from core.config import DATA_DIR
+    from services import user_data_backup_service as uds
+
+    if not (os.getenv(uds.BACKUP_KEY_ENV) or os.getenv(uds.LEGACY_KEY_ENV)):
+        return  # 無金鑰（dev / 未 enroll）→ 不嘗試，避免噪音
+    try:
+        await asyncio.wait_for(
+            asyncio.to_thread(uds.create_backup, DATA_DIR, DATA_DIR / "backups", trigger="shutdown"),
+            timeout=30,
+        )
+        log.info("[backup] shutdown best-effort 備份完成")
+    except Exception:
+        log.warning("[backup] shutdown 備份失敗（best-effort，不擋關機）", exc_info=True)
 
 
 init_logging()  # C1-D：structlog 初始化，在 app 建立前呼叫
@@ -213,6 +235,7 @@ for router in (
     decisions.router,
     admin.router,
     backups.router,
+    backup_restore.router,  # P1-12b（#228）整包 data/ 備份 + GUI 還原
     ingress.router,
     sync.router,
     manual.router,

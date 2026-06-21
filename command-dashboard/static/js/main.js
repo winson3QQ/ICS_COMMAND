@@ -19,6 +19,7 @@ import {
   exportDashboardJSON, showAuditLog,
   openAdminPanel, closeAdminPanel, adminLogin,
   admShowTab, admShowSys, admChangeAdminPin,
+  admBackupNow, admRefreshBackups, admToggleDetail, admToggleBackupList, admRestore, admDownloadBackup, admRestoreFromList,
   unlockPinLock, setModalHandlers,
   canAccessMapObjects, canCreateEvents, canUseRealModeControls,
   startSessionStatusPolling, continueSessionFromWarning, logoutFromSessionWarning,
@@ -193,6 +194,14 @@ document.addEventListener('click', function (e) {
     case 'adminLogin':     adminLogin(); break;
     case 'admShowTab':     admShowTab(btn.dataset.tab); break;
     case 'admShowSys':     admShowSys(); break;
+    // P1-12b（#228）整包備份 / 還原（admin 系統 tab）
+    case 'admBackupNow':      admBackupNow(); break;
+    case 'admRefreshBackups': admRefreshBackups(); break;
+    case 'admToggleDetail':   admToggleDetail(btn.dataset.name, btn.dataset.idx); break;
+    case 'admToggleBackupList': admToggleBackupList(); break;
+    case 'admDownloadBackup': admDownloadBackup(btn.dataset.name); break;
+    case 'admRestoreFromList': admRestoreFromList(btn.dataset.name); break;
+    case 'admRestore':        admRestore(); break;
     case 'admChangePin':
     case 'adm-change-pin': admChangeAdminPin(); break;
     case 'adm-toggle-tak': import('./auth.js').then(m => m.admToggleTak()); break;

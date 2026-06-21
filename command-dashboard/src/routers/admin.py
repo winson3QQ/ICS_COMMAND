@@ -56,6 +56,12 @@ from schemas.admin import (
 )
 from services.realtime_hub import cop_hub  # issue #29 PR-G1b：reset 後廣播 resync
 
+import asyncio  # noqa: E402 — P1-12b L3 pre-destructive backup
+
+import structlog  # noqa: E402
+
+log = structlog.get_logger()
+
 router = APIRouter(prefix="/api/admin", tags=["account-admin"])
 
 
@@ -68,6 +74,36 @@ def _session_role(session: dict) -> str | None:
 
 def _check_system_admin(request: Request) -> dict:
     return require_role(ROLE_SYSADMIN)(validate_session(request))
+
+
+async def _require_reset_confirm(request: Request) -> None:
+    """P1-12b OP-2：不可逆操作強制 body 帶 {"confirm": "RESET"}（422）。
+
+    在 _check_system_admin 之後呼叫，故 RBAC（403）仍先於 body 驗證 —— 不依賴
+    前端 dialog，後端硬擋誤觸。
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        body = None
+    if not isinstance(body, dict) or body.get("confirm") != "RESET":
+        raise HTTPException(422, '不可逆操作：需在 body 帶 {"confirm": "RESET"} 確認')
+
+
+async def _pre_destructive_backup(trigger: str) -> str | None:
+    """P1-12b L3：不可逆操作前 best-effort 整包備份。無金鑰（dev）→ None；
+    失敗不擋操作（記 warning + audit 留 None）。"""
+    from core.config import DATA_DIR
+    from services import user_data_backup_service as uds
+
+    if not uds.key_available():
+        return None
+    try:
+        res = await asyncio.to_thread(uds.create_backup, DATA_DIR, DATA_DIR / "backups", trigger=trigger)
+        return res.path.name
+    except Exception:
+        log.warning("pre_destructive_backup_failed", msg=f"{trigger} 前備份失敗（best-effort）", exc_info=True)
+        return None
 
 
 def _check_admin_pin(request: Request) -> dict:
@@ -221,6 +257,8 @@ def change_pin(body: AdminPinIn, request: Request):
 @router.post("/reset-db", tags=["system"])
 async def reset_db(request: Request):
     sess = _check_system_admin(request)
+    await _require_reset_confirm(request)  # OP-2
+    pre_backup = await _pre_destructive_backup("pre-reset-db")  # L3
     tables = [
         "snapshots",
         "events",
@@ -247,17 +285,19 @@ async def reset_db(request: Request):
                 conn.execute(f"DELETE FROM {table}")  # nosec B608
             except Exception:
                 pass
-    audit(sess["username"], None, "db_reset", "system", "all", {"tables": tables})
+    audit(sess["username"], None, "db_reset", "system", "all", {"tables": tables, "pre_backup": pre_backup})
     # issue #29 PR-G1b：cop_entities 被 raw SQL 清空、不會自動發 per-entity WS delete。
     # 廣播 resync → 各 client 重新 GET /api/cop/entities 對帳（清掉 server 已無者），
     # 否則其他瀏覽器的事件/圖釘殘留到手動 reload。exercise_id=None → 廣播給所有連線。
     await cop_hub.broadcast_all({"op": "resync"})  # P1-14：strict wants 後改 broadcast_all 確保全連線收到
-    return {"ok": True, "cleared_tables": tables}
+    return {"ok": True, "cleared_tables": tables, "pre_backup": pre_backup}
 
 
 @router.post("/reset-exercise", tags=["system"])
 async def reset_exercise(request: Request):
     sess = _check_system_admin(request)
+    await _require_reset_confirm(request)  # OP-2
+    pre_backup = await _pre_destructive_backup("pre-reset-exercise")  # L3
     ex_tables = ["ttx_injects", "exercises", "resource_snapshots", "aar_entries",
                  "ai_recommendations", "exercise_kpis"]
     # issue #29 PR-G1b：cop_entities 有 exercise_id，演習重設一併清演習場域的 COP 圖釘
@@ -278,9 +318,9 @@ async def reset_exercise(request: Request):
                 cleared[table] = cur.rowcount
             except Exception:
                 pass
-    audit(sess["username"], None, "exercise_reset", "system", "all", {"cleared": cleared})
+    audit(sess["username"], None, "exercise_reset", "system", "all", {"cleared": cleared, "pre_backup": pre_backup})
     await cop_hub.broadcast_all({"op": "resync"})  # P1-14：strict wants 後改 broadcast_all 確保全連線收到  # 同 reset-db：各 client 對帳清掉演習場域圖釘
-    return {"ok": True, "cleared": cleared}
+    return {"ok": True, "cleared": cleared, "pre_backup": pre_backup}
 
 
 @router.post("/suspend-all")
