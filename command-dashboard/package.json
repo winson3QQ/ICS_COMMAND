@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "lint": "eslint static/js tests/js",
-    "test": "vitest run"
+    "test": "vitest run",
+    "build:min": "npx --yes esbuild@0.24.0 static/js/*.js --minify --legal-comments=none --outdir=dist-min/js --log-level=warning"
   },
   "devDependencies": {
     "eslint": "^9.25.1",
