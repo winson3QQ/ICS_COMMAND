@@ -910,9 +910,9 @@ export function admShowData() {
         <button class="login-btn" data-action="admBackupNow" style="max-width:160px;">立即整包備份</button>
         <button class="login-btn" data-action="admRefreshBackups" style="max-width:120px;background:var(--bg3);">重新整理</button>
       </div>
-      <div id="adm-backup-list" style="margin-top:10px;font-size:11px;"></div>
+      <div id="adm-backup-detail" style="margin-top:8px;font-size:11px;color:var(--text2);min-height:16px;"></div>
+      <div id="adm-backup-list" style="margin-top:6px;font-size:11px;max-height:280px;overflow-y:auto;border:1px solid var(--border);border-radius:4px;"></div>
       <div id="adm-backup-dir" style="margin-top:6px;font-size:10px;color:var(--text3);"></div>
-      <div id="adm-backup-detail" style="margin-top:10px;font-size:11px;color:var(--text2);min-height:16px;"></div>
       <div style="margin-top:14px;border-top:1px dashed var(--border);padding-top:12px;">
         <div style="font-size:12px;color:var(--text2);margin-bottom:6px;">⤴ 從外部檔還原（USB / 異地拿回的 .enc）。覆蓋當前 data/、先自動備份當前、有進行中演習則拒絕、還原後需重啟。清單裡的備份請用該筆的「還原此筆」。</div>
         <input id="adm-restore-file" type="file" accept=".enc" style="font-size:11px;max-width:300px;">
@@ -961,28 +961,49 @@ export async function admRefreshBackups() {
     const d = await r.json();
     const dir = el('adm-backup-dir');
     if (dir) dir.textContent = '伺服器備份目錄：' + (d.backup_dir || '—');
-    if (!d.backups.length) { box.innerHTML = '<span style="color:var(--text3);">（尚無整包備份）</span>'; return; }
-    box.innerHTML = `<div style="display:flex;gap:8px;color:var(--text3);font-weight:600;padding:2px 0;border-bottom:1px solid var(--border);">
-        <span style="flex:1;">檔名</span><span style="width:64px;">來源</span><span style="width:100px;">演習</span>
-        <span style="width:56px;text-align:right;">大小</span><span style="width:190px;"></span>
-      </div>` + d.backups.map(b => {
-      const ex = b.exercise ? _escAudit(b.exercise) : '<span style="color:var(--text3);">—</span>';
-      return `<div style="display:flex;gap:8px;align-items:center;padding:3px 0;border-bottom:1px solid var(--border);">
-        <span style="flex:1;word-break:break-all;">${_escAudit(b.name)}</span>
-        <span style="width:64px;">${_triggerLabel(b)}</span>
-        <span style="width:100px;word-break:break-all;">${ex}</span>
-        <span style="width:56px;text-align:right;color:var(--text3);">${_fmtBytes(b.size_bytes)}</span>
-        <span style="width:190px;display:flex;gap:4px;">
-          <button class="login-btn" data-action="admPreviewBackup" data-name="${_escAudit(b.name)}"
-                  style="background:var(--bg3);font-size:10px;padding:2px 6px;" title="看內容清單 / 演習 / 建立時間">詳情</button>
-          <button class="login-btn" data-action="admDownloadBackup" data-name="${_escAudit(b.name)}"
-                  style="background:var(--bg3);font-size:10px;padding:2px 6px;">下載</button>
-          <button class="login-btn" data-action="admRestoreFromList" data-name="${_escAudit(b.name)}"
-                  style="background:var(--red);color:#fff;border:none;font-size:10px;padding:2px 6px;">還原此筆</button>
-        </span>
+    if (dir) dir.textContent += `　·　共 ${d.total} 筆`;
+    if (!d.backups.length) { box.innerHTML = '<div style="padding:8px;color:var(--text3);">（尚無整包備份）</div>'; return; }
+    const head = `<div style="position:sticky;top:0;background:var(--bg2);display:flex;gap:8px;color:var(--text3);font-weight:600;padding:4px 8px;border-bottom:1px solid var(--border);">
+        <span style="flex:1;">檔名</span><span style="width:60px;">來源</span><span style="width:90px;">演習</span>
+        <span style="width:52px;text-align:right;">大小</span><span style="width:182px;"></span>
       </div>`;
+    box.innerHTML = head + d.backups.map((b, i) => {
+      const ex = b.exercise ? _escAudit(b.exercise) : '<span style="color:var(--text3);">—</span>';
+      const n = _escAudit(b.name);
+      return `<div style="display:flex;gap:8px;align-items:center;padding:4px 8px;border-bottom:1px solid var(--border);">
+        <span style="flex:1;word-break:break-all;cursor:pointer;" data-action="admToggleDetail" data-name="${n}" data-idx="${i}" title="點看詳情">${n}</span>
+        <span style="width:60px;">${_triggerLabel(b)}</span>
+        <span style="width:90px;word-break:break-all;">${ex}</span>
+        <span style="width:52px;text-align:right;color:var(--text3);">${_fmtBytes(b.size_bytes)}</span>
+        <span style="width:182px;display:flex;gap:4px;">
+          <button class="login-btn" data-action="admToggleDetail" data-name="${n}" data-idx="${i}"
+                  style="background:var(--bg3);font-size:10px;padding:2px 6px;" title="內容清單 / 演習 / 建立時間">詳情</button>
+          <button class="login-btn" data-action="admDownloadBackup" data-name="${n}"
+                  style="background:var(--bg3);font-size:10px;padding:2px 6px;">下載</button>
+          <button class="login-btn" data-action="admRestoreFromList" data-name="${n}"
+                  style="background:var(--red);color:#fff;border:none;font-size:10px;padding:2px 6px;">還原</button>
+        </span>
+      </div>
+      <div id="bk-det-${i}" style="display:none;padding:6px 12px;background:var(--bg);border-bottom:1px solid var(--border);color:var(--text2);"></div>`;
     }).join('');
-  } catch { box.innerHTML = '<span style="color:var(--red);">載入失敗</span>'; }
+  } catch { box.innerHTML = '<div style="padding:8px;color:var(--red);">載入失敗</div>'; }
+}
+
+// master-detail accordion：點檔名/詳情 → 在該列正下方展開 manifest（首開 lazy fetch）
+export async function admToggleDetail(name, idx) {
+  const box = el('bk-det-' + idx);
+  if (!box) return;
+  const opening = box.style.display === 'none';
+  box.style.display = opening ? '' : 'none';
+  if (opening && !box.dataset.loaded) {
+    box.textContent = '載入中…';
+    try {
+      const r = await authFetch(API_BASE + '/api/admin/user-data-backups/' + encodeURIComponent(name) + '/manifest');
+      if (!r.ok) { box.textContent = '無法讀取詳情（' + r.status + '）'; return; }
+      box.innerHTML = _renderManifest((await r.json()).manifest);
+      box.dataset.loaded = '1';
+    } catch (e) { box.textContent = '錯誤：' + e.message; }
+  }
 }
 
 // 下載加密備份檔（存 USB / 異地）。authFetch 取檔 → blob → 觸發瀏覽器下載。
@@ -1018,16 +1039,6 @@ function _renderManifest(m) {
   const files = (m.files || []).map(f => `<li>${_escAudit(f)}</li>`).join('');
   return `建立：${_escAudit(m.created_at)} · app ${_escAudit(m.app_version)} · 來源：${_escAudit(m.trigger)}<br>${ex}`
     + ` · ${(m.files || []).length} 檔<ul style="columns:2;margin:4px 0;">${files}</ul>`;
-}
-
-export async function admPreviewBackup(name) {
-  const detail = el('adm-backup-detail');
-  try {
-    const r = await authFetch(API_BASE + '/api/admin/user-data-backups/' + encodeURIComponent(name) + '/manifest');
-    if (!r.ok) { alert('無法讀取 manifest（' + r.status + '）'); return; }
-    const d = await r.json();
-    if (detail) detail.innerHTML = `<b>${_escAudit(name)}</b><br>` + _renderManifest(d.manifest);
-  } catch (e) { alert('錯誤：' + e.message); }
 }
 
 function _renderRestoreResult(d) {

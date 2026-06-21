@@ -19,7 +19,7 @@ import {
   exportDashboardJSON, showAuditLog,
   openAdminPanel, closeAdminPanel, adminLogin,
   admShowTab, admShowSys, admChangeAdminPin,
-  admBackupNow, admRefreshBackups, admPreviewBackup, admRestore, admDownloadBackup, admRestoreFromList,
+  admBackupNow, admRefreshBackups, admToggleDetail, admRestore, admDownloadBackup, admRestoreFromList,
   unlockPinLock, setModalHandlers,
   canAccessMapObjects, canCreateEvents, canUseRealModeControls,
   startSessionStatusPolling, continueSessionFromWarning, logoutFromSessionWarning,
@@ -197,7 +197,7 @@ document.addEventListener('click', function (e) {
     // P1-12b（#228）整包備份 / 還原（admin 系統 tab）
     case 'admBackupNow':      admBackupNow(); break;
     case 'admRefreshBackups': admRefreshBackups(); break;
-    case 'admPreviewBackup':  admPreviewBackup(btn.dataset.name); break;
+    case 'admToggleDetail':   admToggleDetail(btn.dataset.name, btn.dataset.idx); break;
     case 'admDownloadBackup': admDownloadBackup(btn.dataset.name); break;
     case 'admRestoreFromList': admRestoreFromList(btn.dataset.name); break;
     case 'admRestore':        admRestore(); break;
