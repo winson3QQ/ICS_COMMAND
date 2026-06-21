@@ -12,16 +12,42 @@
 | 2. 開 issue + branch | （Code 自己 ask）「開 issue + branch ok?」→ 你回 `ok` | `gh issue create` + `git checkout -b feat/issue-NN-xxx` |
 | 3. 實作 | （Code 自己做）| 寫 code + 補測 + 跑 `pytest` |
 | 4. Push branch + 開 PR | （Code ask）「push branch + 開 PR ok?」→ 你回 `ok` | `git push -u origin <branch>` + `gh pr create`（PR 套用 [PR template](../.github/PULL_REQUEST_TEMPLATE.md)，§8 verification script 必填）|
-| 5. **Human verify** | `/verify`，並在 prompt 指明「跑 PR #N 描述裡的 §8 script」 | `/verify` skill 啟動 app + 跑 script + 截圖 |
+| **4.5 部署到驗證環境（dogfood）** | （Code ask）「build + 上線 ics-command ok?」→ 你回 `ok` | 把 branch 改動 build 成 image 推上 prod 容器供真機/公網驗（見下方〈部署〉）。**改動若無法在 unit/preview 驗（真機 mTLS、iOS、跨裝置、公網行為）才需要**；純邏輯/測試覆蓋得到的可略。 |
+| 5. **Human verify** | `/verify`，或直接從**已部署的真機/公網**驗 | `/verify` skill 啟動 app + 跑 script + 截圖；或使用者實機驗（如手機公網登入、憑證安裝），結果 `VERIFY-PASS`/`FAIL` 留痕 PR comment |
 | 6. **Code review** | `/code-review` | skill spawn subagent 看 diff 找正確性 bug |
 | 7. **Security review** | `/security-review` | skill spawn subagent 看供應鏈 / auth / CSP |
 | **7.5 Quality gate** | （Arch 指示 Code 跑）`python3 scripts/doc_sync_check.py` | exit 0 才可 merge；非 0 → 回 CA 修 doc-vs-code drift |
 | 8. Merge + push main | （Code ask）「merge + push main ok?」→ 你回 `ok` | `gh pr merge --squash` 即可；Codeberg mirror 由 `.github/workflows/mirror-to-codeberg.yml` 自動補（需先設 `CODEBERG_TOKEN` secret） |
 | **8.5 ROADMAP tick** | （Code 自動）merge 完同一輪內動作 | `docs/ROADMAP.md` 該 item row 開頭加 ✅ + 寫入 `(#PR, commit hash)`；**不是事後想到才補** — 漏勾就違反本步驟。狀態 marker 約定見 [ROADMAP 開頭](ROADMAP.md#狀態-marker-約定) |
 | 9. Tag（若版號升） | （Code ask）「tag command-vX.Y.Z ok?」→ 你回 `ok` | `git tag` + `git push --tags` |
+| **9.5 Release 重部署** | （Code ask）「乾淨 build 上線 ok?」→ 你回 `ok` | merge 後用**乾淨 merge sha** 重 build（`ICS_BUILD_ID=release-<sha>-<time>`，去掉 dirty 標記）+ force-recreate，讓 prod 跑 main 的正式 build（見〈部署〉）。 |
 | 10. Memory（若有非顯而易見決策）| （Code ask）「memory 寫 X，ok?」→ 你回 `ok` | 寫 `.claude/memory/<slug>.md` + commit |
 
-**Human 真正打的字**：6 個 `ok` + 3 個 `/skill`。其餘 Code 自為。`doc_sync_check` 由 Arch 在步驟 7.5 自動把關，**不需要你動手**。
+**Human 真正打的字**：6 個核心 `ok` + 3 個 `/skill` + 部署 `ok`（4.5 dogfood / 9.5 release，視改動需不需要）。其餘 Code 自為。`doc_sync_check` 由 Arch 在步驟 7.5 自動把關，**不需要你動手**。
+
+---
+
+## 部署（步驟 4.5 dogfood / 9.5 release）
+
+> 對應 [`deploy/prod/`](../deploy/prod/) 單機棧。**git 操作規則同 CLAUDE.md：部署是 outward-facing 動作，等 Human `ok` 才上線。**
+
+**機制**（兩段都一樣，差別只在 `ICS_BUILD_ID` 標記）：
+```bash
+cd deploy/prod
+# 1. build（OneDrive 同步路徑會失敗，見 deploy/build-env.md / #300）
+#    BUILD_ID 注入登入頁 → 公網/真機可辨識「實際跑哪個 build」（版號常數分不出每次 rebuild）
+docker build --build-arg ICS_BUILD_ID="<marker>" -t ics-command:dev ../../command-dashboard
+#    dogfood（4.5）：marker = fix<NN>-<sha>-dirty-<MMDD.HHMM>（未 merge、working tree dirty）
+#    release（9.5）：marker = release-<merge-sha>-<MMDD.HHMM>（已 merge、乾淨）
+# 2. 上線（force-recreate 僅 ics-command；nginx/step-ca/TAK 不動）
+docker compose --env-file .env up -d --force-recreate ics-command
+```
+
+**規矩**：
+- **保留 `ics-data` / `ca-data` 兩卷** → 帳號 / 憑證綁定 / CA 全不動；force-recreate 僅數秒中斷（nginx 期間短暫 502）。
+- 上線後**驗證 live build**：`docker exec … /api/version` 的 `build` 欄＝你剛注入的 marker；`State.Health.Status=healthy`。
+- **動 auth / RBAC / 憑證的改動，部署前先查 prod 狀態**（例：#306 bootstrap 放行 → 先確認 prod `accounts>1` 或 `account_certs` 非空，確保不會在 live prod 誤開 bootstrap 窗口）。
+- **無法在現役 prod 驗的改動**（如 fresh-deploy bootstrap）→ 用**隔離測試棧**（`docker compose -p <name>` + 獨立卷/port），驗完 `down -v`，不碰 live。
 
 ---
 
