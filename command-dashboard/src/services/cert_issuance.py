@@ -59,22 +59,41 @@ def issue_p12(cert_cn: str) -> bytes:
             f.write(config.STEP_CLIENT_CERT_P12_PASS)
 
         # 1. 取 root（fingerprint 驗證，建立對 daemon API 的信任）
-        r = _run(["ca", "root", root, "--ca-url", config.STEP_CA_URL,
-                  "--fingerprint", config.step_ca_fingerprint(), "-f"])
+        r = _run(
+            ["ca", "root", root, "--ca-url", config.STEP_CA_URL, "--fingerprint", config.step_ca_fingerprint(), "-f"]
+        )
         if r.returncode != 0:
             raise CertIssuanceError(f"取 root 失敗：{_tail(r.stderr)}")
 
         # 2. 向 daemon 請簽（provisioner token；本端不持 CA 鑰）
-        r = _run(["ca", "certificate", cn, crt, key,
-                  "--provisioner", config.STEP_CA_PROVISIONER,
-                  "--provisioner-password-file", pw_file,
-                  "--ca-url", config.STEP_CA_URL, "--root", root,
-                  "--not-after", config.STEP_CLIENT_CERT_DURATION, "-f"])
+        r = _run(
+            [
+                "ca",
+                "certificate",
+                cn,
+                crt,
+                key,
+                "--provisioner",
+                config.STEP_CA_PROVISIONER,
+                "--provisioner-password-file",
+                pw_file,
+                "--ca-url",
+                config.STEP_CA_URL,
+                "--root",
+                root,
+                "--not-after",
+                config.STEP_CLIENT_CERT_DURATION,
+                "-f",
+            ]
+        )
         if r.returncode != 0:
             raise CertIssuanceError(f"簽發被拒：{_tail(r.stderr)}")
 
         # 3. 打包 p12（含私鑰，供瀏覽器/裝置匯入）
-        r = _run(["certificate", "p12", p12, crt, key, "--password-file", p12pw])
+        #    --legacy：PBE+SHA1+RC2（憑證）/ PBE+SHA1+3DES（私鑰）舊式編碼。iOS 不吃 openssl3/
+        #    step 預設的 PBES2/AES-256 p12（會誤報「密碼不正確」），故統一用 legacy 確保 iPhone/
+        #    iPad 可安裝；桌機（Windows/Mac/Linux）對 legacy 同樣相容。dogfood 實證 2026-06-21。
+        r = _run(["certificate", "p12", p12, crt, key, "--password-file", p12pw, "--legacy"])
         if r.returncode != 0:
             raise CertIssuanceError(f"p12 打包失敗：{_tail(r.stderr)}")
 

@@ -67,7 +67,9 @@ WARNING_THRESHOLD_SECONDS: int = int(os.getenv("ICS_WARNING_THRESHOLD_SECONDS", 
 # 進當前 active 場 / 退回 NULL；雙廣播（舊 scope delete / 新 scope create）+ CAS 重試 + audit。
 # PATCH 2.7.1：紅隊公網曝面修補（#286 任意檔寫入 / #287 TTX 授權 / #288 events·decisions 跨場
 # IDOR / #289 nginx headers / #290 部署 fail-closed），行為變更（授權收緊 + 上傳清洗）。
-APP_VERSION = "2.7.1"
+# PATCH 2.7.2：線上發證 p12 改 --legacy（PBE+SHA1+3DES/RC2）—— iOS 不吃 openssl3/step 預設
+# PBES2/AES-256 p12（誤報密碼錯），dogfood 公網實機定位；桌機相容不變（#307）。
+APP_VERSION = "2.7.2"
 
 # CMD_VERSION：前端 UI 功能版本（不同於後端 SemVer APP_VERSION；規則見 CLAUDE.md 版號規則）
 # 兩軌版本命名，不可混用。由 /api/version 提供給前端，是唯一 source-of-truth；release 時更新此值。
@@ -170,6 +172,7 @@ def step_ca_fingerprint() -> str:
 def step_ca_configured() -> bool:
     """線上發證地基是否齊備（URL + provisioner 密碼檔 + root 指紋）。"""
     return bool(STEP_CA_URL and STEP_CA_PROVISIONER_PASSWORD_FILE and step_ca_fingerprint())
+
 
 # ── 認證豁免路由 ──────────────────────────
 # (method, path) 完整匹配

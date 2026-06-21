@@ -64,7 +64,7 @@ services:
       - STEP_CA_PROVISIONER=ics
       - STEP_CA_PROVISIONER_PASSWORD_FILE=/ca-share/prov.pass
       - STEP_CA_FINGERPRINT_FILE=/ca-share/fingerprint
-      - STEP_CLIENT_CERT_DURATION=${STEP_CLIENT_CERT_DURATION:-23h}
+      - STEP_CLIENT_CERT_DURATION=${STEP_CLIENT_CERT_DURATION:-23h}   # ⚠ 23h：step-ca provisioner 預設 maxTLSCertDuration=24h，超過會被拒。90 天（公測長放）須先放寬 provisioner claims（x509-max-dur=2160h）才能調此值 → 見 #279。
       - ICS_PROXY_SHARED_SECRET=${ICS_PROXY_SHARED_SECRET:?ICS_PROXY_SHARED_SECRET 必須設定（見 .env.example）}
       # ── TAK 整合（toggle；純 ICS delivery 下全空、TAK_ENABLED=false）──────────────
       - TAK_ENABLED=${TAK_ENABLED:-false}
