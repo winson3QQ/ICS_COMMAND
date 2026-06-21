@@ -451,34 +451,48 @@ def bind_account_cert(username: str, body: AccountCertBindIn, request: Request):
 
 
 @router.post("/accounts/{username}/certs/issue", tags=["account-admin"])
-def issue_account_cert(username: str, body: AccountCertBindIn, request: Request):
+def issue_account_cert(username: str, body: AccountCertBindIn, request: Request, fmt: str = "p12"):
     """#275 wave B-2：線上發證（選項 i 安全版）。後端呼叫 step-ca daemon 簽證（CA 鑰不進
-    後端）→ 自動綁定 CN ↔ 帳號 → 回傳 p12 下載。未配置 step-ca 時回 503（改走離線簽 + 綁定）。"""
+    後端）→ 自動綁定 CN ↔ 帳號 → 回傳 p12 下載。未配置 step-ca 時回 503（改走離線簽 + 綁定）。
+
+    fmt：`p12`（預設，桌機）或 `mobileconfig`（#312，iOS 描述檔，內嵌密碼免手打）。"""
     sess = _check_system_admin(request)
     account_id = _account_id_or_404(username)
     if not config.step_ca_configured():
         raise HTTPException(503, "線上發證未配置；請用 deploy/step-ca 離線簽 + 手動綁定")
+    if fmt not in ("p12", "mobileconfig"):
+        raise HTTPException(422, "fmt 須為 p12 或 mobileconfig")
     cn = _validated_cert_cn(body)
     if is_cert_active(cn):
         raise HTTPException(409, "此 CN 已被有效綁定")
-    from services.cert_issuance import CertIssuanceError, issue_p12
+    from services.cert_issuance import CertIssuanceError, build_mobileconfig, fetch_root_ca_pem, issue_p12
 
     try:
         p12, p12_pass = issue_p12(cn)
+        root_pem = fetch_root_ca_pem() if fmt == "mobileconfig" else None
     except CertIssuanceError as e:
         raise HTTPException(502, f"發證失敗：{e}") from e
     bind_cert(account_id, cn, body.label, sess["username"])
-    # #307：密碼不進 audit / log（與 p12 同走 TLS 回管理者，由面板顯示供轉交）。
+    # #307：密碼不進 audit / log（與 p12/描述檔同走 TLS 回管理者）。
     audit(
         sess["username"],
         None,
         "cert_issue",
         "account_certs",
         cn,
-        {"account_id": account_id, "cert_cn": cn, "online": True},
+        {"account_id": account_id, "cert_cn": cn, "online": True, "fmt": fmt},
     )
     # cn 已過 is_valid_cert_cn（無逗號/控制字元）；filename 再收斂為 alnum+-_.
     safe = "".join(c for c in cn if c.isalnum() or c in "-_.") or "client"
+    if fmt == "mobileconfig":
+        # #312：iOS 描述檔，密碼已內嵌（不另回 X-P12-Password）。x-forwarded-host 經 nginx。
+        host = request.headers.get("x-forwarded-host") or request.headers.get("host") or "ics"
+        mc = build_mobileconfig(cn, p12, p12_pass, root_pem, f"https://{host}/")
+        return Response(
+            content=mc,
+            media_type="application/x-apple-aspen-config",
+            headers={"Content-Disposition": f'attachment; filename="{safe}.mobileconfig"'},
+        )
     # X-P12-Password：同源回應，前端可直接讀 header 顯示密碼（#307 衍生子缺口）。
     return Response(
         content=p12,

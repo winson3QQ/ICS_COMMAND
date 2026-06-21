@@ -71,16 +71,19 @@ WARNING_THRESHOLD_SECONDS: int = int(os.getenv("ICS_WARNING_THRESHOLD_SECONDS", 
 # PBES2/AES-256 p12（誤報密碼錯），dogfood 公網實機定位；桌機相容不變（#307）。
 # PATCH 2.7.3：p12 匯入密碼改每張隨機（廢弱默認 icsclient，對齊 threat_model H6）+ 經
 # X-P12-Password header 回前端顯示（行為變更，非新介面）（#307 衍生子缺口）。
-APP_VERSION = "2.7.3"
+# MINOR 2.8.0：線上發證新增 iOS .mobileconfig 格式（/certs/issue?fmt=mobileconfig；root CA +
+# p12 + 內嵌密碼一包，iOS 安裝免打憑證密碼）+ build_mobileconfig/fetch_root_ca_pem（#312）。
+APP_VERSION = "2.8.0"
 
 # CMD_VERSION：前端 UI 功能版本（不同於後端 SemVer APP_VERSION；規則見 CLAUDE.md 版號規則）
 # 兩軌版本命名，不可混用。由 /api/version 提供給前端，是唯一 source-of-truth；release 時更新此值。
 # v1.0.0：拆分自 ICS_DMAS 後首個完整可用形態（MapLibre 地圖引擎全換 P1-10b + PWA 移除 P1-11
 #         + 演習/放置/稽核 UI P1-13/14/16/#93 + 分類編輯器 #66）→ 0.x 畢業為 MAJOR 紀元。
 CMD_VERSION: str = os.getenv(
-    "CMD_VERSION", "v1.7.1"
-)  # PATCH v1.7.1：裝置憑證面板 UX（#307）—— 發證後常駐顯示隨機密碼+複製、手動下載/安裝、
-# iOS Web Share 存檔/AirDrop 轉交、revoked 摺疊+清除。MINOR：P2-24 前端尾（#164）TAK runtime
+    "CMD_VERSION", "v1.8.0"
+)  # MINOR v1.8.0：iOS 零打憑證密碼接入（#312）—— 發證格式選單 + .mobileconfig 流程（下載/分享，
+# 密碼內嵌、安裝免打）。v1.7.1：裝置憑證面板 UX（#307）發證顯密碼/下載/分享、revoked 摺疊+清除。
+# MINOR：P2-24 前端尾（#164）TAK runtime
 # 控制 UI 功能組 —— 系統 tab sysadmin 開/關 toggle
 # + 唯讀連線狀態行 + header 燈號認實化（running/configured 區分，消除「沒 task 卻顯斷線重連」謊報）
 # PATCH(v1.4.1)：#265 —— 切換演習後不再需硬重整即即時 render（cop_stream onclose identity guard +

@@ -60,7 +60,10 @@ docker compose run --rm -e CERT_CN=<CN> issue-client
 
 裝置安裝：
 - **桌機（Windows/Mac/Linux）**：直接匯入 `.p12`（個人憑證）+ `root_ca.crt`（受信任根）。瀏覽器連 → 選憑證 → 登入。
-- **iOS（iPhone/iPad）**：必 **Safari**（Chrome 不支援 client cert mTLS）。p12 須 **legacy 格式**（PBE+SHA1+3DES）才裝得了 —— 面板發證已修為 `--legacy`（[#307](https://github.com/winson3QQ/ICS_COMMAND/issues/307) / `cert_issuance.py`）；CLI 用 `openssl pkcs12 -export -legacy` 重打包。最穩是包成 `.mobileconfig`（`ics-validation/mtls/make-ios-profile.py`，內嵌密碼 + root CA），用 **AirDrop / 內建郵件** 開（Files/Chrome/Gmail 只會預覽純文字、不觸發安裝）。
+- **iOS（iPhone/iPad）**：必 **Safari**（Chrome 不支援 client cert mTLS）。
+  - **最穩 = 面板發證時「格式」選「iOS 描述檔」**（[#312](https://github.com/winson3QQ/ICS_COMMAND/issues/312)）→ 後端直接產 `.mobileconfig`（root CA + p12 + **內嵌密碼**一包）→ 開啟即裝、**免打憑證密碼**。把檔案弄到目標機（面板「分享」AirDrop，或 AirDrop / 內建郵件；Files/Chrome/Gmail 只會預覽純文字、不觸發安裝）。
+  - ⚠ 安裝描述檔時 iOS 會要求「**解鎖此裝置的密碼**」＝該機螢幕鎖密碼（裝置層授權），**不是憑證密碼**；「簽署者 未簽署」屬正常（自建描述檔未簽章）。裝好後連網站登入仍需 PIN。
+  - 裸 `.p12` 路徑（不走描述檔）：p12 須 **legacy 格式**（PBE+SHA1+3DES）才裝得了 —— 面板發證已 `--legacy`（[#307](https://github.com/winson3QQ/ICS_COMMAND/issues/307)）；CLI 用 `openssl pkcs12 -export -legacy`。但裸 p12 安裝要**手打憑證密碼**（隨機密碼在 iOS 鍵盤易卡）→ 建議走描述檔。
 
 ## 內網 / LAN 存取
 

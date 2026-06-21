@@ -1334,10 +1334,14 @@ export async function admLoadCerts(username) {
     '<div style="display:flex;gap:4px;margin-top:8px;flex-wrap:wrap;">' +
       '<input id="adm-certcn-' + username + '" placeholder="裝置憑證 CN（如 指揮官-手機）" style="flex:2;min-width:180px;font-family:monospace;">' +
       '<input id="adm-certlabel-' + username + '" placeholder="標籤（選填，如 指揮官手機）" style="flex:1;min-width:120px;">' +
-      '<button class="adm-btn" data-action="adm-issue-cert" data-username="' + username + '" title="線上向 step-ca 簽發並下載 .p12，自動綁定">發憑證</button>' +
+      '<select id="adm-certfmt-' + username + '" title="發證格式：iOS 選描述檔（免打密碼）">' +
+        '<option value="p12">.p12（桌機/Android）</option>' +
+        '<option value="mobileconfig">iOS 描述檔（免打密碼）</option>' +
+      '</select>' +
+      '<button class="adm-btn" data-action="adm-issue-cert" data-username="' + username + '" title="線上向 step-ca 簽發並自動綁定">發憑證</button>' +
       '<button class="adm-btn" data-action="adm-bind-cert" data-username="' + username + '" title="已有離線簽好的憑證時，只綁定 CN">僅綁定</button>' +
     '</div>' +
-    '<div style="font-size:11px;color:var(--text3);margin-top:6px;line-height:1.5;"><b>發憑證</b>：線上向 step-ca 簽一張並下載 .p12（匯入裝置/瀏覽器）+ 自動綁定。<b>僅綁定</b>：已用 deploy/step-ca 離線簽好時，只綁 CN ↔ 帳號。一帳號可綁多台裝置，撤銷即時失效。</div>';
+    '<div style="font-size:11px;color:var(--text3);margin-top:6px;line-height:1.5;"><b>發憑證</b>：線上向 step-ca 簽一張 + 自動綁定。格式選 <b>.p12</b>（桌機，發證後顯示匯入密碼）或 <b>iOS 描述檔</b>（.mobileconfig，密碼內嵌→點開直接裝、免手打）。<b>僅綁定</b>：已離線簽好時只綁 CN ↔ 帳號。一帳號可綁多台，撤銷即時失效。</div>';
 }
 
 export async function admBindCert(username) {
@@ -1357,8 +1361,9 @@ export async function admBindCert(username) {
 export async function admIssueCert(username) {
   const cn = el('adm-certcn-' + username)?.value.trim();
   const label = el('adm-certlabel-' + username)?.value.trim();
+  const fmt = el('adm-certfmt-' + username)?.value || 'p12';
   if (!cn) { alert('請輸入裝置憑證 CN'); return; }
-  const resp = await authFetch(API_BASE + '/api/admin/accounts/' + username + '/certs/issue', {
+  const resp = await authFetch(API_BASE + '/api/admin/accounts/' + username + '/certs/issue?fmt=' + fmt, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ cert_cn: cn, label: label || null }),
@@ -1366,14 +1371,56 @@ export async function admIssueCert(username) {
   if (resp.status === 503) { alert('線上發證未配置（step-ca daemon 未接）。請改用 deploy/step-ca 離線簽好後按「僅綁定」。'); return; }
   if (resp.status === 409) { alert('此 CN 已被有效綁定（撤銷後才可重發）'); return; }
   if (!resp.ok) { alert('發證失敗（' + resp.status + '）：' + (await resp.text()).slice(0, 200)); return; }
-  // #307：p12 匯入密碼每張隨機，由後端 X-P12-Password header 帶回（同源可讀）。
+  // #307：p12 匯入密碼每張隨機，由後端 X-P12-Password header 帶回（同源可讀；mobileconfig 無此 header，密碼已內嵌）。
   const p12pass = resp.headers.get('X-P12-Password') || '';
-  // #307 缺口1：不自動下載。iOS 一拿到 .p12 即攔成安裝、蓋掉畫面 → 改成「先顯示密碼、
-  // 手動點下載」，確保使用者在 iOS 安裝 modal 跳出前已看到並複製密碼。
   const blob = await resp.blob();
   const blobUrl = URL.createObjectURL(blob);
   await admLoadCerts(username);
-  _showP12Result(username, cn, p12pass, blob, blobUrl);
+  if (fmt === 'mobileconfig') {
+    _showMobileconfigResult(username, cn, blob, blobUrl);  // #312：密碼內嵌、不顯示
+  } else {
+    // #307 缺口1：不自動下載。iOS 一拿到 .p12 即攔成安裝、蓋掉畫面 → 先顯示密碼、手動觸發。
+    _showP12Result(username, cn, p12pass, blob, blobUrl);
+  }
+}
+
+// #312：iOS 描述檔發證結果——密碼已內嵌（不顯示），給下載/分享鈕（textContent 防 XSS）。
+function _showMobileconfigResult(username, cn, blob, blobUrl) {
+  const box = el('adm-certs-' + username);
+  if (!box) { URL.revokeObjectURL(blobUrl); return; }
+  const banner = document.createElement('div');
+  banner.style.cssText = 'border:1px solid var(--green,#2ea043);border-radius:6px;padding:8px;margin-bottom:8px;font-size:12px;';
+  const label = document.createElement('div');
+  label.style.cssText = 'color:var(--text2);margin-bottom:6px;line-height:1.5;';
+  label.textContent = '✅ 已產生 iOS 描述檔 ' + cn + '.mobileconfig 並自動綁定（憑證密碼已內嵌、安裝免打）。'
+    + '在目標 iOS 裝置開啟 → 設定 →「已下載描述檔」→ 安裝（含信任根 + 裝置身分）。'
+    + '⚠ 安裝時 iOS 會要求「解鎖此裝置的密碼」＝該 iPhone/iPad 的螢幕鎖密碼，不是憑證密碼；'
+    + '「未簽署」屬正常（自建描述檔未做數位簽章）。裝好後連網站登入仍需 PIN。';
+  const row = document.createElement('div');
+  row.style.cssText = 'display:flex;align-items:center;gap:6px;flex-wrap:wrap;';
+  const dlBtn = document.createElement('button');
+  dlBtn.className = 'adm-btn';
+  dlBtn.textContent = '⬇ 下載描述檔';
+  dlBtn.addEventListener('click', () => {
+    const a = document.createElement('a');
+    a.href = blobUrl; a.download = cn + '.mobileconfig';
+    document.body.appendChild(a); a.click(); a.remove();
+  });
+  row.appendChild(dlBtn);
+  const mcFile = _makeFile(cn + '.mobileconfig', blob, 'application/x-apple-aspen-config');
+  if (mcFile && navigator.canShare?.({ files: [mcFile] })) {
+    const shareBtn = document.createElement('button');
+    shareBtn.className = 'adm-btn';
+    shareBtn.textContent = '📤 分享 / 存檔（轉交別台）';
+    shareBtn.addEventListener('click', async () => {
+      try { await navigator.share({ files: [mcFile], title: cn + '.mobileconfig' }); }
+      catch (e) { if (e?.name !== 'AbortError') alert('分享失敗：' + (e?.message || e)); }
+    });
+    row.appendChild(shareBtn);
+  }
+  banner.appendChild(label);
+  banner.appendChild(row);
+  box.insertBefore(banner, box.firstChild);
 }
 
 // iPhone / iPad（含 iPadOS 13+ 偽裝成 MacIntel）偵測。
@@ -1420,7 +1467,7 @@ function _showP12Result(username, cn, pass, blob, blobUrl) {
 
   // #307 缺口1：iOS 上「下載」會被攔成本機安裝、存不了檔。Web Share API 走 iOS 原生
   // 分享單 → 可「儲存到檔案 / AirDrop」轉交別台裝置。支援檔案分享時才顯示此鈕。
-  const p12File = _makeP12File(cn, blob);
+  const p12File = _makeFile(cn + '.p12', blob, 'application/x-pkcs12');
   const canShare = p12File && navigator.canShare?.({ files: [p12File] });
   if (canShare) {
     const shareBtn = document.createElement('button');
@@ -1450,10 +1497,10 @@ function _showP12Result(username, cn, pass, blob, blobUrl) {
   box.insertBefore(banner, box.firstChild);
 }
 
-// 把 p12 blob 包成 File（Web Share 需要 File 物件）；不支援 File 建構則回 null。
-function _makeP12File(cn, blob) {
+// 把 blob 包成 File（Web Share 需要 File 物件）；不支援 File 建構則回 null。
+function _makeFile(name, blob, type) {
   try {
-    return new window.File([blob], cn + '.p12', { type: 'application/x-pkcs12' });
+    return new window.File([blob], name, { type });
   } catch {
     return null;
   }
