@@ -4709,15 +4709,15 @@
       "name": ""
     },
     "body": "## 來源\n#301 runtime 黑箱（2026-06-22）新發現 L9。`docs/security-audit/redteam-2026-06-20.md` 批次3。\n\n## 發現（事實）\n公網 `1.34.230.218:443` 的 nginx server cert SAN 含內網 IP：\n\\`\\`\\`\nX509v3 Subject Alternative Name:\n    DNS:localhost, IP:127.0.0.1, IP:1.34.230.218, IP:192.168.50.2, IP:10.0.1.16\n\\`\\`\\`\n任何 TLS client（含未授權者，cert 在握手階段即可見、無需過 mTLS）`openssl s_client -connect 1.34.230.218:443 | openssl x509 -ext subjectAltName` 即得 → **免進內網就知內網網段**（`192.168.50.0/24`、`10.0.1.0/24`）。\n\n## 根因\n`deploy/ics-validation/mtls/ca-bootstrap.sh:26-27`：\n\\`\\`\\`sh\nSAN_ARGS=\"--san localhost --san 127.0.0.1\"\nfor s in ${ICS_SERVER_SANS:-}; do SAN_ARGS=\"$SAN_ARGS --san $s\"; done\n\\`\\`\\`\n`ICS_SERVER_SANS`（prod `.env`）原意是「公網 IP/網域寫進 SAN 讓手機連不跳憑證名稱不符」，但**內網 IP 也被一併放入**（dogfood 時為 LAN 存取加的便利值滲入 prod），全寫進對外 cert。\n\n## 嚴重度\n🟡 **LOW**（資訊洩漏；不直接給 RCE/越權，但降低攻擊者偵察成本、洩內網拓樸）。\n\n## 修補方向\n1. **`.env.example` + ca-bootstrap 文件化**：公網部署的 `ICS_SERVER_SANS` **只放公網可達名稱**（公網 IP / DNS），**不得含 RFC1918 內網 IP**（`10/8`、`172.16/12`、`192.168/16`）。內網存取走 split-DNS 或公網 hairpin。\n2. **ca-bootstrap.sh 防呆**：`ICS_ENV=prod` 時若 `ICS_SERVER_SANS` 含 RFC1918 → 警告（或可選擇性過濾），避免 dogfood 內網值滲入正式 cert。\n3. **落地**：清 prod `.env` 的 `ICS_SERVER_SANS` 移除內網 IP → 重跑 ca-bootstrap 重簽 server cert（部署操作）。\n\n## DoD\n- ca-bootstrap 對 prod 含 RFC1918 SAN 有防呆；`.env.example` 文件化公網 cert SAN 衛生。\n- 重簽後 `openssl s_client | openssl x509 -ext subjectAltName` 不再含內網 IP。",
-    "closedAt": null,
+    "closedAt": "2026-06-21T23:56:49Z",
     "comments": [],
     "createdAt": "2026-06-21T23:45:20Z",
     "labels": [],
     "milestone": null,
     "number": 321,
-    "state": "OPEN",
+    "state": "CLOSED",
     "title": "fix(security): L9 公網 server cert SAN 洩內網拓樸（ICS_SERVER_SANS 含 RFC1918 IP）",
-    "updatedAt": "2026-06-21T23:45:20Z",
+    "updatedAt": "2026-06-21T23:56:49Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/321"
   }
 ]

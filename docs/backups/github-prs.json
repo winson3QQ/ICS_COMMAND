@@ -4628,5 +4628,26 @@
     "title": "feat(build): #302 layer-1 — prod build 砍前端註解 + minify（IP 保護）",
     "updatedAt": "2026-06-21T22:07:25Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/320"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "## 摘要\n#301 runtime 黑箱發現 **L9**：公網 `1.34.230.218:443` 的 nginx server cert SAN 含內網 IP（`192.168.50.2` / `10.0.1.16`），任何 TLS client 握手即可讀 → 洩內網拓樸。\n\n## 修法（secure-by-default）\n- `ca-bootstrap.sh`：加 `_is_rfc1918()`，**預設過濾** SAN 裡的 RFC1918 / link-local IP（`10/8`、`172.16/12`、`192.168/16`、`169.254`）；CN 改取第一個保留的對外 SAN；丟棄 + opt-in 皆印警告。\n- `ICS_SERVER_SANS_ALLOW_PRIVATE=true`：純 LAN/dev 明確 opt-in（會印安全警告）。\n- prod + validation **兩棧 compose** 同步接上新變數（預設 `false`）。\n- `.env.example` 文件化公網 cert SAN 衛生。\n\n## 驗證\n- inline shell 單元測試 5 案全綁（含 172.16/12 邊界、CN 退化、warning 分支）。\n- `/code-review`：1 修（驗證棧 compose 漏接變數 → 已對齊兩棧）。\n- `/security-review`：**0**（trusted env、fail-closed CN 退化、無新攻擊面）。\n\n## 落地尾巴（部署操作，非 code）\n清 prod `.env` 的 `ICS_SERVER_SANS` 移內網 IP → 重跑 ca-bootstrap 重簽 server cert → `openssl s_client -connect <host>:443 | openssl x509 -ext subjectAltName` 確認不再含內網 IP（DoD 驗收）。\n\nFixes #321\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+    "closedAt": "2026-06-21T23:56:48Z",
+    "comments": [],
+    "createdAt": "2026-06-21T23:56:31Z",
+    "headRefName": "fix/issue-321-cert-san-internal-ip",
+    "labels": [],
+    "mergedAt": "2026-06-21T23:56:48Z",
+    "number": 322,
+    "state": "MERGED",
+    "title": "fix(security): #321 L9 公網 server cert SAN 過濾 RFC1918 內網 IP",
+    "updatedAt": "2026-06-21T23:56:48Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/322"
   }
 ]
