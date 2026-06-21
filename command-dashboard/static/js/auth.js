@@ -915,7 +915,8 @@ export function admShowData() {
       <div style="font-size:11px;color:var(--text2);margin-bottom:10px;line-height:1.6;max-width:460px;">
         每個備份是整個 <code>data/</code> 的加密快照（資料庫 + 地圖設定 + 上傳檔）。<span style="color:var(--text3);">需部署層設定 BACKUP_KEY。</span><br>
         <b>「來源」欄</b>：<b>手動</b>＝你按鈕建的；<b>演習結束 / 還原前 / 重設前 / 關機</b>＝系統在這些時機<b>自動備份</b>（防呆，怕你忘）。<br>
-        <b>備份到 USB / 異地</b>：按該筆「下載」存出 <code>.tar.gz.enc</code>（已加密，要有 BACKUP_KEY 才能還原），再複製到隨身碟。
+        <b>備份到 USB / 異地</b>：按該筆「下載」存出 <code>.tar.gz.enc</code>（已加密，要有 BACKUP_KEY 才能還原），再複製到隨身碟。<br>
+        <span style="color:var(--text3);">自動保留：留最近 10 筆 / 30 天內；<b>演習結束與還原前備份永久保留</b>，其餘老檔在手動備份時自動清理。</span>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
         <button class="login-btn" data-action="admBackupNow" style="max-width:160px;">立即整包備份</button>

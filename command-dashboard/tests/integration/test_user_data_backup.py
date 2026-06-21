@@ -187,6 +187,36 @@ def test_read_manifest_decrypts_once(key, tmp_path, monkeypatch):
     assert calls["n"] == 1, f"預期解密 1 次，實得 {calls['n']}"
 
 
+def test_retention_protects_archive_and_pre_restore(key, tmp_path):
+    """滾動保留：老的 manual 被刪；archive（演習結束）+ pre-restore 受保護不刪；
+    最新 keep_min 筆一律留。"""
+    from datetime import UTC, datetime, timedelta
+
+    data = tmp_path / "data"
+    _seed_data(data)
+    bd = data / "backups"
+    base = datetime(2026, 1, 1, tzinfo=UTC)
+
+    def mk(trigger, day, pattern=uds.FILENAME_PATTERN):
+        ts = base + timedelta(days=day)
+        return uds.create_backup(data, bd, trigger=trigger, timestamp=ts, filename_pattern=pattern,
+                                 exercise={"id": 1, "name": "E", "type": "ttx", "status": "archived"} if trigger == "archive" else None).path
+
+    old_manual = mk("manual", 0)          # 最老 manual → 應被刪
+    old_archive = mk("archive", 1)        # 老 archive → 保護
+    old_pre = mk("manual", 2, uds.PRE_RESTORE_PATTERN)  # pre-restore 檔名 → 保護
+    recent = [mk("manual", 10 + i) for i in range(12)]  # 最新一批（超過 keep_min=10）
+
+    # now 設在很久以後，使 day0~2 都超出 retain_days
+    deleted = uds.cleanup_user_data_backups(bd, retain_days=30, keep_min=10,
+                                            now=base + timedelta(days=400))
+    names = {p.name for p in deleted}
+    assert old_manual.name in names              # 老 manual 被刪
+    assert old_archive.name not in names         # archive 保護
+    assert old_pre.name not in names             # pre-restore 保護
+    assert all(r.name not in names for r in recent[-10:])  # 最新 keep_min 保留
+
+
 def test_path_traversal_rejected(key, tmp_path, monkeypatch):
     """偽造含 ../ 逃逸路徑的 archive 還原時被拒（current 不動）。"""
     import gzip

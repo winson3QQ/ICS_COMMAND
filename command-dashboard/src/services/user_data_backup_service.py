@@ -29,7 +29,7 @@ import tarfile
 import tempfile
 import time
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import structlog
@@ -45,6 +45,12 @@ BACKUP_SUBDIR = "backups"  # data/backups/ — 備份自身，打包時排除防
 # 金鑰來源（threat_model §8.4：BACKUP_KEY 由 P1-12a unlock 提供 = HKDF child[0]）
 BACKUP_KEY_ENV = "BACKUP_KEY"
 LEGACY_KEY_ENV = "BACKUP_ENCRYPTION_KEY"  # #41 舊路徑，過渡相容
+
+# 滾動保留（rolling retention）：手動會無限累積 → 定期清。保護 archive（演習結束
+# 里程碑）+ pre-restore（還原前防呆）不被自動刪；其餘（manual/shutdown/pre-reset）
+# 留最新 KEEP_MIN 筆，再老於 RETAIN_DAYS 才刪。env 可覆寫。
+RETAIN_DAYS = int(os.getenv("ICS_BACKUP_RETAIN_DAYS", "30"))
+KEEP_MIN = int(os.getenv("ICS_BACKUP_KEEP_MIN", "10"))
 
 
 @dataclass
@@ -345,3 +351,64 @@ def restore_backup(
         "pre_restore": pre_restore_path.name if pre_restore_path else None,
         "restart_required": True,  # 替換熱 DB 檔，需重啟服務讓新連線生效
     }
+
+
+def _parse_ts(name: str) -> datetime | None:
+    """從備份檔名解時間戳（userdata-/pre-restore- 兩 pattern）。"""
+    for pat in (FILENAME_PATTERN, PRE_RESTORE_PATTERN):
+        try:
+            return datetime.strptime(name, pat).replace(tzinfo=UTC)
+        except ValueError:
+            continue
+    return None
+
+
+def _is_archive_backup(path: Path) -> bool:
+    """解密讀 manifest 判斷是否 archive（演習結束）。解不開 → 保守視為「是」（保護）。"""
+    try:
+        return read_manifest(path).get("trigger") == "archive"
+    except Exception:
+        return True  # 無法判定 → 不刪（保守）
+
+
+def cleanup_user_data_backups(
+    backup_dir: Path,
+    *,
+    retain_days: int = RETAIN_DAYS,
+    keep_min: int = KEEP_MIN,
+    now: datetime | None = None,
+) -> list[Path]:
+    """滾動保留：刪老的非保護備份，回傳被刪路徑。
+
+    保護（永不自動刪）：archive（演習結束里程碑）+ pre-restore（還原前防呆，檔名前綴）。
+    其餘（manual/shutdown/pre-reset）：留最新 keep_min 筆；更舊且超過 retain_days 才刪。
+    archive 判定需解密 manifest → 只對「已是刪除候選（夠舊、超出 keep_min、非 pre-restore）」
+    的檔做，省解密。
+    """
+    if not backup_dir.exists():
+        return []
+    cutoff = (now or _now_utc()) - timedelta(days=retain_days)
+    entries: list[tuple[Path, datetime | None, bool]] = []
+    for p in backup_dir.iterdir():
+        if p.is_file() and p.name.endswith(".tar.gz.enc"):
+            entries.append((p, _parse_ts(p.name), p.name.startswith("pre-restore-")))
+    # 最新在前（無法解析時間者排最後、視為最舊）
+    entries.sort(key=lambda e: e[1] or datetime.min.replace(tzinfo=UTC), reverse=True)
+
+    deleted: list[Path] = []
+    for idx, (p, ts, is_pre) in enumerate(entries):
+        if idx < keep_min:
+            continue  # 留最新 keep_min 筆（不論種類）
+        if ts is not None and ts > cutoff:
+            continue  # 仍在保留窗內
+        if is_pre:
+            continue  # 保護 pre-restore
+        if _is_archive_backup(p):
+            continue  # 保護 archive（演習結束）
+        try:
+            p.unlink()
+            deleted.append(p)
+            log.info("userdata_backup_pruned", msg=f"滾動保留刪除 {p.name}", detail={"path": str(p)})
+        except OSError:
+            log.warning("userdata_backup_prune_failed", msg=f"刪除失敗 {p.name}", exc_info=True)
+    return deleted

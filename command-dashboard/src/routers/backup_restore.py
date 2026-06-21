@@ -60,6 +60,11 @@ def trigger_user_data_backup(request: Request):
         sess["username"], None, "user_data_backup_created", "system", res.path.name,
         {"size_bytes": res.size_bytes, "sha256": res.sha256, "trigger": "manual", "files": len(res.manifest["files"])},
     )
+    # 滾動保留：手動是主要累積點，建完順手清老的非保護備份（archive/pre-restore 受保護）
+    pruned = uds.cleanup_user_data_backups(BACKUP_DIR)
+    if pruned:
+        audit(sess["username"], None, "user_data_backup_pruned", "system", "rolling",
+              {"deleted": len(pruned), "retain_days": uds.RETAIN_DAYS, "keep_min": uds.KEEP_MIN})
     return {
         "name": res.path.name,
         "size_bytes": res.size_bytes,
@@ -67,6 +72,7 @@ def trigger_user_data_backup(request: Request):
         "duration_ms": res.duration_ms,
         "timestamp": res.timestamp.isoformat(),
         "manifest": res.manifest,
+        "pruned": len(pruned),
     }
 
 
