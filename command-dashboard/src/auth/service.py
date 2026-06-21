@@ -13,7 +13,7 @@ from fastapi import HTTPException, Request
 
 import core.config as config
 from core.database import get_conn
-from repositories.account_cert_repo import is_cert_active
+from repositories.account_cert_repo import is_cert_active, is_mtls_bootstrap
 
 from .role_enum import normalize_role_pair
 
@@ -90,9 +90,7 @@ def _proxy_trusted(request: Request | None) -> bool:
         return True
     if request is None:
         return False
-    return hmac.compare_digest(
-        request.headers.get("X-Proxy-Auth", ""), config.ICS_PROXY_SHARED_SECRET
-    )
+    return hmac.compare_digest(request.headers.get("X-Proxy-Auth", ""), config.ICS_PROXY_SHARED_SECRET)
 
 
 def client_cert_cn(request: Request | None) -> str | None:
@@ -117,9 +115,7 @@ def _session_dict(row) -> dict:
     return d
 
 
-def create_session(
-    account: dict, request: Request | None = None, cert_cn: str | None = None
-) -> str:
+def create_session(account: dict, request: Request | None = None, cert_cn: str | None = None) -> str:
     token = secrets.token_urlsafe(32)
     role, role_detail = normalize_role_pair(account.get("role"), account.get("role_detail"))
     now = _now_iso()
@@ -213,7 +209,11 @@ def check_session(
             # wave 3：App 層撤銷即時生效——綁定的 CN 一旦被撤（status≠active），
             # 活躍 session 下一個 request 即失效（不必等 token 過期）。
             if not is_cert_active(sess["cert_cn"]):
-                return None, {"event": EVENT_BINDING_MISMATCH_CERT, "session": sess}
+                # #306 bootstrap：全新部署（唯一帳號、零綁定）且出示 nginx 已 CA 驗證的證 →
+                # 放行，讓首位 admin 進面板綁第一張證（綁定後 is_mtls_bootstrap()=False，自動恢復強制）。
+                # cert_cn 一致性（上方）仍強制：session 綁死出示的證，無法中途換證。
+                if not (is_mtls_bootstrap() and client_cert_verified(request)):
+                    return None, {"event": EVENT_BINDING_MISMATCH_CERT, "session": sess}
 
         if touch:
             now_iso = _now_iso()

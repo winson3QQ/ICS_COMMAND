@@ -73,7 +73,9 @@ WARNING_THRESHOLD_SECONDS: int = int(os.getenv("ICS_WARNING_THRESHOLD_SECONDS", 
 # X-P12-Password header 回前端顯示（行為變更，非新介面）（#307 衍生子缺口）。
 # MINOR 2.8.0：線上發證新增 iOS .mobileconfig 格式（/certs/issue?fmt=mobileconfig；root CA +
 # p12 + 內嵌密碼一包，iOS 安裝免打憑證密碼）+ build_mobileconfig/fetch_root_ca_pem（#312）。
-APP_VERSION = "2.8.0"
+# MINOR 2.9.0：mTLS bootstrap 窗口（#306）—— 全新部署（唯一帳號 + account_certs 零 row 單向閂）
+# 下首位 admin 用 CA 已驗的證即可登入+綁第一張證，免手動翻 ICS_MTLS_REQUIRED；綁定後自動關窗。
+APP_VERSION = "2.9.0"
 
 # CMD_VERSION：前端 UI 功能版本（不同於後端 SemVer APP_VERSION；規則見 CLAUDE.md 版號規則）
 # 兩軌版本命名，不可混用。由 /api/version 提供給前端，是唯一 source-of-truth；release 時更新此值。

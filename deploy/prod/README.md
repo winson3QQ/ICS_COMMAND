@@ -38,14 +38,23 @@
 
 ## 首次 onboarding（mTLS bootstrap）— ⚠ 雞生蛋，照順序走
 
-mTLS 登入要求「PIN ＋ **綁定本帳號的裝置憑證**」雙因子。但憑證綁定要先登入才能在面板做 → 第一個 admin 在 `ICS_MTLS_REQUIRED=true` 下**進不去**。目前唯一解是**手動翻 env 兩次**（改良見 [#306](https://github.com/winson3QQ/ICS_COMMAND/issues/306)）：
+mTLS 登入要求「PIN ＋ **綁定本帳號的裝置憑證**」雙因子。但憑證綁定要先登入才能在面板做 → 第一個 admin 在 `ICS_MTLS_REQUIRED=true` 下會撞雞生蛋。**[#306](https://github.com/winson3QQ/ICS_COMMAND/issues/306) 已解：bootstrap 窗口自動放行，免翻 env。**
 
-1. 部署時 `.env` 先設 **`ICS_MTLS_REQUIRED=false`**（nginx 仍 `ssl_verify_client on`，要有任一 CA-signed client cert 才過；但 app 不卡綁定）。
-2. 讀首次 PIN：`docker compose logs ics-command | grep first_run_token`，或容器內 `/home/ics/.ics/first_run_token`（fresh DB 才會產；is_default_pin=1）。
-3. admin 登入 → **強制改 PIN** → 帳號管理 → admin → 「裝置憑證」→ **僅綁定**，CN 填**本機憑證的 Common Name**（不是標籤！綁錯 CN→翻 true 後登入失敗）。
-4. `.env` 改回 **`ICS_MTLS_REQUIRED=true`** → `docker compose up -d --force-recreate ics-command` → 雙因子上鎖。
+**前置（nginx 層，無法省）**：nginx `ssl_verify_client on` → admin 瀏覽器**必須先有一張 CA-signed client cert** 才連得進來。fresh deploy 第一張只能由 **CLI 簽**（app 還進不去）：
+```bash
+docker compose run --rm -e CERT_CN=<admin-CN> issue-client   # 產 ./out/<CN>/<CN>.p12 + root_ca.crt
+```
+裝上瀏覽器（含 root_ca.crt 受信任根）。
 
-> 砍 `ics-data` 卷＝清 DB（含**所有憑證綁定**）→ 回到雞生蛋，要重走本節。砍 `ca-data` 卷＝step-ca 換新 CA → **所有已發裝置憑證失效**，全部重發。正常進版（重 build image + recreate、**保留兩卷**）則憑證照常有效。
+**bootstrap（`ICS_MTLS_REQUIRED=true` 全程不變、不必 restart）**：
+1. 讀首次 PIN：`docker compose logs ics-command | grep first_run_token`（或容器內 `/home/ics/.ics/first_run_token`；fresh DB 才產）。
+2. 瀏覽器（已裝 CLI 證）連 `https://<公網IP>/` → admin 登入（**#306 bootstrap 窗口**：唯一帳號且 `account_certs` 尚無任何 row → 用該 CA 已驗的證放行登入，不要求預先綁定）。
+3. **強制改 PIN** → 帳號管理 → admin →「裝置憑證」→ **僅綁定**，CN 填**剛裝那張證的 Common Name**（`<admin-CN>`，不是標籤！）。
+4. 綁定完成 → bootstrap 窗口**自動關閉**（`account_certs` 有 row 了，單向閂）→ 雙因子即刻生效，**無需翻 env、無需 restart**。
+
+> **安全邊界**：bootstrap 窗口僅在「首位 admin 尚未綁過任何證」時開（持久旗標 `mtls_bootstrap_done`，綁第一張即永久關、`purge` 清不掉），且仍需 (a) first-run PIN（機密）、(b) nginx 已 CA 驗證的證。建立第二個帳號亦永久關窗。**前提：`ICS_PROXY_SHARED_SECRET` 必須設**（compose 已 `${...:?}` 強制）——否則後端會採信偽造的 `X-Client-Cert-*` header，bootstrap（與整個 mTLS 第二因子）失效。
+> **舊路徑（手動翻 env）** 仍可用（`false`→綁→`true`+recreate），但 #306 後不再需要。
+> 砍 `ics-data` 卷＝清 DB → 回 bootstrap 起點，重走本節。砍 `ca-data` 卷＝step-ca 換新 CA → 已發證全失效。正常進版（重 build + recreate、**保留兩卷**）憑證照常有效。
 
 ## 裝置憑證（ICS 登入用）
 
