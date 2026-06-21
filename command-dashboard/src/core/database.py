@@ -1241,9 +1241,7 @@ def _m023_decisions_fk(conn: sqlite3.Connection) -> None:
     rebuild 前 scrub dangling（指向已不存在 event / decision，含空字串）→ 先 null 化，
     `foreign_keys=ON` 後不留 orphan。idempotent：表已含 events FK 則 skip（含 fresh DB 重建後）。
     """
-    existing = conn.execute(
-        "SELECT sql FROM sqlite_master WHERE type='table' AND name='decisions'"
-    ).fetchone()
+    existing = conn.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='decisions'").fetchone()
     if existing and "REFERENCES events" in existing[0]:
         return  # 已加過 FK（重跑 / fresh DB rebuild 後）
     _rebuild_with_fk(
@@ -1412,14 +1410,40 @@ def _m029_account_certs(conn: sqlite3.Connection) -> None:
     """)
     # 一個 CN 同時只能有一筆 active 綁定（撤銷後可重簽同 CN）；不同帳號不可搶同一 active CN。
     conn.execute(
-        "CREATE UNIQUE INDEX IF NOT EXISTS idx_account_certs_cn_active "
-        "ON account_certs(cert_cn) WHERE status='active'"
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_account_certs_cn_active ON account_certs(cert_cn) WHERE status='active'"
     )
     conn.execute("CREATE INDEX IF NOT EXISTS idx_account_certs_account ON account_certs(account_id)")
 
 
 def _m029_account_certs_down(conn: sqlite3.Connection) -> None:
     conn.execute("DROP TABLE IF EXISTS account_certs")
+
+
+def _m030_tak_device_certs(conn: sqlite3.Connection) -> None:
+    """#317：dashboard 發出的 TAK 裝置證盤點表（知道發過什麼）。
+
+    TAK 不記 offline 簽的證（TAK certificate 表實測空），故 ICS 自建 SoT。`serial` 為 CRL 前置
+    （#318 真撤銷）。`status='revoked'` = **帳面 flag**，**不 enforce**（裝置仍能連 TAK，見 memory
+    tak-device-cert-ca-topology）。callsign 不唯一（可重發，每發一張一列）。
+    """
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS tak_device_certs (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            callsign    TEXT NOT NULL,
+            serial      TEXT,
+            mode        TEXT,
+            operator    TEXT NOT NULL,
+            status      TEXT NOT NULL DEFAULT 'active',
+            issued_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+            revoked_at  TEXT,
+            revoked_by  TEXT
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_tak_device_certs_status ON tak_device_certs(status)")
+
+
+def _m030_tak_device_certs_down(conn: sqlite3.Connection) -> None:
+    conn.execute("DROP TABLE IF EXISTS tak_device_certs")
 
 
 _MIGRATIONS: list[tuple[int, str, object]] = [
@@ -1452,6 +1476,7 @@ _MIGRATIONS: list[tuple[int, str, object]] = [
     (27, "event_kind_to_sighting", _m027_event_kind_to_sighting),
     (28, "cert_cn_binding", _m028_cert_cn_binding),
     (29, "account_certs", _m029_account_certs),
+    (30, "tak_device_certs", _m030_tak_device_certs),
 ]
 
 

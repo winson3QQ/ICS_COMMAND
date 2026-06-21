@@ -1,0 +1,55 @@
+"""
+unit/test_tak_device_cert_repo.py — #317：TAK 裝置證盤點表（record / list / mark_revoked）。
+"""
+
+import pytest
+
+pytestmark = pytest.mark.unit
+
+
+class TestRecordAndList:
+    def test_record_then_list(self, tmp_db):
+        from repositories.tak_device_cert_repo import list_device_certs, record_issued
+
+        rec = record_issued("itak-01", "AABBCC", "aware", "admin")
+        assert rec["callsign"] == "itak-01" and rec["serial"] == "AABBCC" and rec["status"] == "active"
+        rows = list_device_certs()
+        assert len(rows) == 1 and rows[0]["mode"] == "aware" and rows[0]["operator"] == "admin"
+
+    def test_callsign_not_unique(self, tmp_db):
+        """同 callsign 可重發（TAK 允許），每發一張一列。"""
+        from repositories.tak_device_cert_repo import list_device_certs, record_issued
+
+        record_issued("dup", "S1", "atak", "admin")
+        record_issued("dup", "S2", "atak", "admin")
+        rows = [r for r in list_device_certs() if r["callsign"] == "dup"]
+        assert len(rows) == 2 and {r["serial"] for r in rows} == {"S1", "S2"}
+
+    def test_list_newest_first(self, tmp_db):
+        from repositories.tak_device_cert_repo import list_device_certs, record_issued
+
+        record_issued("a", "S1", "atak", "admin")
+        record_issued("b", "S2", "atak", "admin")
+        rows = list_device_certs()
+        assert rows[0]["callsign"] == "b"  # 新到舊
+
+
+class TestMarkRevoked:
+    def test_mark_flips_status(self, tmp_db):
+        from repositories.tak_device_cert_repo import mark_revoked, record_issued
+
+        rec = record_issued("x", "S1", "aware", "admin")
+        out = mark_revoked(rec["id"], "admin2")
+        assert out["status"] == "revoked" and out["revoked_at"] and out["revoked_by"] == "admin2"
+
+    def test_mark_unknown_returns_none(self, tmp_db):
+        from repositories.tak_device_cert_repo import mark_revoked
+
+        assert mark_revoked(9999, "admin") is None
+
+    def test_mark_already_revoked_returns_none(self, tmp_db):
+        from repositories.tak_device_cert_repo import mark_revoked, record_issued
+
+        rec = record_issued("y", "S1", "aware", "admin")
+        mark_revoked(rec["id"], "admin")
+        assert mark_revoked(rec["id"], "admin") is None  # 已撤再撤 → None

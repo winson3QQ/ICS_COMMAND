@@ -901,7 +901,7 @@ export function admShowTak() {
       <div style="font-size:13px;font-weight:600;margin-bottom:8px;color:var(--text);">📦 TAK 裝置憑證（data package）</div>
       <div style="font-size:11px;color:var(--text2);margin-bottom:10px;line-height:1.6;max-width:420px;">
         為 ATAK／iTAK 操作員裝置線上簽發 data package（憑證 + 信任根 + 連線設定一包，密碼內嵌免打）。
-        裝置開啟即匯入並連上 TAK Server。憑證由 step-ca 簽（後端不持 CA 鑰）。
+        裝置開啟即匯入並連上 TAK Server。憑證由 TAK 自己的 CA（ICS-TAK-SVC-CA）簽。
       </div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;max-width:420px;">
         <input id="adm-tak-callsign" placeholder="callsign（如 atak-phone-01）" style="flex:2;min-width:180px;font-family:monospace;">
@@ -912,8 +912,43 @@ export function admShowTak() {
         <button class="adm-btn" data-action="adm-issue-tak-device" title="線上簽發並下載 data package">發裝置證</button>
       </div>
       <div id="adm-tak-device-result"></div>
+      <div style="font-size:12px;font-weight:600;margin-top:16px;margin-bottom:4px;color:var(--text);">已發裝置證（盤點）</div>
+      <div style="font-size:11px;color:var(--text3);margin-bottom:6px;line-height:1.5;max-width:420px;">
+        ⚠ 「撤銷」目前僅<b>帳面標記</b>，<b>不會阻擋該裝置連 TAK</b>（TAK 信任整個 CA、無 per-cert 拒絕）。真撤銷（CRL）見 #318。
+      </div>
+      <div id="adm-tak-device-list" style="max-width:480px;"></div>
     </div>`;
   _admLoadTakConn();
+  admLoadTakDeviceCerts();
+}
+
+export async function admLoadTakDeviceCerts() {
+  const box = el('adm-tak-device-list');
+  if (!box) return;
+  const resp = await authFetch(API_BASE + '/api/admin/tak/device-certs');
+  if (!resp.ok) { box.innerHTML = '<div style="color:var(--text3);font-size:12px;">無法載入（需系統管理員）</div>'; return; }
+  const certs = await resp.json();
+  if (!certs.length) { box.innerHTML = '<div style="color:var(--text3);font-size:12px;padding:4px 0;">尚未發過裝置證</div>'; return; }
+  let rows = '';
+  for (const c of certs) {
+    const active = c.status === 'active';
+    const plat = c.mode === 'aware' ? 'iTAK' : 'ATAK';
+    rows += '<div style="display:flex;align-items:center;gap:6px;padding:4px 0;border-bottom:1px solid var(--border,#222);font-size:12px;">' +
+        '<span style="font-family:monospace;flex:1;' + (active ? '' : 'text-decoration:line-through;color:var(--text3);') + '">' + _escAudit(c.callsign) + '</span>' +
+        '<span style="color:var(--text3);">' + plat + '</span>' +
+        '<span style="color:var(--text3);font-size:10px;">' + _escAudit((c.issued_at || '').replace('T', ' ').replace('Z', '')) + '</span>' +
+        '<span class="adm-badge ' + (active ? 'active' : 'suspended') + '">' + (active ? '有效' : '已撤銷') + '</span>' +
+        (active ? '<button class="adm-btn" data-action="adm-revoke-tak-device" data-cert-id="' + c.id + '">撤銷</button>' : '') +
+      '</div>';
+  }
+  box.innerHTML = rows;
+}
+
+export async function admRevokeTakDevice(certId) {
+  if (!confirm('標記此 TAK 裝置證為已撤銷？\n⚠ 這只是帳面記錄，不會阻擋該裝置連 TAK（真撤銷需 CRL，#318）。')) return;
+  const resp = await authFetch(API_BASE + '/api/admin/tak/device-certs/' + certId + '/revoke', { method: 'POST' });
+  if (!resp.ok) { alert('撤銷標記失敗（' + resp.status + '）'); return; }
+  admLoadTakDeviceCerts();
 }
 
 // #315：發 TAK 裝置 data package（不自動下載；先給結果框 + 下載/分享）。
@@ -929,6 +964,7 @@ export async function admIssueTakDevice() {
   const blob = await resp.blob();
   const blobUrl = URL.createObjectURL(blob);
   _showTakDeviceResult(callsign, mode, blob, blobUrl);
+  admLoadTakDeviceCerts();  // #317：發完刷新盤點列表
 }
 
 function _showTakDeviceResult(callsign, mode, blob, blobUrl) {

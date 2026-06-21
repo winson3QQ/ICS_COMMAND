@@ -78,15 +78,18 @@ WARNING_THRESHOLD_SECONDS: int = int(os.getenv("ICS_WARNING_THRESHOLD_SECONDS", 
 # MINOR 2.10.0：TAK 裝置證自助發放（#315 P2-26 L2）—— POST /api/admin/tak/device-cert：
 # 由 ICS-TAK-SVC-CA（offline，TAK 自己的 CA）簽 + 組 ATAK/iTAK data package（p12+truststore+pref，
 # 密碼內嵌）；sysadmin+audit。reality check：TAK 只信此 CA、非 step-ca（與 ICS 登入證隔離）。
-APP_VERSION = "2.10.0"
+# MINOR 2.11.0：TAK 裝置證盤點（#317）—— 自建 tak_device_certs 表（記 serial，#318 CRL 前置）+
+# GET /tak/device-certs + POST .../revoke（撤銷=帳面 flag，不 enforce；真撤銷 CRL 見 #318）。
+APP_VERSION = "2.11.0"
 
 # CMD_VERSION：前端 UI 功能版本（不同於後端 SemVer APP_VERSION；規則見 CLAUDE.md 版號規則）
 # 兩軌版本命名，不可混用。由 /api/version 提供給前端，是唯一 source-of-truth；release 時更新此值。
 # v1.0.0：拆分自 ICS_DMAS 後首個完整可用形態（MapLibre 地圖引擎全換 P1-10b + PWA 移除 P1-11
 #         + 演習/放置/稽核 UI P1-13/14/16/#93 + 分類編輯器 #66）→ 0.x 畢業為 MAJOR 紀元。
 CMD_VERSION: str = os.getenv(
-    "CMD_VERSION", "v1.9.0"
-)  # MINOR v1.9.0：admin TAK tab（#315 P2-26 L2）—— TAK 連線開關搬入 + TAK 裝置證自助發放 UI
+    "CMD_VERSION", "v1.9.1"
+)  # PATCH v1.9.1：TAK tab 加「已發裝置證」盤點列表 + 撤銷-flag（#317；標明不 enforce）。
+# v1.9.0：admin TAK tab（#315 P2-26 L2）—— TAK 連線開關搬入 + TAK 裝置證自助發放 UI
 # （callsign + ATAK/iTAK 平台 + 下載/分享 data package）。
 # v1.8.0：iOS 零打憑證密碼接入（#312）—— 發證格式選單 + .mobileconfig 流程（下載/分享，
 # 密碼內嵌、安裝免打）。v1.7.1：裝置憑證面板 UX（#307）發證顯密碼/下載/分享、revoked 摺疊+清除。

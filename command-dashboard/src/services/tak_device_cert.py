@@ -40,8 +40,10 @@ def _xa(s: str) -> str:
     return escape(s, {'"': "&quot;"})
 
 
-def _sign_with_tak_ca(callsign: str, ca_dir: str) -> tuple[str, str]:
-    """用 TAK 自己的 CA（ICS-TAK-SVC-CA，offline）簽一張 clientAuth 裝置證，回 (cert_pem, key_pem)。
+def _sign_with_tak_ca(callsign: str, ca_dir: str) -> tuple[str, str, str]:
+    """用 TAK 自己的 CA（ICS-TAK-SVC-CA，offline）簽一張 clientAuth 裝置證，回 (cert_pem, key_pem, serial)。
+
+    serial（hex）供 #317 盤點記錄 + #318 CRL 撤銷對位。
 
     #315 reality check：TAK truststore 只信 ICS-TAK-SVC-CA、不信 step-ca → 裝置證**必須**這把 CA 簽
     （否則 TAK 回 peer not verified）。同 deploy/.../gen-device-pkg.sh。CA dir 含 tak-ca.pem +
@@ -95,7 +97,18 @@ def _sign_with_tak_ca(callsign: str, ca_dir: str) -> tuple[str, str]:
             cert_pem = f.read()
         with open(key, encoding="ascii") as f:
             key_pem = f.read()
-    return cert_pem, key_pem
+        # 讀回 serial（hex，#317 盤點 / #318 CRL）
+        rs = subprocess.run(  # nosec B603
+            [_OPENSSL, "x509", "-in", crt, "-noout", "-serial"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+        serial = ""
+        if rs.returncode == 0 and "=" in rs.stdout:
+            serial = rs.stdout.strip().split("=", 1)[1]
+    return cert_pem, key_pem, serial
 
 
 def _make_p12_materials(cert_pem: str, key_pem: str, tak_ca_pem: str, callsign: str) -> tuple[bytes, bytes]:
@@ -294,9 +307,11 @@ def assemble_package(
     )
 
 
-def build_device_package(callsign: str, mode: str, connect_host: str, connect_port: int, tak_ca_dir: str) -> bytes:
+def build_device_package(
+    callsign: str, mode: str, connect_host: str, connect_port: int, tak_ca_dir: str
+) -> tuple[bytes, str]:
     """端到端：用 ICS-TAK-SVC-CA（offline，tak_ca_dir）簽 device 證 → 組 client p12 + truststore
-    → 組 data package zip bytes。
+    → 組 data package zip bytes。回 (zip_bytes, serial)（serial 供 #317 盤點 / #318 CRL）。
 
     tak_ca_dir＝含 tak-ca.pem + tak-ca.key 的目錄（TAK 自己的 CA；TAK 只信它）。
     raise CertIssuanceError（CA 不全 / 簽發失敗 / openssl 打包失敗）；ValueError（mode 非法 / host 空）。
@@ -313,8 +328,8 @@ def build_device_package(callsign: str, mode: str, connect_host: str, connect_po
         raise ValueError("connect_host 不可為空（對外 TAK 位址未設）")
     # 先簽（_sign_with_tak_ca 驗 tak-ca.pem + .key 兩檔皆在 → CertIssuanceError），再讀 .pem 作 truststore
     # （此時確定存在，不會 FileNotFoundError 漏出 500；code-review #315）。
-    cert_pem, key_pem = _sign_with_tak_ca(callsign, tak_ca_dir)
+    cert_pem, key_pem, serial = _sign_with_tak_ca(callsign, tak_ca_dir)
     with open(os.path.join(tak_ca_dir, "tak-ca.pem"), encoding="ascii") as f:
         tak_ca_pem = f.read()
     client_p12, truststore_p12 = _make_p12_materials(cert_pem, key_pem, tak_ca_pem, callsign)
-    return assemble_package(mode, callsign, host, connect_port, client_p12, truststore_p12)
+    return assemble_package(mode, callsign, host, connect_port, client_p12, truststore_p12), serial
