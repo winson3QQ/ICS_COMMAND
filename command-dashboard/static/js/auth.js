@@ -901,10 +901,10 @@ export function admShowData() {
   el('adm-panel-data').innerHTML = `
     <div style="margin-bottom:24px;">
       <div style="font-size:13px;font-weight:600;margin-bottom:8px;color:var(--text);">💾 整包資料備份 / 還原</div>
-      <div style="font-size:11px;color:var(--text2);margin-bottom:10px;line-height:1.6;max-width:440px;">
-        備份涵蓋整個 <code>data/</code>（DB + map_config + 上傳檔），加密含 manifest。
-        演習歸檔 / 重設前系統會自動備份。<span style="color:var(--text3);">需設定 BACKUP_KEY（部署層）。</span><br>
-        <b>備份到 USB / 異地</b>：按該筆的「下載」存成 <code>.tar.gz.enc</code>（已加密，需 BACKUP_KEY 才能解），再複製到隨身碟。
+      <div style="font-size:11px;color:var(--text2);margin-bottom:10px;line-height:1.6;max-width:460px;">
+        每個備份是整個 <code>data/</code> 的加密快照（資料庫 + 地圖設定 + 上傳檔）。<span style="color:var(--text3);">需部署層設定 BACKUP_KEY。</span><br>
+        <b>「來源」欄</b>：<b>手動</b>＝你按鈕建的；<b>演習結束 / 還原前 / 重設前 / 關機</b>＝系統在這些時機<b>自動備份</b>（防呆，怕你忘）。<br>
+        <b>備份到 USB / 異地</b>：按該筆「下載」存出 <code>.tar.gz.enc</code>（已加密，要有 BACKUP_KEY 才能還原），再複製到隨身碟。
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
         <button class="login-btn" data-action="admBackupNow" style="max-width:160px;">立即整包備份</button>
@@ -912,12 +912,12 @@ export function admShowData() {
       </div>
       <div id="adm-backup-list" style="margin-top:10px;font-size:11px;"></div>
       <div id="adm-backup-dir" style="margin-top:6px;font-size:10px;color:var(--text3);"></div>
-      <div style="margin-top:14px;">
-        <div style="font-size:12px;color:var(--text2);margin-bottom:6px;">⤴ 還原（覆蓋當前 data/；先自動備份當前；有進行中演習則拒絕；還原後需重啟服務）</div>
+      <div id="adm-backup-detail" style="margin-top:10px;font-size:11px;color:var(--text2);min-height:16px;"></div>
+      <div style="margin-top:14px;border-top:1px dashed var(--border);padding-top:12px;">
+        <div style="font-size:12px;color:var(--text2);margin-bottom:6px;">⤴ 從外部檔還原（USB / 異地拿回的 .enc）。覆蓋當前 data/、先自動備份當前、有進行中演習則拒絕、還原後需重啟。清單裡的備份請用該筆的「還原此筆」。</div>
         <input id="adm-restore-file" type="file" accept=".enc" style="font-size:11px;max-width:300px;">
-        <button class="login-btn" data-action="admRestore" style="background:var(--red);color:#fff;border:none;max-width:140px;margin-top:4px;">上傳並還原</button>
+        <button class="login-btn" data-action="admRestore" style="background:var(--red);color:#fff;border:none;max-width:160px;margin-top:4px;">上傳外部檔還原</button>
       </div>
-      <div id="adm-backup-detail" style="margin-top:10px;font-size:11px;color:var(--text2);"></div>
     </div>
     <div style="border-top:1px solid var(--border);padding-top:16px;">
       <div style="font-size:13px;font-weight:600;margin-bottom:8px;color:var(--red);">⚠ 重設指揮部資料庫</div>
@@ -940,14 +940,15 @@ function _fmtBytes(n) {
 }
 
 function _triggerLabel(b) {
-  if (b.is_pre_restore) return '<span style="color:var(--yellow);">還原前</span>';
+  const tag = (color, text, tip) => `<span style="color:${color};" title="${tip}">${text}</span>`;
+  if (b.is_pre_restore) return tag('var(--yellow)', '還原前', '系統在還原前自動備份當前狀態（防呆）');
   switch (b.trigger) {
-    case 'archive':  return '<span style="color:var(--green);">演習歸檔</span>';
-    case 'manual':   return '<span style="color:var(--text);">手動</span>';
-    case 'shutdown': return '<span style="color:var(--text2);">關機</span>';
+    case 'archive':  return tag('var(--green)', '演習結束', '演習歸檔時自動備份（含演習 metadata）');
+    case 'manual':   return tag('var(--text)', '手動', '你按「立即整包備份」建立');
+    case 'shutdown': return tag('var(--text2)', '關機', '服務正常關閉時自動備份');
     case 'pre-reset-db':
-    case 'pre-reset-exercise': return '<span style="color:var(--yellow);">重設前</span>';
-    default: return '<span style="color:var(--text3);">整包</span>';
+    case 'pre-reset-exercise': return tag('var(--yellow)', '重設前', '系統在重設資料庫前自動備份（防呆）');
+    default: return tag('var(--text3)', '整包', '');
   }
 }
 
@@ -973,7 +974,7 @@ export async function admRefreshBackups() {
         <span style="width:56px;text-align:right;color:var(--text3);">${_fmtBytes(b.size_bytes)}</span>
         <span style="width:190px;display:flex;gap:4px;">
           <button class="login-btn" data-action="admPreviewBackup" data-name="${_escAudit(b.name)}"
-                  style="background:var(--bg3);font-size:10px;padding:2px 6px;">manifest</button>
+                  style="background:var(--bg3);font-size:10px;padding:2px 6px;" title="看內容清單 / 演習 / 建立時間">詳情</button>
           <button class="login-btn" data-action="admDownloadBackup" data-name="${_escAudit(b.name)}"
                   style="background:var(--bg3);font-size:10px;padding:2px 6px;">下載</button>
           <button class="login-btn" data-action="admRestoreFromList" data-name="${_escAudit(b.name)}"

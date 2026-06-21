@@ -102,6 +102,38 @@ def _iter_data_files(data_dir: Path) -> list[Path]:
     return out
 
 
+_SQLITE_MAGIC = b"SQLite format 3\x00"
+_SQLITE_SIDECARS = ("-wal", "-shm", "-journal")  # WAL/SHM/rollback：runtime 暫態，不入備份
+
+
+def _is_sqlite(path: Path) -> bool:
+    try:
+        with path.open("rb") as f:
+            return f.read(16) == _SQLITE_MAGIC
+    except OSError:
+        return False
+
+
+def _online_backup_db(src_db: Path, dst: Path) -> None:
+    """以 SQLite online backup API 取一致快照（即使 DB 正被寫入）。
+
+    取代「raw 複製 ics.db + 各別 tar -wal/-shm」—— 後者在 live DB 下會 torn snapshot
+    （db 與 wal 讀取時間差→還原後不一致甚至損毀）。online backup 內部 checkpoint，
+    產出單一自洽 .db，故備份**不再含 -wal/-shm**（已 fold 進 db）。
+    """
+    import sqlite3
+
+    src = sqlite3.connect(str(src_db))
+    try:
+        dst_conn = sqlite3.connect(str(dst))
+        try:
+            src.backup(dst_conn)
+        finally:
+            dst_conn.close()
+    finally:
+        src.close()
+
+
 def _build_manifest(data_dir: Path, files: list[Path], *, trigger: str, exercise: dict | None) -> dict:
     from core.config import APP_VERSION
 
@@ -157,20 +189,37 @@ def create_backup(
 
     ts = timestamp or _now_utc()
     started = time.perf_counter()
-    files = _iter_data_files(data_dir)
-    manifest = _build_manifest(data_dir, files, trigger=trigger, exercise=exercise)
+    all_files = _iter_data_files(data_dir)
+
+    # SQLite DB 走 online backup（一致快照）；其 -wal/-shm/-journal 暫態檔排除。
+    db_files = [p for p in all_files if p.suffix == ".db" and _is_sqlite(p)]
+    exclude: set[Path] = set()
+    for db in db_files:
+        exclude.add(db)
+        exclude.update(db.with_name(db.name + suf) for suf in _SQLITE_SIDECARS)
+    raw_files = [p for p in all_files if p not in exclude]
+
+    # manifest 列「實際進包」的檔：raw + 一致快照的 db（不含 -wal/-shm）
+    manifest = _build_manifest(data_dir, raw_files + db_files, trigger=trigger, exercise=exercise)
     manifest_bytes = json.dumps(manifest, ensure_ascii=False, indent=2).encode("utf-8")
 
     raw = io.BytesIO()
-    with gzip.GzipFile(fileobj=raw, mode="wb", compresslevel=6, mtime=0) as gz:
-        with tarfile.open(fileobj=gz, mode="w") as tar:
-            mi = tarfile.TarInfo(MANIFEST_NAME)
-            mi.size = len(manifest_bytes)
-            mi.mtime = 0
-            tar.addfile(mi, io.BytesIO(manifest_bytes))
-            for p in files:
-                arc = "data/" + p.relative_to(data_dir).as_posix()
-                tar.add(p, arcname=arc, recursive=False)
+    with tempfile.TemporaryDirectory(prefix="ics-dbsnap-") as td:
+        snap_dir = Path(td)
+        with gzip.GzipFile(fileobj=raw, mode="wb", compresslevel=6, mtime=0) as gz:
+            with tarfile.open(fileobj=gz, mode="w") as tar:
+                mi = tarfile.TarInfo(MANIFEST_NAME)
+                mi.size = len(manifest_bytes)
+                mi.mtime = 0
+                tar.addfile(mi, io.BytesIO(manifest_bytes))
+                for p in raw_files:
+                    arc = "data/" + p.relative_to(data_dir).as_posix()
+                    tar.add(p, arcname=arc, recursive=False)
+                for db in db_files:
+                    snap = snap_dir / db.name
+                    _online_backup_db(db, snap)  # 一致快照
+                    arc = "data/" + db.relative_to(data_dir).as_posix()
+                    tar.add(snap, arcname=arc, recursive=False)
 
     ciphertext = _encrypt(raw.getvalue())
     final_path = backup_dir / ts.strftime(filename_pattern)
@@ -178,10 +227,11 @@ def create_backup(
     duration_ms = int((time.perf_counter() - started) * 1000)
     digest = _sha256_bytes(ciphertext)
 
+    n_files = len(manifest["files"])
     log.info(
         "userdata_backup_created",
-        msg=f"data/ 備份完成 {final_path.stat().st_size} bytes / {len(files)} 檔 / {duration_ms}ms",
-        detail={"path": str(final_path), "trigger": trigger, "files": len(files), "sha256": digest},
+        msg=f"data/ 備份完成 {final_path.stat().st_size} bytes / {n_files} 檔 / {duration_ms}ms",
+        detail={"path": str(final_path), "trigger": trigger, "files": n_files, "sha256": digest},
     )
     return BackupResult(
         path=final_path,

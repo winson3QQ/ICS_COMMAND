@@ -131,6 +131,35 @@ def test_manifest_carries_exercise_metadata(key, tmp_path):
     assert manifest["trigger"] == "archive"
 
 
+def test_real_sqlite_db_consistent_snapshot_excludes_wal(key, tmp_path):
+    """真 SQLite DB（WAL 模式）→ online backup 一致快照；-wal/-shm 不入備份，
+    還原出的 DB 含已寫入資料、可正常開啟（非 torn snapshot）。"""
+    import sqlite3
+
+    data = tmp_path / "data"
+    data.mkdir(parents=True)
+    db = data / "ics.db"
+    conn = sqlite3.connect(str(db))
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("CREATE TABLE t (id INTEGER PRIMARY KEY, v TEXT)")
+    conn.execute("INSERT INTO t (v) VALUES ('committed')")
+    conn.commit()
+    assert (data / "ics.db-wal").exists()  # live：-wal 仍在
+
+    res = uds.create_backup(data, data / "backups")
+    files = set(uds.read_manifest(res.path)["files"])
+    assert "ics.db" in files
+    assert "ics.db-wal" not in files and "ics.db-shm" not in files  # 暫態檔排除
+    conn.close()
+
+    dest = tmp_path / "restored"
+    dest.mkdir()
+    uds.restore_backup(res.path, dest, dest / "backups", pre_restore=False)
+    rconn = sqlite3.connect(str(dest / "ics.db"))
+    assert rconn.execute("SELECT v FROM t").fetchone()[0] == "committed"
+    rconn.close()
+
+
 def test_manifest_preserves_crafted_exercise_name(key, tmp_path):
     """manifest 的 exercise.name 原樣保存（後端不改），前端負責跳脫 — 確認資料不被吞。"""
     data = tmp_path / "data"
