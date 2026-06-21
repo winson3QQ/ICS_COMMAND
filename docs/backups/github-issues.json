@@ -3918,6 +3918,20 @@
         "minimizedReason": "",
         "reactionGroups": [],
         "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/279#issuecomment-4761377356"
+      },
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## 更正（同日）：compose 2160h 改動已**回退**，避免引入新踩坑\n\n前一則說「compose 改 2160h 已上線」需更正：`STEP_CLIENT_CERT_DURATION=2160h` **單獨設不可行** —— step-ca provisioner 預設 `maxTLSCertDuration=24h`，發證會被拒。我那次「生效」是因為**另外在 runtime patch 了 ca.json claims（未進 tracked config）**。\n\n為免乾淨佈署踩此坑（發證直接失敗），**已把 compose 改回 `23h`（commit 待 merge）+ 註解 + 指回本單**。runbook（`deploy/prod/README` §憑證效期）也記了。\n\n**本單真正的完成判準**：把 provisioner `x509-max-dur/x509-default-dur=2160h` 做成**可重現的 tracked 配置**（step-ca 容器 init 階段帶入，非 runtime 手 patch），再把 compose/`ICS_SERVER_CERT_DURATION` 一併調 2160h。runtime（本機現役）已是 2160h，但那是手 patch、不可重現。\n",
+        "createdAt": "2026-06-21T08:33:45Z",
+        "id": "IC_kwDOSnBjpc8AAAABG80wnQ",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/279#issuecomment-4761399453"
       }
     ],
     "createdAt": "2026-06-20T09:14:47Z",
@@ -3926,7 +3940,7 @@
     "number": 279,
     "state": "OPEN",
     "title": "mTLS 公測前：憑證效期 23h → 90 天（step-ca maxTLSCertDuration）",
-    "updatedAt": "2026-06-21T08:24:20Z",
+    "updatedAt": "2026-06-21T08:33:45Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/279"
   },
   {
