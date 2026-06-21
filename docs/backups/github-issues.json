@@ -4375,14 +4375,29 @@
     },
     "body": "## 定位(重要)\n**商業 IP 保護(防抄),非資安。** 前端可讀是 Web 物理定律、藏不掉;安全不依賴藏前端(那是 #292/#294/#296:後端授權+輸出編碼+減攻擊面)。本單只為「讓前端不值得抄」。\n\n## 分層(CP 值序,2026-06-21 討論)\n1. **build step(先做)**:bundle + 砍繁中設計註解 + minify + prod 不出 source map。最大洩漏是註解(送決策脈絡給競品)。工具鏈現成(lockfile 已有 vite/esbuild)。解 ~80% 焦慮。\n2. **選擇性 obfuscate(更硬才做)**:只對核心模組。⚠ 可逆(嚇阻非保險)+ 現場除錯地獄(C2 慎)+ **obfuscator 套件先查中國紅線**(terser/esbuild 可用)。\n3. **值錢邏輯下沉後端**:真護城河,前端只當顯示層,核心留 Python src。\n4. **法律層**:版權+授權+禁逆向;mTLS 已使只有持證客戶載得到前端。\n\n## 完成判準\n至少 ① build step 落地。②③④ 視商用化進度。",
     "closedAt": null,
-    "comments": [],
+    "comments": [
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## ✅ layer-1 落地（PR #320 `5ec7190`）—— issue 保持 OPEN（②③④ 後續）\n\n**① build step（砍註解 + minify + no-sourcemap）完成。**\n\n做法：Dockerfile 多階段 —— node 階段逐檔 `esbuild --minify --legal-comments=none` static/js → python 階段用 minified 覆蓋 raw。**只在 image build 跑，repo 源碼維持可讀（dev 不受影響，符合「只 prod 砍註解」）**。\n\n### Reality check（推翻本 issue 假設）\n- ❌ 「lockfile 已有 vite/esbuild」→ 實際只有 eslint+vitest；改用 pinned `npx esbuild@0.24.0`。\n- ✅ **不 bundle，逐檔 minify** → 保留 import 路徑/export 名、不動 42 個 dynamic import；CSP `script-src 'self'` safe。\n- ❌ 「prod nginx 服務靜態」→ 實際 nginx **proxy 到 app**，app StaticFiles 服 minified → 不用動 nginx（順帶發現 main.py:208 註解過時）。\n\n### 實證\nimage `auth.js` 中文=0（源碼仍 3316）、export/dynamic import 保留、94k→72k。公網真機：**CSP violation=0**、JS 50×200、cert/account/地圖操作全經 minified dispatcher 成功 → 前端零差異。\n\n### 仍 ⏳（本 issue 不關）\n- ② 選擇性 obfuscate（核心模組；⚠ obfuscator 套件先查中國紅線）\n- ③ 值錢邏輯下沉後端（真護城河）\n- ④ 法律層\n- （附帶）HTML 註解：本 PR 只砍 JS；`commander_dashboard.html` 的設計註解未動，視需要另做。",
+        "createdAt": "2026-06-21T22:33:50Z",
+        "id": "IC_kwDOSnBjpc8AAAABG-0pNA",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/302#issuecomment-4763494708"
+      }
+    ],
     "createdAt": "2026-06-20T23:53:11Z",
     "labels": [],
     "milestone": null,
     "number": 302,
     "state": "OPEN",
     "title": "feat(build): 商用化前端 IP 保護 — build step(砍註解+minify+no-sourcemap)+ 選擇性 obfuscate + 值錢邏輯下沉",
-    "updatedAt": "2026-06-20T23:53:11Z",
+    "updatedAt": "2026-06-21T22:33:50Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/302"
   },
   {

@@ -4607,5 +4607,26 @@
     "title": "feat(tak): #317 TAK 裝置證盤點 — 自建記錄表 + 列表/撤銷-flag",
     "updatedAt": "2026-06-21T21:32:02Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/319"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "關聯 [#302](https://github.com/winson3QQ/ICS_COMMAND/issues/302) layer-1。商業 IP 防抄（**非資安**）。\n\n## 問題\n前端 ~1394 行繁中設計/reality-check 註解直接送 client = 把決策脈絡送競品。最大洩漏是註解。\n\n## 做法\nDockerfile **多階段** —— node 階段逐檔 `esbuild --minify --legal-comments=none` static/js → python 階段用 minified 覆蓋 raw。**只在 image build 跑，repo 源碼維持可讀（dev 不受影響）**。\n\n## Reality check（推翻 issue 假設 + 容器實證）\n- ❌ issue 說「lockfile 已有 vite/esbuild」→ 只有 eslint+vitest；改用 pinned `npx esbuild@0.24.0`。\n- ✅ **不 bundle，逐檔 minify** → 保留 import 路徑/export 名、不動 42 個 dynamic import；CSP `script-src 'self'` safe（esbuild 無 eval/inline）。\n- ❌ prod nginx 是 **proxy 到 app**（非直送 static），app StaticFiles 服 minified → **不用動 nginx**。\n- ✅ 實證：image `auth.js` 中文=0（源碼仍 3316）、export/dynamic import 保留、94k→72k。\n\n## 驗證（公網真機）\n- **CSP violation 總筆數=0**、JS 50×200、cert 發證/撤銷/建帳號/地圖操作全經 minified dispatcher **成功** → 前端行為**零差異**。\n\n## 範圍\n純 build pipeline，**無 src/版號變更**。esbuild=Evan Wallace/US（非中國），pinned。**layer-2 obfuscate / 值錢邏輯下沉 / HTML 註解 = 後續（#302 ②③）**。",
+    "closedAt": "2026-06-21T22:07:21Z",
+    "comments": [],
+    "createdAt": "2026-06-21T22:07:06Z",
+    "headRefName": "feat/issue-302-frontend-minify",
+    "labels": [],
+    "mergedAt": "2026-06-21T22:07:21Z",
+    "number": 320,
+    "state": "MERGED",
+    "title": "feat(build): #302 layer-1 — prod build 砍前端註解 + minify（IP 保護）",
+    "updatedAt": "2026-06-21T22:07:25Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/320"
   }
 ]
