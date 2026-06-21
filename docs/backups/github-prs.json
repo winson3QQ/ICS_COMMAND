@@ -3681,7 +3681,7 @@
     "number": 235,
     "state": "CLOSED",
     "title": "feat(backup): P1-12b 整包 data/ 加密備份 + GUI 還原 + 三層觸發 + OP-2/OP-4",
-    "updatedAt": "2026-06-21T01:00:43Z",
+    "updatedAt": "2026-06-21T01:03:22Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/235"
   },
   {
@@ -4416,7 +4416,7 @@
     "number": 303,
     "state": "MERGED",
     "title": "feat(backup): P1-12b 整包 data/ 加密備份 + GUI 還原（取代自動關閉的 #235）",
-    "updatedAt": "2026-06-21T01:02:26Z",
+    "updatedAt": "2026-06-21T01:03:22Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/303"
   }
 ]
