@@ -4235,6 +4235,20 @@
         "minimizedReason": "",
         "reactionGroups": [],
         "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/300#issuecomment-4760271962"
+      },
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## 進度記錄 2026-06-21 — 方案 A 準備就緒，待 repo 外終端執行\n\n**選定方案 A（原地重 clone）。** 破壞性刪除前的盤點與備份已完成，destructive 步驟已 gate 成腳本待跑。\n\n### 盤點（重 clone 會毀掉什麼 → 處置）\n- **所有分支 commit**：全在 `origin`。4 個 worktree（`admiring-wu` / `charming-brahmagupta` / `ecstatic-knuth` / `ecstatic-villani`）皆無未 push 獨有 commit；`feat/issue-229-p1-12c-sqlcipher`（9c041d7）已是 `origin/main` 祖先（已 merge）；`ecstatic-knuth` 2 個獨有 commit 已在其 remote branch。→ **無 commit 損失風險。**\n- 唯一未提交變更：`.claude/launch.json`（重生配置，捨棄）。\n- 無 uvicorn/python 佔用 `ics.db` → DB 備份乾淨。\n\n### 已備份 gitignored runtime → `C:\\ics-reclone-backup\\`\n| 來源 | 內容 | 大小 |\n|---|---|---|\n| `command-dashboard/data/` | `ics.db` + wal/shm + `map_config.json` + `event_taxonomy.json`（5 檔） | 4.5M |\n| `command-dashboard/static/tiles/` | 底圖 `.pmtiles`（1 檔） | 235.5M |\n| `command-dashboard/static/map_upload_*.png` + `dummy.png` | 使用者上傳地圖（5 檔） | — |\n| `.claude/settings.local.json` | 本機設定 | — |\n\n### 待執行（必須在 repo 外終端，因 Claude session 站在 repo 內的 worktree，不能刪自己站的地）\n腳本 `C:\\ics-reclone-backup\\reclone-ics.ps1`，含安全閘（備份不存在 / cwd 在 repo 內則中止）：\n刪舊 repo → `git clone` 純檔 → `core.hooksPath .githooks` → 還原 runtime → 驗 reparse 清零 → `docker build`。\n\n### 待補\n- 跑腳本核對完成判準（`requirements.txt` 不含 ReparsePoint、reparse 計數 ~0、ICS **+ TAK** image 皆 build 成功）。\n- TAK image 不在此腳本內，ICS 過後同法另 build。\n- 視需要把 backup/runbook 微調回寫 `deploy/build-env.md`。\n",
+        "createdAt": "2026-06-21T03:37:59Z",
+        "id": "IC_kwDOSnBjpc8AAAABG8Qn2Q",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/300#issuecomment-4760807385"
       }
     ],
     "createdAt": "2026-06-20T23:06:32Z",
@@ -4243,7 +4257,7 @@
     "number": 300,
     "state": "OPEN",
     "title": "build(infra): 本機 docker build 受阻於 OneDrive 殘留 cloud reparse point — repo 搬出同步路徑",
-    "updatedAt": "2026-06-20T23:16:39Z",
+    "updatedAt": "2026-06-21T03:37:59Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/300"
   },
   {
