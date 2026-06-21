@@ -127,20 +127,54 @@ def preview_manifest(name: str, request: Request):
     return {"name": name, "manifest": manifest}
 
 
-@router.post("/restore")
-async def restore_user_data(request: Request, file: UploadFile = File(...)):
-    """上傳 .tar.gz.enc 還原整包 data/。
-
-    防呆：① active 演習存在 → 409（須先 archive，避免覆寫進行中場次）；
-    ② 解密 / manifest 驗證失敗 → 不動 current；③ 自動先備份當前為 pre-restore-{ts}。
-    """
-    sess = _check_system_admin(request)
-
+def _require_no_active_exercise() -> None:
+    """還原防呆：有進行中演習 → 409（避免覆寫進行中場次，須先歸檔）。"""
     active = get_active_exercise()
     if active is not None:
         raise HTTPException(
             409, f"有進行中演習「{active.get('name')}」（id={active.get('id')}）— 還原前請先歸檔"
         )
+
+
+def _restore_from_path(path: Path, sess: dict, label: str) -> dict:
+    """共用還原：解密驗 manifest 失敗不動 current（422）；wipe 後中斷 → 500（pre-restore 可救）。"""
+    try:
+        result = uds.restore_backup(path, DATA_DIR, BACKUP_DIR)
+    except ValueError as e:
+        audit(sess["username"], None, "user_data_restore_failed", "system", label, {"error": str(e)})
+        raise HTTPException(422, f"還原失敗（current 未變動）：{e}") from e
+    except RuntimeError as e:
+        audit(sess["username"], None, "user_data_restore_interrupted", "system", label, {"error": str(e)})
+        raise HTTPException(500, str(e)) from e
+    audit(
+        sess["username"], None, "user_data_restored", "system", label,
+        {"pre_restore": result["pre_restore"], "manifest_created_at": result["manifest"].get("created_at")},
+    )
+    return {
+        "ok": True,
+        "manifest": result["manifest"],
+        "pre_restore": result["pre_restore"],
+        "restart_required": result["restart_required"],
+    }
+
+
+@router.post("/user-data-backups/{name}/restore")
+def restore_from_list(name: str, request: Request):
+    """還原伺服器上已存在的備份（清單「還原此筆」）——免下載再上傳。"""
+    sess = _check_system_admin(request)
+    _require_no_active_exercise()
+    path = _resolve(name)
+    return _restore_from_path(path, sess, name)
+
+
+@router.post("/restore")
+async def restore_user_data(request: Request, file: UploadFile = File(...)):
+    """上傳外部 .tar.gz.enc（USB / 異地拿回）還原整包 data/。
+
+    防呆：① active 演習 → 409；② 解密/manifest 失敗 → 不動 current；③ 自動 pre-restore。
+    """
+    sess = _check_system_admin(request)
+    _require_no_active_exercise()
 
     filename = file.filename or ""
     if not filename.endswith(_VALID_SUFFIX):
@@ -153,23 +187,6 @@ async def restore_user_data(request: Request, file: UploadFile = File(...)):
         tmp_path = Path(tf.name)
         tf.write(content)
     try:
-        result = uds.restore_backup(tmp_path, DATA_DIR, BACKUP_DIR)
-    except ValueError as e:  # 解密 / manifest / 結構錯 → current 未動（422）
-        audit(sess["username"], None, "user_data_restore_failed", "system", filename, {"error": str(e)})
-        raise HTTPException(422, f"還原失敗（current 未變動）：{e}") from e
-    except RuntimeError as e:  # wipe 後 copy 中斷 → current 可能不完整（500，pre-restore 可救）
-        audit(sess["username"], None, "user_data_restore_interrupted", "system", filename, {"error": str(e)})
-        raise HTTPException(500, str(e)) from e
+        return _restore_from_path(tmp_path, sess, filename)
     finally:
         tmp_path.unlink(missing_ok=True)
-
-    audit(
-        sess["username"], None, "user_data_restored", "system", filename,
-        {"pre_restore": result["pre_restore"], "manifest_created_at": result["manifest"].get("created_at")},
-    )
-    return {
-        "ok": True,
-        "manifest": result["manifest"],
-        "pre_restore": result["pre_restore"],
-        "restart_required": result["restart_required"],
-    }

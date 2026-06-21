@@ -57,6 +57,7 @@ SYSADMIN GET    /api/admin/user-data-backups
 SYSADMIN POST   /api/admin/user-data-backups
 SYSADMIN GET    /api/admin/user-data-backups/{name}/download
 SYSADMIN GET    /api/admin/user-data-backups/{name}/manifest
+SYSADMIN POST   /api/admin/user-data-backups/{name}/restore
 COMMAND  GET    /api/ai/export/{exercise_id}
 WRITE    POST   /api/ai/recommend
 COMMAND  POST   /api/ai/recommendations/{rec_id}/outcome

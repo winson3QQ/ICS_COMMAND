@@ -19,7 +19,7 @@ import {
   exportDashboardJSON, showAuditLog,
   openAdminPanel, closeAdminPanel, adminLogin,
   admShowTab, admShowSys, admChangeAdminPin,
-  admBackupNow, admRefreshBackups, admPreviewBackup, admRestore, admDownloadBackup,
+  admBackupNow, admRefreshBackups, admPreviewBackup, admRestore, admDownloadBackup, admRestoreFromList,
   unlockPinLock, setModalHandlers,
   canAccessMapObjects, canCreateEvents, canUseRealModeControls,
   startSessionStatusPolling, continueSessionFromWarning, logoutFromSessionWarning,
@@ -199,6 +199,7 @@ document.addEventListener('click', function (e) {
     case 'admRefreshBackups': admRefreshBackups(); break;
     case 'admPreviewBackup':  admPreviewBackup(btn.dataset.name); break;
     case 'admDownloadBackup': admDownloadBackup(btn.dataset.name); break;
+    case 'admRestoreFromList': admRestoreFromList(btn.dataset.name); break;
     case 'admRestore':        admRestore(); break;
     case 'admChangePin':
     case 'adm-change-pin': admChangeAdminPin(); break;

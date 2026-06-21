@@ -962,20 +962,22 @@ export async function admRefreshBackups() {
     if (dir) dir.textContent = '伺服器備份目錄：' + (d.backup_dir || '—');
     if (!d.backups.length) { box.innerHTML = '<span style="color:var(--text3);">（尚無整包備份）</span>'; return; }
     box.innerHTML = `<div style="display:flex;gap:8px;color:var(--text3);font-weight:600;padding:2px 0;border-bottom:1px solid var(--border);">
-        <span style="flex:1;">檔名</span><span style="width:64px;">觸發</span><span style="width:110px;">演習</span>
-        <span style="width:60px;text-align:right;">大小</span><span style="width:130px;"></span>
+        <span style="flex:1;">檔名</span><span style="width:64px;">來源</span><span style="width:100px;">演習</span>
+        <span style="width:56px;text-align:right;">大小</span><span style="width:190px;"></span>
       </div>` + d.backups.map(b => {
       const ex = b.exercise ? _escAudit(b.exercise) : '<span style="color:var(--text3);">—</span>';
       return `<div style="display:flex;gap:8px;align-items:center;padding:3px 0;border-bottom:1px solid var(--border);">
         <span style="flex:1;word-break:break-all;">${_escAudit(b.name)}</span>
         <span style="width:64px;">${_triggerLabel(b)}</span>
-        <span style="width:110px;word-break:break-all;">${ex}</span>
-        <span style="width:60px;text-align:right;color:var(--text3);">${_fmtBytes(b.size_bytes)}</span>
-        <span style="width:130px;display:flex;gap:4px;">
+        <span style="width:100px;word-break:break-all;">${ex}</span>
+        <span style="width:56px;text-align:right;color:var(--text3);">${_fmtBytes(b.size_bytes)}</span>
+        <span style="width:190px;display:flex;gap:4px;">
           <button class="login-btn" data-action="admPreviewBackup" data-name="${_escAudit(b.name)}"
                   style="background:var(--bg3);font-size:10px;padding:2px 6px;">manifest</button>
           <button class="login-btn" data-action="admDownloadBackup" data-name="${_escAudit(b.name)}"
                   style="background:var(--bg3);font-size:10px;padding:2px 6px;">下載</button>
+          <button class="login-btn" data-action="admRestoreFromList" data-name="${_escAudit(b.name)}"
+                  style="background:var(--red);color:#fff;border:none;font-size:10px;padding:2px 6px;">還原此筆</button>
         </span>
       </div>`;
     }).join('');
@@ -1013,7 +1015,7 @@ function _renderManifest(m) {
     ? `演習：${_escAudit(m.exercise.name)}（${_escAudit(m.exercise.type)} / ${_escAudit(m.exercise.status)}）`
     : '演習：（無 — 實戰池 / 系統層）';
   const files = (m.files || []).map(f => `<li>${_escAudit(f)}</li>`).join('');
-  return `建立：${_escAudit(m.created_at)} · app ${_escAudit(m.app_version)} · 觸發：${_escAudit(m.trigger)}<br>${ex}`
+  return `建立：${_escAudit(m.created_at)} · app ${_escAudit(m.app_version)} · 來源：${_escAudit(m.trigger)}<br>${ex}`
     + ` · ${(m.files || []).length} 檔<ul style="columns:2;margin:4px 0;">${files}</ul>`;
 }
 
@@ -1027,24 +1029,38 @@ export async function admPreviewBackup(name) {
   } catch (e) { alert('錯誤：' + e.message); }
 }
 
+function _renderRestoreResult(d) {
+  const detail = el('adm-backup-detail');
+  if (!detail) return;
+  detail.innerHTML = `<span style="color:var(--green);">✅ 還原完成`
+    + (d.pre_restore ? `（當前已備份為 <code>${_escAudit(d.pre_restore)}</code>）` : '') + '</span>'
+    + '<br><span style="color:var(--yellow);">⚠️ 請重啟指揮部服務讓新資料生效。</span><br>' + _renderManifest(d.manifest);
+}
+
+// 還原清單裡某一筆（伺服器端，免下載再上傳）
+export async function admRestoreFromList(name) {
+  if (!confirm(`確定以「${name}」覆蓋當前 data/？\n系統會先自動備份當前為 pre-restore-*，還原後需重啟服務。`)) return;
+  try {
+    const r = await authFetch(API_BASE + '/api/admin/user-data-backups/' + encodeURIComponent(name) + '/restore', { method: 'POST' });
+    if (!r.ok) { alert('還原失敗（' + r.status + '）：' + ((await r.json().catch(() => ({}))).detail || '')); return; }
+    _renderRestoreResult(await r.json());
+    admRefreshBackups();
+  } catch (e) { alert('錯誤：' + e.message); }
+}
+
+// 從外部檔（USB / 異地拿回）上傳還原
 export async function admRestore() {
   const input = el('adm-restore-file');
   if (!input || !input.files || !input.files[0]) { alert('請先選擇 .tar.gz.enc 備份檔'); return; }
   const f = input.files[0];
   if (!f.name.endsWith('.enc')) { alert('僅接受 .tar.gz.enc 整包備份檔'); return; }
   if (!confirm(`確定以「${f.name}」覆蓋當前 data/？\n系統會先自動備份當前為 pre-restore-*，還原後需重啟服務。`)) return;
-  const detail = el('adm-backup-detail');
   const fd = new FormData();
   fd.append('file', f);
   try {
     const r = await authFetch(API_BASE + '/api/admin/restore', { method: 'POST', body: fd });
     if (!r.ok) { alert('還原失敗（' + r.status + '）：' + ((await r.json().catch(() => ({}))).detail || '')); return; }
-    const d = await r.json();
-    if (detail) {
-      detail.innerHTML = `<span style="color:var(--green);">✅ 還原完成`
-        + (d.pre_restore ? `（當前已備份為 <code>${_escAudit(d.pre_restore)}</code>）` : '') + '</span>'
-        + '<br><span style="color:var(--yellow);">⚠️ 請重啟指揮部服務讓新資料生效。</span><br>' + _renderManifest(d.manifest);
-    }
+    _renderRestoreResult(await r.json());
     admRefreshBackups();
   } catch (e) { alert('錯誤：' + e.message); }
 }
