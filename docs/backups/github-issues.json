@@ -4355,14 +4355,29 @@
     },
     "body": "## 背景\n2026-06-20/21 兩批紅隊為**白箱靜態源碼審查**(讀 code,非對活跑實例實打)。以下殘留**只有黑箱/runtime 才驗得到**,目前僅在 `docs/security-audit/redteam-2026-06-20.md`「需 runtime 確認」記錄,無開單 → 此單收口。\n\n## 待驗(在 Windows/Docker prod,非 Mac/dev)\n1. **#289 H4 — nginx 實際吐的 header**:`curl -kI https://1.34.230.218/` → HSTS / X-Frame-Options / X-Content-Type-Options / Referrer-Policy 都在。\n2. **#289 H4 — TLS cipher/版本**:`nmap --script ssl-enum-ciphers -p 443 <host>` → 只剩 ECDHE+AEAD、TLS1.2/1.3。\n3. **#290 M1 — prod env**:確認 `ICS_PROXY_SHARED_SECRET` 實際非預設/非空。\n4. **黑箱補白箱盲區**:對活靶實打 #286 upload traversal、#288 events/decisions 跨場 IDOR、TTX 越權 → 確認真擋。\n\n## 完成判準\n4 項在 prod 機實測通過,回填 audit log。前置:prod image 可跑(#300)+ deploy/prod。",
     "closedAt": null,
-    "comments": [],
+    "comments": [
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## Runtime 黑箱（批次3，2026-06-22）+ 公網曝險評估\n\n外部黑箱實打 `1.34.230.218`（`openssl 3.5.5` / `curl` / TCP；**未發任何寫入封包** — CoT 注入會污染 live COP，刻意不打，mTLS 強制已在握手層證明匿名注入不可能）。留痕：`docs/security-audit/redteam-2026-06-20.md` 批次3，分支 `fix/issue-301-prod-runtime-security-verify`（commit `c80d535`）。\n\n### #301 逐項\n| 項 | 結果 | 證據 |\n|---|---|---|\n| **項1 H4 headers** | ✅ **PASS** | 443 五個 header（HSTS / X-Frame DENY / nosniff / Referrer-Policy / Permissions-Policy）連 pre-auth 400 都 `always` 注入 |\n| **項2 H4 cipher/TLS** | ✅ **PASS** | TLS1.2 談判下 CBC / 靜態RSA-kx / `ECDHE-RSA-AES128-SHA` 全 alert 40 拒；只 `ECDHE-*-AES256-GCM-SHA384` 成功；443=TLS1.2/1.3、8089 拒 1.0/1.1 |\n| **項3 M1 prod secret** | ⏳ 卡授權 | 間接證據：mTLS 強制 + 容器 healthy（fail-closed gate）。待 `docker exec` 讀值坐實 |\n| **項4 IDOR/traversal** | ⏳ 卡憑證 | 443 全 mTLS，無 client cert 連 app 層摸不到；待 cert + 三級 session 實打 |\n\n### 攻擊面（外部 TCP）\n- 對外僅 **443（ICS mTLS）+ 8089（TAK CoT mTLS）**；**8443 admin / 8446 enroll / 9000 step-ca / 8000 後端 / 5432 PG 全 filtered**。\n- **8089 mTLS 強制**：無證 → `tlsv13 alert certificate required`（alert 116）→ 匿名 CoT 注入不可能。\n- **443 mTLS 強制**：無證 → 400；`ssl_verify_client on` 全 location 無繞過、掃描路徑 444 drop。\n\n### 新發現\n- **L9 🟡 LOW**：443 server cert SAN 洩內網 IP（`192.168.50.2` / `10.0.1.16`）→ 對外 cert SAN 應只留必要公網 IP/DNS。\n- **INFO**：`Server: nginx/1.27.5` 版本外洩（`server_tokens off` 可消）。\n\n### 公網曝險評估（「掛官網有什麼風險」）\n**匿名網路攻擊者幾乎無面可打** —— 系統 = mTLS gate everything 且黑箱證明強制生效，要打 app 層須先有 ICS-mTLS-CA 簽的 cert，而 CA 外網簽不到 → 止步 TLS 握手。殘留風險集中**憑證治理**：\n- **R1**（需查 prod 態）：first-run / mTLS-bootstrap 窗口被搶 admin — 需同時握 cert + first-run token + 系統仍在 bootstrap 窗口（`is_mtls_bootstrap` 單向閂、綁首張即永久關）。外部匿名不可達；風險限發證/發 token 不謹慎。**部署前須確認 prod `accounts>1` + `mtls_bootstrap_done` 已設**。\n- **R2 MEDIUM**：Docker `ports:` 抹真 client IP（H5）→ per-IP 限速 / fail2ban 形同全域桶 → 持證 tester 可鎖定 DoS。正解 #280（Tailscale/host-net 還原真 IP）。\n- **R-TAK MEDIUM**：TAK 裝置證無真撤銷（無 CRL，#318 未做）→ 洩漏 cert 對 8089 持久 read+inject。公測別濫發證。\n\n**結論：掛官網可行；周邊極硬、匿名打不進。公測務必管控發證流程，建議補 #280（真 IP）+ #318（CRL）。**\n\n### 仍待（需 prod-exec / 憑證，本次 autonomous 受 guardrail 鎖）\n項3 secret 實值、項4 app 層 live-fire、R1 prod 實態 —— 三者皆需人在位跑指令或開 settings 白名單才能續，非程式問題。對應修補（#286/#287/#288）白箱皆已 merged + 有測試，只差 runtime 蓋章。",
+        "createdAt": "2026-06-21T23:43:11Z",
+        "id": "IC_kwDOSnBjpc8AAAABG--gtw",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/301#issuecomment-4763656375"
+      }
+    ],
     "createdAt": "2026-06-20T23:53:10Z",
     "labels": [],
     "milestone": null,
     "number": 301,
     "state": "OPEN",
     "title": "test(security): Windows prod runtime 安全驗證(黑箱) — H4 header/cipher + M1 prod secret + IDOR/traversal 活靶",
-    "updatedAt": "2026-06-20T23:53:10Z",
+    "updatedAt": "2026-06-21T23:43:11Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/301"
   },
   {
