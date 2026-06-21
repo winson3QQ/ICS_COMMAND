@@ -4263,6 +4263,20 @@
         "minimizedReason": "",
         "reactionGroups": [],
         "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/300#issuecomment-4760826305"
+      },
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## ✅ 根因已除 — 方案 A（原地重 clone）完成\n\n2026-06-21 在 repo 外終端跑 `reclone-ics.ps1`（刪舊 repo → `git clone` 純檔 → 還原 runtime → 驗 reparse → build）。\n\n### 完成判準驗證\n| 判準 | 結果 |\n|---|---|\n| `requirements.txt` attribute 不含 ReparsePoint | ✅ `Archive`（原為 `Archive, ReparsePoint`） |\n| repo 內帶 ReparsePoint 的檔 ~0 | ✅ **0**（原 4949） |\n| ICS image `docker build` 成功 | ✅ `ics-command:dev` BUILD OK（23.3s，build context 17.5MB 正常傳輸，不再報 `invalid file request`） |\n\n### 環境後續狀態\n- 新 clone：`core.hooksPath=.githooks` 已設、工作樹乾淨、HEAD=`ccc2c3a`、runtime（`data/ics.db` + `static/tiles/taiwan.pmtiles`）已從備份還原。\n- 備份留存 `C:\\ics-reclone-backup\\`（驗證無誤後可自行清）。\n\n### TAK image 去向\nreparse blocker 已除，TAK image 不再被它擋；但 TAK build 另需官方包 `takserver-docker-5.7-RELEASE-43.zip`（tak.gov / EULA、gitignored），`deploy/tak-server/release/` 在新 clone 為空。該前置移交 **#305**，不屬本單環境缺陷。\n\n→ 本單（OneDrive reparse 擋 build）根因已解，可關閉；TAK image build + up/smoke 在 #305 續。\n",
+        "createdAt": "2026-06-21T05:07:52Z",
+        "id": "IC_kwDOSnBjpc8AAAABG8a78Q",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/300#issuecomment-4760976369"
       }
     ],
     "createdAt": "2026-06-20T23:06:32Z",
@@ -4271,7 +4285,7 @@
     "number": 300,
     "state": "OPEN",
     "title": "build(infra): 本機 docker build 受阻於 OneDrive 殘留 cloud reparse point — repo 搬出同步路徑",
-    "updatedAt": "2026-06-21T03:48:00Z",
+    "updatedAt": "2026-06-21T05:07:52Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/300"
   },
   {
