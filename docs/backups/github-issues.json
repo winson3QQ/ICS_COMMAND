@@ -4600,5 +4600,45 @@
     "title": "feat(tak): P2-26 L2 — admin TAK tab（toggle 搬入 + TAK 裝置證自助發放 data package）",
     "updatedAt": "2026-06-21T20:39:44Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/315"
+  },
+  {
+    "assignees": [],
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "body": "#315 dashboard 發 TAK 裝置證落地後的 lifecycle 第一步：**列管（盤點/audit）**。\n\n## 緣起 / reality check（2026-06-22，實證見下）\n#315 的 TAK 裝置證由 **offline ICS-TAK-SVC-CA** 簽，**TAK Server 完全不記錄**（TAK `certificate` 表實測 `count=0`，只記 TAK enrollment 發的證）。ICS 端目前也只有 audit log（issuance event），**沒有可查詢的「發過哪些裝置證」狀態**。同個 callsign 可重發多張、無從盤點。\n\n## Scope（低成本、即有價值）\n- [ ] ICS 自建表 `tak_device_certs`：`callsign` / **`serial`（簽發時記，CRL 前置）** / `issued_at` / `operator` / `mode`(atak/aware) / `status`(active/revoked) / `revoked_at`。\n- [ ] `tak_device_cert.build_device_package` / endpoint：簽發時**記下 serial**（現 `-CAcreateserial` 隨機 serial 沒留 → 改 `-set_serial` 或讀回 cert serial 寫表）。\n- [ ] admin TAK tab：列出已發裝置證（callsign / 發證時間 / 發證者 / 狀態），可標記「撤銷」（flag）。\n- [ ] RBAC sysadmin-only；列表/標記強制 audit。\n\n## ⚠ 明確邊界（誠實）\n**本 issue 的「撤銷」= 帳面 flag，不 enforce** —— 標記後**裝置仍能連 TAK**（reality check：TAK truststore 信任整個 ICS-TAK-SVC-CA、無 per-cert 拒絕、CoreConfig 無 CRL）。**真撤銷（阻擋連線）見另開的 CRL issue**，本表的 `serial` 欄正是 CRL 的前置。\n\n關聯：#315、memory `tak-device-cert-ca-topology`。",
+    "closedAt": null,
+    "comments": [],
+    "createdAt": "2026-06-21T20:53:37Z",
+    "labels": [],
+    "milestone": null,
+    "number": 317,
+    "state": "OPEN",
+    "title": "feat(tak): TAK 裝置證列管 — ICS 自建發證記錄表 + 列表/撤銷-flag UI（#315 後續）",
+    "updatedAt": "2026-06-21T20:53:37Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/317"
+  },
+  {
+    "assignees": [],
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "body": "讓 #315 發出的 TAK 裝置證能**真正被阻擋連 TAK**（非帳面 flag）。依賴「裝置證列管」issue 的 serial 記錄。\n\n## Reality check（2026-06-22，全實證）\n撤銷一張 offline ICS-TAK-SVC-CA 簽的裝置證，現狀**做不到**：\n1. **TAK `certificate` 表 = 0 筆** → TAK certadmin（`/Marti/api/certadmin/cert/revoke`）只管 TAK enrollment 發的證，**管不到我們 offline 證**。\n2. **CoreConfig `<tls>` 無 CRL 設定** → TAK 不查 CRL → 就算 CA 出 CRL 也無效。\n3. **truststore 信任整個 ICS-TAK-SVC-CA** → 它簽的證連線即接受、無 per-cert 拒絕。\n4. cert 連線**不建持久 TAK user** → 無 user 可停用。\n\n## 方案（保留 offline 模型）= CRL\n- [ ] ICS-TAK-SVC-CA 維護 **CRL**（`openssl ca -revoke` / 自管 CRL；revoke「列管表」記的 serial）。\n- [ ] TAK **CoreConfig 加 CRL 檢查**（`<tls ... crl=...>` 或 security CRL 元素）+ CRL 檔/distribution point。\n- [ ] **CRL 重載機制**（TAK 是否 hot-reload CRL，或須 restart → 影響可用性，需測）。\n- [ ] 端到端驗：撤一張 → 重連 → TAK 拒（`peer not verified` / CRL revoked），未撤的不受影響。\n\n## 備選（更大改）\n- (B) 改走 TAK enrollment 發證（證進 TAK 表 certadmin 可撤）→ 放棄 offline + 用回 TAK 內建 CA（#305 刻意換掉）。\n- (C) CA 輪替（核彈）→ 全部裝置證失效重發。\n\n## 依賴 / 風險\n- 依賴「裝置證列管」issue 先記 serial。\n- 動 TAK CoreConfig = 動官方 TAK 部署設定，需 restart、回歸驗 mTLS 不破。\n- 工程量中等偏大，**獨立排期**。\n\n關聯：#315、memory `tak-device-cert-ca-topology` / `tak-marti-authz-model`。",
+    "closedAt": null,
+    "comments": [],
+    "createdAt": "2026-06-21T20:53:39Z",
+    "labels": [],
+    "milestone": null,
+    "number": 318,
+    "state": "OPEN",
+    "title": "feat(tak): TAK 裝置證真撤銷 — ICS-TAK-SVC-CA CRL + TAK CoreConfig CRL 檢查（#315 後續，大項）",
+    "updatedAt": "2026-06-21T20:53:39Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/318"
   }
 ]
