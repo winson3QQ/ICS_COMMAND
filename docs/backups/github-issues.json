@@ -4919,15 +4919,15 @@
       "name": ""
     },
     "body": "AAR dry-run 回饋「#2 建立的區域沒出現」。**演習中區域畫了又刪很常見 → 必須時間精確重現，非靜態 backdrop。**\n\n## Reality check（修正版，2026-06-22）\n**不是「卡在無 temporal schema」——生命週期歷史已存在 `audit_log`：**\n- `cop_entity_created`（`command-dashboard/src/routers/cop.py:338`）/ `cop_entity_updated`（`cop.py:390`）/ `cop_entity_deleted`（`cop.py:415`），皆 timestamped + exercise-scoped。\n- **唯一缺口**：audit detail 只記 `{kind,label,lat,lon}`，**不含 polygon 頂點**（`cop.py:179-184`）→ 無法還原幾何形狀。\n- 區域=`cop_entities`，`attributes.kind='polygon'|'route'` + `vertices`（`database.py:729` / `cop_service.py:203`）。\n- 設計 doctrine 本就是 event-sourcing + fold-at-T（#199）→ 正是本問題的解。\n\n## 解法（時間精確，3 步）\n1. **【關鍵路徑·須演習前上線】記錄幾何**：`_audit_cop` detail 於 create+update 補幾何快照（`attributes`/vertices；polygon/route kind）。audit history **不可回填** → 不在演習前部署，刪掉的區域形狀就永久遺失。\n2. **折疊**：timeline 出 `zone` 事件；replay_engine 折疊 T 時刻區域狀態 = 每 uid 取 ≤T 最後一筆 create/update，**delete ≤T 即移除**。14:05 畫、14:30 刪的區域只在該時窗出現。\n3. **渲染**：aar_map fill+line 層（沿用 live color/dash）。\n\n## 覆蓋注意\n- dashboard 手繪區域走 router → 已 audit ✅。\n- **TAK-ingest 的 shape**（若有）走 ingest path 不經 router `_audit_cop` → 如需涵蓋,ingest 路徑也要記錄（待定範圍）。\n\n## DoD\n- [ ] step 1 記錄幾何（+ 測試）— **優先,演習前 deploy**\n- [ ] timeline `zone` 源 + 折疊純函式（vitest：create/edit/delete @ T）\n- [ ] aar_map 區域層 + toggle\n- [ ] human verify（真演習：畫→改→刪 隨 T 重現）\n- [ ] ROADMAP P2-20 記錄",
-    "closedAt": null,
+    "closedAt": "2026-06-22T12:12:35Z",
     "comments": [],
     "createdAt": "2026-06-22T09:22:17Z",
     "labels": [],
     "milestone": null,
     "number": 338,
-    "state": "OPEN",
+    "state": "CLOSED",
     "title": "feat(aar): 回放圖時間精確重現區域（zones：draw/edit/delete @ T）",
-    "updatedAt": "2026-06-22T09:28:41Z",
+    "updatedAt": "2026-06-22T12:12:35Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/338"
   },
   {
@@ -4939,15 +4939,15 @@
       "name": ""
     },
     "body": "AAR dry-run「#5 沒有事件標誌」。**事件標的（無人機/RTF/暴民）一定會移動 → 事件 pin 必須跟隨 marker 在 T 的位置。**\n\n## Reality check（修正版，2026-06-22）\n**移動問題已被 #335 解掉**：移動標的=帶 tracks 的 `cop_entity` → **已被 fold-at-T 並畫成移動中的 MIL-STD-2525 單位**（#335 已上線）。事件只需經 junction 騎在該 marker 的已折疊位置上 → **fold-at-T 免費取得**。\n- events 無座標（`_m022` 移除 lat/lon，`database.py:1122`）；位置 SoT=`cop_entities`。\n- junction `event_markers(event_id,cop_entity_uid,role,created_at)`，N:1（`database.py:1096` / `event_marker_repo.py:45`）。\n- timeline `_events()` 現無位置（`timeline_service.py:84`）；AAR 事件僅側欄。\n- 移動標的位置已在 replay_engine 的 fold Map（單位折疊）內。\n\n## 解法（時間精確）\n- **後端**：`_events()` JOIN `event_markers` → 帶 marker uid（+ 無 track 靜態標記的錨點 lat/lon fallback）。\n- **前端**：事件於 `occurred_at ≤ T` 出現,glyph **co-locate 於該 marker 的已折疊位置**（marker 動,事件 pin 跟著動）；多 marker（N:1）取 primary role。\n- severity/類型視覺與 live 對齊。\n- 無需「v2 accuracy」—— 因 marker 本就是已折疊單位,正確性 by construction。\n\n## DoD\n- [ ] 後端 `_events()` 帶 marker（測試：N:1 取 primary、無 marker、track-less 錨點、跨場隔離）\n- [ ] 前端事件 glyph 騎在折疊 marker 位置（vitest 純函式）\n- [ ] human verify（真演習：事件跟隨移動標的）\n- [ ] ROADMAP P2-20 / #240 記錄",
-    "closedAt": null,
+    "closedAt": "2026-06-22T12:12:36Z",
     "comments": [],
     "createdAt": "2026-06-22T09:22:19Z",
     "labels": [],
     "milestone": null,
     "number": 339,
-    "state": "OPEN",
+    "state": "CLOSED",
     "title": "feat(aar): 回放圖事件標記跟隨移動標的（events ride folded marker @ T）",
-    "updatedAt": "2026-06-22T09:28:43Z",
+    "updatedAt": "2026-06-22T12:12:36Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/339"
   }
 ]

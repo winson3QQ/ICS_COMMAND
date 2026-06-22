@@ -4796,5 +4796,26 @@
     "title": "chore(release): backend-v2.13.3 / frontend-v1.9.5 — AAR dry-run 修正批次",
     "updatedAt": "2026-06-22T09:16:52Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/337"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "AAR 回放地圖補齊三類圖層，全部**隨時間軸折疊重現**、符號**對齊即時 COP**。\n\n## #338 區域（zones）— 時間精確重現 draw/edit/delete @ T\n- `cop.py _audit_cop`：polygon/route 記**整包 attributes 快照**（vertices + label_anchor + 樣式）。audit 不可回填 → 關鍵路徑記錄器。\n- timeline `zone` 源（`detail LIKE attributes` 預篩）→ `foldZonesAt`（≤T 最後一筆、delete≤T 移除）→ fill/line 渲染。\n\n## #339 事件 + 敵我接觸 — 騎在標記折疊位置、隨 T 移動\n- **事件**：`_events` 經 `event_markers` junction 帶 marker + audit 位置歷史 → 事件 pin 跟隨移動標的（TAK 走 posMap、手動走 audit 歷史）。\n- **符號重用 live**：military regime → milsymbol 2525（drone 紅/QRF 藍方，via taxonomy `cot_type`）、civil → severity ◆ + NAPSG 象形/abbr；`/api/event_taxonomy` 同 SoT。`#1` 標籤=人類描述。\n- **敵我接觸**（長按「TAK 標記」`kind=contact`）→ `_contacts` 從 audit 歷史出 track → 走 #335 milsymbol 單位層（友藍方/敵紅菱/中綠方/不明黃梅花）隨 T 移動。\n\n## 驗證\n- `/code-review`（cross-exercise 洩漏／雙畫／alert 死碼 皆 refuted）+ `/security-review`（**0** — SQLi 全參數化、XSS 僅 maplibre 表達式+textContent、authz exercise-scoped）\n- vitest 353 + timeline pytest 18 + eslint/pyflakes 全綠；多輪 dogfood 真機驗（符號對齊 live PASS）\n\n## 限制 / 仍 pending（row 不關）\n- 孤兒標記（標圖時無 active 場 → `exid=None`）不進任何 AAR；移動/label 需 active 場記錄。\n- B3 iPad 觸控 + 整組 human verify；symbology 兩份決策後續抽共用 resolver。\n\ncloses #338, closes #339\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+    "closedAt": "2026-06-22T12:12:34Z",
+    "comments": [],
+    "createdAt": "2026-06-22T12:12:23Z",
+    "headRefName": "feat/issue-339-aar-events",
+    "labels": [],
+    "mergedAt": "2026-06-22T12:12:34Z",
+    "number": 340,
+    "state": "MERGED",
+    "title": "feat(aar): AAR 回放上圖 — #338 區域 + #339 事件/敵我接觸（時間精確、重用 live 符號）",
+    "updatedAt": "2026-06-22T12:12:39Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/340"
   }
 ]
