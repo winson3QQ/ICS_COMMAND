@@ -568,11 +568,17 @@ def issue_tak_device_cert(request: Request, callsign: str, mode: str = "atak"):
         cn,
         {"callsign": cn, "mode": mode, "serial": serial, "connect_host": config.TAK_DEVICE_CONNECT_HOST},
     )
-    safe = "".join(c for c in cn if c.isalnum() or c in "-_.") or "device"
+    # #324：filename 須 latin-1 安全（HTTP header 限制）。Python `isalnum()` 對中文回 True，
+    # 不能用來濾——非 ASCII 進 header → uvicorn UnicodeEncodeError → 500（且證已記/audit = 幽靈列）。
+    # → ASCII-only fallback `filename=` + RFC5987 `filename*` 保留原（含中文）檔名給支援的 client。
+    import urllib.parse
+
+    ascii_safe = "".join(c for c in cn if c.isascii() and (c.isalnum() or c in "-_.")) or "device"
+    encoded = urllib.parse.quote(f"{cn}-dp.zip")
     return Response(
         content=pkg,
         media_type="application/zip",
-        headers={"Content-Disposition": f'attachment; filename="{safe}-dp.zip"'},
+        headers={"Content-Disposition": f"attachment; filename=\"{ascii_safe}-dp.zip\"; filename*=UTF-8''{encoded}"},
     )
 
 
@@ -595,3 +601,17 @@ def revoke_tak_device_cert(cert_id: int, request: Request):
     if result is None:
         raise HTTPException(404, "active tak device cert not found")
     return result
+
+
+@router.delete("/tak/device-certs/{cert_id}", tags=["account-admin"])
+def delete_tak_device_cert(cert_id: int, request: Request):
+    """#325：刪除**已撤銷**的裝置證盤點紀錄（清理累積 revoked）。sysadmin only、強制 audit。
+
+    僅允許刪 status='revoked'（active 仍代表一張在用的證，刪了即失去盤點 → 拒）。
+    刪的是 ICS 盤點紀錄，**非真撤銷**（真撤銷=CRL #318，本表 status 僅帳面 flag）。"""
+    sess = _check_system_admin(request)
+    from repositories.tak_device_cert_repo import delete_record
+
+    if not delete_record(cert_id, sess["username"]):
+        raise HTTPException(404, "revoked tak device cert not found（僅能刪已撤銷紀錄，active 不可刪）")
+    return {"deleted": cert_id}

@@ -67,3 +67,25 @@ def mark_revoked(cert_id: int, operator: str) -> dict | None:
         {"callsign": row["callsign"], "serial": row["serial"]},
     )
     return dict(updated)
+
+
+def delete_record(cert_id: int, operator: str) -> bool:
+    """#325：刪除**已撤銷**的盤點紀錄（清理累積 revoked）。
+
+    僅刪 status='revoked'（active 仍代表在用的證，不可刪 → 回 False）。回是否刪到。
+    刪的是 ICS 盤點紀錄，非真撤銷（真撤銷=CRL #318）。
+    """
+    with get_conn() as conn:
+        row = conn.execute("SELECT * FROM tak_device_certs WHERE id=? AND status='revoked'", (cert_id,)).fetchone()
+        if row is None:
+            return False
+        conn.execute("DELETE FROM tak_device_certs WHERE id=?", (cert_id,))
+    audit(
+        operator,
+        None,
+        "tak_device_cert_delete",
+        "tak_device_certs",
+        str(cert_id),
+        {"callsign": row["callsign"], "serial": row["serial"]},
+    )
+    return True

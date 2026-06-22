@@ -53,3 +53,28 @@ class TestMarkRevoked:
         rec = record_issued("y", "S1", "aware", "admin")
         mark_revoked(rec["id"], "admin")
         assert mark_revoked(rec["id"], "admin") is None  # 已撤再撤 → None
+
+
+class TestDeleteRecord:
+    """#325：刪除已撤銷盤點紀錄（僅 revoked 可刪）。"""
+
+    def test_delete_revoked_ok(self, tmp_db):
+        from repositories.tak_device_cert_repo import delete_record, list_device_certs, mark_revoked, record_issued
+
+        rec = record_issued("d", "S1", "aware", "admin")
+        mark_revoked(rec["id"], "admin")
+        assert delete_record(rec["id"], "admin2") is True
+        assert all(r["id"] != rec["id"] for r in list_device_certs())  # 已移除
+
+    def test_delete_active_refused(self, tmp_db):
+        """active 列不可刪（還代表在用的證）→ False、列仍在。"""
+        from repositories.tak_device_cert_repo import delete_record, list_device_certs, record_issued
+
+        rec = record_issued("a", "S1", "atak", "admin")
+        assert delete_record(rec["id"], "admin") is False
+        assert any(r["id"] == rec["id"] for r in list_device_certs())
+
+    def test_delete_unknown_returns_false(self, tmp_db):
+        from repositories.tak_device_cert_repo import delete_record
+
+        assert delete_record(9999, "admin") is False
