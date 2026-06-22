@@ -931,7 +931,7 @@ def _rebuild_cop_entities(conn: sqlite3.Connection, source_values: tuple[str, ..
     解法：SQLite 官方 12-step 的 `foreign_keys=OFF` 版（實測 legacy_alter_table 在 3.50
     無法阻止 rename 改寫 child FK，不可用）——
       1. `PRAGMA foreign_keys=OFF`（DROP parent 不 cascade、不檢查 dangling）
-      2. CREATE cop_entities_new（完整 33 欄，source CHECK = source_values）
+      2. CREATE cop_entities_new（完整 35 欄含 #343 faction/faction_source，source CHECK = source_values）
       3. INSERT 用**動態舊欄位清單**（漏欄即 SQL 報錯，不靜默丟資料）
       4. DROP cop_entities（不 rename，避免 child FK 被改寫指向 _old）
       5. rename _new → cop_entities（child FK reference 'cop_entities' 對上 new）
@@ -999,7 +999,9 @@ def _rebuild_cop_entities(conn: sqlite3.Connection, source_values: tuple[str, ..
                 planned        INTEGER NOT NULL DEFAULT 0,
                 simulated      INTEGER NOT NULL DEFAULT 0,
                 deleted        INTEGER NOT NULL DEFAULT 0,
-                archived       INTEGER NOT NULL DEFAULT 0
+                archived       INTEGER NOT NULL DEFAULT 0,
+                faction        TEXT,
+                faction_source TEXT
             )
         """)  # nosec B608 — source_csv 為 code 常數 tuple，非外部輸入
         conn.execute(f"INSERT INTO cop_entities_new ({col_csv}) SELECT {col_csv} FROM cop_entities")  # nosec B608
@@ -1446,6 +1448,44 @@ def _m030_tak_device_certs_down(conn: sqlite3.Connection) -> None:
     conn.execute("DROP TABLE IF EXISTS tak_device_certs")
 
 
+def _m031_faction_isolation(conn: sqlite3.Connection) -> None:
+    """#343：紅藍陣營隔離。admin 對連線 TAK client（裝置 self-SA uid = client_key）指派
+    faction（blue/red/neutral，server-authoritative，不信 client 自宣告 type/__group）；
+    cop_entities 加 faction（producer 歸屬鏈解析結果，NULL = fail-closed 對 commander 不可見）
+    + faction_source（auto = 歸屬鏈解出 / manual = admin 對單一物件 override，重解析不覆寫）。
+    設計 SoT：docs/design/red-blue-faction-isolation.md。
+    """
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS client_faction (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            exercise_id   INTEGER REFERENCES exercises(id),
+            client_key    TEXT NOT NULL,
+            callsign      TEXT,
+            faction       TEXT NOT NULL CHECK(faction IN ('blue','red','neutral')),
+            classified_by TEXT,
+            classified_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
+        )
+    """)
+    # 每場（含實戰池 exercise_id IS NULL）同一 client_key 只一筆。SQLite 複合 PK 含 NULL 視為
+    # 相異會破壞實戰池唯一性 → 用 COALESCE 表達式 UNIQUE index（-1 = 實戰池哨兵，真 exercise id ≥1）。
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_client_faction_scope_key "
+        "ON client_faction(COALESCE(exercise_id, -1), client_key)"
+    )
+    _add_column_if_missing(conn, "cop_entities", "faction", "TEXT")
+    _add_column_if_missing(conn, "cop_entities", "faction_source", "TEXT")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_cop_entities_faction ON cop_entities(faction)")
+
+
+def _m031_faction_isolation_down(conn: sqlite3.Connection) -> None:
+    conn.execute("DROP TABLE IF EXISTS client_faction")
+    conn.execute("DROP INDEX IF EXISTS idx_cop_entities_faction")
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(cop_entities)")}
+    for col in ("faction_source", "faction"):
+        if col in cols:
+            conn.execute(f"ALTER TABLE cop_entities DROP COLUMN {col}")  # nosec B608 — 欄名為常數
+
+
 _MIGRATIONS: list[tuple[int, str, object]] = [
     (1, "events_columns", _m001_events_columns),
     (2, "decisions_columns", _m002_decisions_columns),
@@ -1477,6 +1517,7 @@ _MIGRATIONS: list[tuple[int, str, object]] = [
     (28, "cert_cn_binding", _m028_cert_cn_binding),
     (29, "account_certs", _m029_account_certs),
     (30, "tak_device_certs", _m030_tak_device_certs),
+    (31, "faction_isolation", _m031_faction_isolation),
 ]
 
 

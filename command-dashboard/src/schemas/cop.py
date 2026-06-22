@@ -21,6 +21,9 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 CoPSource = Literal["manual", "pi-node", "tak", "waveink", "command"]  # command：#141 P1-03 解凍（P2-13 下行指令來源）
 CoPSeverity = Literal["info", "warning", "critical"]
+# #343 紅藍隔離：faction = 資料 producer 歸屬（非 CoT 符號 affiliation）；None = 未解析 = fail-closed
+CoPFaction = Literal["blue", "red", "neutral"]
+CoPFactionSource = Literal["auto", "manual"]  # auto = 歸屬鏈解出 / manual = admin 單物件 override
 
 
 # ── 共用 validator：heading_deg 把 360→0（TAK CoT 正北常送 360.0）──────────
@@ -110,6 +113,14 @@ class CoPEntity(BaseModel):
     # archived：CoT <archive/> 持久標記 → list 豁免 stale（#161）。與 planned/simulated 不同：
     # 此旗標**正當來自 CoT**（顯示語意、非權限）→ normalize_cot 會設、_TAK_UPDATE_FIELDS 含之。
     archived: bool = False
+
+    # ── 紅藍陣營隔離（#343）─────────────────────────────────────────────────
+    # faction：producer 歸屬（blue/red/neutral）。ingest 時由歸屬鏈解析（self uid / creator.uid /
+    # link[p-p].uid）→ 查 client_faction 表。None = 未解析或 client 未分類 → **fail-closed**
+    # （對 commander 不可見）。强制點在 router/hub，非 schema。
+    faction: CoPFaction | None = None
+    # faction_source：auto = 歸屬鏈解出（重解析可覆寫）/ manual = admin 對單物件 override（不被重解析覆寫）
+    faction_source: CoPFactionSource | None = None
 
     # ── escape hatch ─────────────────────────────────────────────────────
     attributes: dict = Field(default_factory=dict)
