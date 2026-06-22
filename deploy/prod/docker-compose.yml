@@ -25,8 +25,14 @@ services:
       - DOCKER_STEPCA_INIT_DNS_NAMES=step-ca,localhost
       - DOCKER_STEPCA_INIT_PROVISIONER_NAME=ics
       - DOCKER_STEPCA_INIT_PASSWORD=${STEP_CA_PASSWORD:?STEP_CA_PASSWORD 必須設定（見 .env.example）}
+      # #279：CA 憑證效期（fresh deploy 自動套 90 天，免手動 patch provisioner claims）。
+      - ICS_CA_MAX_CERT_DURATION=${ICS_CA_MAX_CERT_DURATION:-2160h}
     volumes:
       - ca-data:/home/step
+      - ../ics-validation/mtls/step-ca-claims-wrap.sh:/step-ca-claims-wrap.sh:ro
+    # #279：official entrypoint 先 init（fresh）再 exec 本 CMD → wrapper 在 daemon 啟動前把
+    # authority.claims 設成 90 天（覆蓋 fresh init 的 24h 預設），再 exec 真正 daemon。reproducible。
+    command: ["sh", "/step-ca-claims-wrap.sh", "/usr/local/bin/step-ca", "--password-file", "/home/step/secrets/password", "/home/step/config/ca.json"]
     networks: [icsnet]
 
   ca-bootstrap:
@@ -41,7 +47,7 @@ services:
       - STEP_CA_PASSWORD=${STEP_CA_PASSWORD:?STEP_CA_PASSWORD 必須設定}
       - ICS_SERVER_SANS=${ICS_SERVER_SANS:-}   # 公網 IP/網域寫進 nginx server cert SAN（空白分隔）
       - ICS_SERVER_SANS_ALLOW_PRIVATE=${ICS_SERVER_SANS_ALLOW_PRIVATE:-false}   # #321 L9：預設過濾 RFC1918 內網 IP（防公網 cert 洩拓樸）；純 LAN/dev 才設 true
-      - ICS_SERVER_CERT_DURATION=${ICS_SERVER_CERT_DURATION:-23h}   # nginx server cert 效期；90 天須先放寬 provisioner claims（見 README §憑證效期 / #279）
+      - ICS_SERVER_CERT_DURATION=${ICS_SERVER_CERT_DURATION:-2160h}   # nginx server cert 效期；#279 wrapper 已把 provisioner claims 放寬 90 天 → 預設可直接 2160h（fresh deploy 不再被拒）
     volumes:
       - ca-data:/ca:ro
       - pki:/pki
@@ -66,7 +72,7 @@ services:
       - STEP_CA_PROVISIONER=ics
       - STEP_CA_PROVISIONER_PASSWORD_FILE=/ca-share/prov.pass
       - STEP_CA_FINGERPRINT_FILE=/ca-share/fingerprint
-      - STEP_CLIENT_CERT_DURATION=${STEP_CLIENT_CERT_DURATION:-23h}   # 線上發證 client cert 效期。⚠ fresh CA provisioner 預設 maxTLSCertDuration=24h → 預設留 23h（fresh deploy 不會被拒）。90 天（公測長放）：先放寬 provisioner claims 再於 .env 設 2160h → 見 README §憑證效期 / #279。
+      - STEP_CLIENT_CERT_DURATION=${STEP_CLIENT_CERT_DURATION:-2160h}   # 線上發證 client cert 效期。#279：step-ca-claims-wrap 已把 provisioner claims reproducible 放寬 90 天（fresh deploy 自動），故預設直接 2160h。
       - ICS_PROXY_SHARED_SECRET=${ICS_PROXY_SHARED_SECRET:?ICS_PROXY_SHARED_SECRET 必須設定（見 .env.example）}
       # ── TAK 整合（toggle；純 ICS delivery 下全空、TAK_ENABLED=false）──────────────
       - TAK_ENABLED=${TAK_ENABLED:-false}
