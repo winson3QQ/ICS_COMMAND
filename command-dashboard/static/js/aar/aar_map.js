@@ -1,11 +1,13 @@
-// aar_map.js — AAR 回放頁的地圖層（P2-20(B) B1，issue #201）
+// aar_map.js — AAR 回放頁的地圖層（P2-20(B)，issue #201 / #4）
 //
-// 自帶 map 實例：直接 import maplibre_core（initMaplibre 建獨立實例 + pmtiles 底圖），
-// **不經 map.js / EntityLayer**——回放是唯讀視圖，單位以 circle+callsign 簡繪（2525 符號留 v2），
-// 與 P2-33b/c、part-3 的 live 渲染領地零重疊。
+// 自帶 map 實例：直接 import maplibre_core（initMaplibre 建獨立實例 + pmtiles 底圖）。
+// #4：單位改用 live 同款 MIL-STD-2525 符號（milsymbol，via cotToSidc + bakeMilSymbol）；
+//     無 sidc 的單位（手動標記等）退回敵我配色點；尾跡依敵我態配色。**仍不經 map.js**——
+//     符號/敵我函式皆來自可 import 的共用模組（mil_symbol.js / entity_layer.js）。
 
 import { initMaplibre } from '../map/maplibre_core.js';
-import { positionsToGeoJSON } from './replay_engine.js';
+import { cotToSidc, affiliationFromCot } from '../map/mil_symbol.js';
+import { bakeMilSymbol } from '../map/entity_layer.js';
 
 const SRC = 'aar-units';
 const SRC_TRAILS = 'aar-trails';
@@ -13,6 +15,31 @@ let _map = null;
 let _ready = false;
 let _pending = null; // map 未 ready 前最後一次 setPositions 的資料（ready 後補渲染）
 let _pendingTrails = null; // 同上（B2 尾跡）
+let _renderSeq = 0; // bake async seq guard（舊輪 .then 不蓋新位置）
+
+// 敵我態 → 顏色（fallback 點 + 尾跡線）。對齊 2525 慣例：友藍 / 敵紅 / 中綠 / 不明黃。
+const AFFIL_COLOR = [
+  'match', ['get', 'affiliation'],
+  'friendly', '#3b82f6', 'hostile', '#ef4444', 'neutral', '#22c55e',
+  /* unknown / 其他 */ '#eab308',
+];
+
+/** 折疊位置 Map → units GeoJSON（含 iconId='mil-'+sidc / affiliation）。回 {fc, sidcs}。
+ *  軌跡不存歷史敵我態 → 用該 uid 現值 cot_type（v1 限制，#4 issue 記）。 */
+function _unitsToGeoJSON(posMap) {
+  const features = [];
+  const sidcs = new Set();
+  for (const p of posMap.values()) {
+    const sidc = p.cot_type ? cotToSidc(p.cot_type) : null;
+    const props = {
+      uid: p.uid, callsign: p.actor, t: p.t,
+      affiliation: p.cot_type ? affiliationFromCot(p.cot_type) : 'unknown',
+    };
+    if (sidc) { props.iconId = 'mil-' + sidc; sidcs.add(sidc); }
+    features.push({ type: 'Feature', geometry: { type: 'Point', coordinates: [p.lon, p.lat] }, properties: props });
+  }
+  return { fc: { type: 'FeatureCollection', features }, sidcs };
+}
 
 /** 建 source + 兩層（circle + callsign label）。style 未就緒時 addSource 會 throw →
  *  回 false 讓 caller 改掛事件重試。idempotent（_ready 守門）。 */
@@ -30,23 +57,39 @@ function _ensureLayers() {
         id: 'aar-trails-line',
         type: 'line',
         source: SRC_TRAILS,
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
         paint: {
-          'line-color': '#3fb950',
-          'line-width': 2,
-          'line-opacity': 0.45,
+          'line-color': AFFIL_COLOR, // #4：依敵我態配色
+          'line-width': 2.5,
+          'line-opacity': 0.5,
         },
       });
     }
     if (!_map.getSource(SRC)) {
       _map.addSource(SRC, { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
     }
+    // #4：milsymbol 2525 圖示（有 sidc 才有 iconId；未 bake 完 icon-image 找不到 → 該幀不顯，
+    // bake 完 setPositions re-setData 即現）。
+    if (!_map.getLayer('aar-units-icon')) _map.addLayer({
+      id: 'aar-units-icon',
+      type: 'symbol',
+      source: SRC,
+      filter: ['has', 'iconId'],
+      layout: {
+        'icon-image': ['get', 'iconId'],
+        'icon-allow-overlap': true,
+        'icon-ignore-placement': true,
+      },
+    });
+    // fallback：無 sidc 的單位（非 atom / 缺 type）→ 敵我配色點。
     if (!_map.getLayer('aar-units-dot')) _map.addLayer({
       id: 'aar-units-dot',
       type: 'circle',
       source: SRC,
+      filter: ['!', ['has', 'iconId']],
       paint: {
         'circle-radius': 7,
-        'circle-color': '#3fb950',
+        'circle-color': AFFIL_COLOR,
         'circle-stroke-width': 2,
         'circle-stroke-color': '#0d1117',
       },
@@ -104,17 +147,38 @@ export function setPositions(posMap) {
     return;
   }
   const src = _map?.getSource(SRC);
-  if (src) src.setData(positionsToGeoJSON(posMap));
+  if (!src) return;
+  const { fc, sidcs } = _unitsToGeoJSON(posMap);
+  src.setData(fc);
+  // #4：bake milsymbol（async；已 baked 的 sidc 為 no-op）。本輪有「新」icon 被 bake 出來 →
+  // re-setData 讓符號現出。seq guard：播放每幀 setPositions，只有最新一輪的 .then 才套用。
+  if (sidcs.size) {
+    const seq = ++_renderSeq;
+    Promise.all([...sidcs].map(s => bakeMilSymbol(_map, s))).then(rs => {
+      if (rs.some(Boolean) && seq === _renderSeq && _map?.getSource(SRC)) _map.getSource(SRC).setData(fc);
+    });
+  }
 }
 
-/** B2 尾跡（GeoJSON FeatureCollection of LineStrings）。map 未 ready → 暫存待補。 */
+/** B2 尾跡（GeoJSON LineString FC）。map 未 ready → 暫存待補。#4：補 affiliation 供 line-color match。 */
 export function setTrails(geojson) {
   if (!_ready) {
     _pendingTrails = geojson;
     return;
   }
   const src = _map?.getSource(SRC_TRAILS);
-  if (src) src.setData(geojson);
+  if (!src) return;
+  const fc = {
+    type: 'FeatureCollection',
+    features: (geojson?.features || []).map(f => ({
+      ...f,
+      properties: {
+        ...f.properties,
+        affiliation: f.properties?.cot_type ? affiliationFromCot(f.properties.cot_type) : 'unknown',
+      },
+    })),
+  };
+  src.setData(fc);
 }
 
 /** 首次載入時把視野收到所有單位的範圍（無單位 → 不動，沿用預設中心）。 */

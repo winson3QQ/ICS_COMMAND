@@ -37,7 +37,7 @@ export function buildReplayIndex(items) {
   for (const it of trackIdx) {
     const p = it.payload;
     if (!tracksByUid.has(p.uid)) tracksByUid.set(p.uid, []);
-    tracksByUid.get(p.uid).push({ t: it.t, lat: p.lat, lon: p.lon });
+    tracksByUid.get(p.uid).push({ t: it.t, lat: p.lat, lon: p.lon, cot_type: p.cot_type });
   }
   return { steps, trackIdx, tracksByUid };
 }
@@ -61,19 +61,21 @@ export function foldPositionsAt(trackIdx, T) {
       actor: it.actor,
       heading_deg: p.heading_deg,
       speed_mps: p.speed_mps,
+      cot_type: p.cot_type,  // #4：畫 2525 符號用
     });
   }
   return pos;
 }
 
-/** 折疊結果 → GeoJSON FeatureCollection（aar_map 的 source data） */
+/** 折疊結果 → GeoJSON FeatureCollection。#4 起 aar_map 改用自家 _unitsToGeoJSON（多帶
+ *  iconId/affiliation 畫 2525 符號），本函式僅供測試/legacy 純資料驗證，非 live source builder。 */
 export function positionsToGeoJSON(posMap) {
   return {
     type: 'FeatureCollection',
     features: [...posMap.values()].map(p => ({
       type: 'Feature',
       geometry: { type: 'Point', coordinates: [p.lon, p.lat] },
-      properties: { uid: p.uid, callsign: p.actor, t: p.t },
+      properties: { uid: p.uid, callsign: p.actor, t: p.t, cot_type: p.cot_type },
     })),
   };
 }
@@ -165,7 +167,7 @@ export function advanceFold(trackIdx, cursor, T) {
     const p = it.payload;
     cursor.pos.set(p.uid, {
       uid: p.uid, lat: p.lat, lon: p.lon, t: it.t, actor: it.actor,
-      heading_deg: p.heading_deg, speed_mps: p.speed_mps,
+      heading_deg: p.heading_deg, speed_mps: p.speed_mps, cot_type: p.cot_type,  // #4
     });
     cursor.idx += 1;
   }
@@ -185,7 +187,7 @@ export function trailGeoJSON(tracksByUid, T, windowMin = 10) {
     features.push({
       type: 'Feature',
       geometry: { type: 'LineString', coordinates: seg.map(p => [p.lon, p.lat]) },
-      properties: { uid },
+      properties: { uid, cot_type: seg[seg.length - 1].cot_type },  // #4：尾跡依敵我態配色（取最新點型別）
     });
   }
   return { type: 'FeatureCollection', features };

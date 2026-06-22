@@ -54,7 +54,9 @@ def _tracks(conn, exercise_id: int, since, until, cap: int) -> list[dict]:
     frag = _time_clause("t.t", since, until, params)
     params.append(cap)
     rows = conn.execute(
-        "SELECT t.id, t.uid, t.t, t.lat, t.lon, t.hae, t.heading_deg, t.speed_mps, e.callsign "
+        # #4：多帶 e.type（CoT type）→ AAR 前端據此衍生 2525 SIDC / 敵我態畫原符號。
+        # 軌跡不存歷史敵我態 → 用 entity 現值（中途改敵我態 AAR 顯示最終態，v1 可接受）。
+        "SELECT t.id, t.uid, t.t, t.lat, t.lon, t.hae, t.heading_deg, t.speed_mps, e.callsign, e.type "
         "FROM cop_entity_tracks t JOIN cop_entities e ON t.uid = e.uid "
         f"WHERE e.exercise_id = ?{frag} ORDER BY t.t, t.id LIMIT ?",  # nosec B608 — frag 為常數片段
         params,
@@ -71,6 +73,7 @@ def _tracks(conn, exercise_id: int, since, until, cap: int) -> list[dict]:
                 "hae": r["hae"],
                 "heading_deg": r["heading_deg"],
                 "speed_mps": r["speed_mps"],
+                "cot_type": r["type"],  # #4：CoT type（前端 cotToSidc/affiliationFromCot 用）
             },
             "_seq": r["id"],
         }
