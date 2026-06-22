@@ -505,6 +505,25 @@ def issue_account_cert(username: str, body: AccountCertBindIn, request: Request,
     )
 
 
+@router.get("/ca/root", tags=["account-admin"])
+def download_root_ca(request: Request):
+    """#327：下載 step-ca root CA PEM —— 桌機信任 ICS server 證用。
+    （macOS：鑰匙圈「系統」設永遠信任；Windows：匯入「受信任的根憑證授權單位」。）
+    sysadmin only；未配置 step-ca → 503。root CA 為公開憑證（非私鑰），無敏感資料。"""
+    _check_system_admin(request)
+    from services.cert_issuance import CertIssuanceError, fetch_root_ca_pem
+
+    try:
+        pem = fetch_root_ca_pem()
+    except CertIssuanceError as e:
+        raise HTTPException(503, f"取 root CA 失敗：{e}") from e
+    return Response(
+        content=pem,
+        media_type="application/x-pem-file",
+        headers={"Content-Disposition": 'attachment; filename="ics-root-ca.pem"'},
+    )
+
+
 # 註：本路由須宣告在 /certs/{cert_id} 之前——否則 "revoked" 會先撞 {cert_id:int} 路由
 # 而被 422 攔下（literal path 必須贏過 int param）。
 @router.delete("/accounts/{username}/certs/revoked", tags=["account-admin"])

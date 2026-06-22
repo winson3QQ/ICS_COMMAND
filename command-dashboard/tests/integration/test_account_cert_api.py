@@ -152,6 +152,34 @@ class TestOnlineIssue:
         assert r.status_code == 502
 
 
+class TestRootCaDownload:
+    """#327：桌機信任 server 用的 root CA 下載（GET /api/admin/ca/root）。"""
+
+    def test_download_root_ca(self, client, auth, monkeypatch):
+        import services.cert_issuance as ci
+
+        monkeypatch.setattr(
+            ci, "fetch_root_ca_pem", lambda: "-----BEGIN CERTIFICATE-----\nROOTCA\n-----END CERTIFICATE-----\n"
+        )
+        r = client.get("/api/admin/ca/root", headers=auth)
+        assert r.status_code == 200, r.text
+        assert r.headers["content-type"].startswith("application/x-pem-file")
+        assert "ics-root-ca.pem" in r.headers.get("content-disposition", "")
+        assert "BEGIN CERTIFICATE" in r.text
+
+    def test_root_ca_503_when_not_configured(self, client, auth, monkeypatch):
+        import services.cert_issuance as ci
+
+        def _boom():
+            raise ci.CertIssuanceError("step-ca 線上發證未配置")
+
+        monkeypatch.setattr(ci, "fetch_root_ca_pem", _boom)
+        assert client.get("/api/admin/ca/root", headers=auth).status_code == 503
+
+    def test_root_ca_requires_auth(self, client):
+        assert client.get("/api/admin/ca/root").status_code == 401
+
+
 class TestPurgeRevoked:
     """#307 缺口 2：清除已撤銷列（DELETE /certs/revoked）。"""
 

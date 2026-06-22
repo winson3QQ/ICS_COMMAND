@@ -82,15 +82,17 @@ WARNING_THRESHOLD_SECONDS: int = int(os.getenv("ICS_WARNING_THRESHOLD_SECONDS", 
 # GET /tak/device-certs + POST .../revoke（撤銷=帳面 flag，不 enforce；真撤銷 CRL 見 #318）。
 # MINOR 2.12.0：DELETE /tak/device-certs/{id}（#325，刪已撤銷盤點紀錄；僅 revoked，active 拒）
 # + 修中文 callsign 發證 500（#324，Content-Disposition 非 latin-1 檔名 → RFC5987 filename*）。
-APP_VERSION = "2.12.0"
+# MINOR 2.13.0：GET /api/admin/ca/root（#327，下載 step-ca root CA PEM 供桌機信任 server）。
+APP_VERSION = "2.13.0"
 
 # CMD_VERSION：前端 UI 功能版本（不同於後端 SemVer APP_VERSION；規則見 CLAUDE.md 版號規則）
 # 兩軌版本命名，不可混用。由 /api/version 提供給前端，是唯一 source-of-truth；release 時更新此值。
 # v1.0.0：拆分自 ICS_DMAS 後首個完整可用形態（MapLibre 地圖引擎全換 P1-10b + PWA 移除 P1-11
 #         + 演習/放置/稽核 UI P1-13/14/16/#93 + 分類編輯器 #66）→ 0.x 畢業為 MAJOR 紀元。
 CMD_VERSION: str = os.getenv(
-    "CMD_VERSION", "v1.9.2"
-)  # PATCH v1.9.2：TAK tab 已撤銷裝置證列加「刪除」鈕（#325；刪紀錄≠撤證）。
+    "CMD_VERSION", "v1.9.3"
+)  # PATCH v1.9.3：桌機憑證 UX（#327）——「下載 root CA」鈕 + .p12 標 Windows/iMac/Android + 信任提示。
+# PATCH v1.9.2：TAK tab 已撤銷裝置證列加「刪除」鈕（#325；刪紀錄≠撤證）。
 # PATCH v1.9.1：TAK tab 加「已發裝置證」盤點列表 + 撤銷-flag（#317；標明不 enforce）。
 # v1.9.0：admin TAK tab（#315 P2-26 L2）—— TAK 連線開關搬入 + TAK 裝置證自助發放 UI
 # （callsign + ATAK/iTAK 平台 + 下載/分享 data package）。
