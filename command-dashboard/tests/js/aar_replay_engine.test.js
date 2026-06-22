@@ -2,7 +2,7 @@
 import { describe, expect, test } from 'vitest';
 
 import {
-  buildReplayIndex, foldPositionsAt, positionsToGeoJSON, stepSummary, fmtClock,
+  buildReplayIndex, foldPositionsAt, positionsToGeoJSON, stepSummary, fmtClock, validCoord,
 } from '../../static/js/aar/replay_engine.js';
 
 const tk = (uid, t, lat, lon, actor = uid) => ({
@@ -30,6 +30,27 @@ describe('buildReplayIndex', () => {
   test('空 / undefined 容忍', () => {
     expect(buildReplayIndex([]).steps).toEqual([]);
     expect(buildReplayIndex(undefined).steps).toEqual([]);
+  });
+
+  test('#3：(0,0) null island 壞點不進 trackIdx/tracksByUid（仍留 steps 側欄）', () => {
+    const items = [
+      tk('u1', '2026-01-01T02:00:00Z', 0, 0, 'ALPHA'),       // GPS no-fix 壞點
+      tk('u1', '2026-01-01T02:05:00Z', 24.0, 120.0, 'ALPHA'), // 正常
+    ];
+    const { steps, trackIdx, tracksByUid } = buildReplayIndex(items);
+    expect(steps).toHaveLength(2);                 // 側欄仍見原始回報
+    expect(trackIdx).toHaveLength(1);              // 折疊/尾跡只收有效點
+    expect(tracksByUid.get('u1')).toHaveLength(1); // 尾跡不會拉線到 (0,0)
+  });
+});
+
+describe('validCoord (#3)', () => {
+  test('擋 (0,0) / 非數 / 超範圍，放行正常', () => {
+    expect(validCoord(0, 0)).toBe(false);
+    expect(validCoord(NaN, 120)).toBe(false);
+    expect(validCoord(24.0, 200)).toBe(false);
+    expect(validCoord(91, 120)).toBe(false);
+    expect(validCoord(24.77, 121.0)).toBe(true);
   });
 });
 

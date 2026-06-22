@@ -27,6 +27,8 @@ let _exid = null; // 目前回放的 exercise_id（bookmark POST 用）
 let _curT = null; // 目前虛擬時刻（ISO Z；null = 尚未定位）
 let _t0 = 0; // 時間軸起訖（epoch ms）
 let _t1 = 0;
+let _playMs = 0; // #1：播放時鐘全精度累進器（epoch ms）。不可從 _curT 讀回——_curT 經 msToT 砍到整秒，
+//                 每幀的次秒進度會被丟 → 永遠跨不過當前秒、播放卡死。故獨立累進、只在顯示時砍秒。
 let _playing = false;
 let _speed = 1;
 let _rafId = null;
@@ -121,7 +123,8 @@ function _tick(now) {
   // cap 後回前景從離開處繼續，符合「回放暫停在你離開的地方」直覺。
   const delta = Math.min(now - _lastWall, 1000);
   _lastWall = now;
-  const { tMs, ended } = advanceClock(tToMs(_curT ?? msToT(_t0)), delta, _speed, _t1);
+  const { tMs, ended } = advanceClock(_playMs, delta, _speed, _t1);  // #1：以全精度 _playMs 累進，非 _curT 讀回
+  _playMs = tMs;
   _setT(msToT(tMs));
   _setStatus(`▶ 播放中 ${_speed}x — T = ${fmtClock(_curT)}`);
   if (ended) {
@@ -135,6 +138,7 @@ function _tick(now) {
 function _play() {
   if (_playing || !_idx.steps.length) return;
   if (_curT === null || tToMs(_curT) >= _t1) _curT = msToT(_t0); // 未定位/已到底 → 從頭
+  _playMs = tToMs(_curT); // #1：播放從目前顯示位置起，之後在 _tick 全精度累進（不再經 _curT 讀回）
   _playing = true;
   el('aar-play-btn').textContent = '⏸';
   _lastWall = performance.now();

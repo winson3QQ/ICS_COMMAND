@@ -313,6 +313,11 @@ def _record_track(entity: dict) -> None:
         t = entity.get("time")
         if not uid or not t:
             return
+        # #3：濾 (0,0) null island（ATAK 無 GPS fix / 手點位置前的壞點）+ 超範圍 → 不記軌跡，
+        # 否則 AAR 尾跡會拉一條線到 (0,0)。即時 entity 仍照常 upsert（不影響 live 顯示判斷）。
+        lat, lon = entity.get("lat"), entity.get("lon")
+        if lat is None or lon is None or (lat == 0 and lon == 0) or abs(lat) > 90 or abs(lon) > 180:
+            return
         # 非演習也非實戰（無 active 場 → exercise_id=NULL）：不記軌跡（issue #123）。
         # entity 已照常 upsert（即時 COP 不受影響），僅跳過軌跡時間序列寫入。
         if entity.get("exercise_id") is None:

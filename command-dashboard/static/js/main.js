@@ -187,6 +187,8 @@ document.addEventListener('click', function (e) {
       break;
     }
     case 'showAuditLog':   showAuditLog(); break;
+    // #334：AAR 回放——同分頁導航（token 存 sessionStorage，新分頁拿不到登入態；aar.html 有「← 返回指揮台」）。
+    case 'openAar':        window.location.href = '/static/aar.html'; break;
     case 'openAdminPanel': openAdminPanel(); break;
     case 'openTaxonomyEditor': openTaxonomyEditor(); break;   // #66 PR-C1
     case 'taxSave':        _handleTaxSave(); break;
