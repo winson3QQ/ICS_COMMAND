@@ -279,6 +279,9 @@ async def reset_db(request: Request):
         "cop_entity_tracks",
         "cop_entity_links",
         "cop_entities",
+        # #237：通聯（chats，P2-07 #129 加表時漏進清單）—— ICS-214 通聯 PII，reset 須清，
+        # 否則髒起點 + AAR 時間軸混入上場舊通聯。
+        "chats",
     ]
     with get_conn() as conn:
         for table in tables:
@@ -303,7 +306,8 @@ async def reset_exercise(request: Request):
     # issue #29 PR-G1b：cop_entities 有 exercise_id，演習重設一併清演習場域的 COP 圖釘
     # （事件/route/polygon）。tracks/links 無 exercise_id（references uid ON DELETE CASCADE）；
     # PRAGMA foreign_keys=ON，故刪 cop_entities 時 tracks/links 自動級聯，無 orphan。
-    data_tables = ["snapshots", "events", "decisions", "manual_records", "audit_log", "cop_entities"]
+    # #237：chats 有 exercise_id 欄 → 同 cop_entities 走 exercise-scoped 清除（實戰 NULL 池保留）。
+    data_tables = ["snapshots", "events", "decisions", "manual_records", "audit_log", "cop_entities", "chats"]
     cleared = {}
     with get_conn() as conn:
         for table in ex_tables:

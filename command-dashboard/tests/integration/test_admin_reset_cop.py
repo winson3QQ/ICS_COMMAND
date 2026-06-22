@@ -67,3 +67,47 @@ def test_reset_exercise_clears_only_exercise_scoped_cop(client):
     uids = {e["uid"] for e in remaining}
     assert real["uid"] in uids  # 正式圖釘保留
     assert all(e.get("exercise_id") is None for e in remaining)  # 演習場域圖釘已清
+
+
+# ── #237：reset 須一併清「通聯（chats）」——P2-07 加表時漏進清單（髒起點 + AAR 混場 + PII 殘留）──
+
+
+def _chat_senders() -> set[str]:
+    from core.database import get_conn
+
+    with get_conn() as conn:
+        return {r[0] for r in conn.execute("SELECT sender_uid FROM chats").fetchall()}
+
+
+def test_reset_db_clears_chats(client):
+    """#237：reset-db 須清 chats（原漏 → reset 後舊通聯獨活）。"""
+    from repositories.chat_repo import insert_chat
+    from schemas.chat import ChatIn
+
+    h = _login(client)
+    insert_chat(ChatIn(sender_uid="GeoChat.dev.room.g1", callsign="A1", message="hi", exercise_id=None))
+    assert _chat_senders()  # 確有資料
+
+    r = client.post("/api/admin/reset-db", headers=h, json={"confirm": "RESET"})
+    assert r.status_code == 200, r.text
+    assert "chats" in r.json()["cleared_tables"]
+    assert _chat_senders() == set()  # 全清
+
+
+def test_reset_exercise_clears_only_exercise_scoped_chats(client):
+    """#237：reset-exercise 只清演習場域 chats（exercise_id 非空），實戰 NULL 池保留（同 cop_entities）。"""
+    from repositories.chat_repo import insert_chat
+    from repositories.exercise_repo import create_exercise
+    from schemas.chat import ChatIn
+
+    h = _login(client)
+    ex = create_exercise({"name": "chat-reset-test", "type": "ttx"})
+    insert_chat(ChatIn(sender_uid="GeoChat.dev.room.ex", message="ex msg", exercise_id=ex["id"]))
+    insert_chat(ChatIn(sender_uid="GeoChat.dev.room.real", message="real msg", exercise_id=None))
+
+    r = client.post("/api/admin/reset-exercise", headers=h, json={"confirm": "RESET"})
+    assert r.status_code == 200, r.text
+
+    senders = _chat_senders()
+    assert "GeoChat.dev.room.real" in senders  # 實戰 NULL 池保留
+    assert "GeoChat.dev.room.ex" not in senders  # 演習場域清掉
