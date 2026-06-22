@@ -4764,15 +4764,15 @@
       "name": ""
     },
     "body": "## 現象\nTAK tab 用**中文 callsign**（如「主教」）發裝置證 → 跳「發證失敗 (500)：Internal Server Error」，但**盤點清單卻出現該 callsign「有效」**（實際沒拿到 .zip）。ASCII callsign（如 Tese2）正常。\n\n## 真因（code 推定，機制明確）\n`routers/admin.py:571`：\n```python\nsafe = \"\".join(c for c in cn if c.isalnum() or c in \"-_.\") or \"device\"\n```\nPython 的 `c.isalnum()` **Unicode-aware，對中文回 True** → 中文沒被濾掉，`safe=\"主教\"` → 回傳 .zip 時設 `Content-Disposition: filename=\"主教-dp.zip\"`。**HTTP header 只能 latin-1** → uvicorn/Starlette 送 response 時 `UnicodeEncodeError` → 500。\n\n證其實簽出來了（openssl/pref/zip 全 utf-8 正常）—— 卡在最後送檔的 header。\n\n## 副作用：幽靈盤點紀錄\n`record_issued()` + `audit()` 在 `Response` **之前**執行（admin.py 561/563 → 572）→ 每次中文 callsign 500，**盤點表都多一筆 status='active' 但從未交付的幽靈列** → 解釋清單為何一堆「主教 有效」。\n\n## 修補\n1. `safe` 改 **ASCII-only**：`c.isascii() and (c.isalnum() or c in \"-_.\")`（內容 .zip 不變，只下載檔名）。可選 RFC5987 `filename*=UTF-8''…` 保留中文檔名。\n2. 評估「Response 送達才算成功」順序，或記錄前先確保 header 安全（避免未來再生幽靈）。\n\n## DoD\n中文 callsign 發證 e2e 成功（拿到 .zip）、無 500、無幽靈紀錄；ASCII 不回歸；補測（中文 callsign → 200 + 盤點一致）。",
-    "closedAt": null,
+    "closedAt": "2026-06-22T02:08:15Z",
     "comments": [],
     "createdAt": "2026-06-22T01:21:45Z",
     "labels": [],
     "milestone": null,
     "number": 324,
-    "state": "OPEN",
+    "state": "CLOSED",
     "title": "fix(tak): 中文 callsign 發裝置證 500 — Content-Disposition 非 latin-1 檔名 + 幽靈盤點紀錄",
-    "updatedAt": "2026-06-22T01:21:45Z",
+    "updatedAt": "2026-06-22T02:08:15Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/324"
   },
   {
@@ -4784,15 +4784,15 @@
       "name": ""
     },
     "body": "## 動機\nTAK 裝置證盤點（#317）的「已撤銷」紀錄越積越多（含測試/幽靈列），盤點清單雜亂。需要刪除已撤銷紀錄的方式。\n\n## 範圍\n- 後端：`DELETE /api/admin/tak/device-certs/{id}`（sysadmin only、強制 audit）。**僅允許刪 status='revoked'**（active 不可刪——還代表一張在用的證，刪了就失去盤點）→ 非 revoked 回 409/422。\n- repo：`delete_revoked(id)`（WHERE id=? AND status='revoked'，回 rowcount）。\n- 前端：TAK tab 盤點列，已撤銷列加刪除（🗑）鈕；確認後呼叫 DELETE、移除該列。\n\n## 注意\n- 刪的是**ICS 盤點紀錄**，非真撤銷（真撤銷=CRL #318，本表 status 只是帳面 flag）。UI 文案要講清楚「刪紀錄 ≠ 撤證」。\n- 與 fix（中文 500 幽靈紀錄）連動：修好 500 後幽靈不再生，本功能清理既有累積。\n\n## DoD\nsysadmin 可刪已撤銷列、active 列不可刪（負向測試）、每次刪有 audit；前端列即時移除。",
-    "closedAt": null,
+    "closedAt": "2026-06-22T02:08:15Z",
     "comments": [],
     "createdAt": "2026-06-22T01:21:46Z",
     "labels": [],
     "milestone": null,
     "number": 325,
-    "state": "OPEN",
+    "state": "CLOSED",
     "title": "feat(tak): 裝置證盤點 — 刪除已撤銷紀錄 UI（清理累積 revoked）",
-    "updatedAt": "2026-06-22T01:21:46Z",
+    "updatedAt": "2026-06-22T02:08:15Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/325"
   }
 ]

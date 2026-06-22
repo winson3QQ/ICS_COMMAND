@@ -4649,5 +4649,26 @@
     "title": "fix(security): #321 L9 公網 server cert SAN 過濾 RFC1918 內網 IP",
     "updatedAt": "2026-06-21T23:57:38Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/322"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "## 摘要\nTAK tab 用**中文 callsign**（如「主教」）發裝置證 → 500，但盤點卻出現該 callsign「有效」（拿不到 .zip）。+ 已撤銷紀錄越積越多需清理。\n\n## #324 — 中文 callsign 500（真因）\n`routers/admin.py` 發證回應的 `Content-Disposition` 用 `isalnum()` 濾檔名，但 **Python `isalnum()` 對中文回 `True`** → 中文進 HTTP header → uvicorn/Starlette `UnicodeEncodeError`（header 限 latin-1）→ 500。且 `record_issued`/`audit` 在 `Response` **之前**跑 → 每次 500 留一筆 **active 幽靈紀錄**（解釋清單一堆「主教 有效」）。\n**修**：ASCII-only fallback `filename=` + **RFC5987 `filename*=UTF-8''<pct>`** 保留中文檔名；header latin-1 安全。\n\n## #325 — 刪除已撤銷盤點紀錄 UI\n- `DELETE /api/admin/tak/device-certs/{id}`（sysadmin、強制 audit、**僅刪 `status='revoked'`**，active 拒 → 404）+ repo `delete_record`。\n- 前端 TAK tab 盤點列：**已撤銷列加「刪除」鈕**（active 仍只有「撤銷」）。文案明示「刪紀錄 ≠ 撤證」（真撤銷=CRL #318）。\n\n## 驗證\n- `pytest 31` / `vitest 341` / `pyflakes` clean。\n- `/code-review` 0 阻斷、`/security-review` 0。\n- **Dogfood 已上線實證**（build `fix324-325-6cb7f5a-dirty-0622.0929`）：live log 主教發證 **200**、`DELETE`×6 清幽靈 **全 200**、零 traceback。\n\n## ⚠ Human verify pending（給其他人實機測試）\n已部署到 dogfood prod；**等實際使用者用「主教」這張證在裝置上連 TAK 驗收**（憑證匯入 + 連線 + ICS 在線顯示）。驗收結果後補 `VERIFY-PASS`。\n\nFixes #324\nCloses #325\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+    "closedAt": "2026-06-22T02:08:14Z",
+    "comments": [],
+    "createdAt": "2026-06-22T01:53:36Z",
+    "headRefName": "fix/issue-324-tak-cert-nonascii-500",
+    "labels": [],
+    "mergedAt": "2026-06-22T02:08:13Z",
+    "number": 326,
+    "state": "MERGED",
+    "title": "fix(tak): #324 中文 callsign 發證 500 + #325 刪除已撤銷盤點紀錄 UI",
+    "updatedAt": "2026-06-22T02:08:14Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/326"
   }
 ]
