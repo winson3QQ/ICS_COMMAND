@@ -4730,14 +4730,29 @@
     },
     "body": "## 來源\n#301 黑箱後的架構討論（2026-06-22）。延伸 at-rest umbrella #226 / #231，但**指出一個 at-rest 加密蓋不住的層**。\n\n## 結構性風險（事實）\n- `deploy/prod/docker-compose.yml`：`step-ca` 的 CA 私鑰存於**同一台 host** 的 `ca-data` volume；ICS、nginx、DB、CA **全跑在單機**。\n- mTLS 整個信任根 = 這把 CA 鑰。**主機 OS 層被真正拿下（root code exec）→ 讀 `ca-data` → 簽任意 CN 憑證 → mTLS 整個信任模型破功**（周邊那道牆對「已在城內」的攻擊者無效）。\n\n## 為何 #226/#231 at-rest 加密「蓋不住」這層（關鍵區分）\n| 威脅 | #231 BitLocker/LUKS 全碟加密 | 本 issue |\n|---|---|---|\n| 關機被偷 / 拔硬碟（at-rest） | ✅ 防得住（看到密文） | — |\n| **開機中的主機被攻陷（live-host）** | ❌ **防不住**：volume 已解密掛載，跑在 host 上的程式/AI（含 root）照樣讀 CA 鑰 + DB | **本 issue 要處理的** |\n\n→ **全碟加密只防「冷」狀態。活著的被攻陷主機，CA 鑰在記憶體/掛載點是明文。** 這是 §8.4 at-rest 之外的獨立缺口。\n\n## 環境限制（reality check — 動工前必讀）\n**單台 Windows dev/delivery 機 + 單一 container 上，本 issue 的結構解「做不到」**：\n- CA 鑰要嘛在這台（這台攻破即失守），要嘛不在這台（就需要第二台硬體）。**單機無法「host 攻破時搆不到自己的 CA 鑰」**。\n- 真解需要拓樸改變：**ICS 一台 + CA/簽證在另一處**（HSM / 離線 CA / 獨立信任域 / 第二台機）。\n- ⚠ 目前 prod（`1.34.230.218`）即跑在這台單 Windows 機上並對公網曝露 → 公測階段（無真資料）可風險接受，但**不可帶入正式交付**。\n\n## 可落地的緩解（依環境分階段）\n1. **現況單機（now）**：靠 **agent/process 能力圍籬**（最小權限、禁 prod-exec/secret-read/self-escalation，#301 session 已實證有效）+ **egress 控管** + **hash 鏈稽核**（已有雛形）。**明確記錄：單機形態下 CA 鑰 live-host 暴露為已知殘留風險。**\n2. **at-rest（可做）**：BitLocker 整碟（Windows 原生，= #231 的 Windows 軌）→ 擋冷竊。\n3. **正式交付（需硬體）**：CA 離機 —— 離線 root CA + 短效 intermediate、或 HSM/PKCS#11、或 step-ca 獨立信任域機。**ICS host 不持簽證 CA 鑰**。\n\n## DoD\n- threat_model 補一節「live-host vs at-rest 區分 + CA-鑰-同機殘留風險 + 單機限制」。\n- 正式交付拓樸（CA 離機）設計決策記錄；與 #226/#231 umbrella 對齊分工（at-rest = 冷；本 issue = 熱/live-host）。\n- 交付前 checklist：CA 鑰不得與對外 ICS host 同機。\n\n關聯：#226 #231 #230",
     "closedAt": null,
-    "comments": [],
+    "comments": [
+      {
+        "author": {
+          "login": "winson3QQ"
+        },
+        "authorAssociation": "OWNER",
+        "body": "## 交付架構拍板（2026-06-22，使用者澄清）— manned C2 密封盒\n\n本 issue 原描述「CA 鑰與 host 同機 = live-host 攻破即 mTLS 全破」為待修缺口。經使用者澄清**選定交付形態**，重新定位：\n\n**交付物 = 加密硬碟 + 單一 container（ICS 全棧含 step-ca）+ 一把實體 FIDO2 金鑰。**\n\n此模型**用「縮小攻擊面 + 實體鑰閘」取代「CA 離機」**處理 live-host 威脅：\n- 交付盒**只跑那一個密封 container、不跑通用 agent** → 「host 上的 AI/agent」威脅在交付盒上**不存在**（只在 dev 機，靠圍籬擋）。\n- at-rest 解鎖需 FIDO2（CTAP2 **PIN + touch**）→ 偷碟無鑰無 PIN 開不了（碟+鑰+PIN = 3 因子）。\n\n→ **manned C2 下 CA 同機可接受，本 issue 不再是「待修缺口」而是「已記錄的架構決策」。** 詳見 `threat_model.md` §8.8。\n\n### 出貨強制前提（缺一退回公測風險）\n1. FIDO2 **PIN + touch**（不可只靠持有）。\n2. **碟與鑰分開運送/保管**。\n3. **閒置斷電；運行中需人看管** —— 加密只防冷/開機邊界，「開機運行中被實體奪取」= 加密失效（唯一不可逆殘留，manned C2 本質接受）。\n4. **多把金鑰 + 助記詞救援**（#230 失 token 演練）。\n\n### 殘留（可接受）\ncontainer escape / 盒內 app RCE 仍可摸到盒內 CA 鑰 → 緩解＝盒單一用途、最小服務、container 硬化。\n\n### 高保證替代（非 manned-C2 必需）\n無人值守 / 高威脅場景才升級 CA 離機（離線 root CA / HSM / 分機分網段）。\n\n**狀態**：降為「架構決策記錄 + 出貨 checklist」，不阻塞;實體驗收併入 #230（最少硬體：Pi 500 + 2 把 FIDO2，免買量產機）。",
+        "createdAt": "2026-06-22T00:13:47Z",
+        "id": "IC_kwDOSnBjpc8AAAABG_EFkQ",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/323#issuecomment-4763747729"
+      }
+    ],
     "createdAt": "2026-06-22T00:06:41Z",
     "labels": [],
     "milestone": null,
     "number": 323,
     "state": "OPEN",
     "title": "security: CA 私鑰與 host 同機 — 主機 OS 層被攻破即 mTLS 全破（live-host 威脅，at-rest 加密蓋不住）",
-    "updatedAt": "2026-06-22T00:06:41Z",
+    "updatedAt": "2026-06-22T00:13:47Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/323"
   }
 ]
