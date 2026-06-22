@@ -53,6 +53,15 @@ SYSADMIN POST   /api/admin/retention
 SYSADMIN GET    /api/admin/schema-migrations
 SYSADMIN GET    /api/admin/status
 SYSADMIN POST   /api/admin/suspend-all
+COMMAND  DELETE /api/admin/accounts/{username}/certs/revoked
+SYSADMIN GET    /api/admin/ca/root
+SYSADMIN GET    /api/admin/factions/clients
+SYSADMIN POST   /api/admin/factions/classify
+SYSADMIN POST   /api/admin/factions/entity-override
+SYSADMIN POST   /api/admin/tak/device-cert
+SYSADMIN GET    /api/admin/tak/device-certs
+SYSADMIN DELETE /api/admin/tak/device-certs/{cert_id}
+SYSADMIN POST   /api/admin/tak/device-certs/{cert_id}/revoke
 SYSADMIN GET    /api/admin/user-data-backups
 SYSADMIN POST   /api/admin/user-data-backups
 SYSADMIN GET    /api/admin/user-data-backups/{name}/download
@@ -190,8 +199,8 @@ def test_rbac_route_matrix_matches_golden():
     live = _live_matrix()
     golden = _parse_golden()
 
-    added = live - golden       # 新 route / 角色變動（新值側）
-    removed = golden - live     # 消失 route / 角色變動（舊值側）
+    added = live - golden  # 新 route / 角色變動（新值側）
+    removed = golden - live  # 消失 route / 角色變動（舊值側）
 
     msg_parts = []
     if added:

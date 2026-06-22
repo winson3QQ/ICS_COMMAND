@@ -33,6 +33,13 @@ COMMAND_ROLES = frozenset({ROLE_SYSADMIN, ROLE_COMMANDER})
 ACCOUNT_MANAGER_ROLES = frozenset({ROLE_SYSADMIN, ROLE_COMMANDER})
 SYSADMIN_ONLY = frozenset({ROLE_SYSADMIN})
 
+# #343 紅藍隔離：faction 可見性（與上面 RBAC 權限軸**正交**的新軸）。
+# sysadmin（白隊/導調）全見 → None sentinel；commander/operator/observer（藍軍）只見 blue+neutral。
+# 注意：commander 雖屬高權 COMMAND_ROLES，faction 上仍只見藍方（演習身分 ≠ 系統權限）。
+# 僅 source='tak' 受此過濾（#146 所有權：manual/command 自建恆對藍方可見）；enforcement 在
+# routers/cop.py（REST）+ services/realtime_hub.py（WS）。
+BLUE_VISIBLE_FACTIONS = frozenset({"blue", "neutral"})
+
 
 def role_zh_to_en(role: str | None, role_detail: str | None = None) -> str | None:
     if role_detail in ALL_ROLES:
@@ -77,6 +84,17 @@ def require_role(*allowed_roles: str):
 def is_role_allowed(session: dict, allowed_roles: Iterable[str]) -> bool:
     role = role_zh_to_en(session.get("role"), session.get("role_detail"))
     return role in set(allowed_roles)
+
+
+def visible_factions_for_session(session: dict) -> frozenset[str] | None:
+    """#343：此 session 可見的 faction 集合；None = 全見（sysadmin/白隊）。
+
+    供 routers/cop.py（REST 過濾）與 realtime_hub（WS 過濾）共用同一映射，避免兩處漂移。
+    """
+    role = role_zh_to_en(session.get("role"), session.get("role_detail"))
+    if role == ROLE_SYSADMIN:
+        return None
+    return BLUE_VISIBLE_FACTIONS
 
 
 def allowed_roles_for(method: str, path: str) -> frozenset[str] | None:

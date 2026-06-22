@@ -29,7 +29,7 @@ def _db(tmp_db):
 def _silence_broadcast(monkeypatch):
     """攔截 cop_hub.broadcast（async），不真開 WS。本檔不驗廣播內容。"""
 
-    async def _fake(message, exercise_id=None):
+    async def _fake(message, exercise_id=None, **_kw):
         return None
 
     monkeypatch.setattr(cop_service.cop_hub, "broadcast", _fake)
@@ -173,8 +173,8 @@ def test_mixed_tz_naive_time_does_not_drop_track():
     """:8089 路徑寫 aware（...Z）軌跡，REST push（POST /api/tak/events）的 time 未
     正規化、可能是 naive。混用時 _within_min_interval 不得因 aware−naive 相減的
     TypeError 被吞而靜默漏寫（修前：相減在 try 外 + except 漏 TypeError → 漏一筆）。"""
-    _ingest(_event(time="2026-06-05T04:00:00Z"))   # aware 第一筆
-    _ingest(_event(time="2026-06-05T04:00:06"))    # naive（無 Z），+6s ≥ 間隔 → 應寫
+    _ingest(_event(time="2026-06-05T04:00:00Z"))  # aware 第一筆
+    _ingest(_event(time="2026-06-05T04:00:06"))  # naive（無 Z），+6s ≥ 間隔 → 應寫
     tracks = cop_entity_repo.list_cop_tracks("TRK-1")
     assert len(tracks) == 2  # 混格式仍正確寫入第二筆，未因 TypeError 漏寫
     assert tracks[1]["t"] == "2026-06-05T04:00:06"
@@ -187,7 +187,7 @@ def test_interval_configurable(monkeypatch):
     """TRACK_MIN_INTERVAL_S 可覆寫（免改 code 重部署）。調到 10s 後，+6s 應被抽掉。"""
     monkeypatch.setattr(cop_service, "TRACK_MIN_INTERVAL_S", 10.0)
     _ingest(_event(time="2026-06-05T04:00:00Z"))
-    _ingest(_event(time="2026-06-05T04:00:06Z"))   # +6s < 10s（覆寫後）→ 跳過
+    _ingest(_event(time="2026-06-05T04:00:06Z"))  # +6s < 10s（覆寫後）→ 跳過
     tracks = cop_entity_repo.list_cop_tracks("TRK-1")
     assert len(tracks) == 1
 
@@ -200,8 +200,8 @@ def test_null_scope_writes_no_track(monkeypatch):
     （即時 COP 不受影響），但不記軌跡（issue #123 NULL gating）。"""
     monkeypatch.setattr(cop_service, "current_exercise_id", lambda: None)
     row = _ingest(_event(time="2026-06-05T04:00:00Z"))
-    assert row is not None                                 # entity 照常 upsert
-    assert row["exercise_id"] is None                      # 無場次綁定
+    assert row is not None  # entity 照常 upsert
+    assert row["exercise_id"] is None  # 無場次綁定
     assert cop_entity_repo.list_cop_tracks("TRK-1") == []  # 但不寫軌跡
 
 

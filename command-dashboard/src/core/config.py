@@ -285,6 +285,12 @@ TAK_RESYNC_LOOKBACK_S: float = float(os.getenv("TAK_RESYNC_LOOKBACK_S", "7200"))
 # (重)連線後是否自動跑一次 resync 補回 streaming 漏掉的靜態標記（#173 主訴求）。
 TAK_RESYNC_ON_CONNECT: bool = os.getenv("TAK_RESYNC_ON_CONNECT", "true").lower() == "true"
 
+# ── 紅藍陣營隔離（#343）──────────────────────────────────────────────────────
+# 強制過濾總開關。預設 OFF：上線即 fail-closed（未分類 tak entity 對 commander 全部消失），
+# 故須演習前先把藍軍 roster 分類完、再開此旗標（避免「藍軍單位在分類前集體隱形」）。
+# OFF 時 list/WS 完全不帶 visible_factions → 行為與隔離前完全一致（零風險漸進啟用）。
+FACTION_ISOLATION_ENABLED: bool = os.getenv("ICS_FACTION_ISOLATION", "false").lower() == "true"
+
 # ── COP 軌跡抽樣（P2-06a / #120）──────────────────────────────────────────────
 # cop_entity_tracks per-uid 最短寫入間隔（秒）。ATAK 可 >0.5Hz，不節流則每筆位置更新
 # 都落一筆軌跡 → 表爆量。抽樣基準 = CoT event time（非 wall-clock）。不同演習場景

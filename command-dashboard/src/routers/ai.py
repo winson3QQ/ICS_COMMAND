@@ -11,6 +11,7 @@ from repositories._helpers import audit
 from repositories.ai_repo import update_outcome
 from schemas.ai import AIOutcomeIn, AIRecommendIn
 from services.ai_service import get_ml_export, get_post_exercise_report, get_recommendation
+from services.exercise_service import require_no_active_exercise
 
 router = APIRouter(prefix="/api/ai", tags=["AI"])
 
@@ -25,18 +26,28 @@ def recommend(body: AIRecommendIn, request: Request):
 @router.get("/report/{exercise_id}")
 def report(exercise_id: int, request: Request):
     """演練後分析。P2-21（#204）：AAR 匯出強制 audit（audit-first，row 規格不得 best-effort）。"""
+    require_no_active_exercise()  # #343 §6：演習進行中關閉演習後分析（含紅軍資料）
     sess = validate_session(request)
-    audit(sess["username"], None, "AAR_EXPORT", "exercises", str(exercise_id),
-          {"kind": "report"}, exercise_id=exercise_id)
+    audit(
+        sess["username"], None, "AAR_EXPORT", "exercises", str(exercise_id), {"kind": "report"}, exercise_id=exercise_id
+    )
     return get_post_exercise_report(exercise_id)
 
 
 @router.get("/export/{exercise_id}")
 def export_ml(exercise_id: int, request: Request):
     """ML 訓練資料匯出（state/action/outcome）。P2-21（#204）：同 AAR_EXPORT audit 紀律。"""
+    require_no_active_exercise()  # #343 §6：演習進行中關閉 ML 匯出（含紅軍資料）
     sess = validate_session(request)
-    audit(sess["username"], None, "AAR_EXPORT", "exercises", str(exercise_id),
-          {"kind": "ml_export"}, exercise_id=exercise_id)
+    audit(
+        sess["username"],
+        None,
+        "AAR_EXPORT",
+        "exercises",
+        str(exercise_id),
+        {"kind": "ml_export"},
+        exercise_id=exercise_id,
+    )
     return get_ml_export(exercise_id)
 
 
@@ -44,7 +55,6 @@ def export_ml(exercise_id: int, request: Request):
 def record_outcome(rec_id: int, body: AIOutcomeIn, request: Request):
     """指揮官採納/否決 AI 建議"""
     validate_session(request)
-    if not update_outcome(rec_id, body.accepted,
-                          body.related_decision_id, body.outcome_notes):
+    if not update_outcome(rec_id, body.accepted, body.related_decision_id, body.outcome_notes):
         raise HTTPException(404, "建議記錄不存在")
     return {"ok": True}

@@ -20,7 +20,7 @@ import logging
 import sqlite3
 
 from core.config import TRACK_MIN_INTERVAL_S
-from repositories import cop_entity_repo
+from repositories import client_faction_repo, cop_entity_repo
 from repositories._helpers import iso_to_dt
 from repositories.snapshot_repo import get_latest_snapshot
 from schemas.cop import CoPEntity, CoPEntityTrack
@@ -91,6 +91,52 @@ def _dict_child(detail: dict, key: str) -> dict:
     if isinstance(v, list):
         v = next((x for x in v if isinstance(x, dict)), None)
     return v if isinstance(v, dict) else {}
+
+
+def _link_uid_by_relation(detail: dict, relation: str) -> str | None:
+    """從 detail['link'] 挑出指定 relation 的那筆 <link> 的 uid（#343 producer 歸屬）。
+
+    `<link>` 可能單筆（dict）或多筆（list，如 route 的多個 <link point>）；`_dict_child`
+    只取首個、不過濾 relation，故另寫此 helper。真機實證：ATAK/iTAK 標記帶
+    `<link relation="p-p" uid="<裝置 self-SA uid>">` 指回產生它的裝置。
+    """
+    v = detail.get("link")
+    items = v if isinstance(v, list) else [v]
+    for item in items:
+        if isinstance(item, dict) and item.get("relation") == relation:
+            uid = item.get("uid")
+            if uid:
+                return uid
+    return None
+
+
+def resolve_client_key_from_parts(uid: str, attributes: dict) -> str:
+    """歸屬鏈核心（dict-based，供 entity 物件與 DB row dict 共用；#343 §2.2）。
+
+    全 by-uid、不靠猜：creator.uid（ATAK 標記/繪圖）→ link[relation=p-p].uid（ATAK+iTAK 標記）
+    → fallback uid 本身（self-SA 單位＝uid 即裝置；無作者欄的 iTAK 繪圖 fallback 到自身 GUID
+    → 不命中任何 client_faction → NULL → fail-closed）。
+    """
+    attrs = attributes or {}
+    creator = _dict_child(attrs, "creator")
+    if creator.get("uid"):
+        return creator["uid"]
+    link_uid = _link_uid_by_relation(attrs, "p-p")
+    if link_uid:
+        return link_uid
+    return uid
+
+
+def _resolve_client_key(entity: CoPEntity) -> str:
+    """解析產生此 entity 的 client（裝置 self-SA uid）= faction 歸屬鍵（#343 §2.2）。"""
+    return resolve_client_key_from_parts(entity.uid, entity.attributes)
+
+
+def _resolve_faction(entity: CoPEntity) -> str | None:
+    """ingest 時解析 entity 的 faction（producer 經 admin 分類者繼承；未分類/解不到 → None
+    = fail-closed）。查 client_faction 綁 entity 的 exercise_id（per-exercise 分類）。"""
+    client_key = _resolve_client_key(entity)
+    return client_faction_repo.get_faction(entity.exercise_id, client_key)
 
 
 def _extract_squad(detail: dict) -> tuple[str | None, str | None, int | None]:
@@ -277,6 +323,8 @@ async def _broadcast_cop(op: str, entity: dict) -> None:
             "entity": entity,
         },
         exercise_id=entity.get("exercise_id"),
+        source=entity.get("source"),  # #343：faction 過濾（只 tak 受限）
+        faction=entity.get("faction"),
     )
 
 
@@ -387,6 +435,11 @@ async def ingest_cot_event(event: CoTEventIn) -> dict | None:
     if event.type.startswith("t-x-d-d"):
         return await _handle_tak_delete(event)
     entity = normalize_cot(event)
+    # #343：解析 producer faction（藍/紅/中立），create 時隨 entity 落地（insert 走 model_dump
+    # 自動帶 faction 欄）。未分類 / 解不到 producer → None = fail-closed（對 commander 不可見）。
+    # faction 不在 _TAK_UPDATE_FIELDS → 後續位置更新幀不覆寫（保留），admin 重分類走另路徑。
+    entity.faction = _resolve_faction(entity)
+    entity.faction_source = "auto"
     existing = cop_entity_repo.get_cop_entity(entity.uid)
 
     # TAK-B（紅隊）：來源所有權守門。CoT uid 由來源系統命名、規格上應已全域唯一

@@ -31,7 +31,7 @@ def _db(tmp_db):
 def _silence_broadcast(monkeypatch):
     """非 b-t-f 路徑會 broadcast；攔截避免真開 WS。"""
 
-    async def _fake(message, exercise_id=None):
+    async def _fake(message, exercise_id=None, **_kw):
         return None
 
     monkeypatch.setattr(cop_service.cop_hub, "broadcast", _fake)
@@ -136,7 +136,7 @@ def test_btf_idempotent_skips_broadcast_on_replay(monkeypatch):
     # 重播（同 uid）不再廣播（查重在 insert+broadcast 之前）→ 只廣播首次一次。
     calls = []
 
-    async def _capture(message, exercise_id=None):
+    async def _capture(message, exercise_id=None, **_kw):
         if isinstance(message, dict) and message.get("op") == "chat":
             calls.append(message)
 
@@ -194,7 +194,7 @@ def test_btf_broadcasts_chat_op(monkeypatch):
     payload 與 GET /api/chat 同形狀（含 t、不含 raw time）→ 前端同渲染路徑可吃。"""
     calls = []
 
-    async def _capture(message, exercise_id=None):
+    async def _capture(message, exercise_id=None, **_kw):
         calls.append((message, exercise_id))
 
     monkeypatch.setattr(cop_service.cop_hub, "broadcast", _capture)
@@ -214,7 +214,7 @@ def test_non_btf_does_not_broadcast_chat(monkeypatch):
     """一般 entity（非 b-t-f）不走 chat 廣播（不誤發 op=chat）。"""
     chat_calls = []
 
-    async def _capture(message, exercise_id=None):
+    async def _capture(message, exercise_id=None, **_kw):
         if isinstance(message, dict) and message.get("op") == "chat":
             chat_calls.append(message)
 

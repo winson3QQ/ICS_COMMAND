@@ -53,12 +53,15 @@ from schemas.admin import (
     AccountStatusIn,
     AdminPinIn,
     DisplayNameUpdateIn,
+    FactionClassifyIn,
+    FactionOverrideIn,
     PiNodeCreateIn,
     PinResetIn,
     RetentionToggleIn,
     RoleUpdateIn,
     SuspendAllIn,
 )
+from services import faction_service  # #343 紅藍隔離 admin 分類
 from services.realtime_hub import cop_hub  # issue #29 PR-G1b：reset 後廣播 resync
 
 log = structlog.get_logger()
@@ -282,6 +285,8 @@ async def reset_db(request: Request):
         # #237：通聯（chats，P2-07 #129 加表時漏進清單）—— ICS-214 通聯 PII，reset 須清，
         # 否則髒起點 + AAR 時間軸混入上場舊通聯。
         "chats",
+        # #343：紅藍 client 分類（per-exercise）—— reset 須清，否則新場沿用舊分類。
+        "client_faction",
     ]
     with get_conn() as conn:
         for table in tables:
@@ -337,6 +342,32 @@ def suspend_all(body: SuspendAllIn, request: Request):
     # suspend_all_accounts 已排除發起者本人（防自鎖，見 account_repo）。
     count = suspend_all_accounts(sess["username"])
     return {"ok": True, "suspended_count": count}
+
+
+# ── 紅藍 faction 分類（#343；prefix /api/admin → allowed_roles_for 自動 SYSADMIN_ONLY）──
+
+
+@router.get("/factions/clients", tags=["faction"])
+def faction_clients(request: Request, exercise_id: int | None = None):
+    """列本場觀測到的連線 client（producer）+ 目前分類（admin 右 tab 資料源）。exercise_id 省略=實戰池。"""
+    _check_system_admin(request)
+    return {"clients": faction_service.list_clients(exercise_id)}
+
+
+@router.post("/factions/classify", tags=["faction"])
+async def faction_classify(body: FactionClassifyIn, request: Request):
+    """指派 / 改 client 陣營 → upsert + 重解析名下 entity + resync 廣播（commander 視圖即時增減）。"""
+    sess = _check_system_admin(request)
+    return await faction_service.classify(
+        body.exercise_id, body.client_key, body.faction, body.callsign, sess["username"]
+    )
+
+
+@router.post("/factions/entity-override", tags=["faction"])
+async def faction_entity_override(body: FactionOverrideIn, request: Request):
+    """對單一 entity 手動點陣營（iTAK 繪圖等無 producer 物件）+ resync。"""
+    sess = _check_system_admin(request)
+    return await faction_service.override_entity(body.uid, body.faction, sess["username"])
 
 
 @router.get("/audit-log")

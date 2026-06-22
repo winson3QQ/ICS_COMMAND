@@ -1,4 +1,25 @@
+from typing import Literal
+
 from pydantic import BaseModel
+
+# #343 紅藍隔離 admin 分類請求體
+_Faction = Literal["blue", "red", "neutral"]
+
+
+class FactionClassifyIn(BaseModel):
+    """admin 把連線 client（裝置 self-SA uid）分類成紅/藍/中立。exercise_id 省略=實戰池。"""
+
+    client_key: str
+    faction: _Faction
+    callsign: str | None = None
+    exercise_id: int | None = None
+
+
+class FactionOverrideIn(BaseModel):
+    """admin 對單一 entity 手動點陣營（無 producer 可歸屬者，如 iTAK 繪圖）。"""
+
+    uid: str
+    faction: _Faction
 
 
 class AccountCreateIn(BaseModel):
@@ -52,4 +73,5 @@ class SuspendAllIn(BaseModel):
 
 class RetentionToggleIn(BaseModel):
     """#207：軌跡 PII TTL 清理 runtime 開關。"""
+
     enabled: bool

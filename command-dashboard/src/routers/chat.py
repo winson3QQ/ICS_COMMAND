@@ -11,6 +11,8 @@ observer/operator 鎖當前 active 場，歷史場 `?exercise_id` 限 COMMAND_RO
 
 from fastapi import APIRouter, Query, Request
 
+from auth.role_enum import visible_factions_for_session
+from core.config import FACTION_ISOLATION_ENABLED
 from repositories._helpers import iso_utc
 from services.chat_service import build_chat_feed
 from services.exercise_service import resolve_scope
@@ -52,4 +54,6 @@ def list_chat(
         since=_range_bound(from_, end=False),
         until=_range_bound(to, end=True),
         limit=min(max(limit, 1), 1000),
+        # #343：紅軍 GeoChat 不漏給藍方（開關關 → None 不過濾）。
+        visible_factions=(visible_factions_for_session(request.state.session) if FACTION_ISOLATION_ENABLED else None),
     )

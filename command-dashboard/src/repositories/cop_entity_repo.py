@@ -96,21 +96,47 @@ def get_cop_entity(uid: str) -> dict | None:
         return d
 
 
+def _faction_clause(visible_factions: frozenset[str] | None, params: list) -> str | None:
+    """#343：回傳 faction 過濾 SQL 片段，並 append 對應綁定參數到 params。
+
+    - None → 不過濾（sysadmin 全見 / 開關關），回 None。
+    - 空集 → 「看不到任何 faction」→ `source != 'tak'`（**fail-closed**，且避開非法 `IN ()`）。
+    - 非空 → `(source != 'tak' OR faction IN (...))`：只 source='tak' 受限（#146 所有權：
+      manual/command 自建恆可見）；`faction IS NULL` 的 tak 被排除（未分類 fail-closed）。
+    """
+    if visible_factions is None:
+        return None
+    if not visible_factions:
+        return "source != 'tak'"
+    ph = ",".join("?" * len(visible_factions))
+    params.extend(sorted(visible_factions))
+    return f"(source != 'tak' OR faction IN ({ph}))"  # nosec B608 — ph 僅 ? 佔位
+
+
 def list_cop_entities(
     source: str | None = None,
     exercise_id=None,
     include_stale: bool = False,
     limit: int = 500,
+    visible_factions: frozenset[str] | None = None,
 ) -> list[dict]:
     """列出 CoP entity。預設過濾 stale（stale > now）。
 
     exercise_id 三態（見 _helpers.NULL_SCOPE）——
       int → exact / NULL_SCOPE → IS NULL（實戰池）/ None → 不過濾（內部 caller）。
+
+    visible_factions（#343 紅藍隔離）：None = 全見（sysadmin / 開關關）；給一組 faction 時，
+    **只有 source='tak'（外部現場鏡像）受過濾**——保留 `source != 'tak'`（指揮部自建 manual/command +
+    自有感測 pi-node/waveink，對齊 #146 所有權）或 `faction ∈ 集合`。**faction IS NULL 的 tak entity
+    被排除 = fail-closed**（未分類/解不到 producer 者 commander 不可見）。SQL-level 過濾，與 LIMIT 正確互動。
     """
     clauses, params = [], []
     if source is not None:
         clauses.append("source = ?")
         params.append(source)
+    fac_clause = _faction_clause(visible_factions, params)
+    if fac_clause:
+        clauses.append(fac_clause)
     if exercise_id is NULL_SCOPE:
         clauses.append("exercise_id IS NULL")
     elif exercise_id is not None:
@@ -149,6 +175,36 @@ def list_cop_entities(
         return entities
 
 
+def set_faction_for_uids(uids: list[str], faction: str | None) -> int:
+    """#343 重解析：把一批 uid 的 faction 設為新值（**僅動 faction_source='auto'**，不覆寫 admin
+    手動 override）。回實際更新筆數。uids 空 → 0。faction 可為 None（client 取消分類 → 退回
+    fail-closed）。caller（faction_service）已在 Python 端用歸屬鏈篩出「屬某 producer」的 uid 集。"""
+    if not uids:
+        return 0
+    qmarks = ",".join("?" * len(uids))
+    with get_conn() as conn:
+        cur = conn.execute(
+            # nosec B608 — qmarks 僅 ? 佔位，uids 全參數綁定
+            f"UPDATE cop_entities SET faction=?, faction_source='auto' "
+            f"WHERE uid IN ({qmarks}) AND COALESCE(faction_source,'auto')='auto'",
+            [faction, *uids],
+        )
+        return cur.rowcount
+
+
+def set_entity_faction_manual(uid: str, faction: str) -> dict | None:
+    """#343 admin 對單一 entity override faction（faction_source='manual'，重解析不覆寫）。
+
+    供無 producer 可歸屬的物件（如 iTAK 繪圖）由 admin 手動點陣營。回更新後 row / 不存在 None。
+    不 bump version_clock（faction 屬授權 metadata、非 COP 內容，對齊 visible_to side-channel）。
+    """
+    with get_conn() as conn:
+        if conn.execute("SELECT 1 FROM cop_entities WHERE uid=?", (uid,)).fetchone() is None:
+            return None
+        conn.execute("UPDATE cop_entities SET faction=?, faction_source='manual' WHERE uid=?", (faction, uid))
+    return get_cop_entity(uid)
+
+
 def list_shared_tak_entities(limit: int = 1000) -> list[dict]:
     """列出所有「已廣播到 TAK」（attributes.shared_tak=true）且未刪除的 cop_entity（#222）。
 
@@ -168,7 +224,7 @@ def list_shared_tak_entities(limit: int = 1000) -> list[dict]:
         return [_row_to_entity_dict(r) for r in rows]
 
 
-def aggregate_squads(exercise_id=None) -> list[dict]:
+def aggregate_squads(exercise_id=None, visible_factions: frozenset[str] | None = None) -> list[dict]:
     """按 team_color 分組聚合 COP entity，供小隊態勢面板 / dashboard 用（P2-06d，issue #128）。
 
     單句 SQL GROUP BY team_color 一次算齊每組：
@@ -197,6 +253,10 @@ def aggregate_squads(exercise_id=None) -> list[dict]:
     elif exercise_id is not None:
         clauses.append("exercise_id = ?")
         params.append(exercise_id)
+    # #343：紅藍隔離——小隊聚合同樣只算可見 faction，否則 centroid/數量會洩漏紅軍位置/兵力。
+    fac_clause = _faction_clause(visible_factions, params)
+    if fac_clause:
+        clauses.append(fac_clause)
     sql = [
         "SELECT team_color,",
         "       COUNT(*) AS total,",

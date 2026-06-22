@@ -853,7 +853,7 @@ function _applyAdminTabVisibility() {
 export function admShowTab(tab) {
   if (!_isSysadminSession() && !['list','add'].includes(tab)) tab = 'list';
   _applyAdminTabVisibility();
-  const tabs = ['list','add','pi','log','data','sys','tak'];
+  const tabs = ['list','add','pi','log','data','sys','tak','faction'];
   document.querySelectorAll('.adm-tab').forEach((t, i) => {
     t.classList.toggle('active', tabs[i] === tab);
   });
@@ -865,6 +865,94 @@ export function admShowTab(tab) {
   if (tab === 'data') admShowData();
   if (tab === 'sys') admShowSys();
   if (tab === 'tak') admShowTak();
+  if (tab === 'faction') admLoadFactions();
+}
+
+// #343 紅藍隔離：admin 把連線 TAK client 分類成紅/藍/中立。per-exercise（active 場 scope）。
+let _factionScopeEx = null;  // 目前分類作用的 exercise_id（admLoadFactions 設、classify 用）
+
+const _FACTION_META = {
+  blue:    { label: '🔵 藍', color: '#3b82f6' },
+  red:     { label: '🔴 紅', color: '#ef4444' },
+  neutral: { label: '⚪ 中立', color: '#9ca3af' },
+};
+
+export async function admLoadFactions() {
+  const box = el('adm-panel-faction');
+  if (!box) return;
+  // active 場 scope（演習中 entity 綁該場；無 active → 實戰池 null）。動態 import 避免循環依賴。
+  try {
+    const ex = await import('./exercises.js');
+    _factionScopeEx = ex.activeExerciseId();
+  } catch { _factionScopeEx = null; }
+  const scopeLabel = _factionScopeEx == null ? '實戰池（無 active 演習）' : ('演習 #' + _factionScopeEx);
+  const q = _factionScopeEx == null ? '' : ('?exercise_id=' + _factionScopeEx);
+  const resp = await authFetch(API_BASE + '/api/admin/factions/clients' + q);
+  if (!resp.ok) { box.innerHTML = '<div style="color:var(--text3);font-size:12px;padding:8px;">無法載入（需系統管理員）</div>'; return; }
+  const clients = (await resp.json()).clients || [];
+  let head =
+    '<div style="font-size:11px;color:var(--text2);line-height:1.6;margin-bottom:10px;max-width:480px;">' +
+    '把連上的 TAK client 分類成紅／藍／中立。<b>指揮官以下只看得到藍／中立</b>，紅軍與未分類者對其隱藏（fail-closed）。' +
+    '<br>作用範圍：<b>' + scopeLabel + '</b>　·　共 ' + clients.length + ' 個 client' +
+    '<br><span style="color:var(--text3);">⚠ 需開 <code>ICS_FACTION_ISOLATION</code> 過濾才生效（分類本身隨時可做）。</span>' +
+    '<button class="adm-btn" data-action="admShowTab" data-tab="faction" style="margin-left:8px;">重新整理</button></div>';
+  let rows = '';
+  if (!clients.length) {
+    rows = '<div style="color:var(--text3);font-size:12px;padding:4px 0;">本場尚未觀測到任何 TAK client（需現場 broadcast 標記/位置）。</div>';
+  }
+  for (const c of clients) {
+    const f = c.faction;
+    const badge = f
+      ? '<span style="font-size:10px;font-weight:700;color:' + _FACTION_META[f].color + ';">' + _FACTION_META[f].label + '</span>'
+      : '<span style="font-size:10px;color:var(--red,#ef4444);font-weight:700;">⚠ 未分類</span>';
+    let btns = '';
+    for (const fac of ['blue','red','neutral']) {
+      const on = f === fac;
+      btns += '<button class="adm-btn" data-action="adm-faction-classify" data-client-key="' + _escAudit(c.client_key) +
+        '" data-callsign="' + _escAudit(c.callsign || '') + '" data-faction="' + fac + '" ' +
+        'style="' + (on ? 'border-color:' + _FACTION_META[fac].color + ';color:' + _FACTION_META[fac].color + ';font-weight:700;' : '') + '">' +
+        _FACTION_META[fac].label + '</button>';
+    }
+    rows += '<div style="display:flex;align-items:center;gap:6px;padding:5px 0;border-bottom:1px solid var(--border,#222);font-size:12px;">' +
+      '<span style="font-family:monospace;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + _escAudit(c.client_key) + '">' +
+        _escAudit(c.callsign || c.client_key) + '</span>' +
+      badge +
+      '<span style="color:var(--text3);font-size:10px;">' + _escAudit((c.last_seen || '').replace('T', ' ').replace('Z', '')) + '</span>' +
+      '<span style="display:flex;gap:3px;">' + btns + '</span>' +
+    '</div>';
+  }
+  // 無 producer 物件（iTAK 繪圖等）手動 override：admin 直接點 uid 的陣營。
+  const override =
+    '<div style="margin-top:18px;border-top:1px solid var(--border);padding-top:14px;">' +
+    '<div style="font-size:12px;font-weight:600;margin-bottom:6px;color:var(--text);">單一物件手動歸屬</div>' +
+    '<div style="font-size:11px;color:var(--text2);margin-bottom:8px;max-width:480px;line-height:1.5;">' +
+    'iTAK 繪圖等無法自動歸屬產生者的物件，在此用 uid 直接點陣營（manual，重解析不覆寫）。</div>' +
+    '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">' +
+    '<input id="adm-faction-uid" placeholder="entity uid" style="flex:2;min-width:180px;font-family:monospace;">' +
+    '<select id="adm-faction-override-sel"><option value="blue">🔵 藍</option><option value="red">🔴 紅</option><option value="neutral">⚪ 中立</option></select>' +
+    '<button class="adm-btn" data-action="adm-faction-override">套用</button></div>' +
+    '<div id="adm-faction-override-msg" style="font-size:11px;color:var(--text2);min-height:14px;margin-top:6px;"></div></div>';
+  box.innerHTML = head + rows + override;
+}
+
+export async function admClassifyFaction(clientKey, faction, callsign) {
+  const body = { client_key: clientKey, faction, callsign: callsign || null, exercise_id: _factionScopeEx };
+  const resp = await authFetch(API_BASE + '/api/admin/factions/classify', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  });
+  if (!resp.ok) { alert('分類失敗（' + resp.status + '）：' + (await resp.text()).slice(0, 200)); return; }
+  admLoadFactions();  // 重整（後端已 resync 廣播，地圖會自動更新）
+}
+
+export async function admOverrideFaction() {
+  const uid = el('adm-faction-uid')?.value.trim();
+  const faction = el('adm-faction-override-sel')?.value || 'blue';
+  const msg = el('adm-faction-override-msg');
+  if (!uid) { if (msg) msg.textContent = '請輸入 entity uid'; return; }
+  const resp = await authFetch(API_BASE + '/api/admin/factions/entity-override', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ uid, faction }),
+  });
+  if (msg) msg.textContent = resp.ok ? ('✓ 已套用 ' + _FACTION_META[faction].label) : ('失敗（' + resp.status + '）');
 }
 
 export function admShowSys() {

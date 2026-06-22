@@ -48,6 +48,19 @@ def current_exercise_id() -> int | None:
     return ex["id"] if ex else None
 
 
+def require_no_active_exercise() -> None:
+    """#343 AAR 互斥閘（設計 §6）：有任何 active 演習（TTX/實戰）時，AAR / 回放讀取對**所有角色
+    （含 sysadmin/白隊）一致關閉** → 409。斬斷 commander 用 AAR/時間軸偷看 live 紅軍的後門
+    （紅藍隔離 §6，使用者拍板：白隊也須演習結束才看 AAR）。無 active（場已歸檔）→ 放行、全見。
+
+    套用於回放/PII 出口：/aar(GET)、/tracks、/timeline、/kpis、ai /report、/export。
+    """
+    from fastapi import HTTPException
+
+    if current_exercise_id() is not None:
+        raise HTTPException(409, "AAR / 回放在演習進行中不開放（演習結束歸檔後可閱）")
+
+
 def resolve_scope(session: dict | None, requested_exercise_id: int | None):
     """P1-14：GET / WS 的 exercise 範圍解析（安全閘）。回傳給 repo 當 exercise filter。
 
