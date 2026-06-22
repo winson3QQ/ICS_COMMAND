@@ -4754,5 +4754,26 @@
     "title": "fix(admin): #237 reset-db/reset-exercise 補清 chats 表",
     "updatedAt": "2026-06-22T06:42:52Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/333"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "AAR dry-run 回饋的一批回放修正（dashboard 入口 + 三個顯示 bug/feature）。\n\n## 內容\n- **#334** 指揮台設定面板加 AAR 回放入口（COMMAND_ROLES 權限，同分頁導航）\n- **#1** 播放卡死：虛擬時鐘 `msToT` 砍秒 → 每幀次秒進度被丟、永遠跨不過當前秒。加全精度 `_playMs` 累進器\n- **#3** (0,0) null island 壞點（ATAK 無 GPS fix / 手點前）過濾：前端 `validCoord` + 後端 `_record_track` 雙端濾，尾跡不再從真實位置拉線到 (0,0)\n- **#335 (#4)** 單位改 live 同款 MIL-STD-2525 符號（milsymbol，via `cotToSidc`+`bakeMilSymbol`）；無 sidc 退敵我配色點；尾跡線依敵我態配色（友藍/敵紅/中綠/不明黃）\n\n## 驗證\n- vitest 341 passed、timeline pytest 10 passed、eslint/pyflakes clean\n- dogfood 部署 `aar-milsym-05b8c5e` healthy，使用者驗 #1（橫桿會自己動）\n- code-review（8 角度）：無 correctness blocker；security-review：後端僅 `SELECT` 多取 `e.type`（參數化、無新 input/endpoint）→ 無 HIGH/MEDIUM\n\n## v1 限制 / 後續\n- 軌跡不存歷史敵我態 → 用 entity 現值\n- 漸層淡出尾跡與 per-feature 敵我配色互斥，留 polish\n- **尚未做**：#2（區域上 AAR 圖）、#5（事件上 AAR 圖）\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+    "closedAt": "2026-06-22T09:07:09Z",
+    "comments": [],
+    "createdAt": "2026-06-22T09:06:53Z",
+    "headRefName": "feat/issue-aar-milsymbol",
+    "labels": [],
+    "mergedAt": "2026-06-22T09:07:09Z",
+    "number": 336,
+    "state": "MERGED",
+    "title": "feat(aar): AAR 回放 dry-run 修正批次 — 入口 #334 / 卡死 #1 / 壞點 #3 / 原符號+敵我尾跡 #335",
+    "updatedAt": "2026-06-22T09:07:09Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/336"
   }
 ]
