@@ -4804,15 +4804,15 @@
       "name": ""
     },
     "body": "## 來源\n真機:Safari/Chrome 連 ICS 一直跳 (1)「Safari 想存取鑰匙圈密碼 Configuration Profiles」+ (2)「網路憑證無效/連線不私密」。根因 = 用 **iOS 描述檔(.mobileconfig)** 裝 Mac（→ Configuration Profiles 鑰匙圈提示）+ **桌機拿不到 root CA**（p12 路徑不附 → server 證不受信任）。\n\n## 現況（查證）\n- 後端已支援 `fmt=p12`（桌機，預設）/ `fmt=mobileconfig`（iOS）；前端下拉已有兩選項。\n- **缺口**：`fmt=p12` 只回 client 證、**不附 root CA**（`root_pem` 僅 mobileconfig 取）；**面板無 root CA 下載端點**（`fetch_root_ca_pem()` 未對外）。\n- 桌機（Windows/iMac）client 證**同一張 .p12**，差別只在「匯入 + 信任」步驟（per-OS 文字），**不需分平台**。\n\n## 範圍\n1. 後端 `GET /api/admin/ca/root`（sysadmin）→ 回 step-ca root CA PEM（複用 `fetch_root_ca_pem()`）；audit 可選。\n2. 前端憑證面板：\n   - 格式下拉標籤改 **`.p12（Windows / iMac）`** + `iOS 描述檔`。\n   - 加 **「下載 root CA（桌機信任用）」** 鈕。\n   - 選 .p12 時顯示兩行信任提示：\n     - iMac：.p12 → 鑰匙圈「登入」；root CA → 鑰匙圈「系統」設**永遠信任**。\n     - Windows：.p12 → 個人憑證；root CA → **受信任的根憑證授權單位**。\n\n## 為何不加 OS 平台下拉\n.p12 已涵蓋全桌機；缺的是 root CA 交付 + 信任說明。一張 root CA 通吃 Win/Mac/Linux。\n\n## DoD\n桌機用 .p12 + 下載 root CA 信任後，Safari/Chrome 連 ICS **無 server 警告、無 Configuration Profiles 提示**（client 證在登入鑰匙圈）；iOS 不回歸；root CA 端點 sysadmin-gated；補測。",
-    "closedAt": null,
+    "closedAt": "2026-06-22T04:44:27Z",
     "comments": [],
     "createdAt": "2026-06-22T02:24:55Z",
     "labels": [],
     "milestone": null,
     "number": 327,
-    "state": "OPEN",
+    "state": "CLOSED",
     "title": "feat(auth): 桌機登入憑證 UX — root CA 下載 + Windows/iMac 標籤與信任提示",
-    "updatedAt": "2026-06-22T02:24:55Z",
+    "updatedAt": "2026-06-22T04:44:27Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/327"
   }
 ]

@@ -4670,5 +4670,26 @@
     "title": "fix(tak): #324 中文 callsign 發證 500 + #325 刪除已撤銷盤點紀錄 UI",
     "updatedAt": "2026-06-22T02:09:10Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/326"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "## 來源\n真機:Safari/Chrome 連 ICS 一直跳「Configuration Profiles 鑰匙圈」+「憑證無效」。根因 = 用 iOS 描述檔(.mobileconfig)裝桌機（→ profile 鑰匙圈提示）+ **桌機拿不到 root CA**（p12 不附 → server 證不受信任）。\n\n## 改動\n- **後端** `GET /api/admin/ca/root`（sysadmin、複用 `fetch_root_ca_pem()`、未配置→503）→ 回 step-ca **root CA PEM**（公開證、無私鑰）供桌機信任 server。\n- **前端**：格式下拉 **`.p12（Windows / iMac / Android）`** +「**下載 root CA**」鈕 + 信任提示（iMac 匯入「**登入**」鑰匙圈**勿系統根**、Windows 受信任根、Android CA 憑證；**cert-bound session 須綁本帳號**；Mac/Chrome 換證後重開）。\n\n## 驗證\n- `pytest 25`（含 root CA 下載 200 / 503 / 401）/ `vitest 341` / `pyflakes` clean。\n- `/code-review` 0、`/security-review` 0。\n- **真機 iMac 實證**（dogfood `feat327-...`）：下載 root CA + .p12 匯入信任後，Safari/Chrome 連入 ICS 成功（cert-bound session 立得住）。\n\nbackend-v2.13.0 / frontend-v1.9.3\n\nFixes #327\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+    "closedAt": "2026-06-22T04:44:26Z",
+    "comments": [],
+    "createdAt": "2026-06-22T04:44:15Z",
+    "headRefName": "feat/issue-327-desktop-cert-ux",
+    "labels": [],
+    "mergedAt": "2026-06-22T04:44:26Z",
+    "number": 328,
+    "state": "MERGED",
+    "title": "feat(auth): #327 桌機登入憑證 UX — root CA 下載 + Windows/iMac/Android 標籤",
+    "updatedAt": "2026-06-22T04:44:26Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/328"
   }
 ]
