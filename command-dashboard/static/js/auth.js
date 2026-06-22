@@ -1455,14 +1455,15 @@ export async function admLoadCerts(username) {
     '<div style="display:flex;gap:4px;margin-top:8px;flex-wrap:wrap;">' +
       '<input id="adm-certcn-' + username + '" placeholder="裝置憑證 CN（如 指揮官-手機）" style="flex:2;min-width:180px;font-family:monospace;">' +
       '<input id="adm-certlabel-' + username + '" placeholder="標籤（選填，如 指揮官手機）" style="flex:1;min-width:120px;">' +
-      '<select id="adm-certfmt-' + username + '" title="發證格式：iOS 選描述檔（免打密碼）">' +
-        '<option value="p12">.p12（桌機/Android）</option>' +
+      '<select id="adm-certfmt-' + username + '" title="iOS 選描述檔（免打密碼）；Windows/iMac/Android 選 .p12">' +
+        '<option value="p12">.p12（Windows / iMac / Android）</option>' +
         '<option value="mobileconfig">iOS 描述檔（免打密碼）</option>' +
       '</select>' +
       '<button class="adm-btn" data-action="adm-issue-cert" data-username="' + username + '" title="線上向 step-ca 簽發並自動綁定">發憑證</button>' +
       '<button class="adm-btn" data-action="adm-bind-cert" data-username="' + username + '" title="已有離線簽好的憑證時，只綁定 CN">僅綁定</button>' +
+      '<button class="adm-btn" data-action="adm-download-rootca" title="桌機信任 ICS server 憑證用（Windows/iMac 共用同一張 root CA）">下載 root CA</button>' +
     '</div>' +
-    '<div style="font-size:11px;color:var(--text3);margin-top:6px;line-height:1.5;"><b>發憑證</b>：線上向 step-ca 簽一張 + 自動綁定。格式選 <b>.p12</b>（桌機，發證後顯示匯入密碼）或 <b>iOS 描述檔</b>（.mobileconfig，密碼內嵌→點開直接裝、免手打）。<b>僅綁定</b>：已離線簽好時只綁 CN ↔ 帳號。一帳號可綁多台，撤銷即時失效。</div>';
+    '<div style="font-size:11px;color:var(--text3);margin-top:6px;line-height:1.5;"><b>發憑證</b>：線上向 step-ca 簽一張 + 自動綁定。<b>.p12</b>（Windows / iMac / Android，發證後顯示匯入密碼）或 <b>iOS 描述檔</b>（.mobileconfig，密碼內嵌→點開直接裝、免手打）。<b>僅綁定</b>：已離線簽好時只綁 CN ↔ 帳號。一帳號可綁多台，撤銷即時失效。<br><b>非 iOS 要連得進來</b>：另按「<b>下載 root CA</b>」信任 server——<b>iMac</b>：.p12 與 root CA 都匯入鑰匙圈「<b>登入</b>」（root CA <b>勿丟「系統根」</b>，那是唯讀），雙擊 root CA →「信任」設<b>永遠信任</b>；<b>Windows</b>：.p12 匯入個人憑證、root CA 匯入<b>受信任的根憑證授權單位</b>；<b>Android</b>：設定→安全性→安裝憑證，.p12 選「VPN 與 App 使用者憑證」、root CA 選「CA 憑證」。⚠ 桌機/Android 請用 .p12，<b>勿用 iOS 描述檔</b>（會一直跳「Configuration Profiles」提示）。憑證須<b>綁到本帳號</b>才登得進（cert-bound session）；<b>Mac/Chrome 換證後須完全重開 Chrome</b> 才會重新選憑證。</div>';
 }
 
 export async function admBindCert(username) {
@@ -1477,6 +1478,19 @@ export async function admBindCert(username) {
   if (resp.status === 409) { alert('此 CN 已被有效綁定（撤銷後才可重綁）'); return; }
   if (!resp.ok) { alert('綁定失敗（' + resp.status + '）'); return; }
   admLoadCerts(username);
+}
+
+// #327：下載 step-ca root CA（桌機信任 ICS server 憑證用；Windows/iMac 共用）。
+export async function admDownloadRootCa() {
+  const resp = await authFetch(API_BASE + '/api/admin/ca/root');
+  if (resp.status === 503) { alert('root CA 取得失敗：step-ca 線上發證未配置。'); return; }
+  if (!resp.ok) { alert('下載 root CA 失敗（' + resp.status + '）'); return; }
+  const blob = await resp.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'ics-root-ca.pem';
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
 }
 
 export async function admIssueCert(username) {
