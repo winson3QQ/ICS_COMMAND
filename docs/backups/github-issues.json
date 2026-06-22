@@ -4976,5 +4976,32 @@
     "title": "演練前 Tier 0 公網硬化 — reality check + sprint 排序（mTLS 強制下重評 #279/#280/#293/#295/#136/#301）",
     "updatedAt": "2026-06-22T12:48:38Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/342"
+  },
+  {
+    "assignees": [],
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "body": "## 背景\n\n兩週後演習（藍：指揮部/國軍/RTF + 紅軍，公網直曝，live C2 + AAR）的**架構先決**：紅藍軍視圖隔離。需求：\n\n1. **admin 在右側 tab 把連上的 TAK client 分類成紅 / 藍 / 中立**\n2. **指揮部前端（commander 及以下）僅見藍軍動態；admin（白隊）與 AAR 可全見**\n\n現況：exercise scope 已 server-authoritative（P1-14），但「同場域內紅藍分流 + 角色感知過濾」**無設計**。\n\n**設計 SoT**：[`docs/design/red-blue-faction-isolation.md`](../blob/main/docs/design/red-blue-faction-isolation.md)（本 issue 的權威設計，含真機抓包證據）。\n\n## 核心決策（已與使用者拍板 2026-06-22）\n\n- **faction ≠ affiliation**：faction = 資料 producer（誰產生），不是 CoT 符號 a-f/a-h。真機鐵證：同一裝置丟 4 種符號標記、creator 全同一台 → 不能用 type 判紅藍，必須 admin server 端按 producer 指派。\n- **歸屬鏈僅 by-uid**：① 單位 uid ② `attributes.creator.uid`（ATAK）③ `attributes.link.uid`(relation=p-p)（ATAK+iTAK 標記）④ 皆無 → fail-closed。**不納 callsign 前綴**（決策：不靠猜）。\n- **平台差異（真機實測）**：ATAK 標記+繪圖皆帶 creator；iTAK 標記帶 p-p link、**iTAK 繪圖無 uid 歸屬** → fail-closed + admin 手動。\n- **fail-closed**：未解析 / 未分類 client → commander 不可見（admin 演習前預分類藍軍 roster）。\n- **AAR 與演習互斥（所有角色一致，含 sysadmin）**：有 active TTX/實戰時 AAR 全關；無 active 才開、全見。斬斷 commander 用 AAR 偷看 live 紅軍的後門。\n- **紅軍只發 CoT、不登入 ICS** → 只需「藍看藍」單向隔離。\n- **broadcast 前提**：ATAK/iTAK 標記要 broadcast 才進 ICS（寫進 SOP）。\n\n## 資料模型\n\n- 新表 `client_faction(exercise_id, client_key, callsign, faction, classified_by, classified_at)`\n- `cop_entities` 加欄 `faction`（解析結果，NULL=fail-closed）+ `faction_source`（auto|manual）— ALTER ADD，schema v1 內擴充\n\n## 強制點（三層，全 server-side）\n\n- REST `routers/cop.py list_entities` — 依角色 `visible_factions` 過濾\n- WS `services/realtime_hub.py _Conn` — 加 `visible_factions`（同 include_standing 模式），`wants()` 加 faction 檢查，message 帶 entity.faction\n- AAR `timeline_service` + `/exercises/{id}/aar` — 走演習互斥閘\n\n## 角色 → 可見性\n\n| 角色 | live 可見 |\n|---|---|\n| sysadmin（白隊）| 全部（含 red / NULL）|\n| commander / operator / observer（藍軍）| {blue, neutral} |\n\n## 待辦（v1 = 演習前必達）\n\n- [ ] `client_faction` 表 + migration\n- [ ] `cop_entities.faction` / `faction_source` 欄 + migration\n- [ ] ingest producer 解析（creator / link p-p / self uid）+ fail-closed\n- [ ] admin 分類 API + client 列舉（接 `/api/cop/squads` producer 聚合）\n- [ ] 重解析 + resync 廣播\n- [ ] REST list_entities faction 過濾\n- [ ] WS hub `_Conn.visible_factions` + broadcast 過濾\n- [ ] AAR 與 active 演習互斥閘\n- [ ] admin 右 tab UI（🔵/🔴/⚪ + 單物件 override）\n- [ ] 角色 → visible_factions 映射\n- [ ] 測試（unit: 歸屬鏈 / fail-closed；integration: 各角色讀 API + WS 只收可見 faction；AAR 互斥）\n\n## 已知邊界（threat_model 待補）\n\n- **ICS 隔離 ≠ TAK-side 隔離**：紅軍在同一 TAK server，藍軍出向推回 TAK 的物件紅軍 ATAK 仍可見 → TAK-side 紅藍分流是另一支槓桿，演習前須一併處理。\n- iTAK 繪圖無 producer → admin 手動負擔（導調 SOP）。\n\n## 優先級\n\n**演習先決，排在 Tier 0（#342）之前** —— 它約束整個演習資料模型。\n",
+    "closedAt": null,
+    "comments": [],
+    "createdAt": "2026-06-22T13:47:13Z",
+    "labels": [
+      {
+        "color": "a2eeef",
+        "description": "New feature or request",
+        "id": "LA_kwDOSnBjpc8AAAACklX2xg",
+        "name": "enhancement"
+      }
+    ],
+    "milestone": null,
+    "number": 343,
+    "state": "OPEN",
+    "title": "feat(map): 紅藍陣營隔離（faction isolation）— admin 分類 TAK client + commander 只見藍軍（演習先決）",
+    "updatedAt": "2026-06-22T13:47:13Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/343"
   }
 ]
