@@ -169,7 +169,36 @@ def test_observer_cannot_share(client, auth, captured_cot):
     create_account("obs_share", "1234", ROLE_OBSERVER_ZH, "Obs Share", "observer")
     r = client.post(f"/api/tak/share/{uid}", headers=_login(client, "obs_share"))
     assert r.status_code == 403
+
+
+def test_share_red_tak_entity_blocked_for_blue_when_isolation_on(client, auth, captured_cot, tak_enabled, monkeypatch):
+    """#343 security-review：開隔離後，藍方（operator）不可分享其看不到的紅軍 tak entity → 404、未送。
+    （否則 share 成存在性 oracle + 對紅軍越權動作）。sysadmin（白隊，vf=None）仍可分享。"""
+    from core import config as _cfg
+    from repositories import cop_entity_repo
+    from schemas.cop import CoPEntity
+
+    monkeypatch.setattr(_cfg, "FACTION_ISOLATION_ENABLED", True)
+    cop_entity_repo.insert_cop_entity(
+        CoPEntity(
+            uid="RED-SHARE-1",
+            type="a-h-G",
+            time="2026-06-22T00:00:00Z",
+            start="2026-06-22T00:00:00Z",
+            stale="2099-01-01T00:00:00Z",
+            how="h-e",
+            lat=25.0,
+            lon=121.0,
+            source="tak",
+            faction="red",
+        )
+    )
+    create_account("op_share", "1234", ROLE_OPERATOR_ZH, "Op Share", "operator")
+    r = client.post("/api/tak/share/RED-SHARE-1", headers=_login(client, "op_share"))
+    assert r.status_code == 404  # 藍方看不到紅軍 → 不可分享（與 cop.get_entity 一致）
     assert captured_cot == []
+    r2 = client.post("/api/tak/share/RED-SHARE-1", headers=auth)  # sysadmin 全見
+    assert r2.status_code == 200 and len(captured_cot) == 1
 
 
 def test_operator_can_share(client, auth, captured_cot, tak_enabled):
@@ -224,7 +253,9 @@ def test_move_shared_entity_via_attributes_preserves_shared_tak(client, auth, ca
     """#257：已廣播 entity 經**整包 attributes** PUT（圖形移動改 vertices / label drag 改 label_anchor）
     → server 須保留 shared_tak（前端無此值、不該被覆寫洗掉）→ 重推 CoT 照樣 fire。"""
     uid = _create_entity(
-        client, auth, type="u-d-f",
+        client,
+        auth,
+        type="u-d-f",
         attributes={"kind": "polygon", "vertices": [[25.0, 121.0], [25.1, 121.0], [25.1, 121.1]]},
     )
     client.post(f"/api/tak/share/{uid}", headers=auth)  # captured_cot[0]
@@ -232,7 +263,8 @@ def test_move_shared_entity_via_attributes_preserves_shared_tak(client, auth, ca
     r = client.put(
         f"/api/cop/entities/{uid}",
         json={
-            "lat": 24.5, "lon": 120.9,
+            "lat": 24.5,
+            "lon": 120.9,
             "attributes": {"kind": "polygon", "vertices": [[24.5, 120.9], [24.6, 120.9], [24.6, 121.0]]},
         },
         headers={**auth, "If-Match": "1"},
@@ -247,12 +279,20 @@ def test_put_cannot_self_set_shared_tak(client, auth, captured_cot, tak_enabled)
     """#257 hardening：未廣播 entity，client 不得經 PUT attributes 自設 shared_tak（繞過 share 端點的
     COP_SHARE_TAK audit + send_cot）→ server 一律 pop client 帶的值。"""
     uid = _create_entity(
-        client, auth, type="u-d-f",
+        client,
+        auth,
+        type="u-d-f",
         attributes={"kind": "polygon", "vertices": [[25.0, 121.0], [25.1, 121.0], [25.1, 121.1]]},
     )
     r = client.put(
         f"/api/cop/entities/{uid}",
-        json={"attributes": {"kind": "polygon", "vertices": [[25.0, 121.0], [25.1, 121.0], [25.1, 121.1]], "shared_tak": True}},
+        json={
+            "attributes": {
+                "kind": "polygon",
+                "vertices": [[25.0, 121.0], [25.1, 121.0], [25.1, 121.1]],
+                "shared_tak": True,
+            }
+        },
         headers={**auth, "If-Match": "1"},
     )
     assert r.status_code == 200
@@ -299,7 +339,7 @@ def test_downlink_disabled_409(client, auth, captured_cot, tak_disabled):
     """TAK 開關停用 → 下達指令 409，未送 CoT、未稽核（gate 在 audit 之前）。"""
     r = client.post("/api/tak/downlink", json=_cmd(uid="ICS-CMD-OFF"), headers=auth)
     assert r.status_code == 409
-    assert captured_cot == []           # 未送
+    assert captured_cot == []  # 未送
     assert _audit_rows("ICS-CMD-OFF") == []  # 未稽核（gate 早於 audit）
 
 
@@ -324,11 +364,9 @@ def test_move_shared_entity_disabled_no_resync(client, auth, captured_cot, monke
     uid = _create_entity(client, auth)
     client.post(f"/api/tak/share/{uid}", headers=auth)  # captured_cot[0]（廣播）
     monkeypatch.setattr("core.config.TAK_ENABLED", False)  # 關閉 TAK
-    r = client.put(
-        f"/api/cop/entities/{uid}", json={"lat": 24.5, "lon": 120.9}, headers={**auth, "If-Match": "1"}
-    )
-    assert r.status_code == 200          # cop 編輯本身不受影響
-    assert len(captured_cot) == 1        # 停用後 move 不重推
+    r = client.put(f"/api/cop/entities/{uid}", json={"lat": 24.5, "lon": 120.9}, headers={**auth, "If-Match": "1"})
+    assert r.status_code == 200  # cop 編輯本身不受影響
+    assert len(captured_cot) == 1  # 停用後 move 不重推
 
 
 def test_reconcile_outbound_pushes_only_shared(client, auth, captured_cot, tak_enabled, monkeypatch):
@@ -344,13 +382,13 @@ def test_reconcile_outbound_pushes_only_shared(client, auth, captured_cot, tak_e
     monkeypatch.setattr("core.config.TAK_CLIENT_KEY", "/k.pem")
 
     shared = _create_entity(client, auth)
-    _create_entity(client, auth)                       # 另一顆，不分享
+    _create_entity(client, auth)  # 另一顆，不分享
     client.post(f"/api/tak/share/{shared}", headers=auth)  # 廣播（captured_cot[0]）
     # 模擬斷線期間移動（cop PUT 改座標；此處不論有無重推，重點是 reconcile 拿當前位置）
     client.put(f"/api/cop/entities/{shared}", json={"lat": 23.9, "lon": 120.1}, headers={**auth, "If-Match": "1"})
     captured_cot.clear()
 
     pushed = asyncio.run(tak_resync.reconcile_shared_outbound())
-    assert pushed == 1                                  # 只重推已分享那顆
+    assert pushed == 1  # 只重推已分享那顆
     assert len(captured_cot) == 1 and shared in captured_cot[0]
-    assert "23.9" in captured_cot[0]                    # 重推的是**當前**（移動後）座標
+    assert "23.9" in captured_cot[0]  # 重推的是**當前**（移動後）座標
