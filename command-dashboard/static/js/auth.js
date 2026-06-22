@@ -938,7 +938,9 @@ export async function admLoadTakDeviceCerts() {
         '<span style="color:var(--text3);">' + plat + '</span>' +
         '<span style="color:var(--text3);font-size:10px;">' + _escAudit((c.issued_at || '').replace('T', ' ').replace('Z', '')) + '</span>' +
         '<span class="adm-badge ' + (active ? 'active' : 'suspended') + '">' + (active ? '有效' : '已撤銷') + '</span>' +
-        (active ? '<button class="adm-btn" data-action="adm-revoke-tak-device" data-cert-id="' + c.id + '">撤銷</button>' : '') +
+        (active
+          ? '<button class="adm-btn" data-action="adm-revoke-tak-device" data-cert-id="' + c.id + '">撤銷</button>'
+          : '<button class="adm-btn" data-action="adm-delete-tak-device" data-cert-id="' + c.id + '">刪除</button>') +
       '</div>';
   }
   box.innerHTML = rows;
@@ -948,6 +950,14 @@ export async function admRevokeTakDevice(certId) {
   if (!confirm('標記此 TAK 裝置證為已撤銷？\n⚠ 這只是帳面記錄，不會阻擋該裝置連 TAK（真撤銷需 CRL，#318）。')) return;
   const resp = await authFetch(API_BASE + '/api/admin/tak/device-certs/' + certId + '/revoke', { method: 'POST' });
   if (!resp.ok) { alert('撤銷標記失敗（' + resp.status + '）'); return; }
+  admLoadTakDeviceCerts();
+}
+
+// #325：刪除已撤銷的盤點紀錄（清理累積 revoked；刪紀錄 ≠ 撤證）。
+export async function admDeleteTakDevice(certId) {
+  if (!confirm('刪除此已撤銷的裝置證盤點紀錄？\n（僅刪 ICS 盤點紀錄，不影響憑證本身——真撤銷需 CRL，#318。）')) return;
+  const resp = await authFetch(API_BASE + '/api/admin/tak/device-certs/' + certId, { method: 'DELETE' });
+  if (!resp.ok) { alert('刪除失敗（' + resp.status + '）'); return; }
   admLoadTakDeviceCerts();
 }
 

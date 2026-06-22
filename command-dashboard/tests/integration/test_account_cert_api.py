@@ -230,6 +230,55 @@ class TestTakDeviceCert:
         # 已撤再撤 → 404
         assert client.post(f"/api/admin/tak/device-certs/{rec['id']}/revoke", headers=auth).status_code == 404
 
+    def test_issue_chinese_callsign_no_500(self, client, auth, monkeypatch, tmp_path):
+        """#324：中文 callsign 不可因 Content-Disposition 非 latin-1 檔名而 500。
+
+        舊 bug：`isalnum()` 對中文回 True → 中文進 header → uvicorn UnicodeEncodeError → 500。
+        修後：ASCII fallback `filename=` + RFC5987 `filename*` 保留中文，header latin-1 安全。"""
+        import core.config as config
+        import services.tak_device_cert as tdc
+
+        (tmp_path / "tak-ca.key").write_text("KEY", encoding="ascii")
+        (tmp_path / "tak-ca.pem").write_text("PEM", encoding="ascii")
+        monkeypatch.setattr(config, "TAK_DEVICE_CONNECT_HOST", "1.2.3.4")
+        monkeypatch.setattr(config, "TAK_DEVICE_CA_DIR", str(tmp_path))
+        monkeypatch.setattr(tdc, "build_device_package", lambda *a: (b"ZIP", "SER-CJK"))
+        r = client.post("/api/admin/tak/device-cert", params={"callsign": "主教", "mode": "aware"}, headers=auth)
+        assert r.status_code == 200, r.text  # 關鍵：不是 500
+        cd = r.headers.get("content-disposition", "")
+        cd.encode("latin-1")  # header 須 latin-1 可編碼（否則 ASGI 送不出）
+        assert 'filename="device-dp.zip"' in cd  # 全中文 → ASCII fallback
+        assert "filename*=UTF-8''%E4%B8%BB%E6%95%99-dp.zip" in cd  # RFC5987 保留中文
+        # 證確實簽出 + 進盤點（非幽靈）
+        assert any(
+            x["callsign"] == "主教" and x["status"] == "active"
+            for x in client.get("/api/admin/tak/device-certs", headers=auth).json()
+        )
+
+    def test_delete_revoked_record(self, client, auth, monkeypatch, tmp_path):
+        """#325：刪已撤銷盤點紀錄；active 不可刪（404）。"""
+        import core.config as config
+        import services.tak_device_cert as tdc
+
+        (tmp_path / "tak-ca.key").write_text("KEY", encoding="ascii")
+        (tmp_path / "tak-ca.pem").write_text("PEM", encoding="ascii")
+        monkeypatch.setattr(config, "TAK_DEVICE_CONNECT_HOST", "1.2.3.4")
+        monkeypatch.setattr(config, "TAK_DEVICE_CA_DIR", str(tmp_path))
+        monkeypatch.setattr(tdc, "build_device_package", lambda *a: (b"Z", "SER-D"))
+        client.post("/api/admin/tak/device-cert?callsign=itak-del&mode=aware", headers=auth)
+        rec = next(
+            x for x in client.get("/api/admin/tak/device-certs", headers=auth).json() if x["callsign"] == "itak-del"
+        )
+        # active 不可刪 → 404
+        assert client.delete(f"/api/admin/tak/device-certs/{rec['id']}", headers=auth).status_code == 404
+        # 撤銷後可刪
+        client.post(f"/api/admin/tak/device-certs/{rec['id']}/revoke", headers=auth)
+        assert client.delete(f"/api/admin/tak/device-certs/{rec['id']}", headers=auth).status_code == 200
+        assert all(x["id"] != rec["id"] for x in client.get("/api/admin/tak/device-certs", headers=auth).json())
+
+    def test_delete_requires_auth(self, client):
+        assert client.delete("/api/admin/tak/device-certs/1").status_code == 401
+
     def test_list_requires_auth(self, client):
         assert client.get("/api/admin/tak/device-certs").status_code == 401
 
