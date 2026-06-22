@@ -1486,6 +1486,24 @@ def _m031_faction_isolation_down(conn: sqlite3.Connection) -> None:
             conn.execute(f"ALTER TABLE cop_entities DROP COLUMN {col}")  # nosec B608 — 欄名為常數
 
 
+def _m032_chats_faction(conn: sqlite3.Connection) -> None:
+    """#343：GeoChat（chats 表）加 faction —— 紅軍通聯不得漏給藍方。
+
+    chats 全為 tak 來源（CoT b-t-f）；faction 於 ingest 由 GeoChat uid 內嵌的裝置 uid 解析
+    （client_faction 分類），NULL = 未分類 → fail-closed（list/broadcast 對藍方不顯）。
+    既有 row（隔離啟用前）faction=NULL → 啟用後對藍方不顯，可接受（pre-isolation 通聯）。
+    """
+    _add_column_if_missing(conn, "chats", "faction", "TEXT")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_chats_faction ON chats(faction)")
+
+
+def _m032_chats_faction_down(conn: sqlite3.Connection) -> None:
+    conn.execute("DROP INDEX IF EXISTS idx_chats_faction")
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(chats)")}
+    if "faction" in cols:
+        conn.execute("ALTER TABLE chats DROP COLUMN faction")
+
+
 _MIGRATIONS: list[tuple[int, str, object]] = [
     (1, "events_columns", _m001_events_columns),
     (2, "decisions_columns", _m002_decisions_columns),
@@ -1518,6 +1536,7 @@ _MIGRATIONS: list[tuple[int, str, object]] = [
     (29, "account_certs", _m029_account_certs),
     (30, "tak_device_certs", _m030_tak_device_certs),
     (31, "faction_isolation", _m031_faction_isolation),
+    (32, "chats_faction", _m032_chats_faction),
 ]
 
 

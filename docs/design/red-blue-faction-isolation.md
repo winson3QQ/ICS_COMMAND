@@ -98,9 +98,13 @@ ALTER TABLE cop_entities ADD COLUMN faction_source TEXT;  -- auto | manual
 
 | 層 | 位置 | 做法 |
 |---|---|---|
-| REST 讀 | `routers/cop.py list_entities` | 依 session 角色算 `visible_factions`，過濾不可見 entity |
-| **WS 即時推播** | `services/realtime_hub.py _Conn` | **加 `visible_factions` 欄位**（handshake 依角色定，與既有 `include_standing` 同模式）；`wants()` 多一條 faction 檢查；broadcast message 帶 `entity.faction` |
-| AAR / timeline | `services/timeline_service.py` + `/exercises/{id}/aar` | 走 §6 互斥閘（AAR 僅在無 active 演習時開放） |
+| REST 讀（entities）| `routers/cop.py list_entities` / `get_entity` | 依角色算 `visible_factions` → repo `_faction_clause` SQL 過濾；get 不可見→404 不洩漏存在性 |
+| REST 讀（squads）| `routers/cop.py list_squads` → `aggregate_squads(visible_factions=)` | **聚合也過濾**——否則藍方經 centroid/兵力推得紅軍位置（code/security review 補；只 `source='tak'` 受限）|
+| REST 讀（GeoChat）| `routers/chat.py /api/chat` → `build_chat_feed`/`list_chats(visible_factions=)` | 紅軍通聯不漏藍方；chats 全 tak → 規則化簡 `faction IN (...)`（NULL fail-closed）|
+| **WS 即時推播** | `services/realtime_hub.py _Conn` | `visible_factions` 欄（handshake 依角色定，同 `include_standing` 模式）；`wants()` 加 faction gate；**所有 broadcast caller 帶 `source`+`faction`**（entity create/update/delete、exercise enroll、GeoChat）|
+| AAR / timeline | `services/timeline_service.py`（tracks/markers/contacts/chats）+ `/exercises/{id}/aar`·`/tracks`·`/timeline`·`/kpis` | 走 §6 互斥閘（AAR 僅在無 active 演習時開放）——閘須蓋**全部**回放/PII 出口（PR-6）|
+
+> **review 收尾（2026-06-22 code+security review）**：強制點的**讀取面比初版廣** —— 除 entities，squads / GeoChat / timeline 都讀 tak 資料。squads + GeoChat（live）已補 faction 過濾；timeline 家族（tracks/markers/contacts/chats）由 §6 AAR 互斥閘關閉 live 存取（PR-6）。共用 `_faction_clause` helper（空集 → `source != 'tak'`，避非法 `IN ()` 並 fail-closed）。
 
 ---
 

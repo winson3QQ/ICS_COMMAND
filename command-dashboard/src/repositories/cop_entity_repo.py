@@ -96,6 +96,23 @@ def get_cop_entity(uid: str) -> dict | None:
         return d
 
 
+def _faction_clause(visible_factions: frozenset[str] | None, params: list) -> str | None:
+    """#343：回傳 faction 過濾 SQL 片段，並 append 對應綁定參數到 params。
+
+    - None → 不過濾（sysadmin 全見 / 開關關），回 None。
+    - 空集 → 「看不到任何 faction」→ `source != 'tak'`（**fail-closed**，且避開非法 `IN ()`）。
+    - 非空 → `(source != 'tak' OR faction IN (...))`：只 source='tak' 受限（#146 所有權：
+      manual/command 自建恆可見）；`faction IS NULL` 的 tak 被排除（未分類 fail-closed）。
+    """
+    if visible_factions is None:
+        return None
+    if not visible_factions:
+        return "source != 'tak'"
+    ph = ",".join("?" * len(visible_factions))
+    params.extend(sorted(visible_factions))
+    return f"(source != 'tak' OR faction IN ({ph}))"  # nosec B608 — ph 僅 ? 佔位
+
+
 def list_cop_entities(
     source: str | None = None,
     exercise_id=None,
@@ -117,10 +134,9 @@ def list_cop_entities(
     if source is not None:
         clauses.append("source = ?")
         params.append(source)
-    if visible_factions is not None:
-        fac_ph = ",".join("?" * len(visible_factions))
-        clauses.append(f"(source != 'tak' OR faction IN ({fac_ph}))")  # nosec B608 — fac_ph 僅 ? 佔位
-        params.extend(sorted(visible_factions))
+    fac_clause = _faction_clause(visible_factions, params)
+    if fac_clause:
+        clauses.append(fac_clause)
     if exercise_id is NULL_SCOPE:
         clauses.append("exercise_id IS NULL")
     elif exercise_id is not None:
@@ -178,7 +194,7 @@ def list_shared_tak_entities(limit: int = 1000) -> list[dict]:
         return [_row_to_entity_dict(r) for r in rows]
 
 
-def aggregate_squads(exercise_id=None) -> list[dict]:
+def aggregate_squads(exercise_id=None, visible_factions: frozenset[str] | None = None) -> list[dict]:
     """按 team_color 分組聚合 COP entity，供小隊態勢面板 / dashboard 用（P2-06d，issue #128）。
 
     單句 SQL GROUP BY team_color 一次算齊每組：
@@ -207,6 +223,10 @@ def aggregate_squads(exercise_id=None) -> list[dict]:
     elif exercise_id is not None:
         clauses.append("exercise_id = ?")
         params.append(exercise_id)
+    # #343：紅藍隔離——小隊聚合同樣只算可見 faction，否則 centroid/數量會洩漏紅軍位置/兵力。
+    fac_clause = _faction_clause(visible_factions, params)
+    if fac_clause:
+        clauses.append(fac_clause)
     sql = [
         "SELECT team_color,",
         "       COUNT(*) AS total,",
