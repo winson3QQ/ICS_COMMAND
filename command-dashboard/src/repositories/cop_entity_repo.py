@@ -175,6 +175,36 @@ def list_cop_entities(
         return entities
 
 
+def set_faction_for_uids(uids: list[str], faction: str | None) -> int:
+    """#343 重解析：把一批 uid 的 faction 設為新值（**僅動 faction_source='auto'**，不覆寫 admin
+    手動 override）。回實際更新筆數。uids 空 → 0。faction 可為 None（client 取消分類 → 退回
+    fail-closed）。caller（faction_service）已在 Python 端用歸屬鏈篩出「屬某 producer」的 uid 集。"""
+    if not uids:
+        return 0
+    qmarks = ",".join("?" * len(uids))
+    with get_conn() as conn:
+        cur = conn.execute(
+            # nosec B608 — qmarks 僅 ? 佔位，uids 全參數綁定
+            f"UPDATE cop_entities SET faction=?, faction_source='auto' "
+            f"WHERE uid IN ({qmarks}) AND COALESCE(faction_source,'auto')='auto'",
+            [faction, *uids],
+        )
+        return cur.rowcount
+
+
+def set_entity_faction_manual(uid: str, faction: str) -> dict | None:
+    """#343 admin 對單一 entity override faction（faction_source='manual'，重解析不覆寫）。
+
+    供無 producer 可歸屬的物件（如 iTAK 繪圖）由 admin 手動點陣營。回更新後 row / 不存在 None。
+    不 bump version_clock（faction 屬授權 metadata、非 COP 內容，對齊 visible_to side-channel）。
+    """
+    with get_conn() as conn:
+        if conn.execute("SELECT 1 FROM cop_entities WHERE uid=?", (uid,)).fetchone() is None:
+            return None
+        conn.execute("UPDATE cop_entities SET faction=?, faction_source='manual' WHERE uid=?", (faction, uid))
+    return get_cop_entity(uid)
+
+
 def list_shared_tak_entities(limit: int = 1000) -> list[dict]:
     """列出所有「已廣播到 TAK」（attributes.shared_tak=true）且未刪除的 cop_entity（#222）。
 

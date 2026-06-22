@@ -110,22 +110,26 @@ def _link_uid_by_relation(detail: dict, relation: str) -> str | None:
     return None
 
 
-def _resolve_client_key(entity: CoPEntity) -> str:
-    """解析產生此 entity 的 client（裝置 self-SA uid）= faction 歸屬鍵（#343 §2.2）。
+def resolve_client_key_from_parts(uid: str, attributes: dict) -> str:
+    """歸屬鏈核心（dict-based，供 entity 物件與 DB row dict 共用；#343 §2.2）。
 
-    歸屬鏈（全 by-uid，不靠猜）：
-      1. attributes.creator.uid（ATAK 標記/繪圖明確帶）
-      2. attributes.link[relation=p-p].uid（ATAK + iTAK 標記）
-      3. fallback：entity.uid 本身（self-SA 單位 = uid 即裝置；無作者欄的 iTAK 繪圖則
-         fallback 到繪圖自己的 GUID，不會命中任何 client_faction → NULL → fail-closed）
+    全 by-uid、不靠猜：creator.uid（ATAK 標記/繪圖）→ link[relation=p-p].uid（ATAK+iTAK 標記）
+    → fallback uid 本身（self-SA 單位＝uid 即裝置；無作者欄的 iTAK 繪圖 fallback 到自身 GUID
+    → 不命中任何 client_faction → NULL → fail-closed）。
     """
-    creator = _dict_child(entity.attributes, "creator")
+    attrs = attributes or {}
+    creator = _dict_child(attrs, "creator")
     if creator.get("uid"):
         return creator["uid"]
-    link_uid = _link_uid_by_relation(entity.attributes, "p-p")
+    link_uid = _link_uid_by_relation(attrs, "p-p")
     if link_uid:
         return link_uid
-    return entity.uid
+    return uid
+
+
+def _resolve_client_key(entity: CoPEntity) -> str:
+    """解析產生此 entity 的 client（裝置 self-SA uid）= faction 歸屬鍵（#343 §2.2）。"""
+    return resolve_client_key_from_parts(entity.uid, entity.attributes)
 
 
 def _resolve_faction(entity: CoPEntity) -> str | None:
