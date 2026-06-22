@@ -285,6 +285,62 @@ Command **信任 TAK Server 轉發的所有 CoT** —— 即使傳輸加密（§
 
 > **doctrine（NIST 800-207 zero-trust）**：perimeter 必要但不充分。C2 威脅模型**必含「被擄的合法裝置」**（前線平板被繳獲＝合法憑證落敵手）→ 圈內不可預設信任，① 內部掃與 ③/④ 毒化只有 app 層縱深擋得住。**最高 CP＝先落地 IP 整理（Tailscale 前置 + 真實IP還原，#280），其餘殘留循 #292–296 修。皆標準解，無未解難題。**
 
+### 8.8 Live-host vs at-rest 區分 + 安全交付 checklist（#301 黑箱後架構討論 2026-06-22）
+
+#301 公網黑箱證明**周邊極硬**（mTLS 雙 port 強制、Marti/後端/DB 對外全 filtered、header/cipher 達標、匿名攻擊者止步 TLS 握手）。但「最強堡壘由內部攻破」——以下釐清 perimeter 蓋不到的層 + 交付分階段紀律。
+
+**關鍵區分：at-rest（冷）vs live-host（熱）——兩者防法不同，勿混為一談**
+
+| 威脅狀態 | §8.4 LUKS/BitLocker 全碟加密 | 防得住嗎 |
+|---|---|---|
+| **冷**：關機被偷 / 拔硬碟 | ✅ 看到密文 | 是 |
+| **熱**：開機中的主機被 OS 層攻陷（root code exec / host 上的惡意 AI/agent） | ❌ volume 已解密掛載，CA 鑰/DB 在記憶體與掛載點是**明文**，跑在 host 上的程式照樣讀 | **否** |
+
+→ **全碟加密只防「冷」。** 「活著的被攻陷主機讀走 CA 鑰 → 簽任意憑證 → mTLS 信任根全破」是 at-rest 蓋不到的層（[issue #323](https://github.com/winson3QQ/ICS_COMMAND/issues/323)）。**事實**：現 `step-ca` CA 私鑰與 ICS/nginx/DB 同跑單機 `ca-data` volume。
+
+**選定交付架構 = manned C2 密封盒（sealed appliance，2026-06-22 使用者拍板）**
+
+交付物 = **加密硬碟 + 單一 container（ICS 全棧含 step-ca）+ 一把實體 FIDO2 金鑰**。此模型**用「縮小攻擊面 + 實體鑰閘」取代「CA 離機」**來處理 live-host 威脅：
+
+- **「host 上的 AI/agent」威脅在交付盒上不存在** —— 盒子**只跑那一個密封 container，不跑通用 agent**（該威脅只在 dev 機，靠圍籬擋）。攻擊面從「通用主機」縮成「單一用途密封盒」。
+- **實體金鑰閘** = at-rest 解鎖需 FIDO2（CTAP2 hmac-secret + **PIN + touch**）→ 偷碟無鑰無 PIN 開不了（碟 + 鑰 + PIN ＝ 3 因子）。
+
+**模型成立的前提（強制，否則加密形同虛設）**：
+1. FIDO2 須 **PIN + touch**，不可只靠持有（CTAP2 PIN，#226/#227 已含）。
+2. **碟與鑰分開運送/保管**（一起被拿＝鑰解碟）。
+3. **不用即關機；運行中需人看管** —— ⚠ 加密/金鑰**只防冷/開機邊界**：開機解鎖後系統在記憶體是明文，此時拔鑰、整碟加密皆無效，「**開著被搶**＝加密失效」。manned C2 假設運行時人在鑰在、閒置斷電回密文。
+4. **多把金鑰 + 救援路徑**（enroll 2+ token + 助記詞 rescue；#230「失 token 演練」）。
+
+**殘留（可接受、記明）**：container escape / 盒內 app RCE 仍可摸到盒內 CA 鑰 → 緩解＝盒子單一用途、最小服務、container 硬化。對 manned-C2 單盒為可接受殘留（非無人值守高保證場景）。
+
+**高保證替代（非 manned-C2 必需）**：無人值守 / 高威脅場景才升級為 **CA 離機**（離線 root CA / HSM / 分機分網段），ICS host 不持簽證 CA 鑰。
+
+**單機（尤其單 Windows dev/delivery 機）能做什麼 — reality check**
+
+| 防線 | 單機能做？ | 機制 |
+|---|---|---|
+| at-rest（冷竊） | ✅ | BitLocker（Win，= §8.4 #231 Windows 軌）/ LUKS（Linux）+ FIDO2 鑰閘 |
+| live-host AI/agent（**dev 機**） | ⚠ 部分 | **agent 能力圍籬**（最小權限、禁 prod-exec/secret-read/self-escalation；#301 session 實證有效）+ egress 控管 + hash 鏈稽核 |
+| live-host（**交付密封盒**） | ✅ 縮面解 | 盒子只跑單一 container、不跑 agent → 該威脅不存在；殘留＝container escape（盒硬化緩解） |
+| CA 鑰離機（高保證選項） | ❌ 單機做不到 | manned-C2 **不需要**；無人值守/高威脅才升級拓樸（#323） |
+
+> **manned-C2 殘留邊界**：密封盒 + 實體鑰閘下，「冷竊」「偷碟」「dev 機 AI」皆解。**唯一不可逆殘留＝「盒子開機運行中被實體奪取」**（記憶體明文，加密無效）→ 靠運行時人看管 + 閒置斷電 + tamper 反應緩解，非技術絕對解。**這是 manned C2 形態本質接受的風險，記明於此。**
+
+**安全交付 checklist（公測 vs 正式交付）**
+
+| 項 | 公測階段（無真資料，風險可接受） | 正式交付（強制） |
+|---|---|---|
+| 交付形態（#323） | dev 機單棧 — **記明 CA 同機為已知殘留** | **manned C2 密封盒**：加密碟 + 單 container + 實體金鑰（CA 同機可接受，靠密封 + 鑰閘 + 看管）。高保證場景才升 CA 離機 |
+| at-rest + 實體鑰閘（§8.4 #231 / #226） | 建議開 | **BitLocker/LUKS 整碟 + FIDO2（PIN+touch）解鎖必開**；碟與鑰分開保管、閒置斷電 |
+| FIDO2 統一 unlock（#226/#227/#230） | 可延後（mock 驗證即可） | 真 token 整合 + 失 token 演練（最少硬體：Pi 500 + 2 把 FIDO2，免買量產機，見 #230） |
+| agent/process 圍籬 | **必在**（host 上跑 agent 時） | **必在** |
+| 真實 client IP 還原（#280） | 可接受 per-IP 防護失效 | **Tailscale/host-net 還原**（per-IP 限速/fail2ban 才生效） |
+| 裝置證撤銷（§8.5 #232/#318） | 管控發證 + 別濫發 | **CRL/OCSP 撤銷能力 + 遺失即撤 SOP** |
+| prod secret（#290） | compose `:?` 強制非空（已驗） | 確認非預設、強隨機 |
+| server cert SAN（#321） | — | **不含 RFC1918 內網 IP**（ca-bootstrap 預設過濾） |
+
+> **紅線**：上述「正式交付」欄各項，**不可帶著公測階段的風險接受值出貨**。密封盒模型下 CA 同機可接受，但**整碟加密 + FIDO2 鑰閘（PIN+touch）+ 碟鑰分離 + 閒置斷電**為出貨強制，缺一即退回公測風險等級。
+
 ---
 
 ## 9. 審查歷程
@@ -300,3 +356,4 @@ Command **信任 TAK Server 轉發的所有 CoT** —— 即使傳輸加密（§
 | 2026-06-20 | 0.7 | 新增 §8.7「應用層紅隊批次」(白箱源碼審查,#286–290 已修,PR #291,backend 2.7.1)：H1 `upload_map_image` 任意檔寫入(→ 儲存型 XSS/全站接管)、H2 TTX router 無授權 gate(broken access control + 跨場)、H3 events/decisions 寫入 IDOR + 跨演習越權(讀有 scope 寫沒有)、H6 compose 公開預設密碼、M1 mTLS-on-但-secret-空 fail-open。標明方法論限制(白箱未黑箱;runtime 面待驗)+ 正面查核(SQLi/XXE/SSRF/CoT 覆寫/供應鏈中國紅線皆過)|
 | 2026-06-20 | 0.8 | 新增 §8.7.1「前端駭客視角 + perimeter 防禦對照」：攻法①–⑥ × mTLS/VPN/真實IP 覆蓋 × app 層殘留(#292–296)。結論=perimeter 關「網路層/外部」整面,殘留=圈內人+資料毒化須 app 縱深;皆已知類別有標準解。doctrine：zero-trust(NIST 800-207)——C2 威脅含被擄合法裝置,圈內不可預設信任 |
 | 2026-06-21 | 0.9 | §8.4 加「P1-12 動工前決議」拍板（2026-06-12；LUKS 主控 [#231](https://github.com/winson3QQ/ICS_COMMAND/issues/231) / SQLCipher 內層 [#229](https://github.com/winson3QQ/ICS_COMMAND/issues/229) / `disk-v1` child 入 12a [#227](https://github.com/winson3QQ/ICS_COMMAND/issues/227) / manned C2 形態）；§8.5 升優先開 [#232](https://github.com/winson3QQ/ICS_COMMAND/issues/232)（rebase 對齊：原 0.6 與安全批次撞號 → 改 0.9）|
+| 2026-06-22 | 1.0 | #301 公網黑箱（周邊強：mTLS 雙 port 強制、Marti/後端/DB 對外 filtered、header/cipher PASS）後新增 §8.8「Live-host vs at-rest 區分 + 安全交付 checklist」：釐清全碟加密只防冷竊、live-host 威脅；**使用者拍板交付形態＝manned C2 密封盒（加密碟 + 單 container + 實體 FIDO2 金鑰）**——用縮面 + 鑰閘取代「CA 離機」，CA 同機於密封盒可接受（[#323](https://github.com/winson3QQ/ICS_COMMAND/issues/323)）；前提＝PIN+touch / 碟鑰分離 / 閒置斷電 / 多鑰救援（#230）；唯一不可逆殘留＝開機運行中被實體奪取。公測 vs 正式交付分階段紀律（at-rest+FIDO2 / 真實IP #280 / 撤銷 #232 / SAN #321 為交付強制）|

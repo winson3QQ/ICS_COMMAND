@@ -588,6 +588,41 @@ P3 整合的前提是 WaveInk 採以下五原則設計訓練 / 運行資料平�
 
 ---
 
+## 交付 / 產品化（manned C2 密封盒，2026-06-22 拍板）
+
+> 把「ICS 怎麼交到業主手上」收成一條可追蹤的線。商用化議題，橫切 P1-12 安全基建。**SoT = [`threat_model.md` §8.8](compliance/threat_model.md)**（威脅/控制分析）；本節 = 工作串接。
+
+### 交付模型（使用者拍板）
+**交付物 = 整顆可開機 Linux 加密碟（LUKS + FIDO2 解鎖）+ 2 把實體金鑰（CTAP2，PIN+touch）。**
+- **形態優先序**：① 交**整台 mini-PC**（碟 + 2 鑰裝機內）＝最乾淨密封盒，零硬體相容/OS 信任邊界問題；② 僅交碟需業主備機 → 附〈備機條件〉，並承擔 UEFI/Secure Boot/驅動相容 + LUKS enroll 交接。
+- **TAK**：業主**自行下載**（散布責任在業主，避 tak.gov redistribution）；ICS 端**提供整合服務**（設 ICS-TAK-SVC-CA、簽 server/device 證、串接）。⚠ TAK 若跑 appliance 外 → TAK PostgreSQL（位置/mission/GeoChat）落業主機、**不在 LUKS 加密邊界內**（§8.4 同碟明文搬到業主側），須交付文件告知或收進 appliance。
+- **不可逆殘留**：盒子「開機運行中被實體奪取」＝記憶體明文、加密失效 → manned C2 本質接受，靠運行看管 + 閒置斷電緩解。
+
+### 已串接的單（核心在軌，地基大半已落地）
+| 單 | 在交付鏈的角色 | 狀態 |
+|---|---|---|
+| [#226](https://github.com/winson3QQ/ICS_COMMAND/issues/226) P1-12 umbrella | key 階層 + at-rest + backup（密封盒地基）| ⏳ 12a/12b merged、12c code-complete |
+| [#231](https://github.com/winson3QQ/ICS_COMMAND/issues/231) LUKS/BitLocker 整碟 | **「加密碟」本體**（appliance 定 Linux LUKS）| pending（待硬體）|
+| [#230](https://github.com/winson3QQ/ICS_COMMAND/issues/230) FIDO2 + Pi 驗收 | **「2 把實體金鑰」**驗收（最少硬體：Pi500+2鑰，免買量產機）+ 失鑰救援 | pending（待 token）|
+| [#279](https://github.com/winson3QQ/ICS_COMMAND/issues/279) 證 23h→90d | 場域長放、不天天換證 | pending |
+| [#232](https://github.com/winson3QQ/ICS_COMMAND/issues/232) mTLS 撤銷 / [#318](https://github.com/winson3QQ/ICS_COMMAND/issues/318) TAK CRL | 交付後憑證撤銷能力（出貨強制）| pending |
+| [#278](https://github.com/winson3QQ/ICS_COMMAND/issues/278) 裝置證 enrollment 產品化 | 業主現場發裝置證 | pending |
+| [#306](https://github.com/winson3QQ/ICS_COMMAND/issues/306) first-admin bootstrap | **首次安裝 onboarding**（業主首開綁 admin）| pending |
+| [#321](https://github.com/winson3QQ/ICS_COMMAND/issues/321) server cert SAN 衛生 | 首站用業主 global IP 簽證、不洩內網 | ✅ merged |
+| [#302](https://github.com/winson3QQ/ICS_COMMAND/issues/302) 前端 IP 保護 | 交付 container 內前端值錢邏輯保護 | ⏳ layer-1 merged |
+| [#255](https://github.com/winson3QQ/ICS_COMMAND/issues/255) TAK 連線設定 DB 化 | 業主可配置連線（key 卡 P1-12）| pending |
+| [#323](https://github.com/winson3QQ/ICS_COMMAND/issues/323) CA 同機 / 密封盒決策 | 架構決策記錄（CA 同機於密封盒可接受）| 決策已記 |
+
+### 缺口（密封盒當「可交付產品」的封裝層，**目前無單**，待開）
+- **G1 封盒工序**：build 產物 → 可交付的「Linux LUKS 碟 image + FIDO2 enroll + 封存」end-to-end 工序（#231 是加密機制、#230 是硬體驗收，但「產出一個密封盒」沒人追）。
+- **G2 appliance/container 硬化**：single-purpose 最小服務 + container escape 緩解（§8.8 殘留：escape → 摸到盒內 CA 鑰）。
+- **G3 運行/交接 SOP + 備機條件**：閒置斷電 / 碟鑰分離運送 / tamper / 運行看管 + onboarding runbook（first-run、global IP 固定或 DNS）+〈不交主機時業主備機規格〉。
+- **G4 dev→deliver build 線**：dev 在 Windows、交付物是 Linux appliance → 需 Linux build/CI 封裝線（SQLCipher 等 Linux-native 已 CI 驗）。
+
+> **下一步（不急，待使用者定）**：把 G1–G4 收成一張 **「密封盒交付產品化」umbrella issue**，連 #226/#230/#231/#323，交付線即完整可追蹤。
+
+---
+
 ## Phase 之後（未規劃，意見區）
 
 - Wave 6 時間軸回放 UI（COP 快照已在 P2 預埋）
