@@ -39,7 +39,46 @@ export function buildReplayIndex(items) {
     if (!tracksByUid.has(p.uid)) tracksByUid.set(p.uid, []);
     tracksByUid.get(p.uid).push({ t: it.t, lat: p.lat, lon: p.lon, cot_type: p.cot_type });
   }
-  return { steps, trackIdx, tracksByUid };
+  // #338：區域生命週期事件（type='zone'，payload {uid, op, attributes}），折疊用（仍按 t 序）。
+  const zoneIdx = steps.filter(it => it.type === 'zone');
+  return { steps, trackIdx, tracksByUid, zoneIdx };
+}
+
+/** #338：折疊區域到時刻 T——每 uid 取 ≤T 最後一筆；op==='deleted' → 移除（T 之後才畫的 / 已刪
+ *  的區域不出現）。zoneIdx 已按 t 排序（buildReplayIndex 保證）。回 Map<uid, {uid, attributes, t}>。*/
+export function foldZonesAt(zoneIdx, T) {
+  const cur = new Map();
+  for (const it of zoneIdx) {
+    if (it.t > T) break; // 已排序 → 之後全部 > T
+    const p = it.payload;
+    if (p.op === 'deleted') cur.delete(p.uid);
+    else cur.set(p.uid, { uid: p.uid, attributes: p.attributes || {}, t: it.t });
+  }
+  return cur;
+}
+
+/** #338：折疊區域 Map → GeoJSON。polygon→Polygon（自動閉合環）、route→LineString。
+ *  vertices 為 [[lat,lon],...] → GeoJSON [lon,lat]。<2 點不畫（成不了線/面）。 */
+export function zonesToGeoJSON(zoneMap) {
+  const features = [];
+  for (const z of zoneMap.values()) {
+    const a = z.attributes || {};
+    const verts = a.vertices || [];
+    if (verts.length < 2) continue;
+    const coords = verts.map(([lat, lon]) => [lon, lat]);
+    const props = { uid: z.uid, kind: a.kind, color: a.color || '#888888', dash: !!a.dash };
+    let geometry;
+    if (a.kind === 'polygon') {
+      const ring = coords.slice();
+      const [f, l] = [ring[0], ring[ring.length - 1]];
+      if (f[0] !== l[0] || f[1] !== l[1]) ring.push(f); // 閉合環
+      geometry = { type: 'Polygon', coordinates: [ring] };
+    } else {
+      geometry = { type: 'LineString', coordinates: coords };
+    }
+    features.push({ type: 'Feature', geometry, properties: props });
+  }
+  return { type: 'FeatureCollection', features };
 }
 
 /**
@@ -88,7 +127,10 @@ export const TYPE_LABELS = {
   event_status: '事件狀態',
   decision: '決策',
   command: '指令',
+  zone: '區域',
 };
+
+const _ZONE_OP_LABEL = { created: '建立', updated: '更新', deleted: '刪除' };
 
 /** 側欄一筆的摘要文字（純資料 → 字串；DOM 由 caller 以 textContent 塞，不經 innerHTML） */
 export function stepSummary(it) {
@@ -108,6 +150,10 @@ export function stepSummary(it) {
         : `${it.actor} 提案：${p.detail?.title || ''}`;
     case 'command':
       return `${it.actor} 下行：${p.action || ''} ${p.detail?.callsign || p.target || ''}`;
+    case 'zone': {
+      const a = p.attributes || {};
+      return `${_ZONE_OP_LABEL[p.op] || p.op} ${a.kind === 'route' ? '路線' : '區域'}${a.poly_type || a.route_type ? `（${a.poly_type || a.route_type}）` : ''}`;
+    }
     default:
       return it.actor || '';
   }

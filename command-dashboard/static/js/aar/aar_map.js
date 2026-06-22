@@ -11,10 +11,12 @@ import { bakeMilSymbol } from '../map/entity_layer.js';
 
 const SRC = 'aar-units';
 const SRC_TRAILS = 'aar-trails';
+const SRC_ZONES = 'aar-zones'; // #338：區域（polygon fill+outline / route line）
 let _map = null;
 let _ready = false;
 let _pending = null; // map 未 ready 前最後一次 setPositions 的資料（ready 後補渲染）
 let _pendingTrails = null; // 同上（B2 尾跡）
+let _pendingZones = null; // 同上（#338 區域）
 let _renderSeq = 0; // bake async seq guard（舊輪 .then 不蓋新位置）
 
 // 敵我態 → 顏色（fallback 點 + 尾跡線）。對齊 2525 慣例：友藍 / 敵紅 / 中綠 / 不明黃。
@@ -48,7 +50,29 @@ function _ensureLayers() {
   try {
     // 每步都有 idempotent guard（review #201-B2-1）：style 競態下可能「部分加入後 throw」，
     // retry 若重 addSource 會撞 'already exists' → 永遠卡在 not-ready。guard 後 retry 只補缺的。
-    // 尾跡層先加（線在點之下）
+    // #338：區域層最先加（在最底——尾跡/單位之下，當背景）。polygon 給 fill+outline、route 給 line。
+    if (!_map.getSource(SRC_ZONES)) {
+      _map.addSource(SRC_ZONES, { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+    }
+    if (!_map.getLayer('aar-zones-fill')) {
+      _map.addLayer({
+        id: 'aar-zones-fill',
+        type: 'fill',
+        source: SRC_ZONES,
+        filter: ['==', ['get', 'kind'], 'polygon'], // 只有面填色；route 不填
+        paint: { 'fill-color': ['get', 'color'], 'fill-opacity': 0.15 },
+      });
+    }
+    if (!_map.getLayer('aar-zones-line')) {
+      _map.addLayer({
+        id: 'aar-zones-line',
+        type: 'line',
+        source: SRC_ZONES, // polygon 外框 + route 線（同層，maplibre 對 Polygon 畫外環）
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: { 'line-color': ['get', 'color'], 'line-width': 2, 'line-opacity': 0.85 },
+      });
+    }
+    // 尾跡層次加（線在點之下）
     if (!_map.getSource(SRC_TRAILS)) {
       _map.addSource(SRC_TRAILS, { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
     }
@@ -123,6 +147,10 @@ function _ensureLayers() {
     setTrails(_pendingTrails);
     _pendingTrails = null;
   }
+  if (_pendingZones) {
+    setZones(_pendingZones);
+    _pendingZones = null;
+  }
   return true;
 }
 
@@ -179,6 +207,17 @@ export function setTrails(geojson) {
     })),
   };
   src.setData(fc);
+}
+
+/** #338：區域 GeoJSON（polygon/route FC，已由 replay_engine.zonesToGeoJSON 折疊+轉好）。
+ *  map 未 ready → 暫存待補。fill 層 filter polygon、line 層含 polygon 外框 + route。 */
+export function setZones(geojson) {
+  if (!_ready) {
+    _pendingZones = geojson;
+    return;
+  }
+  const src = _map?.getSource(SRC_ZONES);
+  if (src) src.setData(geojson || { type: 'FeatureCollection', features: [] });
 }
 
 /** 首次載入時把視野收到所有單位的範圍（無單位 → 不動，沿用預設中心）。 */

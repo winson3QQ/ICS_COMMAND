@@ -9,8 +9,10 @@
 """
 
 import pytest
+
 from auth.role_enum import ROLE_OPERATOR_ZH
 from repositories import cop_entity_repo
+from repositories._helpers import audit
 from repositories.account_repo import create_account
 from repositories.chat_repo import insert_chat
 from repositories.decision_repo import create_decision
@@ -30,27 +32,54 @@ def _mk_exercise(name="時間軸測試"):
 
 
 def _mk_entity(uid, exid, callsign=None):
-    cop_entity_repo.insert_cop_entity(CoPEntity(
-        uid=uid, type="a-f-G-U-C", time="2026-01-01T00:00:00Z",
-        start="2026-01-01T00:00:00Z", stale="2099-01-01T00:00:00Z", how="m-g",
-        lat=24.0, lon=120.0, source="tak", exercise_id=exid, callsign=callsign,
-    ))
+    cop_entity_repo.insert_cop_entity(
+        CoPEntity(
+            uid=uid,
+            type="a-f-G-U-C",
+            time="2026-01-01T00:00:00Z",
+            start="2026-01-01T00:00:00Z",
+            stale="2099-01-01T00:00:00Z",
+            how="m-g",
+            lat=24.0,
+            lon=120.0,
+            source="tak",
+            exercise_id=exid,
+            callsign=callsign,
+        )
+    )
 
 
 def _seed(exid):
     """塞四源各一筆，時間刻意亂序進、驗排序：chat(01) < track(02) < event(03) < decision(04)。"""
     _mk_entity("u-alpha", exid, callsign="ALPHA")
-    create_event({
-        "reported_by_unit": "shelter", "event_type": "fire", "severity": "critical",
-        "description": "x", "operator_name": "admin", "occurred_at": _T.format(h=3),
-    }, exercise_id=exid)
+    create_event(
+        {
+            "reported_by_unit": "shelter",
+            "event_type": "fire",
+            "severity": "critical",
+            "description": "x",
+            "operator_name": "admin",
+            "occurred_at": _T.format(h=3),
+        },
+        exercise_id=exid,
+    )
     cop_entity_repo.insert_cop_track(CoPEntityTrack(uid="u-alpha", t=_T.format(h=2), lat=24.1, lon=120.1))
-    insert_chat(ChatIn(sender_uid="u-alpha", callsign="ALPHA", message="到位",
-                       group="ops", time=_T.format(h=1), exercise_id=exid))
-    create_decision({
-        "decision_type": "evac", "severity": "high", "decision_title": "撤離",
-        "impact_description": "i", "suggested_action_a": "a", "created_by": "admin",
-    }, exercise_id=exid)  # decision audit created_at=now（必為當日最大 t）
+    insert_chat(
+        ChatIn(
+            sender_uid="u-alpha", callsign="ALPHA", message="到位", group="ops", time=_T.format(h=1), exercise_id=exid
+        )
+    )
+    create_decision(
+        {
+            "decision_type": "evac",
+            "severity": "high",
+            "decision_title": "撤離",
+            "impact_description": "i",
+            "suggested_action_a": "a",
+            "created_by": "admin",
+        },
+        exercise_id=exid,
+    )  # decision audit created_at=now（必為當日最大 t）
 
 
 class TestMergeAndOrder:
@@ -112,6 +141,7 @@ class TestScopeIsolation:
 class TestEndpoint:
     def test_endpoint_shape_and_404(self, client, auth):
         from repositories.exercise_repo import create_exercise as mk
+
         exid = mk({"name": "E", "type": "ttx"})["id"]
         r = client.get(f"/api/exercises/{exid}/timeline", headers=auth)
         assert r.status_code == 200
@@ -126,17 +156,69 @@ class TestEndpoint:
         assert r.status_code == 403  # COMMAND_ROLES gate（含 PII：軌跡/通聯）
 
 
+def _zone_audit(exid, uid, op, verts, label_anchor=None):
+    """寫一筆區域生命週期 audit（模擬 cop._audit_cop 對 polygon 的記錄，#338）。"""
+    action = {"created": "cop_entity_created", "updated": "cop_entity_updated", "deleted": "cop_entity_deleted"}[op]
+    attrs = {"kind": "polygon", "vertices": verts, "color": "#ff0000", "poly_type": "no_go"}
+    if label_anchor:
+        attrs["label_anchor"] = label_anchor
+    detail = {"kind": "polygon", "label": "封鎖區", "lat": verts[0][0], "lon": verts[0][1], "attributes": attrs}
+    audit("admin", None, action, "cop_entities", uid, detail, exercise_id=exid)
+
+
+class TestZoneSource:
+    """#338：polygon/route 區域生命週期進 timeline（type=zone），供 AAR 折疊重現。"""
+
+    _V = [[24.70, 121.00], [24.72, 121.03], [24.69, 121.05]]
+
+    def test_zone_lifecycle_in_timeline(self, tmp_db):
+        exid = _mk_exercise()
+        _zone_audit(exid, "manual:z1", "created", self._V)
+        _zone_audit(exid, "manual:z1", "updated", self._V, label_anchor=[24.80, 121.09])
+        _zone_audit(exid, "manual:z1", "deleted", self._V, label_anchor=[24.80, 121.09])
+        items = [it for it in build_timeline(exid)["items"] if it["type"] == "zone"]
+        assert [it["payload"]["op"] for it in items] == ["created", "updated", "deleted"]  # 同秒以 id 穩定序
+        assert items[0]["payload"]["uid"] == "manual:z1"
+        assert items[0]["payload"]["attributes"]["vertices"] == self._V  # 形狀
+        assert items[1]["payload"]["attributes"]["label_anchor"] == [24.80, 121.09]  # 標籤位置
+
+    def test_unit_audit_not_zone(self, tmp_db):
+        # 單位 audit（detail 無 attributes 快照）不產生 zone item
+        exid = _mk_exercise()
+        audit(
+            "admin",
+            None,
+            "cop_entity_created",
+            "cop_entities",
+            "u-x",
+            {"kind": None, "label": "X", "lat": 24.0, "lon": 120.0},
+            exercise_id=exid,
+        )
+        assert [it for it in build_timeline(exid)["items"] if it["type"] == "zone"] == []
+
+    def test_zone_cross_exercise_isolated(self, tmp_db):
+        a, b = _mk_exercise("A"), _mk_exercise("B")
+        _zone_audit(a, "manual:z1", "created", self._V)
+        assert [it for it in build_timeline(b)["items"] if it["type"] == "zone"] == []
+
+
 class TestReviewFixes:
     def test_occurred_at_offset_normalized_to_z(self, tmp_db):
         """review #199：offset ISO 入庫前正規化為 Z——字串序比較才正確。"""
         from repositories.event_repo import create_event, get_events
 
         exid = _mk_exercise()
-        ev = create_event({
-            "reported_by_unit": "shelter", "event_type": "fire", "severity": "info",
-            "description": "tz", "operator_name": "admin",
-            "occurred_at": "2026-01-01T11:00:00+08:00",  # = 03:00Z
-        }, exercise_id=exid)
+        ev = create_event(
+            {
+                "reported_by_unit": "shelter",
+                "event_type": "fire",
+                "severity": "info",
+                "description": "tz",
+                "operator_name": "admin",
+                "occurred_at": "2026-01-01T11:00:00+08:00",  # = 03:00Z
+            },
+            exercise_id=exid,
+        )
         found = next(e for e in get_events(exercise_id=exid) if e["id"] == ev["id"])
         assert found["occurred_at"] == "2026-01-01T03:00:00Z"
 

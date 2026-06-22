@@ -34,7 +34,7 @@ _AUDIT_TYPE_MAP = {
 }
 
 # 同秒多筆的固定 type 優先序（穩定回放次序；track 先於工作流事件，貼近「感知→事→決→行」）
-_TYPE_ORDER = {"track": 0, "chat": 1, "event": 2, "event_status": 3, "decision": 4, "command": 5}
+_TYPE_ORDER = {"track": 0, "chat": 1, "event": 2, "event_status": 3, "decision": 4, "command": 5, "zone": 6}
 
 
 def _time_clause(col: str, since: str | None, until: str | None, params: list) -> str:
@@ -172,6 +172,46 @@ def _audit(conn, exercise_id: int, since, until, cap: int) -> list[dict]:
     return out
 
 
+# #338：polygon/route 區域生命週期 → AAR 折疊重現用。只有 polygon/route 的 audit detail 帶整包
+# attributes 快照（cop.py _audit_cop），故 `detail LIKE '%"attributes"%'` 即精準選出區域列、不掃
+# 單位高頻 audit。op=created/updated 帶形狀+label_anchor；deleted → 折疊時移除該 uid。
+_ZONE_ACTIONS = ("cop_entity_created", "cop_entity_updated", "cop_entity_deleted")
+_ZONE_OP = {"cop_entity_created": "created", "cop_entity_updated": "updated", "cop_entity_deleted": "deleted"}
+
+
+def _zones(conn, exercise_id: int, since, until, cap: int) -> list[dict]:
+    placeholders = ", ".join("?" for _ in _ZONE_ACTIONS)
+    params: list = [exercise_id, *_ZONE_ACTIONS]
+    frag = _time_clause("created_at", since, until, params)
+    params.append(cap)
+    rows = conn.execute(
+        f"SELECT id, operator, action_type, target_id, detail, created_at AS t "
+        f"FROM audit_log WHERE exercise_id = ? AND action_type IN ({placeholders}) "
+        f"AND detail LIKE '%\"attributes\"%'{frag} "
+        "ORDER BY t, id LIMIT ?",  # nosec B608 — placeholders/frag 為常數組成
+        params,
+    ).fetchall()
+    out = []
+    for r in rows:
+        try:
+            detail = json.loads(r["detail"]) if r["detail"] else {}
+        except (TypeError, ValueError):
+            continue
+        attrs = detail.get("attributes")
+        if not isinstance(attrs, dict) or attrs.get("kind") not in ("polygon", "route"):
+            continue  # LIKE 預篩後再嚴格確認 kind（防 detail 偶含 attributes 字樣的非區域列）
+        out.append(
+            {
+                "type": "zone",
+                "t": r["t"],
+                "actor": r["operator"],
+                "payload": {"uid": r["target_id"], "op": _ZONE_OP[r["action_type"]], "attributes": attrs},
+                "_seq": r["id"],
+            }
+        )
+    return out
+
+
 def build_timeline(
     exercise_id: int,
     since: str | None = None,
@@ -195,6 +235,7 @@ def build_timeline(
             _events(conn, exercise_id, since, until, probe),
             _chats(conn, exercise_id, since, until, probe),
             _audit(conn, exercise_id, since, until, probe),
+            _zones(conn, exercise_id, since, until, probe),  # #338：區域生命週期（折疊重現）
         ]
     hit_cap = any(len(src) > limit for src in per_source)
     items = [it for src in per_source for it in src]

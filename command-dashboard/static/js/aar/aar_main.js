@@ -9,17 +9,17 @@
 // createElement，不以 innerHTML 塞任何 API 資料。登入態沿 dashboard 同分頁 sessionStorage。
 
 import { authFetch, getToken } from '../auth.js';
-import { initAarMap, setPositions, setTrails, fitToPositions } from './aar_map.js';
+import { initAarMap, setPositions, setTrails, setZones, fitToPositions } from './aar_map.js';
 import {
   buildReplayIndex, foldPositionsAt, stepSummary, fmtClock, TYPE_LABELS,
   stepIndexAtOrBefore, tToMs, msToT, advanceClock, makeFoldCursor, advanceFold,
-  trailGeoJSON,
+  trailGeoJSON, foldZonesAt, zonesToGeoJSON,
 } from './replay_engine.js';
 
 const el = id => document.getElementById(id);
 const TRAIL_WINDOW_MIN = 10; // 尾跡窗口（分）
 
-let _idx = { steps: [], trackIdx: [], tracksByUid: new Map() };
+let _idx = { steps: [], trackIdx: [], tracksByUid: new Map(), zoneIdx: [] };
 let _cur = -1; // 目前高亮 step（-1 = 尚未選）
 let _exid = null; // 目前回放的 exercise_id（bookmark POST 用）
 
@@ -94,6 +94,7 @@ function _setT(isoT) {
   _curT = isoT;
   setPositions(advanceFold(_idx.trackIdx, _foldCursor, isoT));
   setTrails(trailGeoJSON(_idx.tracksByUid, isoT, TRAIL_WINDOW_MIN));
+  setZones(zonesToGeoJSON(foldZonesAt(_idx.zoneIdx, isoT))); // #338：區域隨 T 折疊重現（畫/改/刪）
   const ms = tToMs(isoT);
   const slider = el('aar-slider');
   if (slider) slider.value = String(ms);
