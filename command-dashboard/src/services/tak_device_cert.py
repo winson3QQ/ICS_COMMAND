@@ -200,6 +200,7 @@ def _atak_pref(callsign: str, connect: str) -> str:
         <entry key="connectString0" class="class java.lang.String">{_xa(connect)}</entry>
     </preference>
     <preference version="1" name="com.atakmap.app_preferences">
+        <entry key="deviceProfileEnableOnConnect" class="class java.lang.Boolean">true</entry>
         <entry key="displayServerConnectionWidget" class="class java.lang.Boolean">true</entry>
         <entry key="caLocation" class="class java.lang.String">/storage/emulated/0/atak/cert/truststore-root.p12</entry>
         <entry key="caPassword" class="class java.lang.String">{P12_PASS}</entry>

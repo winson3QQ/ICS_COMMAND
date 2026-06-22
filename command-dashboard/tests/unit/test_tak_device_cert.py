@@ -87,6 +87,8 @@ class TestAssembleAtak:
         pref = inner.read(f"{_SLOT}/preference.pref").decode("utf-8")
         assert "5.6.7.8:8089:ssl" in pref
         assert "atakatak" in pref
+        # #329：對齊實機成功包——連線時拉 device profile
+        assert "deviceProfileEnableOnConnect" in pref
 
 
 class TestModeGuard:
