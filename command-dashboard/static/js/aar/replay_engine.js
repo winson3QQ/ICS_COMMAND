@@ -18,9 +18,20 @@ function _byT(a, b) {
  * @returns {{steps: Array, trackIdx: Array}} steps=全部事件（側欄列表用）；
  *          trackIdx=僅 track 類（折疊用，仍按 t 序）
  */
+/** #3：座標有效性——濾掉 (0,0) null island（ATAK 無 GPS fix / 手點位置前的壞點）+ 非數/超範圍。
+ *  否則尾跡會從真實位置拉一條線到 (0,0)，整圖橫線。 */
+export function validCoord(lat, lon) {
+  return (
+    Number.isFinite(lat) && Number.isFinite(lon) &&
+    !(lat === 0 && lon === 0) &&
+    Math.abs(lat) <= 90 && Math.abs(lon) <= 180
+  );
+}
+
 export function buildReplayIndex(items) {
   const steps = [...(items || [])].sort(_byT);
-  const trackIdx = steps.filter(it => it.type === 'track');
+  // #3：track 點需有效座標才納入折疊/尾跡（壞點仍留在 steps 側欄列表，方便看到原始回報）。
+  const trackIdx = steps.filter(it => it.type === 'track' && validCoord(it.payload?.lat, it.payload?.lon));
   // B2 尾跡：per-uid 點序列（各自天然按 t 序——trackIdx 已排序，依序歸戶即保序）
   const tracksByUid = new Map();
   for (const it of trackIdx) {
