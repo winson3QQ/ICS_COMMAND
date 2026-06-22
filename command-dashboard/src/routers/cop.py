@@ -176,12 +176,20 @@ def _audit_cop(action: str, actor: str, entity: dict, extra: dict | None = None)
     """COP 操作寫 audit（issue #93）。best-effort —— 記帳失敗**不得**影響 cop 寫入 / 即時同步
     （否則 logging 故障會反過來擋住地圖更新）。exercise_id 走 Model B（audit() 自動戳 active）。"""
     try:
+        attrs = entity.get("attributes") or {}
         detail = {
-            "kind": (entity.get("attributes") or {}).get("kind"),
+            "kind": attrs.get("kind"),
             "label": entity.get("callsign"),
             "lat": entity.get("lat"),
             "lon": entity.get("lon"),
         }
+        # #338：polygon/route 區域 → 在 audit detail 記**整包 attributes 快照**，供 AAR 時間精確
+        # 重現（畫/改/刪 @ T 折疊）。**不 cherry-pick 個別欄**：移動 label 只改 attributes.label_anchor、
+        # 未動 vertices/lat/lon（dogfood 實證）→ 挑欄會漏標籤位置。整包存才完整、且耐未來新欄。
+        # audit **不可回填** → 不在演習前記，中途被刪/改的區域狀態永久遺失。
+        # 單位/點 kind 不記（位置由 cop_entity_tracks 承載；且其高頻 update 會把 audit 撐爆）。
+        if attrs.get("kind") in ("polygon", "route"):
+            detail["attributes"] = attrs
         if extra:
             detail.update(extra)
         audit(actor, None, action, "cop_entities", entity["uid"], detail)
