@@ -4874,5 +4874,25 @@
     "title": "feat(aar): dashboard 設定面板加 AAR 回放入口（COMMAND_ROLES，同分頁導航）",
     "updatedAt": "2026-06-22T06:54:24Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/334"
+  },
+  {
+    "assignees": [],
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "body": "## 來源\n#201 AAR dry-run：回放地圖單位都是綠點、尾跡單色綠線（分不出敵我/單位/方向新舊）。改用 live 同款符號 + 直覺尾跡。\n\n## Reality check（已做）\n- `cotToSidc`/`affiliationFromCot`（`map/mil_symbol.js`）、`bakeMilSymbol`（`map/entity_layer.js`）、`EntityLayer`(吃任意 map) **皆可 import 的共用模組 → 不碰 map.js**。\n- 軌跡 payload 缺 type → 後端補 `e.type`。\n- aar.html 需載 milsymbol（`window.ms`）。\n- 限制：軌跡不存歷史敵我態 → 用該 uid 現值（中途改敵我態 AAR 顯示最終態，v1 可接受）。\n\n## 範圍（Path B）\n1. 後端 `timeline_service` track JOIN 多帶 `e.type` → payload。\n2. aar.html 載 milsymbol lib + CSP 放行。\n3. aar_map：綠 circle 層 → `EntityLayer`（milsymbol icon，鏡像 map.js `_renderTakUnits`：`iconId='mil-'+cotToSidc(type)`、`affiliation`、bake per sidc）。\n4. 尾跡：依敵我態配色（友藍/敵紅/中綠/不明黃）+ 漸層淡出（近亮遠淡）。\n5. fallback：milsymbol 未載 / 非 atom type → 退回敵我配色點（不白畫）。\n\n## DoD\nAAR 單位顯示 2525 符號（與 live 一致）、尾跡敵我配色+漸層；無 type/壞座標不崩；vitest + human verify。",
+    "closedAt": null,
+    "comments": [],
+    "createdAt": "2026-06-22T08:45:24Z",
+    "labels": [],
+    "milestone": null,
+    "number": 335,
+    "state": "OPEN",
+    "title": "feat(aar): #4 回放地圖用原符號（milsymbol 2525）+ 敵我配色尾跡漸層（Path B）",
+    "updatedAt": "2026-06-22T08:45:24Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/335"
   }
 ]
