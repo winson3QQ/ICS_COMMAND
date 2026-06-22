@@ -85,15 +85,17 @@ WARNING_THRESHOLD_SECONDS: int = int(os.getenv("ICS_WARNING_THRESHOLD_SECONDS", 
 # MINOR 2.13.0：GET /api/admin/ca/root（#327，下載 step-ca root CA PEM 供桌機信任 server）。
 # PATCH 2.13.1：ATAK 裝置證 pref 補 deviceProfileEnableOnConnect（#329，對齊實機成功包）。
 # PATCH 2.13.2：reset-db/reset-exercise 補清 chats 表（#237，AAR 乾淨起點 + PII 隨 reset 清）。
-APP_VERSION = "2.13.2"
+# PATCH 2.13.3：AAR timeline track payload 多帶 cot_type（#335）+ _record_track 濾 (0,0) 壞點（#3）。
+APP_VERSION = "2.13.3"
 
 # CMD_VERSION：前端 UI 功能版本（不同於後端 SemVer APP_VERSION；規則見 CLAUDE.md 版號規則）
 # 兩軌版本命名，不可混用。由 /api/version 提供給前端，是唯一 source-of-truth；release 時更新此值。
 # v1.0.0：拆分自 ICS_DMAS 後首個完整可用形態（MapLibre 地圖引擎全換 P1-10b + PWA 移除 P1-11
 #         + 演習/放置/稽核 UI P1-13/14/16/#93 + 分類編輯器 #66）→ 0.x 畢業為 MAJOR 紀元。
 CMD_VERSION: str = os.getenv(
-    "CMD_VERSION", "v1.9.4"
-)  # PATCH v1.9.4：桌機 Chrome 分享憑證失敗（NotAllowedError）→ 自動退回下載（#330）。
+    "CMD_VERSION", "v1.9.5"
+)  # PATCH v1.9.5：AAR dry-run 修正批次——回放入口（#334）+ 卡死（#1）+ 壞點顯示（#3）
+#  + 單位改 MIL-STD-2525 原符號 + 敵我配色尾跡（#335）。B1-B3 功能組仍未齊 → 暫不進 MINOR。
 # PATCH v1.9.3：桌機憑證 UX（#327）——「下載 root CA」鈕 + .p12 標 Windows/iMac/Android + 信任提示。
 # PATCH v1.9.2：TAK tab 已撤銷裝置證列加「刪除」鈕（#325；刪紀錄≠撤證）。
 # PATCH v1.9.1：TAK tab 加「已發裝置證」盤點列表 + 撤銷-flag（#317；標明不 enforce）。
