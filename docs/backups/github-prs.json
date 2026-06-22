@@ -4712,5 +4712,26 @@
     "title": "fix(tak): #329 ATAK 裝置證 pref 補 deviceProfileEnableOnConnect",
     "updatedAt": "2026-06-22T06:03:40Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/331"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "## 現象\niMac/桌機 Chrome 發證後按「分享 / 存檔」→「分享失敗：Permission denied」。\n\n## 根因\n`navigator.canShare({files})` 桌機回 `true`（顯示分享鈕），但 `navigator.share({files})` 丟 `NotAllowedError`（檔案分享桌機不支援）→ catch 彈錯。\n\n## 修補\nshare 失敗（非 `AbortError` 使用者取消）→ `dlBtn.click()` **自動退回下載**（TAK 裝置證 + iOS 描述檔兩處）。桌機照樣拿到檔；手機分享不變。\n\n`vitest 341` / `/code-review` 0。**真機 iMac 分享→下載 PASS**。\n\nfrontend-v1.9.4\n\nFixes #330\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+    "closedAt": "2026-06-22T06:05:03Z",
+    "comments": [],
+    "createdAt": "2026-06-22T06:04:59Z",
+    "headRefName": "fix/issue-330-desktop-share-fallback",
+    "labels": [],
+    "mergedAt": "2026-06-22T06:05:03Z",
+    "number": 332,
+    "state": "MERGED",
+    "title": "fix(ui): #330 桌機 Chrome 分享憑證失敗 → 自動退回下載",
+    "updatedAt": "2026-06-22T06:05:10Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/332"
   }
 ]

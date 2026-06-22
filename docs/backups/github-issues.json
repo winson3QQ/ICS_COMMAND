@@ -4844,15 +4844,15 @@
       "name": ""
     },
     "body": "## 現象\niMac（桌機 Chrome）發證後按「分享 / 存檔」→ 彈「**分享失敗：Permission denied**」。\n\n## 根因\n`static/js/auth.js` 兩處 share（TAK 裝置證結果 ~1003、iOS 描述檔結果 ~1522）：\n```js\nif (file && navigator.canShare?.({ files: [file] })) { ...\n  try { await navigator.share({ files: [file], ... }); }\n  catch (e) { if (e?.name !== 'AbortError') alert('分享失敗：' + ...); }\n}\n```\n**桌機 Chrome `canShare({files})` 回 true → 顯示分享鈕，但實際 `navigator.share({files})` 丟 `NotAllowedError`（檔案分享桌機不支援）** → catch 彈錯。\n\n## 修補\nshare 失敗（非 `AbortError` 使用者取消）→ **自動退回下載**（用既有 blobUrl），不彈錯。桌機照樣拿到檔。\n\n## DoD\n桌機按分享失敗時自動下載、不彈 Permission denied；手機分享正常；vitest 綠。",
-    "closedAt": null,
+    "closedAt": "2026-06-22T06:05:04Z",
     "comments": [],
     "createdAt": "2026-06-22T05:37:35Z",
     "labels": [],
     "milestone": null,
     "number": 330,
-    "state": "OPEN",
+    "state": "CLOSED",
     "title": "fix(ui): 桌機 Chrome 分享憑證 data package 失敗（canShare 回 true 但 share 丟 NotAllowedError）→ 退回下載",
-    "updatedAt": "2026-06-22T05:37:35Z",
+    "updatedAt": "2026-06-22T06:05:04Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/330"
   }
 ]
