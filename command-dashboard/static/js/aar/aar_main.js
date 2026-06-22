@@ -9,19 +9,20 @@
 // createElement，不以 innerHTML 塞任何 API 資料。登入態沿 dashboard 同分頁 sessionStorage。
 
 import { authFetch, getToken } from '../auth.js';
-import { initAarMap, setPositions, setTrails, fitToPositions } from './aar_map.js';
+import { initAarMap, setPositions, setTrails, setZones, setEvents, fitToPositions } from './aar_map.js';
 import {
   buildReplayIndex, foldPositionsAt, stepSummary, fmtClock, TYPE_LABELS,
   stepIndexAtOrBefore, tToMs, msToT, advanceClock, makeFoldCursor, advanceFold,
-  trailGeoJSON,
+  trailGeoJSON, foldZonesAt, zonesToGeoJSON, eventsToGeoJSON,
 } from './replay_engine.js';
 
 const el = id => document.getElementById(id);
 const TRAIL_WINDOW_MIN = 10; // 尾跡窗口（分）
 
-let _idx = { steps: [], trackIdx: [], tracksByUid: new Map() };
+let _idx = { steps: [], trackIdx: [], tracksByUid: new Map(), zoneIdx: [], eventIdx: [] };
 let _cur = -1; // 目前高亮 step（-1 = 尚未選）
 let _exid = null; // 目前回放的 exercise_id（bookmark POST 用）
+let _evTax = {}; // #3：event_type→{abbr,regime,cot_type}（/api/event_taxonomy，與 live 同 SoT；驅動事件符號）
 
 // ── B2 播放狀態 ─────────────────────────────────────────────────────────────
 let _curT = null; // 目前虛擬時刻（ISO Z；null = 尚未定位）
@@ -92,8 +93,11 @@ function _setT(isoT) {
   if (Number.isNaN(tToMs(isoT))) return; // legacy 垃圾 ref_t 等非法 T → 忽略（review 防禦）
   if (_curT !== null && isoT < _curT) _foldCursor = makeFoldCursor(); // 倒退 reset
   _curT = isoT;
-  setPositions(advanceFold(_idx.trackIdx, _foldCursor, isoT));
+  const posMap = advanceFold(_idx.trackIdx, _foldCursor, isoT);
+  setPositions(posMap);
   setTrails(trailGeoJSON(_idx.tracksByUid, isoT, TRAIL_WINDOW_MIN));
+  setZones(zonesToGeoJSON(foldZonesAt(_idx.zoneIdx, isoT))); // #338：區域隨 T 折疊重現（畫/改/刪）
+  setEvents(eventsToGeoJSON(_idx.eventIdx, isoT, posMap, _evTax)); // #339：事件畫在標記折疊位置（跟隨移動標的）
   const ms = tToMs(isoT);
   const slider = el('aar-slider');
   if (slider) slider.value = String(ms);
@@ -250,9 +254,27 @@ async function _renderPicker() {
   _setStatus('選擇要回放的場次');
 }
 
+/** #3：載入事件分類表 → event_type→{abbr,regime,cot_type}（驅動事件符號，與 live 同 SoT）。
+ *  best-effort：失敗則 _evTax 留空、退 civil ◆ + abbr '?'（不擋回放）。idempotent。 */
+async function _loadEventTaxonomySafe() {
+  try {
+    const r = await authFetch('/api/event_taxonomy');
+    if (!r.ok) return;
+    const tax = await r.json();
+    const map = {};
+    for (const ev of (tax.events || [])) {
+      if (ev && ev.key) map[ev.key] = { abbr: ev.abbr, regime: ev.regime, cot_type: ev.cot_type };
+    }
+    _evTax = map;
+  } catch {
+    /* 不擋回放 */
+  }
+}
+
 async function _loadTimeline(exid) {
   _exid = exid;
   _setStatus('載入時間軸…');
+  await _loadEventTaxonomySafe(); // #3：事件符號分類表（與 live 同 SoT /api/event_taxonomy）
   const r = await authFetch(`/api/exercises/${encodeURIComponent(exid)}/timeline`);
   if (r.status === 403) {
     _showMessage('需要指揮層權限（commander / sysadmin）才能回放 AAR。');

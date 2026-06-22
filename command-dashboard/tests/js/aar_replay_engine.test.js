@@ -3,7 +3,12 @@ import { describe, expect, test } from 'vitest';
 
 import {
   buildReplayIndex, foldPositionsAt, positionsToGeoJSON, stepSummary, fmtClock, validCoord,
+  foldZonesAt, zonesToGeoJSON, eventsToGeoJSON,
 } from '../../static/js/aar/replay_engine.js';
+
+// #338：區域生命週期事件 helper（type='zone'）
+const zn = (uid, t, op, attributes) => ({ type: 'zone', t, actor: 'cmd', payload: { uid, op, attributes } });
+const _POLY = { kind: 'polygon', vertices: [[24.70, 121.00], [24.72, 121.03], [24.69, 121.05]], color: '#ff0000' };
 
 const tk = (uid, t, lat, lon, actor = uid) => ({
   type: 'track', t, actor, payload: { uid, lat, lon, heading_deg: null, speed_mps: null },
@@ -149,5 +154,113 @@ describe('B2 Play mode 純函式 (#201)', () => {
     expect(gj.features[0].geometry.coordinates).toEqual([[120.0, 24.0], [120.1, 24.1]]);
     // 窗口縮到 10 分 → u1 在窗內只剩 1 點 → 零線
     expect(trailGeoJSON(tracksByUid, '2026-01-01T03:05:00Z', 10).features).toHaveLength(0);
+  });
+});
+
+describe('foldZonesAt / zonesToGeoJSON (#338 區域時間精確重現)', () => {
+  const ZONES = [
+    zn('z1', '2026-01-01T01:00:00Z', 'created', _POLY),
+    zn('z1', '2026-01-01T02:00:00Z', 'updated', { ..._POLY, label_anchor: [24.80, 121.09] }),
+    zn('z1', '2026-01-01T03:00:00Z', 'deleted', _POLY),
+  ];
+
+  test('畫前不存在、畫後出現、刪後消失（draw/delete @ T）', () => {
+    const { zoneIdx } = buildReplayIndex(ZONES);
+    expect(foldZonesAt(zoneIdx, '2026-01-01T00:30:00Z').size).toBe(0); // 畫之前
+    expect(foldZonesAt(zoneIdx, '2026-01-01T01:30:00Z').size).toBe(1); // 畫之後
+    expect(foldZonesAt(zoneIdx, '2026-01-01T03:30:00Z').size).toBe(0); // 刪之後 → 不畫
+  });
+
+  test('取 ≤T 最後一筆狀態（編輯後的 label_anchor）', () => {
+    const { zoneIdx } = buildReplayIndex(ZONES);
+    const z = foldZonesAt(zoneIdx, '2026-01-01T02:30:00Z').get('z1');
+    expect(z.attributes.label_anchor).toEqual([24.80, 121.09]); // 折到更新後
+  });
+
+  test('zonesToGeoJSON：polygon → 閉合環 Polygon、[lon,lat] 序', () => {
+    const map = foldZonesAt(buildReplayIndex(ZONES).zoneIdx, '2026-01-01T01:30:00Z');
+    const gj = zonesToGeoJSON(map);
+    expect(gj.features).toHaveLength(1);
+    const f = gj.features[0];
+    expect(f.geometry.type).toBe('Polygon');
+    const ring = f.geometry.coordinates[0];
+    expect(ring[0]).toEqual([121.00, 24.70]); // [lon,lat]
+    expect(ring[ring.length - 1]).toEqual(ring[0]); // 自動閉合
+    expect(f.properties.color).toBe('#ff0000');
+  });
+
+  test('zonesToGeoJSON：route → LineString（不閉合）', () => {
+    const map = new Map([['r1', { uid: 'r1', attributes: { kind: 'route', vertices: [[24.7, 121.0], [24.8, 121.1]] } }]]);
+    const gj = zonesToGeoJSON(map);
+    expect(gj.features[0].geometry.type).toBe('LineString');
+    expect(gj.features[0].geometry.coordinates).toEqual([[121.0, 24.7], [121.1, 24.8]]);
+  });
+});
+
+describe('eventsToGeoJSON (#339 事件畫在標記折疊位置)', () => {
+  const ev = (t, severity, markers) => ({
+    type: 'event', t, actor: 'RTF',
+    payload: { event_id: 'e1', event_code: 'EV-001', event_type: 'contact', severity, status: 'open', markers },
+  });
+
+  test('事件騎在 marker 折疊位置（移動標的 → 用 posMap 的當前點，非錨點）', () => {
+    const eventIdx = [ev('2026-01-01T02:00:00Z', 'high', [{ uid: 'm1', lat: 0, lon: 0, role: 'primary' }])];
+    const posMap = new Map([['m1', { uid: 'm1', lat: 25.5, lon: 121.5 }]]); // marker 已移動到此
+    const gj = eventsToGeoJSON(eventIdx, '2026-01-01T03:00:00Z', posMap);
+    expect(gj.features).toHaveLength(1);
+    expect(gj.features[0].geometry.coordinates).toEqual([121.5, 25.5]); // 折疊位置（非錨點 0,0）
+    expect(gj.features[0].properties.severity).toBe('high');
+  });
+
+  test('marker 無折疊位置（靜態手動標記）→ 退回錨點 lat/lon', () => {
+    const eventIdx = [ev('2026-01-01T02:00:00Z', 'low', [{ uid: 'm2', lat: 24.3, lon: 120.7 }])];
+    const gj = eventsToGeoJSON(eventIdx, '2026-01-01T03:00:00Z', new Map());
+    expect(gj.features[0].geometry.coordinates).toEqual([120.7, 24.3]); // 錨點兜底
+  });
+
+  test('occurred_at > T 不畫；無 marker 不畫', () => {
+    const future = ev('2026-01-01T05:00:00Z', 'high', [{ uid: 'm1', lat: 24, lon: 120 }]);
+    const noMarker = ev('2026-01-01T01:00:00Z', 'high', []);
+    const gj = eventsToGeoJSON([noMarker, future], '2026-01-01T03:00:00Z', new Map());
+    expect(gj.features).toHaveLength(0);
+  });
+
+  test('primary marker 優先（多 marker N:1）', () => {
+    const eventIdx = [ev('2026-01-01T02:00:00Z', 'high', [
+      { uid: 'a', lat: 24.0, lon: 120.0 },
+      { uid: 'b', lat: 25.0, lon: 121.0, role: 'primary' },
+    ])];
+    const gj = eventsToGeoJSON(eventIdx, '2026-01-01T03:00:00Z', new Map());
+    expect(gj.features[0].geometry.coordinates).toEqual([121.0, 25.0]); // 取 primary（b）
+  });
+
+  test('#2：手動標記用 audit 位置歷史折疊（隨 T 移動，無 posMap）', () => {
+    const eventIdx = [ev('2026-01-01T01:00:00Z', 'critical', [{
+      uid: 'm', lat: 9, lon: 9,
+      history: [['2026-01-01T02:00:00Z', 24.0, 120.0], ['2026-01-01T03:00:00Z', 25.0, 121.0]],
+    }])];
+    expect(eventsToGeoJSON(eventIdx, '2026-01-01T02:30:00Z', new Map())
+      .features[0].geometry.coordinates).toEqual([120.0, 24.0]); // ≤T 取 02:00
+    expect(eventsToGeoJSON(eventIdx, '2026-01-01T03:30:00Z', new Map())
+      .features[0].geometry.coordinates).toEqual([121.0, 25.0]); // 移到 03:00
+  });
+
+  test('#3：military→milsymbol iconId；civil 有象形→glyph（同 live _renderZones）', () => {
+    const mk = et => [{
+      type: 'event', t: '2026-01-01T01:00:00Z',
+      payload: { event_id: 'e', event_type: et, severity: 'info', description: 'd', markers: [{ uid: 'm', lat: 24, lon: 120 }] },
+    }];
+    const tax = { hazard: { regime: 'civil' }, qrf: { abbr: 'QR', regime: 'military', cot_type: 'a-f-G' } };
+    // civil 有象形 → ◆ + glyph 前景
+    const g = eventsToGeoJSON(mk('hazard'), '2026-01-01T02:00:00Z', new Map(), tax);
+    expect(g.features[0].properties.regime).toBe('civil');
+    expect(g.features[0].properties.fg).toBe('napsg-glyph-hazard');
+    expect(g.features[0].properties.fg_glyph).toBe(true);
+    expect(g.features[0].properties.label).toBe('d'); // #1：人類描述
+    // military → milsymbol 2525 iconId（QRF 友軍方塊）
+    const q = eventsToGeoJSON(mk('qrf'), '2026-01-01T02:00:00Z', new Map(), tax);
+    expect(q.features[0].properties.regime).toBe('military');
+    expect(q.features[0].properties.iconId).toMatch(/^mil-/);
+    expect(q.features[0].properties.is_event).toBe(true);
   });
 });

@@ -13,6 +13,15 @@ from core.database import get_conn
 
 _COP = {"type": "a-f-G-U-C", "lat": 25.0, "lon": 121.0, "callsign": "AUDIT-TEST"}
 _COP_EVENT = {**_COP, "callsign": "EVT", "attributes": {"kind": "event"}}
+# #338：polygon 區域——attributes 帶 kind + vertices（幾何形狀），audit 須記下供 AAR 折疊重現。
+_POLY_VERTS = [[24.70, 121.00], [24.72, 121.03], [24.69, 121.05]]
+_COP_POLY = {
+    "type": "u-d-f",
+    "lat": 24.70,
+    "lon": 121.00,
+    "callsign": "封鎖區A",
+    "attributes": {"kind": "polygon", "vertices": _POLY_VERTS, "color": "#ff0000", "dash": False, "poly_type": "no_go"},
+}
 
 
 def _audits(action_type: str) -> list[dict]:
@@ -80,6 +89,54 @@ class TestCopOperationAudit:
         assert r2.status_code == 200
         rows = _audits("cop_entity_deleted")
         assert len(rows) == 1
+
+
+class TestZoneGeometryAudit:
+    """#338：polygon/route 區域的 audit detail 須記**幾何快照**，AAR 才能時間精確重現
+    （畫/改/刪 @ T）。audit 不可回填 → 此記錄為演習前必上線的關鍵路徑。"""
+
+    def test_create_polygon_records_full_attributes(self, client, auth):
+        r = client.post("/api/cop/entities", json=_COP_POLY, headers=auth)
+        assert r.status_code == 201
+        rows = _audits("cop_entity_created")
+        assert len(rows) == 1
+        d = json.loads(rows[0]["detail"])
+        assert d["kind"] == "polygon"
+        # 整包 attributes 快照：形狀 + 樣式皆在
+        assert d["attributes"]["vertices"] == _POLY_VERTS
+        assert d["attributes"]["color"] == "#ff0000" and d["attributes"]["poly_type"] == "no_go"
+
+    def test_update_label_move_recorded(self, client, auth):
+        # dogfood 實證情境：移動 label（只改 attributes.label_anchor、不動 vertices/lat/lon）。
+        # 整包快照才抓得到 label_anchor——cherry-pick vertices/color 會漏掉標籤位置。
+        r = client.post("/api/cop/entities", json=_COP_POLY, headers=auth)
+        uid, etag = r.json()["uid"], r.headers["ETag"]
+        moved = {
+            "kind": "polygon",
+            "vertices": _POLY_VERTS,
+            "color": "#ff0000",
+            "poly_type": "no_go",
+            "label_anchor": [24.80, 121.09],
+        }
+        r2 = client.put(
+            f"/api/cop/entities/{uid}",
+            json={"attributes": moved},
+            headers={**auth, "If-Match": etag},
+        )
+        assert r2.status_code == 200
+        rows = _audits("cop_entity_updated")
+        assert len(rows) == 1
+        d = json.loads(rows[0]["detail"])
+        assert d["attributes"]["label_anchor"] == [24.80, 121.09]  # 標籤位置被記下
+        assert d["attributes"]["vertices"] == _POLY_VERTS  # 形狀仍完整（label 移動不動形狀）
+
+    def test_unit_kind_no_attributes_snapshot(self, client, auth):
+        # 單位/點（非 polygon/route）不記 attributes 快照——位置由 tracks 承載，不塞 audit
+        r = client.post("/api/cop/entities", json=_COP, headers=auth)
+        assert r.status_code == 201
+        rows = _audits("cop_entity_created")
+        d = json.loads(rows[0]["detail"])
+        assert "attributes" not in d
 
 
 class TestExerciseLifecycleStaysNull:

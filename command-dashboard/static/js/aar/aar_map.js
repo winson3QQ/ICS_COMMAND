@@ -7,14 +7,27 @@
 
 import { initMaplibre } from '../map/maplibre_core.js';
 import { cotToSidc, affiliationFromCot } from '../map/mil_symbol.js';
-import { bakeMilSymbol } from '../map/entity_layer.js';
+import { bakeMilSymbol, bakeDiamondSdf, bakeTriangleSdf, bakeTextSdf, bakeSvgIcon } from '../map/entity_layer.js';
+import { NAPSG_GLYPH_SVG } from '../map/napsg_glyphs.js'; // #3：重用 live 的 NAPSG 象形圖庫
 
 const SRC = 'aar-units';
 const SRC_TRAILS = 'aar-trails';
+const SRC_ZONES = 'aar-zones'; // #338：區域（polygon fill+outline / route line）
+const SRC_EVENTS = 'aar-events'; // #339：事件（畫在關聯標記位置）
 let _map = null;
 let _ready = false;
 let _pending = null; // map 未 ready 前最後一次 setPositions 的資料（ready 後補渲染）
 let _pendingTrails = null; // 同上（B2 尾跡）
+let _pendingZones = null; // 同上（#338 區域）
+let _pendingEvents = null; // 同上（#339 事件）
+
+// #339/#3：事件 severity → 色（對齊 live `_SEV_COLORS`，POLICY 日夜恆定）。◆ 用此 tint。
+const SEVERITY_COLOR = [
+  'match', ['get', 'severity'],
+  'critical', '#FF181E', 'warning', '#FF8918', 'info', '#237ACF',
+  /* 其他 */ '#8b949e',
+];
+let _evBakeSeq = 0; // 事件象形 async bake seq guard
 let _renderSeq = 0; // bake async seq guard（舊輪 .then 不蓋新位置）
 
 // 敵我態 → 顏色（fallback 點 + 尾跡線）。對齊 2525 慣例：友藍 / 敵紅 / 中綠 / 不明黃。
@@ -48,7 +61,29 @@ function _ensureLayers() {
   try {
     // 每步都有 idempotent guard（review #201-B2-1）：style 競態下可能「部分加入後 throw」，
     // retry 若重 addSource 會撞 'already exists' → 永遠卡在 not-ready。guard 後 retry 只補缺的。
-    // 尾跡層先加（線在點之下）
+    // #338：區域層最先加（在最底——尾跡/單位之下，當背景）。polygon 給 fill+outline、route 給 line。
+    if (!_map.getSource(SRC_ZONES)) {
+      _map.addSource(SRC_ZONES, { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+    }
+    if (!_map.getLayer('aar-zones-fill')) {
+      _map.addLayer({
+        id: 'aar-zones-fill',
+        type: 'fill',
+        source: SRC_ZONES,
+        filter: ['==', ['get', 'kind'], 'polygon'], // 只有面填色；route 不填
+        paint: { 'fill-color': ['get', 'color'], 'fill-opacity': 0.15 },
+      });
+    }
+    if (!_map.getLayer('aar-zones-line')) {
+      _map.addLayer({
+        id: 'aar-zones-line',
+        type: 'line',
+        source: SRC_ZONES, // polygon 外框 + route 線（同層，maplibre 對 Polygon 畫外環）
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: { 'line-color': ['get', 'color'], 'line-width': 2, 'line-opacity': 0.85 },
+      });
+    }
+    // 尾跡層次加（線在點之下）
     if (!_map.getSource(SRC_TRAILS)) {
       _map.addSource(SRC_TRAILS, { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
     }
@@ -111,6 +146,72 @@ function _ensureLayers() {
         'text-halo-width': 1.5,
       },
     });
+    // #339/#3：事件層（最上層）——**重用 live COP 原本的事件符號**：severity ◆ + NAPSG 象形/abbr 前景。
+    // 形狀 SDF（zone-diamond/zone-triangle）在此 bake（同 live `bakeDiamondSdf`）；abbr/glyph 前景在
+    // setEvents 依資料 lazy bake。三屬性對齊 live zones-event 層：severity（tint ◆）、fg、fg_glyph。
+    bakeDiamondSdf(_map, 'zone-diamond'); // 事件 ◆
+    bakeTriangleSdf(_map, 'zone-triangle'); // alert ▲（事件預設 civil，備用）
+    if (!_map.getSource(SRC_EVENTS)) {
+      _map.addSource(SRC_EVENTS, { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+    }
+    // civil/alert：severity ◆/▲（military 走下面 milsymbol 層，排除於此）。
+    if (!_map.getLayer('aar-events-shape')) _map.addLayer({
+      id: 'aar-events-shape',
+      type: 'symbol',
+      source: SRC_EVENTS,
+      filter: ['!=', ['get', 'regime'], 'military'],
+      layout: {
+        'icon-image': ['match', ['get', 'regime'], 'alert', 'zone-triangle', 'zone-diamond'],
+        'icon-size': 1.1,
+        'icon-allow-overlap': true,
+        'icon-ignore-placement': true,
+        'symbol-sort-key': ['case', ['==', ['get', 'severity'], 'critical'], 0, 1],
+      },
+      paint: { 'icon-color': SEVERITY_COLOR }, // ◆ tint = severity 色（同 live）
+    });
+    // military：milsymbol 2525 框（drone 紅機/QRF 藍方/不明黃）。**不套 icon-color**（全彩自帶），
+    // icon-image=iconId（'mil-<SIDC>'，setEvents async 烤完才現）。同 live zones-military-icon。
+    if (!_map.getLayer('aar-events-mil')) _map.addLayer({
+      id: 'aar-events-mil',
+      type: 'symbol',
+      source: SRC_EVENTS,
+      filter: ['all', ['==', ['get', 'regime'], 'military'], ['has', 'iconId']],
+      layout: {
+        'icon-image': ['get', 'iconId'],
+        'icon-size': 1.1,
+        'icon-allow-overlap': true,
+        'icon-ignore-placement': true,
+        'symbol-sort-key': ['case', ['==', ['get', 'severity'], 'critical'], 0, 1],
+      },
+    });
+    // fg 字/象形：只 civil/alert（military 2525 框自帶敵我語意、不疊 abbr，同 live）。
+    if (!_map.getLayer('aar-events-fg')) _map.addLayer({
+      id: 'aar-events-fg',
+      type: 'symbol',
+      source: SRC_EVENTS,
+      filter: ['!=', ['get', 'regime'], 'military'],
+      layout: {
+        // fg = napsg-glyph-<type>（6 種象形）或 napsg-abbr-<abbr>（其餘）。
+        'icon-image': ['coalesce', ['get', 'fg'], ['concat', 'napsg-abbr-', ['get', 'abbr']]],
+        'icon-size': ['case', ['==', ['coalesce', ['get', 'fg_glyph'], false], true], 0.72, 0.9],
+        'icon-allow-overlap': true,
+        'icon-ignore-placement': true,
+      },
+      paint: { 'icon-color': '#ffffff' }, // 白色前景（同 live zones-abbr）
+    });
+    if (!_map.getLayer('aar-events-label')) _map.addLayer({
+      id: 'aar-events-label',
+      type: 'symbol',
+      source: SRC_EVENTS,
+      layout: {
+        'text-field': ['get', 'label'], // #1：人類描述（無人機威脅…），非 event_code
+        'text-font': ['Noto Sans Regular'],
+        'text-size': 11,
+        'text-offset': [0, 1.4],
+        'text-anchor': 'top',
+      },
+      paint: { 'text-color': '#e6edf3', 'text-halo-color': '#0d1117', 'text-halo-width': 1.5 },
+    });
   } catch {
     return false; // style 未就緒（addSource/addLayer throw）→ caller 重試
   }
@@ -122,6 +223,14 @@ function _ensureLayers() {
   if (_pendingTrails) {
     setTrails(_pendingTrails);
     _pendingTrails = null;
+  }
+  if (_pendingZones) {
+    setZones(_pendingZones);
+    _pendingZones = null;
+  }
+  if (_pendingEvents) {
+    setEvents(_pendingEvents);
+    _pendingEvents = null;
   }
   return true;
 }
@@ -179,6 +288,54 @@ export function setTrails(geojson) {
     })),
   };
   src.setData(fc);
+}
+
+/** #338：區域 GeoJSON（polygon/route FC，已由 replay_engine.zonesToGeoJSON 折疊+轉好）。
+ *  map 未 ready → 暫存待補。fill 層 filter polygon、line 層含 polygon 外框 + route。 */
+export function setZones(geojson) {
+  if (!_ready) {
+    _pendingZones = geojson;
+    return;
+  }
+  const src = _map?.getSource(SRC_ZONES);
+  if (src) src.setData(geojson || { type: 'FeatureCollection', features: [] });
+}
+
+/** #339：事件 GeoJSON（replay_engine.eventsToGeoJSON 折疊+定位好，props 對齊 live）。map 未
+ *  ready → 暫存待補。前景圖示 lazy bake：abbr 字（SDF，同步）+ NAPSG 象形（SVG raster，非同步
+ *  → bake 完 re-setData 才現，seq guard 防舊輪蓋新位置），與 live `_bakeAbbrs`/glyph bake 同源。 */
+export function setEvents(geojson) {
+  if (!_ready) {
+    _pendingEvents = geojson;
+    return;
+  }
+  const src = _map?.getSource(SRC_EVENTS);
+  if (!src) return;
+  const fc = geojson || { type: 'FeatureCollection', features: [] };
+  src.setData(fc);
+  const feats = fc.features || [];
+  // 收集需要烤的前景：abbr 字（非象形）/ NAPSG 象形 / milsymbol 2525（military）。
+  const abbrs = new Set();
+  const glyphTypes = new Set();
+  const sidcs = new Set();
+  for (const f of feats) {
+    const pr = f.properties || {};
+    if (pr.regime === 'military' && pr.iconId) sidcs.add(pr.iconId.replace(/^mil-/, ''));
+    else if (pr.fg_glyph && pr.event_type && NAPSG_GLYPH_SVG[pr.event_type]) glyphTypes.add(pr.event_type);
+    else if (pr.abbr) abbrs.add(pr.abbr);
+  }
+  if (abbrs.size) bakeTextSdf(_map, 'napsg-abbr-', [...abbrs]); // SDF 同步，立即可用
+  // 象形 + milsymbol 皆 async（SVG/canvas raster）→ 全部烤完 re-setData 才現；seq guard 防舊輪蓋新位置。
+  const asyncBakes = [
+    ...[...glyphTypes].map(t => bakeSvgIcon(_map, 'napsg-glyph-' + t, NAPSG_GLYPH_SVG[t])),
+    ...[...sidcs].map(s => bakeMilSymbol(_map, s)),
+  ];
+  if (asyncBakes.length) {
+    const seq = ++_evBakeSeq;
+    Promise.all(asyncBakes).then(() => {
+      if (seq === _evBakeSeq && _map?.getSource(SRC_EVENTS)) _map.getSource(SRC_EVENTS).setData(fc);
+    });
+  }
 }
 
 /** 首次載入時把視野收到所有單位的範圍（無單位 → 不動，沿用預設中心）。 */
