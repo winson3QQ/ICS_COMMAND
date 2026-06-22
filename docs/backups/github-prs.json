@@ -4691,5 +4691,26 @@
     "title": "feat(auth): #327 桌機登入憑證 UX — root CA 下載 + Windows/iMac/Android 標籤",
     "updatedAt": "2026-06-22T04:44:41Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/328"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "## 來源\n使用者提供**實機成功的 ATAK data package**，比對我們 `_atak_pref`（atak 模式從未實機驗）。\n\n## 改動\n結構/密碼/路徑皆吻合，唯一缺 `com.atakmap.app_preferences` 的 `deviceProfileEnableOnConnect=true`（連線時拉 device profile）→ 補上。aware(已 dogfood) 不動；description/檔名保持動態（與 aware 一致）。\n\n## 驗證\n`pytest 6`（含新斷言）/ `vitest 341` / `pyflakes` clean / `/code-review` 0。**真機 ATAK 安卓實裝連上 TAK PASS**（dogfood `fix329-330-...`）。\n\nbackend-v2.13.1\n\nFixes #329\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+    "closedAt": "2026-06-22T06:03:33Z",
+    "comments": [],
+    "createdAt": "2026-06-22T06:03:20Z",
+    "headRefName": "fix/issue-329-atak-deviceprofile",
+    "labels": [],
+    "mergedAt": "2026-06-22T06:03:33Z",
+    "number": 331,
+    "state": "MERGED",
+    "title": "fix(tak): #329 ATAK 裝置證 pref 補 deviceProfileEnableOnConnect",
+    "updatedAt": "2026-06-22T06:03:40Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/331"
   }
 ]
