@@ -84,7 +84,8 @@ WARNING_THRESHOLD_SECONDS: int = int(os.getenv("ICS_WARNING_THRESHOLD_SECONDS", 
 # + 修中文 callsign 發證 500（#324，Content-Disposition 非 latin-1 檔名 → RFC5987 filename*）。
 # MINOR 2.13.0：GET /api/admin/ca/root（#327，下載 step-ca root CA PEM 供桌機信任 server）。
 # PATCH 2.13.1：ATAK 裝置證 pref 補 deviceProfileEnableOnConnect（#329，對齊實機成功包）。
-APP_VERSION = "2.13.1"
+# PATCH 2.13.2：reset-db/reset-exercise 補清 chats 表（#237，AAR 乾淨起點 + PII 隨 reset 清）。
+APP_VERSION = "2.13.2"
 
 # CMD_VERSION：前端 UI 功能版本（不同於後端 SemVer APP_VERSION；規則見 CLAUDE.md 版號規則）
 # 兩軌版本命名，不可混用。由 /api/version 提供給前端，是唯一 source-of-truth；release 時更新此值。
