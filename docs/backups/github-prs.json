@@ -4775,5 +4775,26 @@
     "title": "feat(aar): AAR 回放 dry-run 修正批次 — 入口 #334 / 卡死 #1 / 壞點 #3 / 原符號+敵我尾跡 #335",
     "updatedAt": "2026-06-22T09:08:18Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/336"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "版號雙軌遞增（功能 PR #336 已 merge），+ ROADMAP P2-20 完成記錄。\n\n- **backend 2.13.2→2.13.3**：timeline track payload `+cot_type`（#335）+ `_record_track` 濾 (0,0) 壞點（#3）→ 後端行為變更，PATCH\n- **frontend v1.9.4→v1.9.5**：AAR 入口 #334 / 卡死 #1 / 壞點顯示 #3 / 原符號+敵我尾跡 #335；B1-B3 功能組未齊 → 暫不進 MINOR\n- ROADMAP P2-20 row 維持 ⏳（B3 觸控 + #2/#5 + human verify 仍 pending）\n\nmerge 後打 tag `backend-v2.13.3` + `frontend-v1.9.5`。\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+    "closedAt": "2026-06-22T09:16:29Z",
+    "comments": [],
+    "createdAt": "2026-06-22T09:16:19Z",
+    "headRefName": "release/aar-dryrun-2.13.3",
+    "labels": [],
+    "mergedAt": "2026-06-22T09:16:29Z",
+    "number": 337,
+    "state": "MERGED",
+    "title": "chore(release): backend-v2.13.3 / frontend-v1.9.5 — AAR dry-run 修正批次",
+    "updatedAt": "2026-06-22T09:16:52Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/337"
   }
 ]

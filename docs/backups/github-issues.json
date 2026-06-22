@@ -4909,5 +4909,45 @@
     "title": "feat(aar): #4 回放地圖用原符號（milsymbol 2525）+ 敵我配色尾跡漸層（Path B）",
     "updatedAt": "2026-06-22T09:14:30Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/335"
+  },
+  {
+    "assignees": [],
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "body": "AAR dry-run 回饋「#2 建立的區域沒出現在回放圖」。承接 P2-20(B) AAR 頁。\n\n## Reality check（已做，2026-06-22）\n- **儲存**：區域=`cop_entities` rows，`attributes.kind='polygon'|'route'` + `vertices`（lat/lon=錨點，非幾何）。exercise-scoped。\n  - schema `command-dashboard/src/core/database.py:729`；normalize `command-dashboard/src/services/cop_service.py:203`\n- **端點已存在**：`GET /api/cop/entities?exercise_id=X`（`command-dashboard/src/routers/cop.py:195` / `cop_entity_repo.py:99`）→ 含 polygon/route（`deleted=0`）。\n- **時間維度缺口**：`cop_entities` 只有 `received_at`（ingest 時刻），**無 per-edit 歷史、無 `deleted_at`**。`timeline_service` 不含區域。\n  → 真·時間精確回放（區域 appear→改色→刪除 隨 T 重現）**卡在無 temporal schema**。\n- **live 渲染參考**：`command-dashboard/static/js/map/entity_layer.js`（fill+line，paint 由 `attributes.color`）。\n- **AAR 現況**：`aar_map.js` 只畫 tracks/trails，無 polygon 層；`aar_main.js` 不 fetch 區域。\n\n## 提案（v1：靜態 backdrop）\n- `aar_main.js` 載入時 `GET /api/cop/entities?exercise_id=X`，濾 `kind in (polygon,route)`。\n- `aar_map.js` 加 fill + line 層（沿用 live 的 color/dash），作為**底圖 backdrop**。\n- **誠實 caveat（寫進 UI + 文件）**：v1 顯示的是**當前**區域集合；演習中途畫了又刪的區域不會在其存在的時窗重現（無 temporal schema）。\n- **可選低成本 nicety**：以 `received_at ≤ T` 折疊 → 區域至少「在被畫出的時刻出現」（仍無刪除/改色歷史）。\n\n## v2（另開，不在本 issue）\ncop_entities 補 temporal（`created_at`/`updated_at`/`deleted_at` 或 `cop_entity_changes` 變更稽核）→ 真·時間精確區域回放。\n\n## DoD\n- [ ] v1 區域 backdrop 顯示 + toggle\n- [ ] vitest（GeoJSON 轉換純函式）+ human verify（dry-run 用真演習）\n- [ ] caveat 文件化（ROADMAP P2-20 / threat_model 視需要）\n- [ ] ROADMAP P2-20 補記錄",
+    "closedAt": null,
+    "comments": [],
+    "createdAt": "2026-06-22T09:22:17Z",
+    "labels": [],
+    "milestone": null,
+    "number": 338,
+    "state": "OPEN",
+    "title": "feat(aar): 回放圖顯示區域/標繪（zones：polygons/routes）— v1 靜態 backdrop",
+    "updatedAt": "2026-06-22T09:22:17Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/338"
+  },
+  {
+    "assignees": [],
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "body": "AAR dry-run 回饋「#5 回放圖沒有事件標誌」。承接 P2-20(B) AAR 頁 + P2-33c（#240 event↔marker N:1）。\n\n## Reality check（已做，2026-06-22）\n- **events 無座標**：`lat/lon` 已被 `_m022` 移除（`command-dashboard/src/core/database.py:1122`）。位置 SoT=`cop_entities`。\n- **junction**：`event_markers(event_id, cop_entity_uid, role, created_at)`，N:1（事件聚合多標記）+ N:M-ready（`database.py:1096`）。join 路徑 event→event_markers→cop_entities.lat/lon（`event_marker_repo.py:45`）。\n- **timeline 現況**：`_events()` 只回事件 metadata、**無位置**（`command-dashboard/src/services/timeline_service.py:84`）。\n- **AAR 現況**：事件僅在側欄列表（`replay_engine.js` stepSummary / `aar_main.js`），地圖**零渲染**。\n- **時間維度**：events 有 `occurred_at`/`created_at`（可隨 T filter）；junction link 的 `created_at`=關聯時刻（非標記移動時序）。marker 位置隨 `cop_entity_tracks` 變（多數事件標記=單次手動放置=靜態）。\n\n## 提案（v1）\n- **後端**：`_events()` JOIN `event_markers`+`cop_entities` → payload 補 `markers:[{uid,lat,lon,callsign,role}]`（至少 primary）。\n- **前端**：timeline `type='event'` 且有 markers → 在 marker 位置畫**事件符號**（severity 配色/NAPSG 象形，與 live 對齊）；事件於 `occurred_at ≤ T` 出現。\n- **常見情形正確**：事件標記多為單次手動放置→錨點 `lat/lon` 即正確。\n- **caveat**：若標記中途移動，v1 用錨點而非 fold-at-T 位置。\n\n## v2（accuracy，另議）\n對每事件的 marker 折疊 `cop_entity_tracks ≤ T` → 事件 pin 跟隨標記實際移動。\n\n## DoD\n- [ ] 後端 `_events()` 補 markers（+ 測試：N:1、無 marker、跨場隔離）\n- [ ] 前端事件符號上圖（severity/類型視覺）+ vitest\n- [ ] human verify（dry-run 真演習，事件出現在正確位置/時刻）\n- [ ] ROADMAP P2-20 / #240 補記錄",
+    "closedAt": null,
+    "comments": [],
+    "createdAt": "2026-06-22T09:22:19Z",
+    "labels": [],
+    "milestone": null,
+    "number": 339,
+    "state": "OPEN",
+    "title": "feat(aar): 回放圖顯示事件標記（events via event_markers junction）",
+    "updatedAt": "2026-06-22T09:22:19Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/339"
   }
 ]
