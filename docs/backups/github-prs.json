@@ -4647,7 +4647,7 @@
     "number": 322,
     "state": "MERGED",
     "title": "fix(security): #321 L9 公網 server cert SAN 過濾 RFC1918 內網 IP",
-    "updatedAt": "2026-06-21T23:56:48Z",
+    "updatedAt": "2026-06-21T23:57:38Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/322"
   }
 ]
