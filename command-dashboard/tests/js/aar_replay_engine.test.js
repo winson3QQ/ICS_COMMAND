@@ -3,7 +3,7 @@ import { describe, expect, test } from 'vitest';
 
 import {
   buildReplayIndex, foldPositionsAt, positionsToGeoJSON, stepSummary, fmtClock, validCoord,
-  foldZonesAt, zonesToGeoJSON,
+  foldZonesAt, zonesToGeoJSON, eventsToGeoJSON,
 } from '../../static/js/aar/replay_engine.js';
 
 // #338：區域生命週期事件 helper（type='zone'）
@@ -194,5 +194,73 @@ describe('foldZonesAt / zonesToGeoJSON (#338 區域時間精確重現)', () => {
     const gj = zonesToGeoJSON(map);
     expect(gj.features[0].geometry.type).toBe('LineString');
     expect(gj.features[0].geometry.coordinates).toEqual([[121.0, 24.7], [121.1, 24.8]]);
+  });
+});
+
+describe('eventsToGeoJSON (#339 事件畫在標記折疊位置)', () => {
+  const ev = (t, severity, markers) => ({
+    type: 'event', t, actor: 'RTF',
+    payload: { event_id: 'e1', event_code: 'EV-001', event_type: 'contact', severity, status: 'open', markers },
+  });
+
+  test('事件騎在 marker 折疊位置（移動標的 → 用 posMap 的當前點，非錨點）', () => {
+    const eventIdx = [ev('2026-01-01T02:00:00Z', 'high', [{ uid: 'm1', lat: 0, lon: 0, role: 'primary' }])];
+    const posMap = new Map([['m1', { uid: 'm1', lat: 25.5, lon: 121.5 }]]); // marker 已移動到此
+    const gj = eventsToGeoJSON(eventIdx, '2026-01-01T03:00:00Z', posMap);
+    expect(gj.features).toHaveLength(1);
+    expect(gj.features[0].geometry.coordinates).toEqual([121.5, 25.5]); // 折疊位置（非錨點 0,0）
+    expect(gj.features[0].properties.severity).toBe('high');
+  });
+
+  test('marker 無折疊位置（靜態手動標記）→ 退回錨點 lat/lon', () => {
+    const eventIdx = [ev('2026-01-01T02:00:00Z', 'low', [{ uid: 'm2', lat: 24.3, lon: 120.7 }])];
+    const gj = eventsToGeoJSON(eventIdx, '2026-01-01T03:00:00Z', new Map());
+    expect(gj.features[0].geometry.coordinates).toEqual([120.7, 24.3]); // 錨點兜底
+  });
+
+  test('occurred_at > T 不畫；無 marker 不畫', () => {
+    const future = ev('2026-01-01T05:00:00Z', 'high', [{ uid: 'm1', lat: 24, lon: 120 }]);
+    const noMarker = ev('2026-01-01T01:00:00Z', 'high', []);
+    const gj = eventsToGeoJSON([noMarker, future], '2026-01-01T03:00:00Z', new Map());
+    expect(gj.features).toHaveLength(0);
+  });
+
+  test('primary marker 優先（多 marker N:1）', () => {
+    const eventIdx = [ev('2026-01-01T02:00:00Z', 'high', [
+      { uid: 'a', lat: 24.0, lon: 120.0 },
+      { uid: 'b', lat: 25.0, lon: 121.0, role: 'primary' },
+    ])];
+    const gj = eventsToGeoJSON(eventIdx, '2026-01-01T03:00:00Z', new Map());
+    expect(gj.features[0].geometry.coordinates).toEqual([121.0, 25.0]); // 取 primary（b）
+  });
+
+  test('#2：手動標記用 audit 位置歷史折疊（隨 T 移動，無 posMap）', () => {
+    const eventIdx = [ev('2026-01-01T01:00:00Z', 'critical', [{
+      uid: 'm', lat: 9, lon: 9,
+      history: [['2026-01-01T02:00:00Z', 24.0, 120.0], ['2026-01-01T03:00:00Z', 25.0, 121.0]],
+    }])];
+    expect(eventsToGeoJSON(eventIdx, '2026-01-01T02:30:00Z', new Map())
+      .features[0].geometry.coordinates).toEqual([120.0, 24.0]); // ≤T 取 02:00
+    expect(eventsToGeoJSON(eventIdx, '2026-01-01T03:30:00Z', new Map())
+      .features[0].geometry.coordinates).toEqual([121.0, 25.0]); // 移到 03:00
+  });
+
+  test('#3：military→milsymbol iconId；civil 有象形→glyph（同 live _renderZones）', () => {
+    const mk = et => [{
+      type: 'event', t: '2026-01-01T01:00:00Z',
+      payload: { event_id: 'e', event_type: et, severity: 'info', description: 'd', markers: [{ uid: 'm', lat: 24, lon: 120 }] },
+    }];
+    const tax = { hazard: { regime: 'civil' }, qrf: { abbr: 'QR', regime: 'military', cot_type: 'a-f-G' } };
+    // civil 有象形 → ◆ + glyph 前景
+    const g = eventsToGeoJSON(mk('hazard'), '2026-01-01T02:00:00Z', new Map(), tax);
+    expect(g.features[0].properties.regime).toBe('civil');
+    expect(g.features[0].properties.fg).toBe('napsg-glyph-hazard');
+    expect(g.features[0].properties.fg_glyph).toBe(true);
+    expect(g.features[0].properties.label).toBe('d'); // #1：人類描述
+    // military → milsymbol 2525 iconId（QRF 友軍方塊）
+    const q = eventsToGeoJSON(mk('qrf'), '2026-01-01T02:00:00Z', new Map(), tax);
+    expect(q.features[0].properties.regime).toBe('military');
+    expect(q.features[0].properties.iconId).toMatch(/^mil-/);
+    expect(q.features[0].properties.is_event).toBe(true);
   });
 });

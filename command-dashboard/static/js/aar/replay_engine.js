@@ -7,6 +7,9 @@
 // 折疊語意：每個 uid 取 t ≤ T 的**最後一筆** track = 該單位在 T 的已知位置
 // （來源回報疏 = 位置停在最後已知點，誠實呈現、不內插——#199 記錄的物理限制）。
 
+import { hasNapsgGlyph } from '../map/napsg_glyphs.js'; // #3：事件型別是否有 NAPSG 象形圖（純資料查詢）
+import { cotToSidc } from '../map/mil_symbol.js'; // #3：military regime 事件 → 2525 SIDC（純函式）
+
 /** timeline item 的穩定排序鍵（與後端同序保證：t 字串序；後端已排好，此處僅防禦） */
 function _byT(a, b) {
   return a.t < b.t ? -1 : a.t > b.t ? 1 : 0;
@@ -41,7 +44,9 @@ export function buildReplayIndex(items) {
   }
   // #338：區域生命週期事件（type='zone'，payload {uid, op, attributes}），折疊用（仍按 t 序）。
   const zoneIdx = steps.filter(it => it.type === 'zone');
-  return { steps, trackIdx, tracksByUid, zoneIdx };
+  // #339：事件（type='event'，payload 帶 markers），上圖用（occurred_at ≤ T 才畫；仍按 t 序）。
+  const eventIdx = steps.filter(it => it.type === 'event');
+  return { steps, trackIdx, tracksByUid, zoneIdx, eventIdx };
 }
 
 /** #338：折疊區域到時刻 T——每 uid 取 ≤T 最後一筆；op==='deleted' → 移除（T 之後才畫的 / 已刪
@@ -117,6 +122,63 @@ export function positionsToGeoJSON(posMap) {
       properties: { uid: p.uid, callsign: p.actor, t: p.t, cot_type: p.cot_type },
     })),
   };
+}
+
+/** #2：標記位置歷史 [[t,lat,lon],...]（audit，按時序）折疊到 T——取 ≤T 最後一筆。無 → null。 */
+function _foldMarkerHistory(history, T) {
+  let last = null;
+  for (const h of history || []) {
+    if (h[0] > T) break; // 已排序
+    last = h;
+  }
+  return last; // [t, lat, lon] | null
+}
+
+/** 事件 → GeoJSON 點，**重用 live COP 原本的事件符號**（severity ◆ + NAPSG 象形/abbr 前景）。
+ *  occurred_at ≤ T 才畫。位置優先序（#2 跟隨移動）：① TAK 標記 → posMap 折疊位置（有 tracks）；
+ *  ② 手動標記 → audit 位置歷史折疊 @ T；③ 退回標記錨點 lat/lon。無標記 → 不上圖（側欄仍在）。
+ *  props 對齊 live `_renderZones` 推導（map.js:3215-3242）：military regime → milsymbol 2525
+ *  iconId（由 taxonomy cot_type 生 SIDC；烤不出退 civil ◆）；civil/alert → ◆/▲ + fg（napsg-glyph
+ *  有象形圖、否則 napsg-abbr-<abbr>）。#1：label=description。
+ *  @param {object} evTax event_type→{abbr,regime,cot_type}（/api/event_taxonomy，與 live 同 SoT）。 */
+export function eventsToGeoJSON(eventIdx, T, posMap, evTax = {}) {
+  const features = [];
+  for (const it of eventIdx) {
+    if (it.t > T) break; // 已排序 → 之後全部 > T
+    const p = it.payload;
+    const markers = p.markers || [];
+    const m = markers.find(x => x.role === 'primary') || markers[0];
+    if (!m) continue; // 無標記 → 不上圖
+    const folded = posMap?.get(m.uid);
+    const hist = folded ? null : _foldMarkerHistory(m.history, T); // TAK 走 posMap，手動走 audit 歷史
+    const lat = folded ? folded.lat : (hist ? hist[1] : m.lat);
+    const lon = folded ? folded.lon : (hist ? hist[2] : m.lon);
+    if (!validCoord(lat, lon)) continue;
+    const et = p.event_type || '';
+    const tax = evTax[et] || {};
+    const abbr = tax.abbr || '?';
+    const fgGlyph = hasNapsgGlyph(et); // 6 種有象形圖；其餘 → 退 abbr（同 live）
+    // 視覺規制（同 live）：military → milsymbol 2525 框（drone 紅機/QRF 藍方）；civil/alert → ◆/▲。
+    let regime = tax.regime || 'civil';
+    let iconId = null;
+    if (regime === 'military') {
+      const sidc = cotToSidc(tax.cot_type);
+      if (sidc) iconId = 'mil-' + sidc;
+      else regime = 'civil'; // 烤不出 SIDC → 退 ◆，避免 icon-image 找不到變隱形
+    }
+    features.push({
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: [lon, lat] },
+      properties: {
+        event_id: p.event_id, event_code: p.event_code || '', event_type: et,
+        severity: p.severity || 'info', status: p.status || '',
+        is_event: true, regime, iconId,
+        abbr, fg: fgGlyph ? ('napsg-glyph-' + et) : ('napsg-abbr-' + abbr), fg_glyph: fgGlyph,
+        label: p.description || p.event_code || '', // #1：人類描述優先
+      },
+    });
+  }
+  return { type: 'FeatureCollection', features };
 }
 
 /** type → 側欄顯示中文標籤（與後端 timeline type 對齊） */
