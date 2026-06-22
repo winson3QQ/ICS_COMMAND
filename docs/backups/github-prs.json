@@ -4817,5 +4817,26 @@
     "title": "feat(aar): AAR 回放上圖 — #338 區域 + #339 事件/敵我接觸（時間精確、重用 live 符號）",
     "updatedAt": "2026-06-22T12:12:39Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/340"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "雙軌 MINOR + ROADMAP P2-20 收尾 ✅（功能 PR #340 已 merge）。\n\n- **backend 2.13.3→2.14.0**：AAR timeline 全源（zone/contact 生命週期 + event markers + 區域 attributes 快照）\n- **frontend 1.9.5→1.10.0**：AAR 上圖功能組完整（區域/事件/接觸，重用 live milsymbol/NAPSG 符號、隨 T 移動）；B1-B3 含 iPad/iPhone 觸控 human verify 全齊（#201）→ 進 frontend MINOR\n- ROADMAP P2-20 ✅（核心完整；AAR 匯出/symbology resolver/polish 選做留後續）\n\nmerge 後打 tag `backend-v2.14.0` + `frontend-v1.10.0`。\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+    "closedAt": "2026-06-22T12:16:38Z",
+    "comments": [],
+    "createdAt": "2026-06-22T12:16:25Z",
+    "headRefName": "release/aar-uplay-2.14.0",
+    "labels": [],
+    "mergedAt": "2026-06-22T12:16:38Z",
+    "number": 341,
+    "state": "MERGED",
+    "title": "chore(release): backend-v2.14.0 / frontend-v1.10.0 — AAR 回放上圖完整（P2-20 ✅）",
+    "updatedAt": "2026-06-22T12:16:45Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/341"
   }
 ]

@@ -4949,5 +4949,32 @@
     "title": "feat(aar): 回放圖事件標記跟隨移動標的（events ride folded marker @ T）",
     "updatedAt": "2026-06-22T12:12:36Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/339"
+  },
+  {
+    "assignees": [],
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "body": "## 背景\n\n兩週後演練：藍軍（指揮部 / 國軍 / RTF）+ 紅軍參加，平台**公網直曝**（home router 443 forward），目標 live C2 + AAR。本單為「上公網前 Tier 0 閘門」的 **reality check**（PROCESS「進實作前盤點 → issue」紀律），重評既有六單在 2026-06-22 實際 code 的狀態，並重排演練 sprint。\n\n## 🔑 關鍵交叉前提（改變所有威脅評估）\n\n`deploy/ics-validation/mtls/nginx.mtls.conf:55` **`ssl_verify_client on`** → 無 client cert 者在**網路層即被 400 擋下**。\n\n→ #293（token 竊取）/ #295（帳號鎖定 DoS）的攻擊面從「公網任何人」**收斂為「已發證者（紅軍 / 內部）」**，嚴重度低於初始假設一個量級，但**非零**（持證者的 XSS-in-session 與 insider DoS 仍成立）。\n\n## 逐項 reality check verdict\n\n| Issue | 原宣稱 | 實際 code 狀態（2026-06-22） | Verdict |\n|---|---|---|---|\n| **#279** cert 23h→90d | 全 23h、隔天全斷 | env 參數已備（`ICS_SERVER_CERT_DURATION`/`STEP_CLIENT_CERT_DURATION`）；`deploy/prod/README.md:108` 載明**現役 prod 已手動放寬 2160h**（存 ca-data 卷），唯**未隨 committed config** → fresh CA rebuild 才回 24h | 🟡 live 已緩解；剩「驗 live 實態 + 把 claims 寫進 step-ca init 可重現」 |\n| **#280** 周邊硬化 | 待做 | `nginx/conf.d/command.conf` + `ics-validation/mtls/nginx.mtls.conf` 已含 `limit_req`(login 5r/m + general 30r/s)、`limit_conn`、444 掃描路徑 drop；`deploy/perimeter/fail2ban` filter 已存在；XFF 信任 ✓(#275 wave2/4) | 🟢 核心(A/C)已做；剩 B(Cloudflare/Tailscale 前置·最高 CP)/D(geo TW)/E(真 CA+HSTS+OCSP)/H(告警) |\n| **#295** 鎖定-DoS | 帳號可被鎖死 | `account_repo.py:181 verify_login` 確認帳號級鎖定（5 錯/15 分，鍵 username）；`bypass_lockout` 僅在「出示本帳號有效裝置證」時放行 → **無證的純 PIN 指揮官仍可被持證紅軍鎖死** | 🔴 真未做；威脅收斂為內部/紅軍；依賴真實 IP 還原（已 ✓） |\n| **#293** httpOnly cookie | token 在 sessionStorage | 確認仍走 `X-Session-Token` header（`auth/service.py:150`、`auth/middleware.py:53`、`routers/auth.py`），無 Set-Cookie / httpOnly；mTLS 擋不住「XSS 當場以受害者身分操作」 | 🔴 真未做；Tier 0 單項工程量最大（動全測試 fixture + 後端 session 讀取 + CSRF 對策） |\n| **#136** TAK ingest XSS | 全程無 escape | 確認 `cop_service.py:187 normalize_cot` raw 直存 callsign/remarks/detail 進 attributes，未過 `validate_no_unsafe_strings`（operator path 有、TAK path 無） | ⚪ 現**不可觸發**：前端 attributes 走 MapLibre WebGL text layer 非 innerHTML；僅 P2-12 panel 用 innerHTML 渲染 raw 才成 stored XSS |\n| **#301** 黑箱驗證 | 待跑 | 需對 live prod（1.34.230.218）runtime 實打（header/cipher/IDOR/traversal），repo 端無法跑 | 🔴 是「洞到底補了沒」的最終紅綠燈閘，修完才跑 |\n\n## 重塑後的 Tier 0 sprint（演練導向）\n\n- **必做**：#279（驗 live + 可重現·小）、#301（最終閘·需 live·修完跑）\n- **應做**：#295（內部/紅軍可用性 DoS）、#293（XSS-in-session·工程量最大·建議優先起跑）\n- **可延後**：#136（無 sink，除非 P2-12 panel 進演練 scope）、#280 剩餘 B/D/E/H（ops runbook / 加值）\n\n## 演練先決（非 Tier 0，但更上游，另單追蹤）\n\n1. **紅藍軍視圖隔離（新需求·目前無設計）**：commander 及以下只見藍軍；admin / AAR 可全見。現 exercise scope 為 server-authoritative（P1-14），但「同場域內 affiliation 分流 + 角色感知過濾」未設計 → 另開 issue。\n2. **#323 CA 私鑰與 host 同機**：建議演練期間「風險接受 + 補償控制」（CA host 移出公網 / 最小曝露），不在兩週內做架構搬離。\n\n## 建議執行順序\n\n1. #279 驗 live 實態（curl 量測現役 cert 效期）+ 確認不會 fresh-rebuild CA\n2. #293 起跑（long pole，動測試面廣）\n3. #295 per-source 節流 + 高權不硬鎖（真實 IP 已備）\n4. #279 reproducibility（claims 寫進 step-ca init）\n5. #301 黑箱驗證（上面修完、對外開放前跑，回填 audit log）\n\n> Reality check 由 Code session 於 2026-06-22 對齊實際 code 產出；證據行號為當時 HEAD `ab76c35`。\n",
+    "closedAt": null,
+    "comments": [],
+    "createdAt": "2026-06-22T12:48:38Z",
+    "labels": [
+      {
+        "color": "a2eeef",
+        "description": "New feature or request",
+        "id": "LA_kwDOSnBjpc8AAAACklX2xg",
+        "name": "enhancement"
+      }
+    ],
+    "milestone": null,
+    "number": 342,
+    "state": "OPEN",
+    "title": "演練前 Tier 0 公網硬化 — reality check + sprint 排序（mTLS 強制下重評 #279/#280/#293/#295/#136/#301）",
+    "updatedAt": "2026-06-22T12:48:38Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/342"
   }
 ]
