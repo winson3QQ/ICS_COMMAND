@@ -29,7 +29,7 @@ def captured_broadcasts(monkeypatch):
     """攔截 cop_hub.broadcast（async）→ 收集 (message, exercise_id)，不真的開 WS。"""
     calls: list[tuple[dict, int | None]] = []
 
-    async def _fake(message, exercise_id=None):
+    async def _fake(message, exercise_id=None, **_kw):
         calls.append((message, exercise_id))
 
     monkeypatch.setattr(cop_service.cop_hub, "broadcast", _fake)

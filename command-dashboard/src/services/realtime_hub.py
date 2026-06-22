@@ -30,11 +30,18 @@ _SEND_TIMEOUT_S = 5.0  # 單一 client send 逾時即視為死連線，避免拖
 
 
 class _Conn:
-    """一條 WS 連線 + 它的 exercise 訂閱範圍。"""
+    """一條 WS 連線 + 它的 exercise 訂閱範圍 + faction 可見性。"""
 
-    __slots__ = ("ws", "exercise_id", "follows_active", "include_standing")
+    __slots__ = ("ws", "exercise_id", "follows_active", "include_standing", "visible_factions")
 
-    def __init__(self, ws: WebSocket, exercise_id, follows_active: bool = False, include_standing: bool = False):
+    def __init__(
+        self,
+        ws: WebSocket,
+        exercise_id,
+        follows_active: bool = False,
+        include_standing: bool = False,
+        visible_factions: frozenset[str] | None = None,
+    ):
         self.ws = ws
         self.exercise_id = exercise_id  # int | NULL_SCOPE（client 連線）| None（內部 overview）
         # #265：True＝連線未顯式 pin 歷史場（dashboard 常態）→ active 場切換時就地 rescope；
@@ -43,16 +50,30 @@ class _Conn:
         # #267 常駐層疊看：True＝active 場連線**也**收 NULL（常駐/real-world）entity。
         # **限 COMMAND_ROLES**（handshake gate）。不跨演習：仍精確擋別場 M（見 wants）。
         self.include_standing = include_standing
+        # #343 紅藍隔離：此連線可見的 faction 集合；None = 全見（sysadmin/白隊 或 開關關）。
+        self.visible_factions = visible_factions
 
-    def wants(self, msg_exercise_id: int | None) -> bool:
-        """本連線是否該收到這則 entity 訊息（P1-14 strict isolation）。
+    def _faction_ok(self, msg_source: str | None, msg_faction: str | None) -> bool:
+        """#343：本連線是否可見此 entity 的 faction。None visible_factions = 全見。
+        只有 source='tak' 受過濾（#146 所有權：manual/command 自建恆可見）；
+        tak 且 faction 不在集合（含 None fail-closed）→ False。"""
+        if self.visible_factions is None:
+            return True
+        if msg_source != "tak":
+            return True
+        return msg_faction in self.visible_factions
+
+    def wants(self, msg_exercise_id: int | None, msg_source: str | None = None, msg_faction: str | None = None) -> bool:
+        """本連線是否該收到這則 entity 訊息（P1-14 場域 isolation + #343 faction isolation）。
 
         連線範圍由 resolve_scope 決定（int 或 NULL_SCOPE）：
         - NULL_SCOPE（無 active＝實戰池）→ 只收 exercise_id 為 None 的實戰 entity。
         - int N（active 場 / 指揮層看歷史）→ 收 N 的 entity；若 include_standing 另收 NULL 常駐。
         - None（內部 overview，client 不會是此值）→ 全收。
-        ⚠ 控制訊息（reset resync）走 broadcast_all，不經本過濾。
+        場域通過後再過 faction（兩道 AND）。⚠ 控制訊息（reset resync）走 broadcast_all，不經本過濾。
         """
+        if not self._faction_ok(msg_source, msg_faction):
+            return False
         if self.exercise_id is NULL_SCOPE:
             return msg_exercise_id is None
         if self.exercise_id is None:
@@ -74,12 +95,18 @@ class CopHub:
         self._lock = asyncio.Lock()
 
     async def connect(
-        self, ws: WebSocket, exercise_id, follows_active: bool = False, include_standing: bool = False
+        self,
+        ws: WebSocket,
+        exercise_id,
+        follows_active: bool = False,
+        include_standing: bool = False,
+        visible_factions: frozenset[str] | None = None,
     ) -> _Conn:
         # exercise_id：int（某場）| NULL_SCOPE（實戰池）| None（內部 overview）
         # follows_active：True＝跟隨 active 場（切換時就地 rescope，見 rescope_active）
         # include_standing：True＝active 場也疊收 NULL 常駐 entity（限 COMMAND，#267）
-        conn = _Conn(ws, exercise_id, follows_active, include_standing)
+        # visible_factions：#343 此連線可見 faction（None＝全見/開關關），handshake 依角色定
+        conn = _Conn(ws, exercise_id, follows_active, include_standing, visible_factions)
         async with self._lock:
             self._conns.add(conn)
         return conn
@@ -114,10 +141,17 @@ class CopHub:
                 for c in dead:
                     self._conns.discard(c)
 
-    async def broadcast(self, message: dict, exercise_id: int | None = None) -> None:
-        """把 entity message push 給所有符合 exercise filter（wants）的連線。"""
+    async def broadcast(
+        self,
+        message: dict,
+        exercise_id: int | None = None,
+        source: str | None = None,
+        faction: str | None = None,
+    ) -> None:
+        """把 entity message push 給所有符合 exercise + faction filter（wants）的連線。
+        source/faction 供 #343 紅藍過濾（只 source='tak' 受 faction 限；caller 從 entity 帶入）。"""
         async with self._lock:
-            targets = [c for c in self._conns if c.wants(exercise_id)]
+            targets = [c for c in self._conns if c.wants(exercise_id, source, faction)]
         await self._send(targets, message)
 
     async def broadcast_all(self, message: dict) -> None:

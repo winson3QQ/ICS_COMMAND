@@ -319,6 +319,8 @@ async def _broadcast_cop(op: str, entity: dict) -> None:
             "entity": entity,
         },
         exercise_id=entity.get("exercise_id"),
+        source=entity.get("source"),  # #343：faction 過濾（只 tak 受限）
+        faction=entity.get("faction"),
     )
 
 

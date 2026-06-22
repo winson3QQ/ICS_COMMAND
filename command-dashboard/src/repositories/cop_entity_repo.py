@@ -101,16 +101,26 @@ def list_cop_entities(
     exercise_id=None,
     include_stale: bool = False,
     limit: int = 500,
+    visible_factions: frozenset[str] | None = None,
 ) -> list[dict]:
     """列出 CoP entity。預設過濾 stale（stale > now）。
 
     exercise_id 三態（見 _helpers.NULL_SCOPE）——
       int → exact / NULL_SCOPE → IS NULL（實戰池）/ None → 不過濾（內部 caller）。
+
+    visible_factions（#343 紅藍隔離）：None = 全見（sysadmin / 開關關）；給一組 faction 時，
+    **只有 source='tak'（外部現場鏡像）受過濾**——保留 `source != 'tak'`（指揮部自建 manual/command +
+    自有感測 pi-node/waveink，對齊 #146 所有權）或 `faction ∈ 集合`。**faction IS NULL 的 tak entity
+    被排除 = fail-closed**（未分類/解不到 producer 者 commander 不可見）。SQL-level 過濾，與 LIMIT 正確互動。
     """
     clauses, params = [], []
     if source is not None:
         clauses.append("source = ?")
         params.append(source)
+    if visible_factions is not None:
+        fac_ph = ",".join("?" * len(visible_factions))
+        clauses.append(f"(source != 'tak' OR faction IN ({fac_ph}))")  # nosec B608 — fac_ph 僅 ? 佔位
+        params.extend(sorted(visible_factions))
     if exercise_id is NULL_SCOPE:
         clauses.append("exercise_id IS NULL")
     elif exercise_id is not None:
