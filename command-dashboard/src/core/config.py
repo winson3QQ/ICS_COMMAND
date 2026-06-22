@@ -91,8 +91,9 @@ APP_VERSION = "2.13.1"
 # v1.0.0：拆分自 ICS_DMAS 後首個完整可用形態（MapLibre 地圖引擎全換 P1-10b + PWA 移除 P1-11
 #         + 演習/放置/稽核 UI P1-13/14/16/#93 + 分類編輯器 #66）→ 0.x 畢業為 MAJOR 紀元。
 CMD_VERSION: str = os.getenv(
-    "CMD_VERSION", "v1.9.3"
-)  # PATCH v1.9.3：桌機憑證 UX（#327）——「下載 root CA」鈕 + .p12 標 Windows/iMac/Android + 信任提示。
+    "CMD_VERSION", "v1.9.4"
+)  # PATCH v1.9.4：桌機 Chrome 分享憑證失敗（NotAllowedError）→ 自動退回下載（#330）。
+# PATCH v1.9.3：桌機憑證 UX（#327）——「下載 root CA」鈕 + .p12 標 Windows/iMac/Android + 信任提示。
 # PATCH v1.9.2：TAK tab 已撤銷裝置證列加「刪除」鈕（#325；刪紀錄≠撤證）。
 # PATCH v1.9.1：TAK tab 加「已發裝置證」盤點列表 + 撤銷-flag（#317；標明不 enforce）。
 # v1.9.0：admin TAK tab（#315 P2-26 L2）—— TAK 連線開關搬入 + TAK 裝置證自助發放 UI

@@ -1006,7 +1006,10 @@ function _showTakDeviceResult(callsign, mode, blob, blobUrl) {
     shareBtn.textContent = '📤 分享 / 存檔（轉交裝置）';
     shareBtn.addEventListener('click', async () => {
       try { await navigator.share({ files: [file], title: callsign + '-dp.zip' }); }
-      catch (e) { if (e?.name !== 'AbortError') alert('分享失敗：' + (e?.message || e)); }
+      catch (e) {
+        if (e?.name === 'AbortError') return;  // 使用者取消
+        dlBtn.click();  // #330：桌機 Chrome canShare 回 true 但 share 檔案丟 NotAllowedError → 退回下載
+      }
     });
     row.appendChild(shareBtn);
   }
@@ -1549,7 +1552,10 @@ function _showMobileconfigResult(username, cn, blob, blobUrl) {
     shareBtn.textContent = '📤 分享 / 存檔（轉交別台）';
     shareBtn.addEventListener('click', async () => {
       try { await navigator.share({ files: [mcFile], title: cn + '.mobileconfig' }); }
-      catch (e) { if (e?.name !== 'AbortError') alert('分享失敗：' + (e?.message || e)); }
+      catch (e) {
+        if (e?.name === 'AbortError') return;  // 使用者取消
+        dlBtn.click();  // #330：桌機 Chrome share 檔案丟 NotAllowedError → 退回下載
+      }
     });
     row.appendChild(shareBtn);
   }
