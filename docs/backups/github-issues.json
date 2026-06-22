@@ -3409,15 +3409,15 @@
       "name": ""
     },
     "body": "## 現象（dogfood 發現 2026-06-12）\n\n管理員「reset DB」後,**通聯（chats）資料仍在**——事件/圖釘/決策都清了,只有通聯獨活。\n\n## 根因\n\n`routers/admin.py` 的 `reset-db` 清表清單**漏了 `chats`**：\n\n```python\n# src/routers/admin.py:213-232  reset_db()\ntables = [\n    \"snapshots\", \"events\", \"decisions\", \"predictions\", \"manual_records\",\n    \"sync_log\", \"pi_received_batches\", \"audit_log\", \"ttx_injects\", \"exercises\",\n    \"resource_snapshots\", \"aar_entries\", \"ai_recommendations\",\n    \"cop_entity_tracks\", \"cop_entity_links\", \"cop_entities\",\n]   # ← 沒有 \"chats\"\n```\n\n`chats` 表是 P2-07（#129，migration m016）新增,**加表時沒同步加進 reset 清單**。這跟同段 code 自己修過的破口同一類（註解：「修『reset 清不到 cop_entities → 事件記錄沒了但圖釘留孤兒』的破口」）。\n\n連帶 **`reset-exercise`（admin.py:247）也沒清 exercise-scoped 的 chats**——它清了 `cop_entities WHERE exercise_id IS NOT NULL`,但沒清 `chats`（chats 有 `exercise_id` 欄）。\n\n## 影響\n\n- **髒起點**：reset 後舊通聯殘留,不是乾淨狀態。\n- **PII 不隨 reset 清**：chats = ICS-214 Unit Log（callsign / 訊息 / 位置 PII）。與 #213 b2 dogfood 留痕的「chat retention / backfill 缺口」同源,亦呼應 #207（track PII retention）。\n\n## 修法\n\n1. `reset-db`：`tables` 加 `\"chats\"`。\n2. `reset-exercise`：補 `DELETE FROM chats WHERE exercise_id IS NOT NULL`（對齊 cop_entities 的 exercise-scoped 清除）。\n3. 測試：reset-db 後 chats 為空;reset-exercise 後 exercise-scoped chats 清除、實戰池（exercise_id IS NULL）保留與否依政策（建議同 cop_entities：只清 exercise-scoped）。\n\n## 關聯\nP2-07（#129 chats 表）/ #207（track retention 同類 PII）/ #213 b2 dogfood chat backfill 缺口留痕。**與 #213 b3（PR #233）無關,獨立小 fix。**\n",
-    "closedAt": null,
+    "closedAt": "2026-06-22T06:42:46Z",
     "comments": [],
     "createdAt": "2026-06-12T01:58:17Z",
     "labels": [],
     "milestone": null,
     "number": 237,
-    "state": "OPEN",
+    "state": "CLOSED",
     "title": "reset-db / reset-exercise 漏清 chats 表 — 通聯不隨 reset 清除（PII 殘留 + 髒起點）",
-    "updatedAt": "2026-06-12T01:58:17Z",
+    "updatedAt": "2026-06-22T06:42:46Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/237"
   },
   {

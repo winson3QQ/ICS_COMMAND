@@ -4733,5 +4733,26 @@
     "title": "fix(ui): #330 桌機 Chrome 分享憑證失敗 → 自動退回下載",
     "updatedAt": "2026-06-22T06:05:10Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/332"
+  },
+  {
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "baseRefName": "main",
+    "body": "## 根因\nP2-07（#129）加 `chats` 表時**漏進 reset 清表清單** → reset 後通聯獨活（事件/圖釘/決策都清、只有通聯留）。\n\n## 影響（卡兩週後演習 AAR）\n- **髒起點**：演習前 reset 求乾淨，舊通聯卻殘留。\n- **AAR 時間軸混場**：AAR 回放含 chats → 混入上場舊通聯。\n- **PII 不隨 reset 清**：chats = ICS-214 通聯（callsign/訊息/位置）。\n\n## 修補\n- `reset-db`：`tables` 加 `\"chats\"`（全清）。\n- `reset-exercise`：`data_tables` 加 `\"chats\"`（`WHERE exercise_id IS NOT NULL`，只清演習場域、實戰 NULL 池保留，對齊 cop_entities）。\n\n## 驗證\n`pytest 5`（含 2 新：reset-db 清光 / reset-exercise 只清演習場域）/ `pyflakes` clean / `/code-review` 0。**dogfood 實證 reset 後通聯清空 PASS**。\n\nbackend-v2.13.2\n\nFixes #237\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+    "closedAt": "2026-06-22T06:42:44Z",
+    "comments": [],
+    "createdAt": "2026-06-22T06:42:41Z",
+    "headRefName": "fix/issue-237-reset-clear-chats",
+    "labels": [],
+    "mergedAt": "2026-06-22T06:42:44Z",
+    "number": 333,
+    "state": "MERGED",
+    "title": "fix(admin): #237 reset-db/reset-exercise 補清 chats 表",
+    "updatedAt": "2026-06-22T06:42:52Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/pull/333"
   }
 ]
