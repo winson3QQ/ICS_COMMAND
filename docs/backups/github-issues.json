@@ -4814,5 +4814,25 @@
     "title": "feat(auth): 桌機登入憑證 UX — root CA 下載 + Windows/iMac 標籤與信任提示",
     "updatedAt": "2026-06-22T04:44:27Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/327"
+  },
+  {
+    "assignees": [],
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "body": "## 來源\n使用者提供一份**實機成功的 ATAK(Android) data package**（`ICSTAKATAKWin.zip`）。比對我們 `_atak_pref`（`services/tak_device_cert.py`）—— atak 模式**從未實機驗過**（只有 iTAK/aware dogfood 過）。\n\n## 比對結果\n**結構完全吻合**（nested wrapper：外層 MANIFEST + slot/inner.zip；內層 MANIFEST `onReceiveDelete=true` + pref + atak.p12 + truststore-root.p12）。pref 大部分一致。\n\n**唯一實質差異**：成功包的 `com.atakmap.app_preferences` 有\n```\n<entry key=\"deviceProfileEnableOnConnect\" class=\"class java.lang.Boolean\">true</entry>\n```\n我們 `_atak_pref` **缺這行**（連線時拉 device profile）。\n\n**判定不需改的**：\n- clientPassword 成功包用 `atak123`（≠ ca 的 `atakatak`），我們 ca/client 同用 `P12_PASS=atakatak` → **內部一致**（p12 確實這密碼簽），非必要差異。\n- description0 / cert 檔名：成功包固定 `ICS-TAK_ATAK`/`atak.p12`，我們動態 `ICS_TAK_{callsign}`/`{callsign}.p12` → 純顯示/檔名，且**動態檔名已在 aware 模式 dogfood 驗過可行** → 保持動態（兩模式一致）。\n\n## 修補\n`_atak_pref` 的 `com.atakmap.app_preferences` 補 `deviceProfileEnableOnConnect=true`。\n\n## DoD\npref 含該 entry；unit 測試斷言；**真正確認仍需 ATAK 安卓機實裝**（本修讓格式對齊已驗成功包）。",
+    "closedAt": null,
+    "comments": [],
+    "createdAt": "2026-06-22T04:52:13Z",
+    "labels": [],
+    "milestone": null,
+    "number": 329,
+    "state": "OPEN",
+    "title": "fix(tak): ATAK 裝置證 pref 缺 deviceProfileEnableOnConnect（對照成功包，atak 模式未實機驗）",
+    "updatedAt": "2026-06-22T04:52:13Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/329"
   }
 ]
