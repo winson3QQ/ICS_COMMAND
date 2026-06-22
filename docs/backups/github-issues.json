@@ -4854,5 +4854,25 @@
     "title": "fix(ui): 桌機 Chrome 分享憑證 data package 失敗（canShare 回 true 但 share 丟 NotAllowedError）→ 退回下載",
     "updatedAt": "2026-06-22T06:05:04Z",
     "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/330"
+  },
+  {
+    "assignees": [],
+    "author": {
+      "id": "U_kgDODb4DOg",
+      "is_bot": false,
+      "login": "winson3QQ",
+      "name": ""
+    },
+    "body": "## 來源\nP2-20(B)/#201 v1 刻意不加 dashboard 連結（避免動 main.js/part-3）→ AAR 頁只能直接打 `/static/aar.html` 網址。兩週後演習要用,補一個正式入口。\n\n## 範圍\n- **設定面板**加「演習回放（AAR）」item（新 section `#stg-aar-section`，預設 hide）。\n- **角色閘 = COMMAND_ROLES**（指揮官 commander + 系統管理員 sysadmin，= `canUseRealModeControls()`）—— 對齊 AAR 資料 API `/timeline` 的 gate；operator/observer 不顯示（否則點了吃 403）。\n- **同分頁導航** `location.href='/static/aar.html'`（#201 鐵律：token 存 sessionStorage，新分頁拿不到登入態 → 不可 `_blank`）。AAR 頁已有「← 返回指揮台」。\n\n## DoD\n- commander/sysadmin 設定面板見「演習回放」→ 點 → 同分頁進 aar.html → 列場次/回放。\n- operator/observer 不見此入口。\n- vitest/eslint 0；human verify。",
+    "closedAt": null,
+    "comments": [],
+    "createdAt": "2026-06-22T06:54:24Z",
+    "labels": [],
+    "milestone": null,
+    "number": 334,
+    "state": "OPEN",
+    "title": "feat(aar): dashboard 設定面板加 AAR 回放入口（COMMAND_ROLES，同分頁導航）",
+    "updatedAt": "2026-06-22T06:54:24Z",
+    "url": "https://github.com/winson3QQ/ICS_COMMAND/issues/334"
   }
 ]
