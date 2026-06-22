@@ -471,6 +471,9 @@ function _enterDashboard() {
   // #66 PR-C1：事件分類編輯為 sysadmin-only（後端 POST=SYSADMIN_ONLY），比帳號管理段更嚴
   const taxSec = el('stg-taxonomy-section');
   if (taxSec) taxSec.style.display = hasAnyRole('sysadmin') ? '' : 'none';
+  // #334：AAR 回放入口 = COMMAND_ROLES（commander + sysadmin，對齊 /timeline gate；operator/observer 點了會 403）
+  const aarSec = el('stg-aar-section');
+  if (aarSec) aarSec.style.display = canUseRealModeControls() ? '' : 'none';
   // 更新 settings footer
   el('stg-user-info').textContent = (sessionStorage.getItem('cmd_display_name') || '') + ' (' + sessionStorage.getItem('cmd_role') + ')　' + (_fmtLocalDT(sessionStorage.getItem('cmd_login_time') || '') || '').slice(11,19);
   PinLock.start();
