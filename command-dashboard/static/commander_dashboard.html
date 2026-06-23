@@ -614,15 +614,16 @@ body{position:fixed;inset:0;}
 }
 .stg-logout-btn:hover{background:var(--red);color:#fff;}
 
-/* ═══ Admin 底部面板 ═══ */
-#admin-overlay{position:fixed;inset:0;z-index:290;background:rgba(0,0,0,.55);display:none;}
-#admin-overlay.show{display:block;}
-#admin-panel{
-  position:fixed;left:0;right:0;bottom:-100%;max-height:85vh;z-index:300;
+/* ═══ Admin 底部面板（+ #346 演習面板共用同款式）═══ */
+#admin-overlay,#exercise-overlay{position:fixed;inset:0;z-index:290;background:rgba(0,0,0,.55);display:none;}
+#admin-overlay.show,#exercise-overlay.show{display:block;}
+/* #346：固定高（height 非 max-height）→ 切 tab/子分頁時面板不忽高忽低，內容在內部捲。 */
+#admin-panel,#exercise-panel{
+  position:fixed;left:0;right:0;bottom:-100%;height:82vh;z-index:300;
   background:var(--surface);border-top:1px solid var(--border);border-radius:12px 12px 0 0;
   display:flex;flex-direction:column;transition:bottom .3s;
 }
-#admin-panel.show{bottom:0;}
+#admin-panel.show,#exercise-panel.show{bottom:0;}
 .adm-header{
   display:flex;align-items:center;justify-content:space-between;
   padding:12px 16px;border-bottom:1px solid var(--border);flex-shrink:0;
@@ -639,6 +640,13 @@ body{position:fixed;inset:0;}
 }
 .adm-tab.active{color:var(--yellow);border-bottom-color:var(--yellow);}
 .adm-panel-body{flex:1;overflow-y:auto;padding:12px 16px;}
+/* #346：帳號群內 segmented 子分頁（一次顯一段，免長捲；touch 友善）。 */
+.adm-subtabs{display:flex;gap:4px;padding:8px 16px 0;flex-shrink:0;}
+.adm-subtab{
+  padding:5px 14px;font-size:11px;font-weight:600;cursor:pointer;color:var(--text2);
+  background:var(--surface2);border:1px solid var(--border);border-radius:6px;transition:all .15s;
+}
+.adm-subtab.active{color:#fff;background:rgba(63,185,80,.2);border-color:var(--green);}
 .adm-account-card{
   background:var(--surface2);border:1px solid var(--border);border-radius:6px;
   padding:10px 12px;margin-bottom:8px;
@@ -971,15 +979,6 @@ body{position:fixed;inset:0;}
         <span class="si-arrow">&#x203A;</span>
       </div>
     </div>
-    <!-- #334：AAR 回放入口（COMMAND_ROLES 才顯示；同分頁導航進 aar.html） -->
-    <div class="stg-section" id="stg-aar-section" style="display:none;">
-      <div class="stg-section-title">演習回放</div>
-      <div class="stg-item" data-action="openAar">
-        <span class="si-icon">&#9654;</span>
-        <div class="si-text"><div class="si-title">演習回放（AAR）</div><div class="si-sub">選場次 → 時間軸重播單位移動／事件／通聯</div></div>
-        <span class="si-arrow">&#x203A;</span>
-      </div>
-    </div>
     <div class="stg-section" id="stg-admin-section">
       <div class="stg-section-title">帳號管理</div>
       <div class="stg-item" data-action="openAdminPanel">
@@ -996,16 +995,13 @@ body{position:fixed;inset:0;}
         <span class="si-arrow">&#x203A;</span>
       </div>
     </div>
-    <!-- P1-14 PR-2：演習管理（取代死掉的 ttx-toggle / session_type）。
-         建立 ／ 啟動 ／ 歸檔僅指揮層；非指揮層仍可看列表。 -->
+    <!-- #346：演習收成單一入口 → 開「演習」面板（內含 segmented 子分頁 演習管理/紅藍/回放，跟帳號一致）。 -->
     <div class="stg-section" id="stg-exercise-section">
-      <div class="stg-section-title">演習管理</div>
-      <div class="ex-panel">
-        <div class="ex-panel-head">
-          <span class="si-sub">演習場次（active 自動 scope 資料）</span>
-          <button class="ex-btn" data-action="exRefresh">重新整理</button>
-        </div>
-        <div id="ex-panel-body"></div>
+      <div class="stg-section-title">演習</div>
+      <div class="stg-item" data-action="openExercisePanel">
+        <span class="si-icon">&#127919;</span>
+        <div class="si-text"><div class="si-title">演習中樞</div><div class="si-sub">演習管理 ／ 紅藍分類 ／ 回放（AAR）</div></div>
+        <span class="si-arrow">&#x203A;</span>
       </div>
     </div>
   </div>
@@ -1026,25 +1022,60 @@ body{position:fixed;inset:0;}
     <div id="adm-pin-warn" style="font-size:11px;color:var(--red);min-height:16px;"></div>
   </div>
   <div id="adm-main">
+    <!-- #346：帳號群（帳號列表+新增+系統 PIN 併一；系統子區僅 sysadmin，見 admShowTab RBAC）。
+         演習群（演習管理+紅藍+AAR）移至設定面板，故此處不再有「紅藍」tab。 -->
     <div class="adm-tabs">
-      <div class="adm-tab active" data-action="admShowTab" data-tab="list">帳號列表</div>
-      <div class="adm-tab" data-action="admShowTab" data-tab="add">新增</div>
+      <div class="adm-tab active" data-action="admShowTab" data-tab="account">帳號</div>
       <div class="adm-tab" data-action="admShowTab" data-tab="pi">Pi 節點</div>
       <div class="adm-tab" data-action="admShowTab" data-tab="log">日誌</div>
       <div class="adm-tab" data-action="admShowTab" data-tab="data">備份／重設</div>
-      <div class="adm-tab" data-action="admShowTab" data-tab="sys">系統</div>
       <div class="adm-tab" data-action="admShowTab" data-tab="tak">TAK</div>
-      <div class="adm-tab" data-action="admShowTab" data-tab="faction">紅藍</div>
+    </div>
+    <!-- 帳號群：子分頁（segmented）一次顯一段，免長捲（#346 UX）。Admin PIN 僅 sysadmin。 -->
+    <div class="adm-subtabs" id="adm-account-subtabs" style="display:none;">
+      <div class="adm-subtab active" data-action="admAccountSub" data-sub="list">帳號列表</div>
+      <div class="adm-subtab" data-action="admAccountSub" data-sub="add">新增</div>
+      <div class="adm-subtab" id="adm-subtab-sys" data-action="admAccountSub" data-sub="sys" style="display:none;">Admin PIN</div>
     </div>
     <div class="adm-panel-body" id="adm-panel-list"></div>
     <div class="adm-panel-body" id="adm-panel-add" style="display:none;"></div>
+    <div class="adm-panel-body" id="adm-panel-sys" style="display:none;"></div>
     <div class="adm-panel-body" id="adm-panel-pi" style="display:none;"></div>
     <div class="adm-panel-body" id="adm-panel-log" style="display:none;"></div>
     <div class="adm-panel-body" id="adm-panel-data" style="display:none;"></div>
-    <div class="adm-panel-body" id="adm-panel-sys" style="display:none;"></div>
     <div class="adm-panel-body" id="adm-panel-tak" style="display:none;"></div>
-    <div class="adm-panel-body" id="adm-panel-faction" style="display:none;"></div>
     <div id="adm-sysinfo" style="padding:6px 16px;border-top:1px solid var(--border);font-size:10px;color:var(--text3);display:flex;gap:12px;"></div>
+  </div>
+</div>
+
+<!-- ═══════ 演習面板（#346：演習管理 / 紅藍分類 / 回放 segmented 子分頁，跟帳號一致）═══════ -->
+<div id="exercise-overlay" data-action="closeExercisePanel"></div>
+<div id="exercise-panel">
+  <div class="adm-header"><span>&#127919; 演習</span><button class="adm-close" data-action="closeExercisePanel">&times;</button></div>
+  <div class="adm-subtabs" id="ex-subtabs">
+    <div class="adm-subtab active" data-action="admExerciseSub" data-sub="manage">演習管理</div>
+    <div class="adm-subtab" id="ex-subtab-faction" data-action="admExerciseSub" data-sub="faction" style="display:none;">紅藍分類</div>
+    <div class="adm-subtab" id="ex-subtab-aar" data-action="admExerciseSub" data-sub="aar" style="display:none;">演習回放</div>
+  </div>
+  <!-- 演習管理（建立/啟動/封存；列表全角色，動作限指揮層）-->
+  <div class="adm-panel-body" id="ex-sub-manage">
+    <div class="ex-panel">
+      <div class="ex-panel-head">
+        <span class="si-sub">演習場次（active 自動 scope 資料）</span>
+        <button class="ex-btn" data-action="exRefresh">重新整理</button>
+      </div>
+      <div id="ex-panel-body"></div>
+    </div>
+  </div>
+  <!-- 紅藍分類（sysadmin only；分連線 TAK client）-->
+  <div class="adm-panel-body" id="adm-panel-faction" style="display:none;"></div>
+  <!-- 演習回放 AAR（COMMAND；導航進 aar.html）-->
+  <div class="adm-panel-body" id="ex-sub-aar" style="display:none;">
+    <div style="font-size:12px;color:var(--text2);line-height:1.7;margin-bottom:14px;max-width:480px;">
+      演習回放（AAR）：選場次 → 時間軸重播單位移動／事件／通聯。<br>
+      <span style="color:var(--text3);">演習進行中不開放（與 active 場互斥）；歸檔後可閱。</span>
+    </div>
+    <button class="login-btn" data-action="openAar" style="max-width:280px;">&#9654; 開啟演習回放（AAR）</button>
   </div>
 </div>
 

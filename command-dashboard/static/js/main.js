@@ -180,7 +180,7 @@ document.addEventListener('click', function (e) {
     case 'cmdLogout':      cmdLogout(); break;
     case 'sessionContinue': continueSessionFromWarning(); break;
     case 'sessionLogout':  logoutFromSessionWarning(); break;
-    case 'openSettings':   openSettings(); import('./exercises.js').then(m => m.renderExercisePanel()); break;
+    case 'openSettings':   openSettings(); break;   // #346：演習管理移至演習面板（admExerciseSub('manage') 時 render）
     case 'closeSettings':  closeSettings(); break;
     case 'exportJSON': {
       import('./cop.js').then(m => exportDashboardJSON(m.getData()));
@@ -190,11 +190,15 @@ document.addEventListener('click', function (e) {
     // #334：AAR 回放——同分頁導航（token 存 sessionStorage，新分頁拿不到登入態；aar.html 有「← 返回指揮台」）。
     case 'openAar':        window.location.href = '/static/aar.html'; break;
     case 'openAdminPanel': openAdminPanel(); break;
+    case 'openExercisePanel':  import('./auth.js').then(m => m.openExercisePanel()); break;   // #346 演習面板
+    case 'closeExercisePanel': import('./auth.js').then(m => m.closeExercisePanel()); break;
+    case 'admExerciseSub':     import('./auth.js').then(m => m.admExerciseSub(btn.dataset.sub)); break;
     case 'openTaxonomyEditor': openTaxonomyEditor(); break;   // #66 PR-C1
     case 'taxSave':        _handleTaxSave(); break;
     case 'closeAdminPanel': closeAdminPanel(); break;
     case 'adminLogin':     adminLogin(); break;
     case 'admShowTab':     admShowTab(btn.dataset.tab); break;
+    case 'admAccountSub':  import('./auth.js').then(m => m.admAccountSub(btn.dataset.sub)); break;  // #346
     case 'admShowSys':     admShowSys(); break;
     // P1-12b（#228）整包備份 / 還原（admin 系統 tab）
     case 'admBackupNow':      admBackupNow(); break;
@@ -462,16 +466,8 @@ document.addEventListener('click', function (e) {
     case 'chatFilterRoom':  chatFilterRoom(btn.dataset.room); break;
     case 'chatClearSender': chatClearSender(); break;  // #213 b3-1：清除 by-sender 過濾
 
-    // ── 演習管理（P1-14 PR-2，取代死掉的實戰/演練切換）──
-    case 'openExercisePanel': {
-      // 開 settings 並渲染 / 捲到演習區
-      openSettings();
-      import('./exercises.js').then(m => {
-        m.renderExercisePanel();
-        document.getElementById('stg-exercise-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      });
-      break;
-    }
+    // ── 演習管理（P1-14 PR-2）。#346：openExercisePanel 改開「演習」面板（見上方 case；header chip
+    //    與設定入口共用），不再開 settings 捲到區段。 ──
     case 'exCreate': {
       if (!canUseRealModeControls()) break;   // 後端亦強制；UI 提前擋
       import('./exercises.js').then(m => m.handleExCreate());
