@@ -36,19 +36,39 @@ def list_clients(exercise_id: int | None) -> list[dict]:
     """列本場觀測到的連線 client（producer）+ 目前分類。
 
     回 [{client_key, callsign, last_seen, faction, classified}]，未分類者 faction=None/classified=False，
-    依 callsign/client_key 排序。callsign 取該 producer 名下最新一筆（self-SA 通常帶 callsign）。
+    依 callsign/client_key 排序。
+
+    callsign（顯示）優先取**裝置 self-SA**（uid == client_key，裝置自身態勢，呼號即裝置呼號），
+    而非該 producer 名下最新一筆——否則裝置標一個 marker 後，marker 較新會把裝置呼號蓋成 marker 名
+    （dogfood 實證：ATAK 標 marker 後分類面板顯示成「N.23.…」而非「3QQ-atak」）。無 self-SA 時
+    才 fallback 到最新一筆 callsign。last_seen 仍取名下任一最新（活動時間語意不變）。
     """
     fmap = client_faction_repo.get_faction_map(exercise_id)
     agg: dict[str, dict] = {}
     for e in _producer_entities(exercise_id):
         ck = cop_service.resolve_client_key_from_parts(e["uid"], e.get("attributes") or {})
         seen = e.get("received_at") or ""
-        cur = agg.get(ck)
-        if cur is None or seen > (cur["last_seen"] or ""):
-            agg[ck] = {"client_key": ck, "callsign": e.get("callsign"), "last_seen": seen}
+        is_self = e["uid"] == ck  # 裝置 self-SA：自身 uid 即 client_key（marker 的 uid 不同）
+        d = agg.setdefault(ck, {"client_key": ck, "last_seen": "", "_self_seen": "", "_any_seen": ""})
+        if seen > d["last_seen"]:
+            d["last_seen"] = seen
+        # 呼號優先序：最新的 self-SA > 最新的非 self（marker fallback）
+        if is_self and seen >= d["_self_seen"]:
+            d["_self_seen"], d["_self_cs"] = seen, e.get("callsign")
+        elif not is_self and seen >= d["_any_seen"]:
+            d["_any_seen"], d["_any_cs"] = seen, e.get("callsign")
     out = []
     for ck, d in agg.items():
-        out.append({**d, "faction": fmap.get(ck), "classified": ck in fmap})
+        callsign = d.get("_self_cs") or d.get("_any_cs")
+        out.append(
+            {
+                "client_key": ck,
+                "callsign": callsign,
+                "last_seen": d["last_seen"],
+                "faction": fmap.get(ck),
+                "classified": ck in fmap,
+            }
+        )
     out.sort(key=lambda d: (d["callsign"] or d["client_key"]))
     return out
 
