@@ -173,6 +173,27 @@ Mission（spec 88 path）= data-sync 訂閱 feed + 自己的成員/權限/持久
 
 > **追蹤**：現場層（faction → TAK group）綁定 = 姊妹 issue #344；本文 §1-7 為 ICS 視圖層（issue #343）。兩支演習前都要做。
 
+### 8.4 #344 reality-check 實測修正（2026-06-23，對活 prod takserver 只讀探針）
+
+對現役 takserver（`/Marti/api/groups/all`、`/clientEndPoints`、`/user-management/api/*`，ICS marti-read cert）只讀打點，結論修正 §8.2 的前置條件：
+
+**A. 識別軸 = cert CN（TAK username），callsign / team 僅顯示，不可當識別。**
+clientEndPoints 實測：同一台裝置（同 `uid`、同 `username`）出現 **3 個不同 callsign**（`3QQ-aTAK`/`3QQ-aTak`/`CAP-AT-MK`），且同一 `uid` 先後宣告 team `Blue`/`Red`/`Orange`。→ callsign 與 team 皆操作員可隨手改、可謊報。穩定識別只有：`uid`（ICS 側，#343 client_key，穩定到裝置重裝）與 **`username`=cert CN（TAK 側 group 綁定鍵，跟著憑證最穩）**。faction 指派一律認 cert CN，不認 callsign/team。
+
+**B. 橋已驗：`GET /Marti/api/clientEndPoints` 回 `{uid, username, callsign, team, lastStatus}`。** ICS 用 `uid` join 出 `username`，把 #343（uid 鍵）接到 #344（username 鍵）。憑證由 ICS 發，故「裝置↔CN」ICS 本就知道，clientEndPoints 再以 uid 印證。
+
+**C. 🔴 阻礙 1 — 現行裝置證 CN 坍縮：** 實測多台不同 uid 的裝置 username **全是 `3QQ`**（CN 都發成同名）。group membership 是 per-username → **同 username 無法分進不同 group**。故前置：裝置發證必須**每台唯一 CN**，ICS 記 `CN↔裝置`（`tak_device_certs` 目前無 CN 欄，需補；接 #315 面板）。**無唯一 CN = 無可靠 per-device 識別 = 隔離不成立**（地基）。
+
+**D. 🔴 阻礙 2 — ICS cert 權限不足：** `/user-management/api/*` 用 marti-read cert → **403**（管 group 是管理級）。需替 ICS 配一張**管理級 TAK 帳號/cert** 才能呼 group 管理 API。
+
+**E. 預設群洩漏實錘：** 現存 group **只有 `__ANON__`**（SYSTEM）→ 目前零隔離、全員共享預設群。#344 不只建 blue/red 群，**必須讓裝置移出 `__ANON__`**，否則照樣互看。
+
+**F. 未解（待 write 實測）：** group 變更對**已在串流連線**是否即時生效，或須重連（gotcha 2）。只讀探針測不到，建群後再驗。
+
+**G. 非 ASCII CN：** username `主教` 在 REST 回傳 mojibake（連動 #324）→ CN 命名建議限 ASCII。
+
+> 工作量重估：#344 = 前置 A/B（唯一 CN 發證 + ICS 記 CN）+ 前置 D（管理級 cert）+ 核心（建群/指派/移出 __ANON__/配 IN-OUT）+ 待解 F。非「順手呼 API」，是演習前要排的小工程。
+
 ---
 
 ## 9. 其他已知邊界
