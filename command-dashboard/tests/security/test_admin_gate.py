@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from auth.role_enum import ROLE_OPERATOR_ZH
+from auth.role_enum import ROLE_OPERATOR_ZH, ROLE_SYSADMIN_ZH
 from repositories.account_repo import create_account
 from repositories.config_repo import set_admin_pin
 
@@ -114,3 +114,72 @@ class TestSuspendAllSelfLock:
         assert _status("victim_op") == "suspended"  # 其他人被停權
         # 發起者 session 仍可操作 admin API（沒進「需主機 shell 救」狀態）
         assert client.get("/api/admin/accounts", headers=h).status_code == 200
+
+
+# ── #354：最後一個 active sysadmin 不得被降級/停用/封存（單筆版自鎖防呆）──────
+
+
+class TestLastSysadminGuard:
+    """#354：補上 suspend-all（#153）已有、但單筆 role/status/delete 漏掉的同一條守門。
+    只在「會把 active sysadmin 數歸零」那一刻擋下，回 409；多 sysadmin 時不受影響。"""
+
+    def test_last_sysadmin_cannot_self_demote_role(self, client):
+        r = client.put(
+            "/api/admin/accounts/admin/role",
+            headers=_login(client),
+            json={"role": ROLE_OPERATOR_ZH, "role_detail": "operator"},
+        )
+        assert r.status_code == 409, r.text
+        assert _status("admin") == "active"  # 未被改動
+
+    def test_last_sysadmin_cannot_self_suspend(self, client):
+        r = client.put(
+            "/api/admin/accounts/admin/status",
+            headers=_login(client),
+            json={"status": "suspended"},
+        )
+        assert r.status_code == 409, r.text
+        assert _status("admin") == "active"
+
+    def test_last_sysadmin_cannot_self_archive(self, client):
+        r = client.delete("/api/admin/accounts/admin", headers=_login(client))
+        assert r.status_code == 409, r.text
+        assert _status("admin") == "active"  # 未被 soft-delete
+
+    def test_two_sysadmins_demote_one_allowed_then_last_blocked(self, client):
+        create_account("admin2", "5678", ROLE_SYSADMIN_ZH, "Admin2", "sysadmin")
+        h = _login(client)
+        # 兩 sysadmin，降其一 → 允許
+        r1 = client.put(
+            "/api/admin/accounts/admin2/role",
+            headers=h,
+            json={"role": ROLE_OPERATOR_ZH, "role_detail": "operator"},
+        )
+        assert r1.status_code == 200, r1.text
+        # 只剩 admin 一個 sysadmin，再降 → 擋
+        r2 = client.put(
+            "/api/admin/accounts/admin/role",
+            headers=h,
+            json={"role": ROLE_OPERATOR_ZH, "role_detail": "operator"},
+        )
+        assert r2.status_code == 409, r2.text
+
+    def test_role_change_keeping_sysadmin_not_blocked(self, client):
+        # 新角色仍是 sysadmin（will_remain_sysadmin）→ 不減少 active sysadmin 數 → 放行
+        r = client.put(
+            "/api/admin/accounts/admin/role",
+            headers=_login(client),
+            json={"role": ROLE_SYSADMIN_ZH, "role_detail": "sysadmin"},
+        )
+        assert r.status_code == 200, r.text
+
+    def test_guard_does_not_block_non_sysadmin_target(self, client):
+        # 即使僅一個 sysadmin，停用非 sysadmin 帳號不受守門影響（不誤傷）
+        create_account("op_user", "5678", ROLE_OPERATOR_ZH, "Operator", "operator")
+        r = client.put(
+            "/api/admin/accounts/op_user/status",
+            headers=_login(client),
+            json={"status": "suspended"},
+        )
+        assert r.status_code == 200, r.text
+        assert _status("op_user") == "suspended"
