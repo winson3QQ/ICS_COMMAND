@@ -877,36 +877,43 @@ const _ADM_GROUPS = {
   data: ['data'],
   tak: ['tak'],
 };
-const _ADM_LEGACY = { list: 'account', add: 'account', sys: 'account', faction: 'account' };
 const _ADM_ALL_PANELS = ['list', 'add', 'sys', 'pi', 'log', 'data', 'tak'];
+let _admAccountSub = 'list';  // 帳號群 segmented 子分頁狀態（list/add/sys，#346 免長捲）
 
 export function admShowTab(group) {
-  if (!_ADM_GROUPS[group]) group = _ADM_LEGACY[group] || 'account';        // 相容舊 tab 名 caller
+  // 相容舊 tab 名：list/add/sys 是帳號群的子分頁、faction 已移至設定面板
+  if (['list', 'add', 'sys'].includes(group)) { _admAccountSub = group; group = 'account'; }
+  else if (!_ADM_GROUPS[group]) group = 'account';
   if (!_isSysadminSession() && group !== 'account') group = 'account';     // 非 sysadmin 只見帳號群
   _applyAdminTabVisibility();
-  const sysAdmin = _isSysadminSession();
   document.querySelectorAll('.adm-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === group));
-  const showPanels = _ADM_GROUPS[group];
-  _ADM_ALL_PANELS.forEach(k => {
-    const e = el('adm-panel-' + k);
-    if (!e) return;
-    // RBAC：帳號群的 sys(Admin PIN) 子區 SYSADMIN_ONLY → 非 sysadmin（如 commander 管帳號）不顯示。
-    const visible = showPanels.includes(k) && !(k === 'sys' && !sysAdmin);
-    e.style.display = visible ? '' : 'none';
-  });
+  const subbar = el('adm-account-subtabs');
   if (group === 'account') {
-    admLoadAccounts();
-    admShowAddForm();
-    if (sysAdmin) admShowSys();
-  } else if (group === 'pi') {
-    admLoadPiNodes();
-  } else if (group === 'log') {
-    admLoadLog();
-  } else if (group === 'data') {
-    admShowData();
-  } else if (group === 'tak') {
-    admShowTak();
+    if (subbar) subbar.style.display = '';
+    const sysSub = el('adm-subtab-sys');
+    if (sysSub) sysSub.style.display = _isSysadminSession() ? '' : 'none';   // RBAC：Admin PIN 子分頁僅 sysadmin
+    ['pi', 'log', 'data', 'tak'].forEach(k => { const e = el('adm-panel-' + k); if (e) e.style.display = 'none'; });
+    admAccountSub(_admAccountSub);
+  } else {
+    if (subbar) subbar.style.display = 'none';
+    _ADM_ALL_PANELS.forEach(k => { const e = el('adm-panel-' + k); if (e) e.style.display = k === group ? '' : 'none'; });
+    if (group === 'pi') admLoadPiNodes();
+    else if (group === 'log') admLoadLog();
+    else if (group === 'data') admShowData();
+    else if (group === 'tak') admShowTak();
   }
+}
+
+// #346：帳號群 segmented 子分頁（帳號列表 / 新增 / Admin PIN），一次顯一段、免長捲。
+export function admAccountSub(sub) {
+  if (sub === 'sys' && !_isSysadminSession()) sub = 'list';                  // RBAC：Admin PIN 僅 sysadmin
+  if (!['list', 'add', 'sys'].includes(sub)) sub = 'list';
+  _admAccountSub = sub;
+  document.querySelectorAll('#adm-account-subtabs .adm-subtab').forEach(t => t.classList.toggle('active', t.dataset.sub === sub));
+  ['list', 'add', 'sys'].forEach(k => { const e = el('adm-panel-' + k); if (e) e.style.display = k === sub ? '' : 'none'; });
+  if (sub === 'list') admLoadAccounts();
+  else if (sub === 'add') admShowAddForm();
+  else if (sub === 'sys') admShowSys();
 }
 
 // #343 紅藍隔離：admin 把連線 TAK client 分類成紅/藍/中立。per-exercise（active 場 scope）。

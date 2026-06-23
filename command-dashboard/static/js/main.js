@@ -197,6 +197,7 @@ document.addEventListener('click', function (e) {
     case 'closeAdminPanel': closeAdminPanel(); break;
     case 'adminLogin':     adminLogin(); break;
     case 'admShowTab':     admShowTab(btn.dataset.tab); break;
+    case 'admAccountSub':  import('./auth.js').then(m => m.admAccountSub(btn.dataset.sub)); break;  // #346
     case 'admShowSys':     admShowSys(); break;
     // P1-12b（#228）整包備份 / 還原（admin 系統 tab）
     case 'admBackupNow':      admBackupNow(); break;
