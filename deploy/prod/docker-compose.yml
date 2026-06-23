@@ -68,6 +68,9 @@ services:
       - ICS_MTLS_REQUIRED=${ICS_MTLS_REQUIRED:-true}
       - ICS_BEHIND_PROXY=true
       - ICS_IDLE_TIMEOUT_SECONDS=86400
+      # #343 紅藍 faction 隔離濾鏡（預設 off「零風險漸進啟用」；演習要紅藍隔離時設 .env=true）。
+      # on 時 commander/operator/observer 只見 blue+neutral 的 tak 物件、faction=None 亦藏（fail-closed）；sysadmin 全見。
+      - ICS_FACTION_ISOLATION=${ICS_FACTION_ISOLATION:-false}
       - STEP_CA_URL=https://step-ca:9000
       - STEP_CA_PROVISIONER=ics
       - STEP_CA_PROVISIONER_PASSWORD_FILE=/ca-share/prov.pass
