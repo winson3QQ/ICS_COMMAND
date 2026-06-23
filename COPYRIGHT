@@ -1,0 +1,9 @@
+ICS_Command
+Copyright © 2026 <公司法定名稱>. All Rights Reserved.
+
+本軟體為專有軟體，依隨附 LICENSE 授權使用。
+第三方開源／資料元件之歸屬與授權見 NOTICE 與 THIRD_PARTY_LICENSES.md。
+
+原始碼檔頭標準（SPDX）：
+  # SPDX-License-Identifier: LicenseRef-Proprietary
+  # Copyright © 2026 <公司法定名稱>. All Rights Reserved.
