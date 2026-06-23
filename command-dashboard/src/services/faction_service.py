@@ -59,7 +59,9 @@ def list_clients(exercise_id: int | None) -> list[dict]:
             d["_any_seen"], d["_any_cs"] = seen, e.get("callsign")
     out = []
     for ck, d in agg.items():
-        callsign = d.get("_self_cs") or d.get("_any_cs")
+        # self-SA 存在就用其呼號（即使為 None → 前端 fallback 顯 uid），**不退回 marker 名**；
+        # 無 self-SA 才用 marker（_any_cs）。用「key 是否存在」判定 self-SA 出現過（值可為 None）。
+        callsign = d["_self_cs"] if "_self_cs" in d else d.get("_any_cs")
         out.append(
             {
                 "client_key": ck,

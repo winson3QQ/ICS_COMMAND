@@ -55,6 +55,22 @@ def _ingest_marker(uid, creator_uid, callsign="敵-A"):
     return asyncio.run(cop_service.ingest_cot_event(ev))
 
 
+def _ingest_self_sa(uid, callsign):
+    """ingest 裝置 self-SA（無 creator/link → 歸屬鏈 fallback 自身 uid，uid 即 client_key）。"""
+    ev = CoTEventIn(
+        uid=uid,
+        type="a-f-G-U-C",
+        time="2026-06-22T00:00:00Z",
+        start="2026-06-22T00:00:00Z",
+        stale="2099-01-01T00:00:00Z",
+        how="m-g",
+        lat=24.0,
+        lon=120.5,
+        callsign=callsign,
+    )
+    return asyncio.run(cop_service.ingest_cot_event(ev))
+
+
 def test_classify_reresolves_existing_entities(_no_ws):
     # 先 ingest（未分類 → faction NULL），再 classify → 重解析名下 entity
     _ingest_marker("MK-1", "DEV-X")
@@ -94,6 +110,22 @@ def test_list_clients_aggregates_producers(_no_ws):
     assert set(clients) == {"DEV-A", "DEV-B"}  # 兩個 producer（非 4 個 entity）
     assert clients["DEV-A"]["faction"] == "blue" and clients["DEV-A"]["classified"] is True
     assert clients["DEV-B"]["faction"] is None and clients["DEV-B"]["classified"] is False
+
+
+def test_list_clients_callsign_prefers_self_sa(_no_ws):
+    """#358-1：呼號取裝置 self-SA（uid==client_key），不被較新的 marker 名蓋掉。"""
+    _ingest_self_sa("DEV-C", "丙-裝置")  # 先 self-SA（received_at 較早）
+    _ingest_marker("MK-C", "DEV-C", "敵標-丙")  # 後 marker（received_at 較新、uid≠client_key）
+    clients = {c["client_key"]: c for c in faction_service.list_clients(None)}
+    assert clients["DEV-C"]["callsign"] == "丙-裝置"  # self-SA 名勝出，非 marker「敵標-丙」
+
+
+def test_list_clients_self_sa_no_callsign_not_clobbered_by_marker(_no_ws):
+    """self-SA 無 callsign → 不退回 marker 名（與『優先 self-SA』語意一致；前端 fallback 顯 uid）。"""
+    _ingest_self_sa("DEV-D", None)
+    _ingest_marker("MK-D", "DEV-D", "敵標-丁")
+    clients = {c["client_key"]: c for c in faction_service.list_clients(None)}
+    assert clients["DEV-D"]["callsign"] != "敵標-丁"  # 不顯 marker 名
 
 
 def test_override_entity_not_clobbered_by_reresolve(_no_ws):
