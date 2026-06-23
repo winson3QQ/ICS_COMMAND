@@ -604,7 +604,7 @@ def issue_tak_device_cert(request: Request, callsign: str, mode: str = "atak"):
     from services.tak_device_cert import build_device_package
 
     try:
-        pkg, serial = build_device_package(
+        pkg, serial, fingerprint = build_device_package(
             cn, mode, config.TAK_DEVICE_CONNECT_HOST, config.TAK_DEVICE_CONNECT_PORT, ca_dir
         )
     except CertIssuanceError as e:
@@ -613,14 +613,26 @@ def issue_tak_device_cert(request: Request, callsign: str, mode: str = "atak"):
     from repositories.tak_device_cert_repo import record_issued
 
     record_issued(cn, serial, mode, sess["username"])
-    # 強制 audit（不得 best-effort）：誰發了哪個 callsign 的 TAK 裝置證。私鑰/密碼不進 audit。
+    # #344：發證即註冊 TAK managed user + 初始群 neutral（fail-closed）→ 之後紅藍分類走 REST update-groups。
+    # best-effort：registrar 未配置/沒跑/逾時 → 跳過、不擋發證（裝置仍拿到證、落匿名待補；reason 進 audit + header）。
+    from services.tak_user_enroll import enroll_device
+
+    enroll = enroll_device(cn, fingerprint)
+    # 強制 audit（不得 best-effort）：誰發了哪個 callsign 的證 + enrollment 結果。私鑰/密碼/fingerprint 不進 audit。
     audit(
         sess["username"],
         None,
         "tak_device_cert_issue",
         "tak",
         cn,
-        {"callsign": cn, "mode": mode, "serial": serial, "connect_host": config.TAK_DEVICE_CONNECT_HOST},
+        {
+            "callsign": cn,
+            "mode": mode,
+            "serial": serial,
+            "connect_host": config.TAK_DEVICE_CONNECT_HOST,
+            "enroll": enroll.get("reason"),
+            "enroll_group": enroll.get("group"),
+        },
     )
     # #324：filename 須 latin-1 安全（HTTP header 限制）。Python `isalnum()` 對中文回 True，
     # 不能用來濾——非 ASCII 進 header → uvicorn UnicodeEncodeError → 500（且證已記/audit = 幽靈列）。
@@ -629,10 +641,17 @@ def issue_tak_device_cert(request: Request, callsign: str, mode: str = "atak"):
 
     ascii_safe = "".join(c for c in cn if c.isascii() and (c.isalnum() or c in "-_.")) or "device"
     encoded = urllib.parse.quote(f"{cn}-dp.zip")
+    # #344：前端據此提示「現場群已同步 / 未註冊（待補）」，避免靜默失敗。header 限 latin-1 →
+    # 防禦性濾成 ASCII（registrar-error 夾帶 usermod 輸出，沿用本函式既有 latin-1 戒慎免 500）。
+    enroll_status = "ok" if enroll.get("enrolled") else (enroll.get("reason") or "skipped")
+    enroll_status = "".join(c for c in enroll_status if c.isascii() and c.isprintable())[:200] or "skipped"
     return Response(
         content=pkg,
         media_type="application/zip",
-        headers={"Content-Disposition": f"attachment; filename=\"{ascii_safe}-dp.zip\"; filename*=UTF-8''{encoded}"},
+        headers={
+            "Content-Disposition": f"attachment; filename=\"{ascii_safe}-dp.zip\"; filename*=UTF-8''{encoded}",
+            "X-TAK-Enroll-Status": enroll_status,
+        },
     )
 
 

@@ -4,8 +4,9 @@
 （ATAK/iTAK）也按陣營切廣播域（紅軍 ATAK 收不到藍軍 CoT）。一個分類動作、兩層同時隔離（設計 §8.2）。
 
 reality-check 定案（2026-06-23，活 takserver 實證，見 GitHub #344）：
-- 橋 = `GET /Marti/api/clientEndPoints` 回 `{uid, username}` → 用 ICS 的 client_key（CoT uid）join 出
-  TAK username。
+- 橋 = `GET /Marti/api/subscriptions/all` 回 `{clientUid, username}` → 用 ICS 的 client_key（CoT uid）
+  join 出 TAK username。**不用 `/clientEndPoints`**（殘留殭屍 row、同 uid 多筆陳舊 username 會 join
+  到錯的對象；見 `_username_for_client_key` docstring 實測）。
 - 寫 = `PUT /user-management/api/update-groups`（**補齊 groupList/IN/OUT 三欄否則 NPE→500**）→ 把該
   username 的群設為單一 faction 群（replace=脫離其他群，含 __ANON__ → 達成隔離）。
 - 需 **管理級 cert**（ROLE_ADMIN，certmod -A）—— `TAK_MARTI_ADMIN_CERT/KEY`；read/write cert 打
@@ -47,11 +48,18 @@ def _build_admin_client():
 
 
 async def _username_for_client_key(client, client_key: str) -> str | None:
-    """查 clientEndPoints 找 client_key（CoT uid）對應的 TAK username。離線/查無 → None。"""
-    data = await client.get_json("/Marti/api/clientEndPoints")
+    """查在線訂閱找 client_key（CoT uid）對應的 TAK username。離線/查無 → None。
+
+    用 `/Marti/api/subscriptions/all`（可靠在線視圖）**而非** `/clientEndPoints`——後者保留歷史
+    殭屍 row（同一 uid 多筆陳舊 username、且裝置關機後 lastStatus 仍標 Connected），取第一筆會
+    join 到**錯的** username（2026-06-23 實測：`AC4B…` → 殭屍 `blue-01`〔別台裝置〕、`ANDROID…` →
+    匿名 `3QQ`），導致 update-groups 改到別台/不存在的 user、真身留在原群。subscriptions/all 只列
+    當前實際訂閱中的 client（memory tak-faction-group-identifier；對齊欄位 clientUid/username）。
+    """
+    data = await client.get_json("/Marti/api/subscriptions/all")
     rows = (data or {}).get("data", []) if isinstance(data, dict) else (data or [])
     for r in rows:
-        if isinstance(r, dict) and r.get("uid") == client_key and r.get("username"):
+        if isinstance(r, dict) and r.get("clientUid") == client_key and r.get("username"):
             return r["username"]
     return None
 
@@ -59,7 +67,7 @@ async def _username_for_client_key(client, client_key: str) -> str | None:
 async def sync_client_faction(client_key: str, faction: str | None) -> dict:
     """把 client_key 對應裝置的 TAK group 設成 faction 群。best-effort，回 {synced, reason, username}。
 
-    skip（synced=False）情形：未配置 admin cert / faction 無對應群 / 裝置離線（clientEndPoint 查無）/
+    skip（synced=False）情形：未配置 admin cert / faction 無對應群 / 裝置離線（subscriptions/all 查無 clientUid）/
     TAK 寫入錯（log warning）。caller（faction_service.classify）不因本函式失敗而 raise。
     """
     if not is_configured():

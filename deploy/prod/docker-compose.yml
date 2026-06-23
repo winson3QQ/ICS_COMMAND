@@ -93,11 +93,16 @@ services:
       - TAK_MARTI_WRITE_KEY=${TAK_MARTI_WRITE_KEY:-}
       - TAK_MARTI_ADMIN_CERT=${TAK_MARTI_ADMIN_CERT:-}   # #344/#357 管理級 cert（ROLE_ADMIN）→ user-management group API；空則 faction 不同步 TAK group
       - TAK_MARTI_ADMIN_KEY=${TAK_MARTI_ADMIN_KEY:-}
+      # #344 enrollment：發證即註冊 managed user（經 tak-registrar 跑 usermod）。queue dir = 與 registrar 共享卷。
+      - TAK_ENROLL_QUEUE_DIR=${TAK_ENROLL_QUEUE_DIR:-/registrar-queue}
+      - TAK_ENROLL_DEFAULT_GROUP=${TAK_ENROLL_DEFAULT_GROUP:-neutral}   # 初始群（fail-closed）
+      - TAK_ENROLL_TIMEOUT_S=${TAK_ENROLL_TIMEOUT_S:-8}
     volumes:
       - ics-data:/app/data
       - ics-tiles:/app/static/tiles:ro
       - ca-share:/ca-share:ro
       - ./tak-certs:/tak-certs:ro             # ICS→TAK client/marti 憑證（issue-tak-certs.sh 產）
+      - tak-registrar-queue:/registrar-queue  # #344 與 tak-registrar 共享的 enrollment 請求/結果佇列
     networks: [icsnet]
     # 不對 host publish；只經 nginx（+ X-Proxy-Auth 共享密鑰）
 
@@ -184,11 +189,32 @@ services:
       # - "${TAK_WEBUI_PORT:-8443}:8443"
     networks: [icsnet]
 
+  # ── #344 TAK 裝置 enrollment registrar ───────────────────────────────────────────
+  # ics-command 發證後把裝置證 fingerprint 註冊成 TAK managed user + 初始群（usermod）。
+  # 為何獨立 sidecar 且 network_mode 綁 takserver：usermod/certmod 是 server-coupled（連 takserver
+  # **本機 IPC** 熱套用）——ICS（獨立 netns、無 Java）跑會 timeout、裸寫 auth 檔不被認（2026-06-23 PoC
+  # 實證，#344）。共享 takserver network namespace → usermod 連得到 localhost server，**免 docker socket**。
+  # reuse ics-takserver image（含 Java + UserManager.jar）；掛同一份 /opt/tak；經共享卷檔佇列收 ICS 請求。
+  tak-registrar:
+    profiles: ["tak"]
+    image: ics-takserver:5.7
+    restart: unless-stopped
+    depends_on:
+      takserver:
+        condition: service_started
+    network_mode: "service:takserver"        # ← 關鍵：共享 takserver netns（不可同時設 networks）
+    entrypoint: ["/bin/bash", "/registrar/registrar.sh"]
+    volumes:
+      - ../tak-server/release/tak:/opt/tak                              # 同一份 payload（UserManager.jar）
+      - ../tak-server/registrar/registrar.sh:/registrar/registrar.sh:ro
+      - tak-registrar-queue:/registrar-queue                           # 與 ics-command 共享的請求/結果佇列
+
 volumes:
   pki:
   ca-data:
   ca-share:
   tak-db-data:
+  tak-registrar-queue:                       # #344 ics-command ↔ tak-registrar enrollment 佇列
   ics-data:
     external: true                          # 沿用既有 ics-data（runtime 資料；勿隨棧刪）
   ics-tiles:
