@@ -8,11 +8,23 @@ services/chat_service.py — GeoChat（CoT b-t-f）通聯落地（P2-07，#129�
 
 import html
 
-from repositories import chat_repo
+from repositories import chat_repo, client_faction_repo
 from schemas.chat import ChatIn
 from schemas.tak import CoTEventIn
 from services.exercise_service import current_exercise_id
 from services.realtime_hub import cop_hub
+
+
+def _geochat_client_key(uid: str | None) -> str | None:
+    """#343：從 GeoChat uid 取產生它的裝置 uid（= faction client_key）。
+
+    GeoChat uid 格式 `GeoChat.<裝置uid>.<聊天室>.<訊息GUID>`（真機實證 ATAK/iTAK），第二段即裝置。
+    非此格式（無法歸屬）→ None → faction 解 NULL → fail-closed。
+    """
+    parts = (uid or "").split(".")
+    if len(parts) >= 2 and parts[0] == "GeoChat" and parts[1]:
+        return parts[1]
+    return None
 
 
 def _feed_item(row: dict) -> dict:
@@ -56,6 +68,10 @@ async def ingest_chat(event: CoTEventIn) -> dict | None:
     # 同 uid 重來不再入庫、不再廣播（否則每次重連多一筆同訊息，dogfood 實證 42 筆「Enemy founded」）。
     if chat_repo.chat_exists(event.uid):
         return None
+    ex_id = current_exercise_id()
+    # #343：解發話端裝置 → 陣營（與 cop_entity 同 server-authoritative 分類）。NULL=未分類→fail-closed。
+    client_key = _geochat_client_key(event.uid)
+    faction = client_faction_repo.get_faction(ex_id, client_key) if client_key else None
     record = ChatIn(
         sender_uid=event.uid,
         callsign=event.callsign or chat.get("senderCallsign"),
@@ -64,14 +80,27 @@ async def ingest_chat(event: CoTEventIn) -> dict | None:
         lat=event.lat,
         lon=event.lon,
         time=event.time,
-        exercise_id=current_exercise_id(),
+        exercise_id=ex_id,
+        faction=faction,
     )
     row = chat_repo.insert_chat(record)
-    await cop_hub.broadcast({"op": "chat", "chat": _feed_item(row)}, exercise_id=row.get("exercise_id"))
+    # #343：帶 source='tak'+faction → _Conn._faction_ok 過濾紅軍通聯不漏給藍方 WS。
+    await cop_hub.broadcast(
+        {"op": "chat", "chat": _feed_item(row)},
+        exercise_id=row.get("exercise_id"),
+        source="tak",
+        faction=row.get("faction"),
+    )
     return row
 
 
-def build_chat_feed(exercise_id, since: str | None = None, until: str | None = None, limit: int = 200) -> dict:
+def build_chat_feed(
+    exercise_id,
+    since: str | None = None,
+    until: str | None = None,
+    limit: int = 200,
+    visible_factions: frozenset[str] | None = None,
+) -> dict:
     """通聯單一流投影（#213 b1）—— GET /api/chat 的回應主體。
 
     取最新 `limit` 筆，**chronological 升序**（oldest→newest）供右欄單流由上往下顯示。
@@ -81,7 +110,7 @@ def build_chat_feed(exercise_id, since: str | None = None, until: str | None = N
     回 {meta: {count, truncated}, chats: [{id, sender_uid, callsign, message, group, lat, lon, t}]}。
     """
     probe = limit + 1
-    rows = chat_repo.list_chats(exercise_id, since=since, until=until, cap=probe)  # newest-first
+    rows = chat_repo.list_chats(exercise_id, since=since, until=until, cap=probe, visible_factions=visible_factions)
     truncated = len(rows) > limit
     rows = rows[:limit]
     rows.reverse()  # newest-first → 顯示用升序

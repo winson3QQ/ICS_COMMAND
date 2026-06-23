@@ -15,8 +15,8 @@ def insert_chat(chat: ChatIn) -> dict:
     payload = chat.model_dump()
     with get_conn() as conn:
         cur = conn.execute(
-            'INSERT INTO chats (sender_uid, callsign, message, "group", lat, lon, time, exercise_id) '
-            "VALUES (:sender_uid, :callsign, :message, :group, :lat, :lon, :time, :exercise_id)",
+            'INSERT INTO chats (sender_uid, callsign, message, "group", lat, lon, time, exercise_id, faction) '
+            "VALUES (:sender_uid, :callsign, :message, :group, :lat, :lon, :time, :exercise_id, :faction)",
             payload,
         )
         rid = cur.lastrowid
@@ -34,7 +34,13 @@ def chat_exists(sender_uid: str) -> bool:
     return row is not None
 
 
-def list_chats(exercise_id, since: str | None = None, until: str | None = None, cap: int = 200) -> list[dict]:
+def list_chats(
+    exercise_id,
+    since: str | None = None,
+    until: str | None = None,
+    cap: int = 200,
+    visible_factions: frozenset[str] | None = None,
+) -> list[dict]:
     """列出通聯（chats）——GET /api/chat（#213 b1）唯讀投影。
 
     時間以 COALESCE(time, received_at) 為準（client 未帶 event 時間時用入庫時間）。
@@ -58,6 +64,15 @@ def list_chats(exercise_id, since: str | None = None, until: str | None = None, 
     if until is not None:
         clauses.append(f"{tcol} <= ?")
         params.append(until)
+    # #343：紅藍隔離——chats 全為 tak 來源（GeoChat），故規則化簡為 faction IN (...)（NULL 排除
+    # = fail-closed）。None=不過濾（sysadmin/開關關）；空集=看不到任何通聯（1=0，避非法 IN ()）。
+    if visible_factions is not None:
+        if not visible_factions:
+            clauses.append("1 = 0")
+        else:
+            ph = ",".join("?" * len(visible_factions))
+            clauses.append(f"faction IN ({ph})")  # nosec B608 — ph 僅 ? 佔位
+            params.extend(sorted(visible_factions))
     sql = f'SELECT id, sender_uid, callsign, message, "group", lat, lon, {tcol} AS t FROM chats'  # nosec B608 — tcol 常數
     if clauses:
         sql += " WHERE " + " AND ".join(clauses)

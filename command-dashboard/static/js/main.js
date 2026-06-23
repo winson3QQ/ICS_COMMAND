@@ -211,6 +211,8 @@ document.addEventListener('click', function (e) {
     case 'adm-revoke-tak-device': import('./auth.js').then(m => m.admRevokeTakDevice(btn.dataset.certId)); break;
     case 'adm-delete-tak-device': import('./auth.js').then(m => m.admDeleteTakDevice(btn.dataset.certId)); break;
     case 'adm-download-rootca': import('./auth.js').then(m => m.admDownloadRootCa()); break;
+    case 'adm-faction-classify': import('./auth.js').then(m => m.admClassifyFaction(btn.dataset.clientKey, btn.dataset.faction, btn.dataset.callsign)); break;
+    case 'adm-faction-override': import('./auth.js').then(m => m.admOverrideFaction()); break;
     case 'unlockPinLock':  unlockPinLock(); break;
     case 'adm-toggle-edit': import('./auth.js').then(m => m.admToggleEdit(btn.dataset.username)); break;
     case 'adm-save-edit': import('./auth.js').then(m => m.admSaveEdit(btn.dataset.username)); break;

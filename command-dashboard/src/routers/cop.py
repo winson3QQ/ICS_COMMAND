@@ -36,8 +36,9 @@ from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 from starlette.websockets import WebSocketDisconnect
 
-from auth.role_enum import COMMAND_ROLES, READ_ROLES, is_role_allowed
+from auth.role_enum import COMMAND_ROLES, READ_ROLES, is_role_allowed, visible_factions_for_session
 from auth.service import check_session
+from core.config import FACTION_ISOLATION_ENABLED
 from core.input_safety import validate_no_unsafe_strings
 from repositories import cop_entity_repo, event_marker_repo, exercise_repo
 from repositories._helpers import NULL_SCOPE, audit
@@ -150,6 +151,8 @@ async def _broadcast(op: str, entity: dict) -> None:
             "entity": entity,
         },
         exercise_id=entity.get("exercise_id"),
+        source=entity.get("source"),  # #343：faction 過濾（manual/command 非 tak → 恆送藍方）
+        faction=entity.get("faction"),
     )
 
 
@@ -200,6 +203,13 @@ def _audit_cop(action: str, actor: str, entity: dict, extra: dict | None = None)
 # ── read ─────────────────────────────────────────────────────────────────────
 
 
+def _visible_factions(request: Request) -> frozenset[str] | None:
+    """#343：開關開時回此 session 可見 faction（sysadmin→None 全見）；開關關→None（完全不過濾）。"""
+    if not FACTION_ISOLATION_ENABLED:
+        return None
+    return visible_factions_for_session(request.state.session)
+
+
 @router.get("/entities")
 def list_entities(
     request: Request,
@@ -214,14 +224,15 @@ def list_entities(
     #267：include_standing（限 COMMAND）→ active 場再疊加 NULL 常駐 entity，與 WS `?standing=1`
     對等（否則 resync 會把 WS 推來的常駐單位刪掉＝鬼影）。"""
     scope = resolve_scope(request.state.session, exercise_id)
+    vf = _visible_factions(request)  # #343：紅藍過濾（None=全見/開關關）
     entities = cop_entity_repo.list_cop_entities(
-        source=source, exercise_id=scope, include_stale=include_stale, limit=limit
+        source=source, exercise_id=scope, include_stale=include_stale, limit=limit, visible_factions=vf
     )
     # int scope＝有 active 場；疊加常駐（NULL_SCOPE）。已是 NULL_SCOPE（無 active）者本就看得到常駐、不疊。
     # SECURITY：限 COMMAND_ROLES（對齊 WS gate）；非指揮層帶 include_standing 也忽略。
     if include_standing and isinstance(scope, int) and is_role_allowed(request.state.session, COMMAND_ROLES):
         standing = cop_entity_repo.list_cop_entities(
-            source=source, exercise_id=NULL_SCOPE, include_stale=include_stale, limit=limit
+            source=source, exercise_id=NULL_SCOPE, include_stale=include_stale, limit=limit, visible_factions=vf
         )
         seen = {e["uid"] for e in entities}
         entities = entities + [e for e in standing if e["uid"] not in seen]
@@ -242,6 +253,11 @@ def get_entity(uid: str, request: Request, response: Response):
         in_scope = (ent_ex is None) if scope is NULL_SCOPE else (ent_ex == scope)
         if not in_scope:
             raise HTTPException(404, f"entity 不存在：{uid}")
+    # #343：faction 隔離——tak 來源且不在可見 faction（含 NULL fail-closed）→ 404（不洩漏存在性）。
+    # 非 tak（manual/command 自建）不受限（#146 所有權）。sysadmin / 開關關 → vf=None 不過濾。
+    vf = _visible_factions(request)
+    if vf is not None and ent.get("source") == "tak" and ent.get("faction") not in vf:
+        raise HTTPException(404, f"entity 不存在：{uid}")
     response.headers["ETag"] = _etag(ent["version_clock"])
     return ent
 
@@ -253,10 +269,12 @@ def list_squads(request: Request, exercise_id: int | None = None):
     P2-06d（issue #128）。RBAC：走 allowed_roles_for GET 預設分支 → READ_ROLES（observer 可讀）。
     P1-14：exercise_id 由 resolve_scope 守門（不直接信 query param；歷史場限 COMMAND_ROLES）。
     team_color IS NULL 的 entity 聚成「未分隊」組（team_color=null，排列首）。
+    #343：套 faction 過濾（否則藍方經聚合 centroid/兵力推得紅軍位置）。
     """
     return {
         "squads": cop_entity_repo.aggregate_squads(
             exercise_id=resolve_scope(request.state.session, exercise_id),
+            visible_factions=_visible_factions(request),
         )
     }
 
@@ -492,11 +510,18 @@ async def cop_ws_updates(websocket: WebSocket):
     # SECURITY：**限 COMMAND_ROLES**（對齊 resolve_scope 看歷史的權限模型）。非指揮層即使帶
     # standing=1 也強制 False —— 不讓低權限在演習中窺看常駐/real-world 單位。仍不跨演習（見 wants）。
     include_standing = websocket.query_params.get("standing") == "1" and is_role_allowed(sess, COMMAND_ROLES)
+    # #343：handshake 時依角色定可見 faction（sysadmin→None 全見；藍軍→{blue,neutral}）。
+    # 開關關 → None（完全不過濾）。整段 WS 生命週期固定（角色不會中途變），與 REST 同映射。
+    visible_factions = visible_factions_for_session(sess) if FACTION_ISOLATION_ENABLED else None
 
     # echo 常數協定（不含 token）；client 必須 offer 它，否則 handshake 不成立
     await websocket.accept(subprotocol=_WS_SUBPROTOCOL)
     conn = await cop_hub.connect(
-        websocket, exercise_id, follows_active=follows_active, include_standing=include_standing
+        websocket,
+        exercise_id,
+        follows_active=follows_active,
+        include_standing=include_standing,
+        visible_factions=visible_factions,
     )
     try:
         # P1-14：exercise_id 可能是 NULL_SCOPE（object，無 active＝實戰池），不可序列化 → 送 None

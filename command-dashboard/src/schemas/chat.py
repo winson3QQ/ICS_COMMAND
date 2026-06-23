@@ -13,11 +13,12 @@ class ChatIn(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    sender_uid:  str = Field(..., min_length=1)   # CoT event uid（發話端）
-    callsign:    str | None = None                # 發話呼號
-    message:     str = ""                         # 通聯內文（**已 escape**）
-    group:       str | None = None                # 聊天室 / 群組（__chat chatroom）
-    lat:         float | None = None
-    lon:         float | None = None
-    time:        str | None = None                # event 時間 ISO 8601
-    exercise_id: int | None = None                # 綁 active 場（無 → NULL）
+    sender_uid: str = Field(..., min_length=1)  # CoT event uid（發話端）
+    callsign: str | None = None  # 發話呼號
+    message: str = ""  # 通聯內文（**已 escape**）
+    group: str | None = None  # 聊天室 / 群組（__chat chatroom）
+    lat: float | None = None
+    lon: float | None = None
+    time: str | None = None  # event 時間 ISO 8601
+    exercise_id: int | None = None  # 綁 active 場（無 → NULL）
+    faction: str | None = None  # #343：發話端陣營 blue/red/neutral；NULL=未分類→fail-closed

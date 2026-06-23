@@ -14,16 +14,14 @@ class TestListExercises:
         assert r.json() == []
 
     def test_after_create(self, client, auth):
-        client.post("/api/exercises",
-                    json={"name": "測試演練", "type": "ttx"}, headers=auth)
+        client.post("/api/exercises", json={"name": "測試演練", "type": "ttx"}, headers=auth)
         r = client.get("/api/exercises", headers=auth)
         assert len(r.json()) == 1
 
 
 class TestCreateExercise:
     def test_minimal_fields(self, client, auth):
-        r = client.post("/api/exercises",
-                        json={"name": "最小欄位演練", "type": "ttx"}, headers=auth)
+        r = client.post("/api/exercises", json={"name": "最小欄位演練", "type": "ttx"}, headers=auth)
         assert r.status_code == 200
         body = r.json()
         assert body["name"] == "最小欄位演練"
@@ -51,21 +49,14 @@ class TestCreateExercise:
 
 class TestActivateExercise:
     def test_activate(self, client, auth):
-        ex_id = client.post("/api/exercises",
-                            json={"name": "E", "type": "ttx"},
-                            headers=auth).json()["id"]
-        r = client.post(f"/api/exercises/{ex_id}/activate",
-                        json={}, headers=auth)
+        ex_id = client.post("/api/exercises", json={"name": "E", "type": "ttx"}, headers=auth).json()["id"]
+        r = client.post(f"/api/exercises/{ex_id}/activate", json={}, headers=auth)
         assert r.status_code == 200
         assert r.json()["status"] == "active"
 
     def test_mutex_second_activate_fails(self, client, auth):
-        ex1_id = client.post("/api/exercises",
-                             json={"name": "E1", "type": "ttx"},
-                             headers=auth).json()["id"]
-        ex2_id = client.post("/api/exercises",
-                             json={"name": "E2", "type": "ttx"},
-                             headers=auth).json()["id"]
+        ex1_id = client.post("/api/exercises", json={"name": "E1", "type": "ttx"}, headers=auth).json()["id"]
+        ex2_id = client.post("/api/exercises", json={"name": "E2", "type": "ttx"}, headers=auth).json()["id"]
         client.post(f"/api/exercises/{ex1_id}/activate", json={}, headers=auth)
         r = client.post(f"/api/exercises/{ex2_id}/activate", json={}, headers=auth)
         assert r.status_code in (400, 409)
@@ -84,9 +75,7 @@ class TestArchiveExercise:
 
     def test_can_activate_after_archive(self, client, auth, active_exercise):
         ex1_id = active_exercise["id"]
-        ex2_id = client.post("/api/exercises",
-                             json={"name": "E2", "type": "ttx"},
-                             headers=auth).json()["id"]
+        ex2_id = client.post("/api/exercises", json={"name": "E2", "type": "ttx"}, headers=auth).json()["id"]
         client.post(f"/api/exercises/{ex1_id}/archive", json={}, headers=auth)
         r = client.post(f"/api/exercises/{ex2_id}/activate", json={}, headers=auth)
         assert r.status_code == 200
@@ -95,9 +84,7 @@ class TestArchiveExercise:
 class TestExercisesStrict:
     def test_create_then_list_contains_exact_id(self, client, auth):
         """新建演練後，list 應包含完全相同的 ID 與初始 status"""
-        created = client.post("/api/exercises",
-                              json={"name": "Strict Exercise", "type": "ttx"},
-                              headers=auth).json()
+        created = client.post("/api/exercises", json={"name": "Strict Exercise", "type": "ttx"}, headers=auth).json()
 
         listing = client.get("/api/exercises", headers=auth).json()
         found = [ex for ex in listing if ex["id"] == created["id"]]
@@ -107,12 +94,8 @@ class TestExercisesStrict:
 
     def test_second_activate_returns_exactly_409(self, client, auth):
         """第二次 activate（mutex 衝突）應精確回傳 409，不是 400"""
-        ex1_id = client.post("/api/exercises",
-                             json={"name": "S1", "type": "ttx"},
-                             headers=auth).json()["id"]
-        ex2_id = client.post("/api/exercises",
-                             json={"name": "S2", "type": "ttx"},
-                             headers=auth).json()["id"]
+        ex1_id = client.post("/api/exercises", json={"name": "S1", "type": "ttx"}, headers=auth).json()["id"]
+        ex2_id = client.post("/api/exercises", json={"name": "S2", "type": "ttx"}, headers=auth).json()["id"]
 
         r1 = client.post(f"/api/exercises/{ex1_id}/activate", json={}, headers=auth)
         assert r1.status_code == 200
@@ -129,21 +112,27 @@ class TestExercisesStrict:
 class TestAAREntries:
     def test_create_aar(self, client, auth, active_exercise):
         ex_id = active_exercise["id"]
-        r = client.post(f"/api/exercises/{ex_id}/aar",
-                        json={"category": "well", "content": "通訊順暢",
-                              "created_by": "admin"},
-                        headers=auth)
+        r = client.post(
+            f"/api/exercises/{ex_id}/aar",
+            json={"category": "well", "content": "通訊順暢", "created_by": "admin"},
+            headers=auth,
+        )
         assert r.status_code == 200
         assert r.json()["id"] is not None
 
     def test_list_aar(self, client, auth, active_exercise):
         ex_id = active_exercise["id"]
-        client.post(f"/api/exercises/{ex_id}/aar",
-                    json={"category": "well", "content": "A", "created_by": "admin"},
-                    headers=auth)
-        client.post(f"/api/exercises/{ex_id}/aar",
-                    json={"category": "improve", "content": "B", "created_by": "admin"},
-                    headers=auth)
+        client.post(
+            f"/api/exercises/{ex_id}/aar",
+            json={"category": "well", "content": "A", "created_by": "admin"},
+            headers=auth,
+        )
+        client.post(
+            f"/api/exercises/{ex_id}/aar",
+            json={"category": "improve", "content": "B", "created_by": "admin"},
+            headers=auth,
+        )
+        client.post(f"/api/exercises/{ex_id}/archive", headers=auth)  # #343 §6：GET aar 須演習結束（POST 不限）
         r = client.get(f"/api/exercises/{ex_id}/aar", headers=auth)
         assert r.status_code == 200
         assert len(r.json()) == 2

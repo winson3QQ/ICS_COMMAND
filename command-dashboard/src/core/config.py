@@ -88,15 +88,18 @@ WARNING_THRESHOLD_SECONDS: int = int(os.getenv("ICS_WARNING_THRESHOLD_SECONDS", 
 # PATCH 2.13.3：AAR timeline track payload 多帶 cot_type（#335）+ _record_track 濾 (0,0) 壞點（#3）。
 # MINOR 2.14.0：AAR timeline 全源完整——polygon/route 區域生命週期（#338）+ 事件帶 marker/位置歷史
 #               + 敵我接觸（kind=contact）source（#339）；audit detail 記區域整包 attributes 快照。
-APP_VERSION = "2.14.0"
+# MINOR 2.15.0：紅藍陣營隔離（#343/P2-37）——client_faction 分類 + cop_entities.faction（v31）+
+#               chats.faction（v32）+ admin /api/admin/factions/* + 三層 server-side 強制點 + AAR 互斥閘。
+APP_VERSION = "2.15.0"
 
 # CMD_VERSION：前端 UI 功能版本（不同於後端 SemVer APP_VERSION；規則見 CLAUDE.md 版號規則）
 # 兩軌版本命名，不可混用。由 /api/version 提供給前端，是唯一 source-of-truth；release 時更新此值。
 # v1.0.0：拆分自 ICS_DMAS 後首個完整可用形態（MapLibre 地圖引擎全換 P1-10b + PWA 移除 P1-11
 #         + 演習/放置/稽核 UI P1-13/14/16/#93 + 分類編輯器 #66）→ 0.x 畢業為 MAJOR 紀元。
 CMD_VERSION: str = os.getenv(
-    "CMD_VERSION", "v1.10.0"
-)  # MINOR v1.10.0：AAR 回放上圖功能組完整——區域（#338）+ 事件/敵我接觸（#339，重用 live milsymbol/
+    "CMD_VERSION", "v1.11.0"
+)  # MINOR v1.11.0：admin 後台「紅藍」分類 tab（#343/P2-37）——列連線 client + 🔵🔴⚪ 分類 + 單物件 override。
+# MINOR v1.10.0：AAR 回放上圖功能組完整——區域（#338）+ 事件/敵我接觸（#339，重用 live milsymbol/
 #  NAPSG 符號、隨 T 移動）；B1-B3 含 iPad/iPhone 觸控 human verify 全齊（#201），故進 frontend MINOR。
 # PATCH v1.9.3：桌機憑證 UX（#327）——「下載 root CA」鈕 + .p12 標 Windows/iMac/Android + 信任提示。
 # PATCH v1.9.2：TAK tab 已撤銷裝置證列加「刪除」鈕（#325；刪紀錄≠撤證）。
@@ -284,6 +287,12 @@ TAK_MARTI_WRITE_KEY: str = os.getenv("TAK_MARTI_WRITE_KEY", "")  # 寫 cert 私�
 TAK_RESYNC_LOOKBACK_S: float = float(os.getenv("TAK_RESYNC_LOOKBACK_S", "7200"))  # 預設 2h（known-good）
 # (重)連線後是否自動跑一次 resync 補回 streaming 漏掉的靜態標記（#173 主訴求）。
 TAK_RESYNC_ON_CONNECT: bool = os.getenv("TAK_RESYNC_ON_CONNECT", "true").lower() == "true"
+
+# ── 紅藍陣營隔離（#343）──────────────────────────────────────────────────────
+# 強制過濾總開關。預設 OFF：上線即 fail-closed（未分類 tak entity 對 commander 全部消失），
+# 故須演習前先把藍軍 roster 分類完、再開此旗標（避免「藍軍單位在分類前集體隱形」）。
+# OFF 時 list/WS 完全不帶 visible_factions → 行為與隔離前完全一致（零風險漸進啟用）。
+FACTION_ISOLATION_ENABLED: bool = os.getenv("ICS_FACTION_ISOLATION", "false").lower() == "true"
 
 # ── COP 軌跡抽樣（P2-06a / #120）──────────────────────────────────────────────
 # cop_entity_tracks per-uid 最短寫入間隔（秒）。ATAK 可 >0.5Hz，不節流則每筆位置更新

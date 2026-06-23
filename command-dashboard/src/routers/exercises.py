@@ -11,7 +11,15 @@ from repositories.aar_repo import create_aar_entry, get_aar_entries
 from repositories.cop_entity_repo import get_cop_entity, list_tracks_by_exercise, update_cop_entity_cas
 from repositories.exercise_repo import delete_exercise, update_exercise_status
 from schemas.exercise import AAREntryIn, EnrollIn, ExerciseCreateIn, ExerciseStatusIn
-from services.exercise_service import archive, create, current_exercise_id, get, list_all, set_active
+from services.exercise_service import (
+    archive,
+    create,
+    current_exercise_id,
+    get,
+    list_all,
+    require_no_active_exercise,
+    set_active,
+)
 from services.kpi_service import build_kpis
 from services.realtime_hub import cop_hub
 from services.timeline_service import build_timeline
@@ -94,12 +102,24 @@ async def _l2_archive_backup(exercise: dict, operator: str) -> str | None:
         res = await asyncio.to_thread(
             uds.create_backup, DATA_DIR, DATA_DIR / "backups", trigger="archive", exercise=ex_meta
         )
-        audit(operator, None, "user_data_backup_created", "system", res.path.name,
-              {"trigger": "archive", "exercise_id": exercise.get("id")})
+        audit(
+            operator,
+            None,
+            "user_data_backup_created",
+            "system",
+            res.path.name,
+            {"trigger": "archive", "exercise_id": exercise.get("id")},
+        )
         return res.path.name
     except Exception:
-        audit(operator, None, "user_data_backup_failed", "system", "data",
-              {"trigger": "archive", "exercise_id": exercise.get("id")})
+        audit(
+            operator,
+            None,
+            "user_data_backup_failed",
+            "system",
+            "data",
+            {"trigger": "archive", "exercise_id": exercise.get("id")},
+        )
         return None
 
 
@@ -165,12 +185,18 @@ async def enroll(exercise_id: int, body: EnrollIn, request: Request):
 
     # 雙廣播：舊 scope 連線掉、新 scope 連線加。delete 帶 CAS 後 vc（保證 ≥ 任何連線快取值，含 PLI
     # 撞 vc 重試後的值 → 不會被 _applyDelete 當 stale 丟掉而殘留鬼影）。
+    # #343：帶 source/faction → enroll 的若是紅軍 tak 單位，create 不會漏推給藍方連線。
     await cop_hub.broadcast(
-        {"op": "delete", "uid": body.uid, "version_clock": new_entity["version_clock"]}, exercise_id=old_scope
+        {"op": "delete", "uid": body.uid, "version_clock": new_entity["version_clock"]},
+        exercise_id=old_scope,
+        source=new_entity.get("source"),
+        faction=new_entity.get("faction"),
     )
     await cop_hub.broadcast(
         {"op": "create", "uid": body.uid, "version_clock": new_entity["version_clock"], "entity": new_entity},
         exercise_id=new_entity.get("exercise_id"),
+        source=new_entity.get("source"),
+        faction=new_entity.get("faction"),
     )
     return new_entity
 
@@ -201,6 +227,7 @@ def add_aar(exercise_id: int, body: AAREntryIn, request: Request):
 
 @router.get("/{exercise_id}/aar")
 def get_aar(exercise_id: int):
+    require_no_active_exercise()  # #343 §6：演習進行中 AAR 全關（含白隊）
     return get_aar_entries(exercise_id)
 
 
@@ -233,6 +260,7 @@ def get_tracks(
     回 [{uid, t, lat, lon, hae, heading_deg, speed_mps}]，t 升序，分頁。
     from/to 接完整 ISO 8601 或純日期（純日期補當天起訖，見 _range_bound）。
     """
+    require_no_active_exercise()  # #343 §6：回放/PII 出口演習進行中關閉（防偷看 live 紅軍軌跡）
     if not get(exercise_id):
         raise HTTPException(404, "演練不存在")
     return list_tracks_by_exercise(
@@ -263,6 +291,7 @@ def get_timeline(
     truncated=true → 呼叫端縮 from/to 時間窗重查（不靜默截斷）。
     設計（事件流、不落盤快照）+ 業界調查見 #199。
     """
+    require_no_active_exercise()  # #343 §6：時間軸含紅軍軌跡/通聯 → 演習進行中關閉
     if not get(exercise_id):
         raise HTTPException(404, "演練不存在")
     return build_timeline(
@@ -283,6 +312,7 @@ def get_kpis(exercise_id: int):
     RBAC：COMMAND_ROLES（中央 gate `/api/exercises/*` 非 DELETE；統計含演習表現資訊，
     row 規格明定不暴露 public API）。量不出的指標回 null+reason（#204 誠實邊界）。
     """
+    require_no_active_exercise()  # #343 §6：KPI 為演習後分析 → 進行中關閉
     if not get(exercise_id):
         raise HTTPException(404, "演練不存在")
     return build_kpis(exercise_id)

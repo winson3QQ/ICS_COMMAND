@@ -19,6 +19,7 @@ import uuid
 
 from fastapi import APIRouter, HTTPException, Request
 
+from auth.role_enum import visible_factions_for_session
 from core import config
 from core.input_safety import validate_no_unsafe_strings
 from repositories import cop_entity_repo
@@ -124,6 +125,12 @@ async def share_entity_to_tak(uid: str, request: Request):
     operator = request.state.session["username"]
     entity = cop_entity_repo.get_cop_entity(uid)
     if entity is None:
+        raise HTTPException(404, f"COP entity 不存在：{uid}")
+    # #343 紅藍隔離：藍方不可分享/操作其看不到的 tak entity（與 cop.get_entity 同檢查）——
+    # 否則 share 成了存在性 oracle + 讓藍方對紅軍 entity 越權動作（即使回應不含 entity 資料）。
+    # 只 source='tak' 受限（manual/command 自建恆可分享）；sysadmin / 開關關 → vf=None 不過濾。
+    vf = visible_factions_for_session(request.state.session) if config.FACTION_ISOLATION_ENABLED else None
+    if vf is not None and entity.get("source") == "tak" and entity.get("faction") not in vf:
         raise HTTPException(404, f"COP entity 不存在：{uid}")
 
     # entity → CoT 失敗（畸形幾何：kind=polygon/route 但 vertices 不足/越界）→ 乾淨 422，
