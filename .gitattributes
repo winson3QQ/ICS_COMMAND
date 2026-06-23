@@ -1,3 +1,9 @@
+# Catch-all：所有文字檔 repo 內存 LF、且**所有平台**（含 Windows）工作區也 checkout 成 LF。
+# eol=lf 讓工作區 EOL 恆等於 repo EOL → autocrlf 無物可轉 → 根除「status 說改了但 diff 沒改」的
+# CRLF 幻影與 pre-commit stash 衝突。text=auto 會自動辨識二進位（含 NUL）不轉。
+# 各 checkout 另設 core.autocrlf=false（明確規則已蓋過它，此為保險）。
+* text=auto eol=lf
+
 # Shell 腳本一律 LF — 部署目標是 Linux/Mac/Pi，CRLF 會讓 shebang 變 /bin/bash^M 而執行失敗。
 # （本 repo 主要在 Mac 開發，但有 Windows 開發機；無此規則時 Windows commit 會帶入 CRLF。）
 *.sh text eol=lf
