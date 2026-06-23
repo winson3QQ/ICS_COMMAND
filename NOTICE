@@ -1,0 +1,48 @@
+ICS_Command 第三方素材與授權聲明（Third-Party Notices）
+═══════════════════════════════════════════════════════════════════════════
+本檔為「散布時隨產品提供」之歸屬聲明，滿足各第三方授權之 attribution 要求。
+逐元件之詳細說明（用途、vendored 位置、修改細節）見 THIRD_PARTY_LICENSES.md。
+各授權之完整條文置於 licenses/ 目錄（見 licenses/README.md）。
+
+本產品包含或對接下列受各自授權規範之第三方元件，著作權歸其原作者所有。
+═══════════════════════════════════════════════════════════════════════════
+
+── 地圖資料 ──────────────────────────────────────────────────────────────
+本產品之底圖衍生自 OpenStreetMap。
+  © OpenStreetMap 貢獻者 — 依 Open Database License (ODbL) v1.0 授權
+  https://www.openstreetmap.org/copyright
+  https://opendatacommons.org/licenses/odbl/1-0/
+  注意：地圖畫面須持續顯示上述出處；若散布衍生之向量圖磚資料庫
+  （如 taiwan.pmtiles），該資料庫須依 ODbL share-alike 條款提供。
+
+── 符號素材 ──────────────────────────────────────────────────────────────
+NAPSG Incident Symbology — © NAPSG Foundation，CC BY 4.0
+  https://creativecommons.org/licenses/by/4.0/
+  修改聲明：部分符號已移除原始底框、調整 viewBox 並改為單色渲染
+  （詳見 THIRD_PARTY_LICENSES.md 與 docs/design/event-symbology-mapping.md）。
+MIL-STD-2525 符號由 milsymbol 產生 — © Måns Beckman，MIT License。
+
+── 字型 ─────────────────────────────────────────────────────────────────
+JetBrains Mono — © 2020 The JetBrains Mono Project Authors
+  SIL Open Font License 1.1 — https://scripts.sil.org/OFL
+
+── 前端函式庫 ────────────────────────────────────────────────────────────
+MapLibre GL JS — BSD-3-Clause
+PMTiles            — BSD-3-Clause
+jsQR              — Apache-2.0
+
+── 後端／執行期 ──────────────────────────────────────────────────────────
+FastAPI, Pydantic                         — MIT
+Uvicorn, Starlette                        — BSD-3-Clause
+cryptography                              — Apache-2.0 / BSD
+defusedxml                                — PSF License
+aiohttp                                   — Apache-2.0
+pytak, takproto                           — Apache-2.0
+fido2                                     — BSD-2-Clause
+SQLCipher Community Edition (© Zetetic LLC) — BSD-style，經 sqlcipher3 (MIT/BSD)
+
+── 互通對接（非隨本產品散布）──────────────────────────────────────────────
+TAK Server 為獨立之第三方元件，依 GNU GPLv3 及 tak.gov 使用條款發布，
+不隨本產品散布，由使用者自行取得與佈署。本產品僅透過公開之
+Cursor-on-Target / Marti REST 介面與其互通（程序分離，無連結／衍生關係）。
+「TAK」「ATAK」「iTAK」為其各自權利人之商標；本產品與其權利人無從屬或背書關係。
