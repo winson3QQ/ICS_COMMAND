@@ -3,9 +3,11 @@
 多數寬鬆授權（BSD / MIT / Apache / OFL / CC BY / ODbL）要求**散布時隨附授權副本**。
 本目錄收納各第三方元件之**授權全文**，供 NOTICE 引用、隨產品交付。
 
-## 待補全文檔（骨架）
+## 已收錄之授權全文（隨產品交付）
 
-把下列各授權之官方全文存成對應檔名（純文字），交付時隨產品打包：
+下列各授權全文已置於本目錄（多數取自 SPDX 權威純文字；OFL 取自隨附字型
+`static/fonts/LICENSE.txt`；PSF 取自 CPython LICENSE；SQLCipher 取自 Zetetic 官方）。
+MIT / BSD 模板中之 `<year>`、`<copyright holders>` 為授權樣板原有佔位，非缺漏。
 
 | 檔名 | 授權 | 對應元件 | 官方全文 |
 |---|---|---|---|
