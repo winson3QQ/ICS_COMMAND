@@ -282,6 +282,19 @@ TAK_MARTI_WRITE_KEY: str = os.getenv("TAK_MARTI_WRITE_KEY", "")  # 寫 cert 私�
 TAK_MARTI_ADMIN_CERT: str = os.getenv("TAK_MARTI_ADMIN_CERT", "")  # admin cert PEM（fullchain）
 TAK_MARTI_ADMIN_KEY: str = os.getenv("TAK_MARTI_ADMIN_KEY", "")  # admin cert 私鑰 PEM
 
+# ── #344：TAK 裝置 enrollment registrar（發證即註冊 managed user + 初始群）────────────
+# #315 發證原本只簽證、不註冊 → 裝置一連落匿名 __ANON__ → PR #363 的 REST update-groups 改不動
+# （faction 分類對它靜默跳過）= 系統性缺口。本機制在發證時把裝置證 fingerprint 註冊成 TAK managed
+# user + 初始群 neutral（fail-closed），之後 admin 紅藍分類走 REST update-groups 即生效。
+# 為何要 registrar 而非 ICS 自己跑：usermod/certmod 是 **server-coupled**（連 takserver 本機 IPC 熱
+# 套用），ICS（獨立 netns、無 Java）跑會 timeout；裸寫 UserAuthenticationFile.xml 跑著的 server 不認
+# 且會被 re-marshal 清掉（2026-06-23 PoC 實證，memory tak-faction-group-identifier）。解法＝與 takserver
+# **共享 network namespace** 的 registrar sidecar，經**共享卷檔佇列**收 ICS 請求後本機跑 usermod。
+# 空 queue dir → enrollment 停用（發證仍出證、但落匿名待 roster 補；不影響 #343 視圖層）。
+TAK_ENROLL_QUEUE_DIR: str = os.getenv("TAK_ENROLL_QUEUE_DIR", "")  # 與 registrar 共享的卷掛載點，如 /registrar-queue
+TAK_ENROLL_DEFAULT_GROUP: str = os.getenv("TAK_ENROLL_DEFAULT_GROUP", "neutral")  # 初始群（fail-closed，未分類即孤立）
+TAK_ENROLL_TIMEOUT_S: float = float(os.getenv("TAK_ENROLL_TIMEOUT_S", "8.0"))  # 等 registrar 結果逾時（best-effort）
+
 # ── Marti 權威 resync（P2-14 (C) / #194 / #173）────────────────────────────────
 # :8089 串流不對重連者重播既有靜態標記 → ICS 重啟/斷線會漏 server 已持久化的 marker。
 # 解法：拉 Marti `GET /cot/sa?start=&end=` 權威快照逐筆補進 cop_entities（只 upsert 不刪）。

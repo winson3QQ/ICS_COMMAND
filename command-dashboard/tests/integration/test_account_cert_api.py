@@ -227,7 +227,7 @@ class TestTakDeviceCert:
         monkeypatch.setattr(config, "TAK_DEVICE_CONNECT_HOST", "1.2.3.4")
         monkeypatch.setattr(config, "TAK_DEVICE_CA_DIR", str(tmp_path))
         monkeypatch.setattr(
-            tdc, "build_device_package", lambda cn, mode, host, port, ca_dir: (b"ZIP-DP-BYTES", "S3R1AL")
+            tdc, "build_device_package", lambda cn, mode, host, port, ca_dir: (b"ZIP-DP-BYTES", "S3R1AL", "FP:00")
         )
         r = client.post("/api/admin/tak/device-cert?callsign=atak-01&mode=atak", headers=auth)
         assert r.status_code == 200, r.text
@@ -247,7 +247,7 @@ class TestTakDeviceCert:
         (tmp_path / "tak-ca.pem").write_text("PEM", encoding="ascii")
         monkeypatch.setattr(config, "TAK_DEVICE_CONNECT_HOST", "1.2.3.4")
         monkeypatch.setattr(config, "TAK_DEVICE_CA_DIR", str(tmp_path))
-        monkeypatch.setattr(tdc, "build_device_package", lambda *a: (b"Z", "SER-X"))
+        monkeypatch.setattr(tdc, "build_device_package", lambda *a: (b"Z", "SER-X", "FP:00"))
         client.post("/api/admin/tak/device-cert?callsign=itak-rev&mode=aware", headers=auth)
         rec = next(
             x for x in client.get("/api/admin/tak/device-certs", headers=auth).json() if x["callsign"] == "itak-rev"
@@ -270,7 +270,7 @@ class TestTakDeviceCert:
         (tmp_path / "tak-ca.pem").write_text("PEM", encoding="ascii")
         monkeypatch.setattr(config, "TAK_DEVICE_CONNECT_HOST", "1.2.3.4")
         monkeypatch.setattr(config, "TAK_DEVICE_CA_DIR", str(tmp_path))
-        monkeypatch.setattr(tdc, "build_device_package", lambda *a: (b"ZIP", "SER-CJK"))
+        monkeypatch.setattr(tdc, "build_device_package", lambda *a: (b"ZIP", "SER-CJK", "FP:00"))
         r = client.post("/api/admin/tak/device-cert", params={"callsign": "主教", "mode": "aware"}, headers=auth)
         assert r.status_code == 200, r.text  # 關鍵：不是 500
         cd = r.headers.get("content-disposition", "")
@@ -292,7 +292,7 @@ class TestTakDeviceCert:
         (tmp_path / "tak-ca.pem").write_text("PEM", encoding="ascii")
         monkeypatch.setattr(config, "TAK_DEVICE_CONNECT_HOST", "1.2.3.4")
         monkeypatch.setattr(config, "TAK_DEVICE_CA_DIR", str(tmp_path))
-        monkeypatch.setattr(tdc, "build_device_package", lambda *a: (b"Z", "SER-D"))
+        monkeypatch.setattr(tdc, "build_device_package", lambda *a: (b"Z", "SER-D", "FP:00"))
         client.post("/api/admin/tak/device-cert?callsign=itak-del&mode=aware", headers=auth)
         rec = next(
             x for x in client.get("/api/admin/tak/device-certs", headers=auth).json() if x["callsign"] == "itak-del"

@@ -3,8 +3,8 @@
 鎖住 sync_client_faction：
 - 未配置 admin cert → skip（純 ICS 視圖層，不同步）
 - faction 無對應群 → skip
-- device 離線（clientEndPoints 查無 uid）→ skip、不寫
-- 正常：clientEndPoints uid→username → PUT update-groups 帶單一 faction 群 + 補齊三欄
+- device 離線（subscriptions/all 查無 clientUid）→ skip、不寫
+- 正常：subscriptions/all clientUid→username → PUT update-groups 帶單一 faction 群 + 補齊三欄
 - best-effort：TAK 寫錯不 raise（回 synced=False）
 """
 
@@ -58,20 +58,20 @@ def test_skip_when_not_configured(monkeypatch):
 
 
 def test_skip_when_no_group_for_faction(_admin_configured):
-    fc = _admin_configured([{"uid": "UID-1", "username": "dev-1"}])
+    fc = _admin_configured([{"clientUid": "UID-1", "username": "dev-1"}])
     res = asyncio.run(tak_group_sync.sync_client_faction("UID-1", None))  # None faction 無群
     assert res["synced"] is False and not fc.put_calls
 
 
 def test_skip_when_device_offline(_admin_configured):
-    fc = _admin_configured([{"uid": "OTHER", "username": "x"}])  # clientEndPoints 無 UID-1
+    fc = _admin_configured([{"clientUid": "OTHER", "username": "x"}])  # subscriptions/all 無 UID-1
     res = asyncio.run(tak_group_sync.sync_client_faction("UID-1", "blue"))
     assert res["synced"] is False and res["reason"] == "device-offline-or-unknown"
     assert not fc.put_calls  # 離線 → 不寫
 
 
 def test_sync_puts_single_faction_group_with_all_fields(_admin_configured):
-    fc = _admin_configured([{"uid": "UID-1", "username": "dev-1", "callsign": "甲"}])
+    fc = _admin_configured([{"clientUid": "UID-1", "username": "dev-1", "callsign": "甲"}])
     res = asyncio.run(tak_group_sync.sync_client_faction("UID-1", "red"))
     assert res["synced"] is True and res["username"] == "dev-1" and res["group"] == "red"
     assert len(fc.put_calls) == 1
@@ -83,7 +83,7 @@ def test_sync_puts_single_faction_group_with_all_fields(_admin_configured):
 
 
 def test_best_effort_swallows_tak_error(_admin_configured):
-    fc = _admin_configured([{"uid": "UID-1", "username": "dev-1"}], put_raises=TakRestError("boom"))
+    fc = _admin_configured([{"clientUid": "UID-1", "username": "dev-1"}], put_raises=TakRestError("boom"))
     res = asyncio.run(tak_group_sync.sync_client_faction("UID-1", "blue"))
     assert res["synced"] is False and res["reason"].startswith("sync-error:")
     assert fc.closed is True  # 錯誤路徑也關閉
