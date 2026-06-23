@@ -792,8 +792,6 @@ export function closeAdminPanel() {
 }
 
 // #346：演習面板（設定→演習開）。內含 segmented 子分頁 演習管理/紅藍/回放（跟帳號一致）。
-let _exSub = 'manage';
-
 export function openExercisePanel() {
   closeSettings();
   el('exercise-overlay').classList.add('show');
@@ -816,7 +814,6 @@ export function admExerciseSub(sub) {
   if (sub === 'faction' && !_isSysadminSession()) sub = 'manage';
   if (sub === 'aar' && !canUseRealModeControls()) sub = 'manage';
   if (!['manage', 'faction', 'aar'].includes(sub)) sub = 'manage';
-  _exSub = sub;
   document.querySelectorAll('#ex-subtabs .adm-subtab').forEach(t => t.classList.toggle('active', t.dataset.sub === sub));
   const panels = { manage: 'ex-sub-manage', faction: 'adm-panel-faction', aar: 'ex-sub-aar' };
   for (const [k, id] of Object.entries(panels)) {

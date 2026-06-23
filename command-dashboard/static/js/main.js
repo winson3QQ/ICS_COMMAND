@@ -151,9 +151,11 @@ function _refreshAfterExerciseSwitch() {
 document.addEventListener('exercise:switched', () => {
   _refreshAfterExerciseSwitch();
   import('./exercises.js').then(async m => {
-    // 設定面板開著（正在看演習清單）→ 重渲染清單（含 chip），讓刪除/狀態變更即時反映；
-    // 否則只更新 header chip。
-    const panelOpen = document.getElementById('settings-overlay')?.classList.contains('show');
+    // 演習面板開著（正在看演習清單）→ 重渲染清單（含 chip），讓刪除/狀態變更即時反映；
+    // 否則只更新 header chip。#346 後清單搬到 #exercise-overlay（openExercisePanel 會 closeSettings），
+    // 故須看 exercise-overlay；保留 settings-overlay 判斷以防其他殘留入口。
+    const panelOpen = document.getElementById('exercise-overlay')?.classList.contains('show')
+      || document.getElementById('settings-overlay')?.classList.contains('show');
     if (panelOpen) await m.renderExercisePanel(); else await m.initExerciseChip();
     _activeExType = m.activeExerciseType();
     _activeExId = m.activeExerciseId();
