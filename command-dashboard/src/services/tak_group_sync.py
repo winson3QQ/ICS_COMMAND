@@ -18,6 +18,7 @@ reality-check 定案（2026-06-23，活 takserver 實證，見 GitHub #344）：
 from __future__ import annotations
 
 import logging
+import ssl
 
 from core import config
 from services.tak_rest_client import TakRestError, build_tak_rest_client
@@ -66,8 +67,11 @@ async def sync_client_faction(client_key: str, faction: str | None) -> dict:
     group = _FACTION_GROUP.get(faction or "")
     if group is None:
         return {"synced": False, "reason": f"no-group-for-faction:{faction}"}
-    client = _build_admin_client()
+    client = None
     try:
+        # build 放 try 內：cert 檔缺/壞（env 設了但 issue-tak-certs 沒跑 / volume 掛錯）會拋
+        # OSError/ssl.SSLError/ValueError，須一併吞掉走 best-effort，否則衝進 classify → 500（破壞契約）。
+        client = _build_admin_client()
         username = await _username_for_client_key(client, client_key)
         if not username:
             log.info(
@@ -81,8 +85,9 @@ async def sync_client_faction(client_key: str, faction: str | None) -> dict:
         )
         log.info("[tak-group-sync] %s（uid %s）→ TAK group=%s", username, client_key, group)
         return {"synced": True, "reason": "ok", "username": username, "group": group}
-    except TakRestError as exc:
+    except (TakRestError, OSError, ssl.SSLError, ValueError) as exc:
         log.warning("[tak-group-sync] client_key %s → group %s 失敗（best-effort 不中斷）：%s", client_key, group, exc)
-        return {"synced": False, "reason": f"tak-error:{exc}"}
+        return {"synced": False, "reason": f"sync-error:{exc}"}
     finally:
-        await client.close()
+        if client is not None:
+            await client.close()

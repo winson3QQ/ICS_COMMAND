@@ -85,5 +85,19 @@ def test_sync_puts_single_faction_group_with_all_fields(_admin_configured):
 def test_best_effort_swallows_tak_error(_admin_configured):
     fc = _admin_configured([{"uid": "UID-1", "username": "dev-1"}], put_raises=TakRestError("boom"))
     res = asyncio.run(tak_group_sync.sync_client_faction("UID-1", "blue"))
-    assert res["synced"] is False and res["reason"].startswith("tak-error:")
+    assert res["synced"] is False and res["reason"].startswith("sync-error:")
     assert fc.closed is True  # 錯誤路徑也關閉
+
+
+def test_best_effort_swallows_build_error(monkeypatch):
+    """cert 檔缺/壞 → _build_admin_client 拋 OSError → 吞成 synced=False，不冒進 classify（500）。"""
+    monkeypatch.setattr(tak_group_sync.config, "TAK_MARTI_URL", "https://takserver:8443")
+    monkeypatch.setattr(tak_group_sync.config, "TAK_MARTI_ADMIN_CERT", "/missing/admin.pem")
+    monkeypatch.setattr(tak_group_sync.config, "TAK_MARTI_ADMIN_KEY", "/missing/admin.key")
+
+    def _boom():
+        raise FileNotFoundError("/missing/admin.pem")  # ssl.load_cert_chain 對缺檔拋這個
+
+    monkeypatch.setattr(tak_group_sync, "_build_admin_client", _boom)
+    res = asyncio.run(tak_group_sync.sync_client_faction("UID-1", "blue"))
+    assert res["synced"] is False and res["reason"].startswith("sync-error:")  # 不 raise
