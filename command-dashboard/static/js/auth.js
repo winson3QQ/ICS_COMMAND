@@ -471,8 +471,12 @@ function _enterDashboard() {
   // #66 PR-C1：事件分類編輯為 sysadmin-only（後端 POST=SYSADMIN_ONLY），比帳號管理段更嚴
   const taxSec = el('stg-taxonomy-section');
   if (taxSec) taxSec.style.display = hasAnyRole('sysadmin') ? '' : 'none';
-  // #346：演習入口（設定→演習）恆顯（演習管理列表全角色）；面板內子分頁（紅藍 sysadmin、回放 COMMAND）
-  // 的 RBAC 由 openExercisePanel/admExerciseSub 守，不在此 gate 入口。
+  // #346：演習入口（設定→演習）限指揮層（sysadmin + commander）。
+  // operator/observer 進去只剩唯讀的演習管理列表（紅藍=sysadmin、回放=COMMAND 子分頁都被擋）→ 死路，故隱藏入口。
+  // 進行中場次仍由 header 的 exercise-chip 對全角色顯示，operator 不會失去演習感知。
+  // 面板內子分頁的 RBAC 另由 openExercisePanel/admExerciseSub 守。
+  const exSec = el('stg-exercise-section');
+  if (exSec) exSec.style.display = hasAnyRole('sysadmin', 'commander') ? '' : 'none';
   // 更新 settings footer
   el('stg-user-info').textContent = (sessionStorage.getItem('cmd_display_name') || '') + ' (' + sessionStorage.getItem('cmd_role') + ')　' + (_fmtLocalDT(sessionStorage.getItem('cmd_login_time') || '') || '').slice(11,19);
   PinLock.start();
