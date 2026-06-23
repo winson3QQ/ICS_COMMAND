@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from repositories import client_faction_repo, cop_entity_repo
 from repositories._helpers import NULL_SCOPE
-from services import cop_service, exercise_service
+from services import cop_service, exercise_service, tak_group_sync
 from services.realtime_hub import cop_hub
 
 # 重解析 / 列舉時撈該場 tak entity 的上限（場域 10–30 裝置、數百 entity；含 stale/已刪以求完整盤點）。
@@ -92,7 +92,8 @@ def _reresolve_producer(exercise_id: int | None, client_key: str, faction: str |
 async def classify(exercise_id: int | None, client_key: str, faction: str, callsign: str | None, operator: str) -> dict:
     """指派 / 改 client 陣營。驗場存在（D）→ upsert → 重解析名下 auto entity → resync 廣播。
 
-    回 {client_key, faction, exercise_id, reresolved}（reresolved=受影響 entity 數）。
+    回 {client_key, faction, exercise_id, reresolved, tak_group}（reresolved=受影響 entity 數；
+    tak_group=TAK 現場層群同步結果，#344）。
     """
     if exercise_id is not None and not exercise_service.get(exercise_id):
         from fastapi import HTTPException
@@ -102,7 +103,16 @@ async def classify(exercise_id: int | None, client_key: str, faction: str, calls
     n = _reresolve_producer(exercise_id, client_key, faction)
     # resync：commander 連線重新 GET /api/cop/*（已 faction 過濾）→ 視圖即時增/減。沿用 reset 同管線。
     await cop_hub.broadcast_all({"op": "resync"})
-    return {"client_key": client_key, "faction": faction, "exercise_id": exercise_id, "reresolved": n}
+    # #344：同步到 TAK 現場層 group（一個分類動作、兩層隔離）。best-effort——未配置 admin cert /
+    # device 離線 / TAK 錯皆不 raise，不拖垮 ICS 視圖層分類（#343）。
+    tak_group = await tak_group_sync.sync_client_faction(client_key, faction)
+    return {
+        "client_key": client_key,
+        "faction": faction,
+        "exercise_id": exercise_id,
+        "reresolved": n,
+        "tak_group": tak_group,
+    }
 
 
 async def override_entity(uid: str, faction: str, operator: str) -> dict:
