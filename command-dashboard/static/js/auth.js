@@ -471,9 +471,12 @@ function _enterDashboard() {
   // #66 PR-C1：事件分類編輯為 sysadmin-only（後端 POST=SYSADMIN_ONLY），比帳號管理段更嚴
   const taxSec = el('stg-taxonomy-section');
   if (taxSec) taxSec.style.display = hasAnyRole('sysadmin') ? '' : 'none';
-  // #334：AAR 回放入口 = COMMAND_ROLES（commander + sysadmin，對齊 /timeline gate；operator/observer 點了會 403）
-  const aarSec = el('stg-aar-section');
-  if (aarSec) aarSec.style.display = canUseRealModeControls() ? '' : 'none';
+  // #334/#346：AAR 回放入口（演習群內）= COMMAND_ROLES（operator/observer 點了會 403）
+  const aarItem = el('stg-aar-item');
+  if (aarItem) aarItem.style.display = canUseRealModeControls() ? '' : 'none';
+  // #343/#346：紅藍分類入口（演習群內）= SYSADMIN_ONLY（白隊；後端 /api/admin/factions/* 亦 SYSADMIN_ONLY）
+  const facItem = el('stg-faction-item');
+  if (facItem) facItem.style.display = hasAnyRole('sysadmin') ? '' : 'none';
   // 更新 settings footer
   el('stg-user-info').textContent = (sessionStorage.getItem('cmd_display_name') || '') + ' (' + sessionStorage.getItem('cmd_role') + ')　' + (_fmtLocalDT(sessionStorage.getItem('cmd_login_time') || '') || '').slice(11,19);
   PinLock.start();
@@ -788,6 +791,20 @@ export function closeAdminPanel() {
   _admPin = '';
 }
 
+// #346：紅藍分類面板（設定→演習→紅藍分類開）。sysadmin only（entry 已 gate，此處再守 + 後端 SYSADMIN_ONLY）。
+export function openFactionPanel() {
+  if (!_isSysadminSession()) return;
+  closeSettings();
+  el('faction-overlay').classList.add('show');
+  el('faction-panel').classList.add('show');
+  admLoadFactions();
+}
+
+export function closeFactionPanel() {
+  el('faction-overlay').classList.remove('show');
+  el('faction-panel').classList.remove('show');
+}
+
 export async function adminLogin() {
   const pin = el('adm-pin-input').value.trim();
   if (_isAccountManagerSession() && !pin) {
@@ -844,28 +861,52 @@ async function _admLoadSysInfo() {
 }
 
 function _applyAdminTabVisibility() {
+  // #346 RBAC：非 sysadmin（ACCOUNT_MANAGER，如 commander）只見「帳號」群；其餘群（Pi/日誌/備份/TAK）
+  // 為 SYSADMIN_ONLY → 隱藏。帳號群內 sys(PIN) 子區另由 admShowTab 再 gate。
   document.querySelectorAll('.adm-tab').forEach(tab => {
-    const key = tab.dataset.tab;
-    tab.style.display = _isSysadminSession() || key === 'list' || key === 'add' ? '' : 'none';
+    tab.style.display = _isSysadminSession() || tab.dataset.tab === 'account' ? '' : 'none';
   });
 }
 
-export function admShowTab(tab) {
-  if (!_isSysadminSession() && !['list','add'].includes(tab)) tab = 'list';
+// #346：admin 後台 IA 重整——8 tab → 5 群（帳號群併 list+add+sys）。演習群（紅藍/演習管理/AAR）
+// 移至設定面板（見 PART B）。RBAC：帳號群的 sys(Admin PIN) 子區僅 sysadmin；非帳號群整群僅 sysadmin。
+const _ADM_GROUPS = {
+  account: ['list', 'add', 'sys'],
+  pi: ['pi'],
+  log: ['log'],
+  data: ['data'],
+  tak: ['tak'],
+};
+const _ADM_LEGACY = { list: 'account', add: 'account', sys: 'account', faction: 'account' };
+const _ADM_ALL_PANELS = ['list', 'add', 'sys', 'pi', 'log', 'data', 'tak'];
+
+export function admShowTab(group) {
+  if (!_ADM_GROUPS[group]) group = _ADM_LEGACY[group] || 'account';        // 相容舊 tab 名 caller
+  if (!_isSysadminSession() && group !== 'account') group = 'account';     // 非 sysadmin 只見帳號群
   _applyAdminTabVisibility();
-  const tabs = ['list','add','pi','log','data','sys','tak','faction'];
-  document.querySelectorAll('.adm-tab').forEach((t, i) => {
-    t.classList.toggle('active', tabs[i] === tab);
+  const sysAdmin = _isSysadminSession();
+  document.querySelectorAll('.adm-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === group));
+  const showPanels = _ADM_GROUPS[group];
+  _ADM_ALL_PANELS.forEach(k => {
+    const e = el('adm-panel-' + k);
+    if (!e) return;
+    // RBAC：帳號群的 sys(Admin PIN) 子區 SYSADMIN_ONLY → 非 sysadmin（如 commander 管帳號）不顯示。
+    const visible = showPanels.includes(k) && !(k === 'sys' && !sysAdmin);
+    e.style.display = visible ? '' : 'none';
   });
-  tabs.forEach(k => { el('adm-panel-' + k).style.display = k === tab ? '' : 'none'; });
-  if (tab === 'list') admLoadAccounts();
-  if (tab === 'add') admShowAddForm();
-  if (tab === 'pi') admLoadPiNodes();
-  if (tab === 'log') admLoadLog();
-  if (tab === 'data') admShowData();
-  if (tab === 'sys') admShowSys();
-  if (tab === 'tak') admShowTak();
-  if (tab === 'faction') admLoadFactions();
+  if (group === 'account') {
+    admLoadAccounts();
+    admShowAddForm();
+    if (sysAdmin) admShowSys();
+  } else if (group === 'pi') {
+    admLoadPiNodes();
+  } else if (group === 'log') {
+    admLoadLog();
+  } else if (group === 'data') {
+    admShowData();
+  } else if (group === 'tak') {
+    admShowTak();
+  }
 }
 
 // #343 紅藍隔離：admin 把連線 TAK client 分類成紅/藍/中立。per-exercise（active 場 scope）。
@@ -895,10 +936,18 @@ export async function admLoadFactions() {
     '把連上的 TAK client 分類成紅／藍／中立。<b>指揮官以下只看得到藍／中立</b>，紅軍與未分類者對其隱藏（fail-closed）。' +
     '<br>作用範圍：<b>' + scopeLabel + '</b>　·　共 ' + clients.length + ' 個 client' +
     '<br><span style="color:var(--text3);">⚠ 需開 <code>ICS_FACTION_ISOLATION</code> 過濾才生效（分類本身隨時可做）。</span>' +
-    '<button class="adm-btn" data-action="admShowTab" data-tab="faction" style="margin-left:8px;">重新整理</button></div>';
+    '<button class="adm-btn" data-action="openFactionPanel" style="margin-left:8px;">重新整理</button></div>';
   let rows = '';
   if (!clients.length) {
-    rows = '<div style="color:var(--text3);font-size:12px;padding:4px 0;">本場尚未觀測到任何 TAK client（需現場 broadcast 標記/位置）。</div>';
+    // #346：TAK 沒開就沒 client → 情境感知空狀態（指引去開 TAK），而非冷冷一片空。
+    let why = '本場尚未觀測到任何 TAK client（需現場裝置 broadcast 標記／位置）。';
+    try {
+      const ts = await authFetch(API_BASE + '/api/tak/status');
+      if (ts.ok && !(await ts.json()).enabled) {
+        why = '⚠ TAK 連線未啟用 → 沒有 client 可分類。請先到「設定 → 管理員後台 → TAK」啟用連線，等現場裝置 broadcast 後再回來分類。';
+      }
+    } catch { /* status 查不到就用預設訊息 */ }
+    rows = '<div style="color:var(--text3);font-size:12px;padding:6px 0;line-height:1.7;max-width:480px;">' + why + '</div>';
   }
   for (const c of clients) {
     const f = c.faction;
