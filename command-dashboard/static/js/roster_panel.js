@@ -17,10 +17,16 @@ let _onEnroll = null; // #267：(uid, 'enroll'|'unenroll') => Promise；main.js 
 let _timer = null;
 let _clickBound = false;
 
-// 隊伍名冊＝**我方人員/單位**（友軍）。敵性/中立/不明是「觀測到的接觸」（感測層、map 上），
-// 非隊伍成員，不列入（例：操作員觀測到的敵情 marker a-h-* 不該出現在我方隊伍名冊）。
+// 隊伍名冊＝**編成單位（TAK 端點：裝置/人員）**，#358-2 起以 **faction 為組織主軸**（見 rosterModel）。
+// 「是不是單位」用 **team_color（自報 __group）** 判定——TAK client self-SA 必帶 __group（隊色），
+// 而 marker / 點位（敵情接觸、繪圖、事件）無 __group → 藉此把 marker 擋在編成外。
+// 納入條件：① 有 team_color（= self-SA 端點，即使自報 a-h 敵對亦為我方裝置 → 修「藍方裝置誤報 a-h
+//   不進藍軍」的困惑）；或 ② 自報友軍（a-f，保留原行為，catch 無 __group 的友軍單位）。
+// 排除：marker（a-n/a-u/a-h 點位，無 team_color 且非友軍）—— 即使被分類連帶帶上 faction 也不入編成。
 function _isRosterUnit(e) {
-  return affiliationFromCot(e && e.type) === 'friendly';
+  if (!e) return false;
+  if (e.team_color && String(e.team_color).trim()) return true;
+  return affiliationFromCot(e.type) === 'friendly';
 }
 
 function _el(id) { return document.getElementById(id); }
@@ -35,7 +41,11 @@ export function _esc(s) {
   );
 }
 
-const UNGROUPED = '未分組';
+// #358-2：faction 為隊伍組織主軸。key→顯示標籤 + 區塊色（藍/紅/中立/未分類）+ 排序。
+const _FACTION_NONE = '_none';
+const FACTION_LABEL = { blue: '藍軍', red: '紅軍', neutral: '中立', [_FACTION_NONE]: '未分類' };
+const FACTION_HEX = { blue: '#378ADD', red: '#E24B4A', neutral: '#888780', [_FACTION_NONE]: 'var(--text3)' };
+const FACTION_ORDER = ['blue', 'red', 'neutral', _FACTION_NONE]; // 未分類排末
 
 // 在線＝stale 未過（與地圖 _isAging 同一套；#161 TAK 原生對齊）。離線的 TAK 單位由後端
 // 既有機制即時移出 list（cop_stream resync 隨之移除）→ 名冊只會列到還在的單位，毋須額外心跳判定。
@@ -44,26 +54,23 @@ function _isOnline(e, nowIso) {
 }
 
 /**
- * 名冊純資料模型（可單測，無 DOM）：先濾友軍（敵情接觸不入名冊），再按 team_color 分組
- * （未分組排最後）、算在線/離線。
+ * 名冊純資料模型（可單測，無 DOM）：#358-2 起**按 faction 分組**（藍/紅/中立/未分類，未分類排末），
+ * 成員 = _isRosterUnit（有 faction 或自報友軍）。team_color 降為單位層細節（render 時的小色點）。
+ * commander 經 WS faction 過濾本只收自己 faction → 其 groups 自然只剩該 faction；admin 全見得紅藍兩區。
  * @returns {{ groups: Array<[string, object[]]>, online: number, offline: number }}
  */
 export function rosterModel(units, nowIso) {
   const now = nowIso || new Date().toISOString();
-  const roster = (units || []).filter(_isRosterUnit); // 只列友軍
+  const roster = (units || []).filter(_isRosterUnit);
   const map = new Map();
   let online = 0;
   for (const e of roster) {
-    const team = (e.team_color && String(e.team_color).trim()) || UNGROUPED;
-    if (!map.has(team)) map.set(team, []);
-    map.get(team).push(e);
+    const fac = (e.faction && String(e.faction).trim()) || _FACTION_NONE;
+    if (!map.has(fac)) map.set(fac, []);
+    map.get(fac).push(e);
     if (_isOnline(e, now)) online += 1;
   }
-  const groups = [...map.entries()].sort((a, b) => {
-    if (a[0] === UNGROUPED) return 1;
-    if (b[0] === UNGROUPED) return -1;
-    return a[0].localeCompare(b[0]);
-  });
+  const groups = FACTION_ORDER.filter((k) => map.has(k)).map((k) => [k, map.get(k)]);
   return { groups, online, offline: roster.length - online };
 }
 
@@ -78,7 +85,7 @@ function _teamColor(team) { return _TEAM_HEX[team] || 'var(--text3)'; }
 /** 渲染名冊到 #roster-body + 更新 tab 紅圈（離線數）。隱藏時也會更新 badge（cheap）。 */
 export function renderRoster() {
   const now = new Date().toISOString();
-  const { groups, offline } = rosterModel(_getTakUnits(), now); // rosterModel 內已濾友軍
+  const { groups, offline } = rosterModel(_getTakUnits(), now); // rosterModel 內按 faction 分組（#358-2）
 
   // badge：離線數（「未編人數」要等 enrollment 後端，#269 step6 先用 offline 佔位）
   const badge = _el('roster-tab-badge');
@@ -90,7 +97,7 @@ export function renderRoster() {
   const body = _el('roster-body');
   if (!body) return;
   if (!groups.length) {
-    body.innerHTML = '<div style="color:var(--text3);font-size:11px;padding:8px;">尚無友軍單位</div>';
+    body.innerHTML = '<div style="color:var(--text3);font-size:11px;padding:8px;">尚無編成單位</div>';
     return;
   }
 
@@ -100,11 +107,12 @@ export function renderRoster() {
   const markStanding = _hasActiveExercise();
 
   let html = '';
-  for (const [team, list] of groups) {
+  for (const [fac, list] of groups) {
     const online = list.filter((e) => _isOnline(e, now)).length;
+    // #358-2：群標頭 = faction（藍軍/紅軍/中立/未分類）+ faction 區塊色。
     html += '<div style="display:flex;align-items:center;gap:6px;padding:5px 6px;background:var(--surface2);border-radius:3px;margin:3px 0 1px;">'
-      + '<span style="width:9px;height:9px;border-radius:2px;flex-shrink:0;background:' + _teamColor(team) + ';"></span>'
-      + '<span style="font-weight:600;color:var(--text);flex:1;">' + _esc(team) + '</span>'
+      + '<span style="width:9px;height:9px;border-radius:2px;flex-shrink:0;background:' + (FACTION_HEX[fac] || 'var(--text3)') + ';"></span>'
+      + '<span style="font-weight:600;color:var(--text);flex:1;">' + _esc(FACTION_LABEL[fac] || fac) + '</span>'
       + '<span style="color:var(--text3);font-size:9px;">' + online + ' / ' + list.length + '</span>'
       + '</div>';
     for (const e of list) {
@@ -123,8 +131,13 @@ export function renderRoster() {
           actionEl = `<span style="${_bs}color:var(--text3);">常駐</span>`;
         }
       }
+      // #358-2：team_color（自報隊色）降為單位層細節——faction 群內以小方點呈現（無則不顯）。
+      const teamDot = e.team_color
+        ? '<span title="' + _esc(e.team_color) + '" style="width:7px;height:7px;border-radius:2px;flex-shrink:0;background:' + _teamColor(String(e.team_color).trim()) + ';"></span>'
+        : '';
       html += '<div style="display:flex;align-items:center;gap:7px;padding:4px 6px 4px 14px;border-bottom:1px solid var(--border);">'
         + '<span style="width:7px;height:7px;border-radius:50%;flex-shrink:0;background:' + (on ? 'var(--green)' : 'var(--text3)') + ';"></span>'
+        + teamDot
         + '<span style="flex:1;min-width:0;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + _esc(e.callsign || e.uid) + '</span>'
         + actionEl
         + '<span style="color:var(--text3);font-size:9px;flex-shrink:0;">' + meta + '</span>'
