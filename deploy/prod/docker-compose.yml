@@ -91,6 +91,8 @@ services:
       - TAK_MARTI_READ_KEY=${TAK_MARTI_READ_KEY:-}
       - TAK_MARTI_WRITE_CERT=${TAK_MARTI_WRITE_CERT:-}
       - TAK_MARTI_WRITE_KEY=${TAK_MARTI_WRITE_KEY:-}
+      - TAK_MARTI_ADMIN_CERT=${TAK_MARTI_ADMIN_CERT:-}   # #344/#357 管理級 cert（ROLE_ADMIN）→ user-management group API；空則 faction 不同步 TAK group
+      - TAK_MARTI_ADMIN_KEY=${TAK_MARTI_ADMIN_KEY:-}
     volumes:
       - ics-data:/app/data
       - ics-tiles:/app/static/tiles:ro

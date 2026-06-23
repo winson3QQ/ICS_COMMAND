@@ -277,6 +277,10 @@ TAK_MARTI_READ_CERT: str = os.getenv("TAK_MARTI_READ_CERT", "")  # 讀 cert PEM�
 TAK_MARTI_READ_KEY: str = os.getenv("TAK_MARTI_READ_KEY", "")  # 讀 cert 私鑰 PEM
 TAK_MARTI_WRITE_CERT: str = os.getenv("TAK_MARTI_WRITE_CERT", "")  # 寫 cert PEM（fullchain）
 TAK_MARTI_WRITE_KEY: str = os.getenv("TAK_MARTI_WRITE_KEY", "")  # 寫 cert 私鑰 PEM
+# #344/#357：管理級 cert（ROLE_ADMIN，certmod -A）—— user-management API（group 管理）需 admin，
+# read/write cert 不夠。空 → faction 分類不同步 TAK group（純 ICS 視圖層，#343 仍運作）。
+TAK_MARTI_ADMIN_CERT: str = os.getenv("TAK_MARTI_ADMIN_CERT", "")  # admin cert PEM（fullchain）
+TAK_MARTI_ADMIN_KEY: str = os.getenv("TAK_MARTI_ADMIN_KEY", "")  # admin cert 私鑰 PEM
 
 # ── Marti 權威 resync（P2-14 (C) / #194 / #173）────────────────────────────────
 # :8089 串流不對重連者重播既有靜態標記 → ICS 重啟/斷線會漏 server 已持久化的 marker。
