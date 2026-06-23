@@ -181,13 +181,18 @@ def set_faction_for_uids(uids: list[str], faction: str | None) -> int:
     fail-closed）。caller（faction_service）已在 Python 端用歸屬鏈篩出「屬某 producer」的 uid 集。"""
     if not uids:
         return 0
+    now = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     qmarks = ",".join("?" * len(uids))
     with get_conn() as conn:
         cur = conn.execute(
             # nosec B608 — qmarks 僅 ? 佔位，uids 全參數綁定
-            f"UPDATE cop_entities SET faction=?, faction_source='auto' "
+            # #358-2 後 faction 是前端「隊伍」的顯示軸 → 變更**必須 bump version_clock**，否則
+            # 前端 cop_stream LWW（resync）對 idle entity「同版丟棄」→ 重分類不反映到隊伍/視圖
+            # （dogfood 2026-06-23：idle iTAK 分類成 blue 後隊伍仍掛「未分類」）。
+            f"UPDATE cop_entities SET faction=?, faction_source='auto', "
+            f"version_clock = version_clock + 1, updated_at=? "
             f"WHERE uid IN ({qmarks}) AND COALESCE(faction_source,'auto')='auto'",
-            [faction, *uids],
+            [faction, now, *uids],
         )
         return cur.rowcount
 
@@ -196,12 +201,18 @@ def set_entity_faction_manual(uid: str, faction: str) -> dict | None:
     """#343 admin 對單一 entity override faction（faction_source='manual'，重解析不覆寫）。
 
     供無 producer 可歸屬的物件（如 iTAK 繪圖）由 admin 手動點陣營。回更新後 row / 不存在 None。
-    不 bump version_clock（faction 屬授權 metadata、非 COP 內容，對齊 visible_to side-channel）。
+    #358-2 後 faction 為前端「隊伍」顯示軸 → **bump version_clock** 讓前端 LWW（resync）套用變更
+    （原「不 bump、視 faction 為授權 side-channel」前提，於 faction 上前端顯示後過時）。
     """
+    now = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     with get_conn() as conn:
         if conn.execute("SELECT 1 FROM cop_entities WHERE uid=?", (uid,)).fetchone() is None:
             return None
-        conn.execute("UPDATE cop_entities SET faction=?, faction_source='manual' WHERE uid=?", (faction, uid))
+        conn.execute(
+            "UPDATE cop_entities SET faction=?, faction_source='manual', "
+            "version_clock = version_clock + 1, updated_at=? WHERE uid=?",
+            (faction, now, uid),
+        )
     return get_cop_entity(uid)
 
 

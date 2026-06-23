@@ -145,3 +145,23 @@ def test_override_entity_missing_404(_no_ws):
     with pytest.raises(HTTPException) as ei:
         asyncio.run(faction_service.override_entity("NOPE", "blue", "admin"))
     assert ei.value.status_code == 404
+
+
+def test_classify_bumps_version_clock(_no_ws):
+    """#358-2：faction 為前端顯示軸 → 重分類（auto）須 bump version_clock，否則前端 cop_stream
+    LWW（resync）對 idle entity 同版丟棄、分類變更不反映（dogfood 2026-06-23：idle iTAK 分藍仍掛未分類）。"""
+    _ingest_marker("MK-VC", "DEV-VC")
+    v0 = cop_entity_repo.get_cop_entity("MK-VC")["version_clock"]
+    asyncio.run(faction_service.classify(None, "DEV-VC", "blue", None, "admin"))
+    ent = cop_entity_repo.get_cop_entity("MK-VC")
+    assert ent["faction"] == "blue"
+    assert ent["version_clock"] > v0  # bump → 前端 LWW 會套用新 faction
+
+
+def test_override_entity_bumps_version_clock(_no_ws):
+    """manual override 同樣 bump version_clock（前端顯示同理）。"""
+    _ingest_marker("MK-VM", "DEV-VM")
+    v0 = cop_entity_repo.get_cop_entity("MK-VM")["version_clock"]
+    asyncio.run(faction_service.override_entity("MK-VM", "red", "admin"))
+    ent = cop_entity_repo.get_cop_entity("MK-VM")
+    assert ent["faction"] == "red" and ent["version_clock"] > v0
