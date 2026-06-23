@@ -629,7 +629,8 @@ const _AUDIT_BADGE = {
   'login':                  { c:'#388bfd', zh:'登入' },
   'logout':                 { c:'#8b949e', zh:'登出' },
   'SESSION_LOGOUT':         { c:'#8b949e', zh:'登出' },  // 後端實際 action_type（auth.py logout）
-  'SESSION_EXPIRED':        { c:'#8b949e', zh:'逾時登出' },  // session 逾時失效（含批次清理被丟棄 session）
+  'SESSION_EXPIRED':        { c:'#8b949e', zh:'逾時登出' },  // per-request：活躍 token 撞絕對逾時失效
+  'SESSION_REAPED':         { c:'#6e7681', zh:'例行清理' },  // #345：批次清被丟棄 session（低訊號，與安全事件分流）
   'IDLE_KICKED':            { c:'#e3b341', zh:'閒置登出' },  // idle 逾時踢出
   'BINDING_MISMATCH_IP':    { c:'#f85149', zh:'IP變更' },    // session 綁定不符（安全）
   'BINDING_MISMATCH_UA':    { c:'#f85149', zh:'裝置變更' },

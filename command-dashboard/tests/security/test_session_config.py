@@ -107,7 +107,8 @@ class TestCleanupExpiredSessions:
         assert deleted == 0
 
     def test_cleanup_writes_audit_for_each_expired(self, tmp_db):
-        """#93(b)：批次清理被丟棄（abandoned）的逾時 session → 每筆留 SESSION_EXPIRED 痕跡，AAR 可查。"""
+        """#93(b)：批次清理被丟棄（abandoned）的逾時 session → 每筆留痕（AAR 可查）。
+        #345：留痕 action_type 改為 SESSION_REAPED（例行維護），與 per-request SESSION_EXPIRED 分流。"""
         from datetime import datetime, timedelta
 
         from auth.service import cleanup_expired_sessions, create_session
@@ -127,11 +128,35 @@ class TestCleanupExpiredSessions:
         deleted = cleanup_expired_sessions()
         assert deleted == 2
 
-        # 每個被清的 username 都應有一筆 SESSION_EXPIRED audit
+        # 每個被清的 username 都應有一筆 SESSION_REAPED audit
         with get_conn() as conn:
-            rows = conn.execute("SELECT operator FROM audit_log WHERE action_type='SESSION_EXPIRED'").fetchall()
+            rows = conn.execute("SELECT operator FROM audit_log WHERE action_type='SESSION_REAPED'").fetchall()
         operators = {r["operator"] for r in rows}
         assert operators == set(tokens.keys()), f"audit 留痕不齊：{operators}"
+
+    def test_cleanup_audit_does_not_emit_session_expired(self, tmp_db):
+        """#345 分流回歸守門：批次清理只記 SESSION_REAPED，不得記 SESSION_EXPIRED
+        （否則例行 reap 又混入 per-request 安全事件、稀釋訊噪比）。"""
+        from datetime import datetime, timedelta
+
+        from auth.service import cleanup_expired_sessions, create_session
+        from core.config import SESSION_TIMEOUT
+        from core.database import get_conn
+
+        create_session({"username": "abandoned", "role": "op", "display_name": "A"})
+        old = (datetime.now(UTC) - timedelta(seconds=SESSION_TIMEOUT + 60)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        with get_conn() as conn:
+            conn.execute("UPDATE sessions SET last_active=?", (old,))
+            conn.commit()
+
+        assert cleanup_expired_sessions() == 1
+        with get_conn() as conn:
+            expired = conn.execute("SELECT COUNT(*) c FROM audit_log WHERE action_type='SESSION_EXPIRED'").fetchone()[
+                "c"
+            ]
+            reaped = conn.execute("SELECT COUNT(*) c FROM audit_log WHERE action_type='SESSION_REAPED'").fetchone()["c"]
+        assert expired == 0, "批次清理不該記 SESSION_EXPIRED（應分流到 SESSION_REAPED）"
+        assert reaped == 1
 
     def test_cleanup_idle_cutoff_uses_idle_timeout_not_session_timeout(self, tmp_db):
         """#93(b) 回歸守門：idle cutoff 用 min(IDLE_TIMEOUT, SESSION_TIMEOUT)（預設 15 分），
