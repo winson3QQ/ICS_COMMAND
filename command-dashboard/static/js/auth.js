@@ -471,12 +471,8 @@ function _enterDashboard() {
   // #66 PR-C1：事件分類編輯為 sysadmin-only（後端 POST=SYSADMIN_ONLY），比帳號管理段更嚴
   const taxSec = el('stg-taxonomy-section');
   if (taxSec) taxSec.style.display = hasAnyRole('sysadmin') ? '' : 'none';
-  // #334/#346：AAR 回放入口（演習群內）= COMMAND_ROLES（operator/observer 點了會 403）
-  const aarItem = el('stg-aar-item');
-  if (aarItem) aarItem.style.display = canUseRealModeControls() ? '' : 'none';
-  // #343/#346：紅藍分類入口（演習群內）= SYSADMIN_ONLY（白隊；後端 /api/admin/factions/* 亦 SYSADMIN_ONLY）
-  const facItem = el('stg-faction-item');
-  if (facItem) facItem.style.display = hasAnyRole('sysadmin') ? '' : 'none';
+  // #346：演習入口（設定→演習）恆顯（演習管理列表全角色）；面板內子分頁（紅藍 sysadmin、回放 COMMAND）
+  // 的 RBAC 由 openExercisePanel/admExerciseSub 守，不在此 gate 入口。
   // 更新 settings footer
   el('stg-user-info').textContent = (sessionStorage.getItem('cmd_display_name') || '') + ' (' + sessionStorage.getItem('cmd_role') + ')　' + (_fmtLocalDT(sessionStorage.getItem('cmd_login_time') || '') || '').slice(11,19);
   PinLock.start();
@@ -791,18 +787,41 @@ export function closeAdminPanel() {
   _admPin = '';
 }
 
-// #346：紅藍分類面板（設定→演習→紅藍分類開）。sysadmin only（entry 已 gate，此處再守 + 後端 SYSADMIN_ONLY）。
-export function openFactionPanel() {
-  if (!_isSysadminSession()) return;
+// #346：演習面板（設定→演習開）。內含 segmented 子分頁 演習管理/紅藍/回放（跟帳號一致）。
+let _exSub = 'manage';
+
+export function openExercisePanel() {
   closeSettings();
-  el('faction-overlay').classList.add('show');
-  el('faction-panel').classList.add('show');
-  admLoadFactions();
+  el('exercise-overlay').classList.add('show');
+  el('exercise-panel').classList.add('show');
+  // 子分頁 RBAC：紅藍 sysadmin only、回放 COMMAND_ROLES；演習管理全角色（列表，動作另 gate）。
+  const facSub = el('ex-subtab-faction');
+  if (facSub) facSub.style.display = _isSysadminSession() ? '' : 'none';
+  const aarSub = el('ex-subtab-aar');
+  if (aarSub) aarSub.style.display = canUseRealModeControls() ? '' : 'none';
+  admExerciseSub('manage');
 }
 
-export function closeFactionPanel() {
-  el('faction-overlay').classList.remove('show');
-  el('faction-panel').classList.remove('show');
+export function closeExercisePanel() {
+  el('exercise-overlay').classList.remove('show');
+  el('exercise-panel').classList.remove('show');
+}
+
+// #346：演習面板子分頁切換（跟 admAccountSub 同模式）。RBAC：紅藍 sysadmin、回放 COMMAND。
+export function admExerciseSub(sub) {
+  if (sub === 'faction' && !_isSysadminSession()) sub = 'manage';
+  if (sub === 'aar' && !canUseRealModeControls()) sub = 'manage';
+  if (!['manage', 'faction', 'aar'].includes(sub)) sub = 'manage';
+  _exSub = sub;
+  document.querySelectorAll('#ex-subtabs .adm-subtab').forEach(t => t.classList.toggle('active', t.dataset.sub === sub));
+  const panels = { manage: 'ex-sub-manage', faction: 'adm-panel-faction', aar: 'ex-sub-aar' };
+  for (const [k, id] of Object.entries(panels)) {
+    const e = el(id);
+    if (e) e.style.display = k === sub ? '' : 'none';
+  }
+  if (sub === 'manage') import('./exercises.js').then(m => m.renderExercisePanel());
+  else if (sub === 'faction') admLoadFactions();
+  // aar 子分頁＝純導航按鈕，無需 load
 }
 
 export async function adminLogin() {
@@ -943,7 +962,7 @@ export async function admLoadFactions() {
     '把連上的 TAK client 分類成紅／藍／中立。<b>指揮官以下只看得到藍／中立</b>，紅軍與未分類者對其隱藏（fail-closed）。' +
     '<br>作用範圍：<b>' + scopeLabel + '</b>　·　共 ' + clients.length + ' 個 client' +
     '<br><span style="color:var(--text3);">⚠ 需開 <code>ICS_FACTION_ISOLATION</code> 過濾才生效（分類本身隨時可做）。</span>' +
-    '<button class="adm-btn" data-action="openFactionPanel" style="margin-left:8px;">重新整理</button></div>';
+    '<button class="adm-btn" data-action="admExerciseSub" data-sub="faction" style="margin-left:8px;">重新整理</button></div>';
   let rows = '';
   if (!clients.length) {
     // #346：TAK 沒開就沒 client → 情境感知空狀態（指引去開 TAK），而非冷冷一片空。
