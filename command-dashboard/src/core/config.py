@@ -98,7 +98,9 @@ WARNING_THRESHOLD_SECONDS: int = int(os.getenv("ICS_WARNING_THRESHOLD_SECONDS", 
 # PATCH 2.15.3：演練前硬化批次（PR #373）——#293 DOM-XSS sink escaping（decisions/events/admin/
 #               pi-data）+ #295 高權帳號 mTLS 下不硬鎖（防戰時 C2 鎖定-DoS）+ #372 稽核鏈閉環
 #               （/api/admin/audit-chain/verify + 開機驗證 + 修 overclaim）。
-APP_VERSION = "2.15.3"
+# PATCH 2.15.4：#369 最後 sysadmin 守門 TOCTOU（module 鎖序列化 check+mutate）+ #285 成功動作
+#               異常偵測（audit() 中央 hook → 敏感單筆/批次量 SECURITY_ALERT）。純後端。
+APP_VERSION = "2.15.4"
 
 # CMD_VERSION：前端 UI 功能版本（不同於後端 SemVer APP_VERSION；規則見 CLAUDE.md 版號規則）
 # 兩軌版本命名，不可混用。由 /api/version 提供給前端，是唯一 source-of-truth；release 時更新此值。
