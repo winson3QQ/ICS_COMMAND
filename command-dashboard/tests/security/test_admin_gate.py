@@ -164,6 +164,66 @@ class TestLastSysadminGuard:
         )
         assert r2.status_code == 409, r2.text
 
+    def test_concurrent_demote_two_sysadmins_lock_keeps_one(self, client, monkeypatch):
+        """#369 TOCTOU：兩個 sysadmin 並發降級 → 鎖序列化臨界區 + 守門 → 恰一成功一 409，
+        不歸零。用 monkeypatch 在第一筆角色變更提交處塞 event，逼 T1 持鎖期間 T2 必須等鎖，
+        證明序列化非靠時序運氣。無鎖時 T2 的守門會看到「還有 2 個」而放行 → 兩者皆 200 → 歸零，
+        本測試的 200/409 + 至少一存活斷言即失敗。"""
+        import threading
+        import time
+
+        from auth.role_enum import ROLE_SYSADMIN, role_zh_to_en
+        from repositories import account_repo
+        from routers import admin as admin_router
+
+        create_account("admin2", "5678", ROLE_SYSADMIN_ZH, "Admin2", "sysadmin")
+        h = _login(client)  # 共 2 個 sysadmin：admin + admin2
+
+        real_update = account_repo.update_account_role
+        first_inside = threading.Event()
+        release = threading.Event()
+        seen: list[str] = []
+
+        def slow_update(username, *a, **k):
+            seen.append(username)
+            if len(seen) == 1:  # 第一筆：卡在臨界區內（持鎖），逼第二筆等鎖
+                first_inside.set()
+                release.wait(timeout=5)
+            return real_update(username, *a, **k)
+
+        monkeypatch.setattr(admin_router, "update_account_role", slow_update)
+
+        results: dict[str, int] = {}
+
+        def demote(u):
+            r = client.put(
+                f"/api/admin/accounts/{u}/role",
+                headers=h,
+                json={"role": ROLE_OPERATOR_ZH, "role_detail": "operator"},
+            )
+            results[u] = r.status_code
+
+        t1 = threading.Thread(target=demote, args=("admin2",))
+        t2 = threading.Thread(target=demote, args=("admin",))
+        t1.start()
+        assert first_inside.wait(timeout=5), "T1 應已進入臨界區"
+        t2.start()
+        time.sleep(0.3)  # 讓 T2 抵達鎖；持鎖期間不該完成
+        assert "admin" not in results, "T2 不應在 T1 持鎖期間完成（序列化證明）"
+        release.set()
+        t1.join(timeout=5)
+        t2.join(timeout=5)
+
+        assert results.get("admin2") == 200, results
+        assert results.get("admin") == 409, results  # 降到剩一個 → 守門擋下
+        remaining = [
+            a
+            for a in account_repo.get_all_accounts()
+            if (a.get("status") or "active") == "active"
+            and role_zh_to_en(a.get("role"), a.get("role_detail")) == ROLE_SYSADMIN
+        ]
+        assert len(remaining) >= 1, f"並發降級後不得歸零 sysadmin，剩 {len(remaining)}"
+
     def test_role_change_keeping_sysadmin_not_blocked(self, client):
         # 新角色仍是 sysadmin（will_remain_sysadmin）→ 不減少 active sysadmin 數 → 放行
         r = client.put(
