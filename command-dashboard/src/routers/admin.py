@@ -410,6 +410,20 @@ def audit_log(request: Request, limit: int = 100):
     return get_audit_log(limit)
 
 
+@router.get("/audit-chain/verify", tags=["account-admin"])
+def audit_chain_verify(request: Request):
+    """#372（#348-F3）：稽核 hash 鏈完整性驗證端點。接上 verify_audit_chain（原 runtime 零
+    caller＝死驗證器），滿足 NIST AU-9(3)「真的有在驗」。回 {ok,total,broken_at,reason}。
+    限 sysadmin（路徑落 /api/admin/ → SYSADMIN_ONLY，並再 _check_system_admin 深一層）。
+    注意：未 keyed（純 SHA-256）→ 偵測意外損毀＋天真竄改；抗「DB 寫權者改列並補算下游鏈」需
+    keyed HMAC + key off-box（延實機，#372 B 部分／同 #226）。"""
+    _check_system_admin(request)
+    from core.audit_chain import verify_audit_chain
+
+    with get_conn() as conn:
+        return verify_audit_chain(conn)
+
+
 @router.get("/pi-nodes", tags=["pi-nodes"])
 def list_nodes(request: Request):
     _check_system_admin(request)

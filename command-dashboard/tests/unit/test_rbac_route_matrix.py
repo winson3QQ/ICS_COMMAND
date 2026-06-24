@@ -36,6 +36,7 @@ COMMAND  PUT    /api/admin/accounts/{username}/display-name
 COMMAND  PUT    /api/admin/accounts/{username}/pin
 COMMAND  PUT    /api/admin/accounts/{username}/role
 COMMAND  PUT    /api/admin/accounts/{username}/status
+SYSADMIN GET    /api/admin/audit-chain/verify
 SYSADMIN GET    /api/admin/audit-log
 SYSADMIN GET    /api/admin/backups
 SYSADMIN POST   /api/admin/backups

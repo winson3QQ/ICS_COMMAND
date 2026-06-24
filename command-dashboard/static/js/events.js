@@ -26,7 +26,8 @@ const API_BASE = location.origin;
 // ══════════════════════════════════════════════════════════════
 // HTML escape — 用於把值塞進 innerHTML 模板前自衛（review #69：taxonomy label 現自
 // /api/event_taxonomy 載入，render sink 不應只靠後端 denylist，這裡 escape 為縱深防禦）。
-function _esc(s) {
+// export 供 dom_xss_escape.test.js 鎖跳脫行為（#293）。
+export function _esc(s) {
   return String(s == null ? '' : s).replace(
     /[&<>"']/g,
     (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]),
@@ -595,7 +596,7 @@ export function showEventProcessModal(zone) {
   const assignedLabel = unitLabels[ev.assigned_unit] || '—';
   const assignedColor = ev.assigned_unit ? 'var(--green)' : 'var(--text3)';
   html += `<div style="font-size:11px;color:var(--text2);margin-bottom:10px;line-height:1.6;">`;
-  html += `回報：${unitLabel}　${ev.operator_name}<br>`;
+  html += `回報：${unitLabel}　${_esc(ev.operator_name)}<br>`;
   html += `<span style="display:inline-flex;align-items:center;gap:6px;">指派處理：<span style="color:${assignedColor};font-weight:600;">${assignedLabel}</span>`;
   // 已結案 / resolved 不能再改指派（dogfood UX 反饋：closed 事件 select 仍可動但 PATCH 沒意義）
   const assignDisabledAttr = isOpen ? '' : 'disabled';
@@ -616,8 +617,8 @@ export function showEventProcessModal(zone) {
     notes.forEach(n => {
       html += `<div style="font-size:11px;padding:4px 0;border-bottom:1px solid rgba(48,54,61,.3);">`;
       html += `<span style="color:var(--text3);">${_fmtLocal(n.time, true)}</span>`;
-      html += n.by ? ` <span style="color:#DAA520;font-weight:600;">${n.by}</span>` : '';
-      html += ` — ${n.text}`;
+      html += n.by ? ` <span style="color:#DAA520;font-weight:600;">${_esc(n.by)}</span>` : '';
+      html += ` — ${_esc(n.text)}`;
       html += `</div>`;
     });
   } else {
@@ -982,7 +983,7 @@ export function _renderZoneModal() {
 
   import('./map.js').then(m => {
     const iconHtml = `<span style="display:inline-flex;vertical-align:middle;margin-right:4px;">${m.renderIcon(zone.icon)}</span>`;
-    el('modal-title').innerHTML = `${iconHtml} ${zone.label} <span style="font-size:10px;color:${freshColor};margin-left:6px;">${freshLabel}</span>`;
+    el('modal-title').innerHTML = `${iconHtml} ${_esc(zone.label)} <span style="font-size:10px;color:${freshColor};margin-left:6px;">${freshLabel}</span>`;
   });
   // P1-16：on-demand 放置的節點（cop entity，有 uid、非事件、icon='pin'、非 sidebar 虛擬 zone）
   // 可刪除。data-action="deleteNode" 由 main.js 轉派 map.js _deleteNode（cop_stream.deleteEntity）。
@@ -1074,12 +1075,12 @@ export async function _loadPwaIncidents(unitId) {
       const label  = incLabels[inc.type] || inc.type || '事件';
       const sev    = inc.severity || '';
       const st     = inc.status   || '';
-      const desc   = inc.description ? `<div style="font-size:9px;color:var(--text3);margin-top:2px;">${inc.description.slice(0, 60)}</div>` : '';
+      const desc   = inc.description ? `<div style="font-size:9px;color:var(--text3);margin-top:2px;">${_esc(inc.description.slice(0, 60))}</div>` : '';
       const dimmed = (st === '已結案' || st === 'closed') ? 'opacity:.5;' : '';
       html += `<div style="padding:6px 10px;margin-bottom:4px;background:var(--surface2);border-radius:5px;border-left:3px solid ${sevColor(sev)};${dimmed}">`;
       html += `<div style="display:flex;justify-content:space-between;align-items:center;">`;
-      html += `<span style="font-size:10px;font-weight:600;">${label}</span>`;
-      html += `<span style="font-size:9px;color:${stColor(st)};font-weight:600;">${st}</span>`;
+      html += `<span style="font-size:10px;font-weight:600;">${_esc(label)}</span>`;
+      html += `<span style="font-size:9px;color:${stColor(st)};font-weight:600;">${_esc(st)}</span>`;
       html += `</div>${desc}</div>`;
     });
     container.innerHTML = html;
@@ -1102,10 +1103,10 @@ function _zoneDecisionsTab(zone) {
     const statusLabel = dec.status === 'pending' ? '待裁示' : '已裁示：' + dec.status;
     html += `<div style="padding:6px 8px;margin-bottom:4px;background:var(--surface2);border-radius:5px;border-left:3px solid ${sevC};cursor:pointer;" data-action="showDecisionModal" data-id="${dec.id}">`;
     html += `<div style="display:flex;justify-content:space-between;">`;
-    html += `<span style="font-size:11px;font-weight:700;">${_truncate(dec.decision_title, 30)}</span>`;
-    html += `<span style="font-size:9px;color:var(--text3);">${statusLabel}</span>`;
+    html += `<span style="font-size:11px;font-weight:700;">${_esc(_truncate(dec.decision_title, 30))}</span>`;
+    html += `<span style="font-size:9px;color:var(--text3);">${_esc(statusLabel)}</span>`;
     html += `</div>`;
-    html += `<div style="font-size:9px;color:var(--text3);margin-top:2px;">${dec.decision_type} · ${age}</div>`;
+    html += `<div style="font-size:9px;color:var(--text3);margin-top:2px;">${_esc(dec.decision_type)} · ${age}</div>`;
     html += '</div>';
   });
   return html;
@@ -1140,16 +1141,16 @@ function _eventCardHTML(ev, dimmed, viewUnit) {
   html += `<span style="font-size:12px;font-weight:700;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${_esc(_typeLabel)}</span>`;
   html += `<div style="display:flex;align-items:center;gap:4px;flex-shrink:0;">${roleTag}<span style="font-size:10px;color:${statusC};font-weight:600;">${statusLabel}</span></div>`;
   html += `</div>`;
-  if (_descSub) html += `<div style="font-size:10px;color:var(--text2);margin-top:1px;font-style:italic;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">${_descSub}</div>`;
-  html += `<div style="font-size:10px;color:var(--text3);margin-top:3px;">回報：${ev.operator_name}　${_decisionAge(ev.occurred_at || ev.created_at)}</div>`;
+  if (_descSub) html += `<div style="font-size:10px;color:var(--text2);margin-top:1px;font-style:italic;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">${_esc(_descSub)}</div>`;
+  html += `<div style="font-size:10px;color:var(--text3);margin-top:3px;">回報：${_esc(ev.operator_name)}　${_decisionAge(ev.occurred_at || ev.created_at)}</div>`;
   if (notes.length > 0) {
     html += `<div style="margin-top:6px;border-top:1px solid var(--border);padding-top:4px;">`;
     html += `<div style="font-size:9px;color:var(--text3);margin-bottom:2px;">處置紀錄</div>`;
     notes.forEach(n => {
       html += `<div style="font-size:10px;padding:2px 0;border-bottom:1px solid rgba(48,54,61,.3);">`;
       html += `<span style="color:var(--text3);">${_fmtLocal(n.time, true)}</span>`;
-      html += n.by ? ` <span style="color:#DAA520;font-weight:600;">${n.by}</span>` : '';
-      html += ` — ${n.text}`;
+      html += n.by ? ` <span style="color:#DAA520;font-weight:600;">${_esc(n.by)}</span>` : '';
+      html += ` — ${_esc(n.text)}`;
       html += `</div>`;
     });
     html += `</div>`;
@@ -1353,7 +1354,8 @@ export function renderZoneC(data, d) {
       const sevColor = ev.severity === 'critical' ? 'var(--severity-critical)' : ev.severity === 'warning' ? 'var(--severity-warning)' : 'var(--severity-info)';
       const uName  = unitNames[ev.reported_by_unit] || '';
       const asgKey = ev.assigned_unit;
-      const asgName = asgKey && asgKey !== ev.reported_by_unit ? (unitNames[asgKey] || asgKey) : '';
+      // #293：unitNames 為安全字面；fallback 落 raw asgKey（assigned_unit PATCH 未 enum 強制）→ escape。
+      const asgName = asgKey && asgKey !== ev.reported_by_unit ? (unitNames[asgKey] || _esc(asgKey)) : '';
       const overdueAnim = _isOverdue ? 'animation:pulse 1s infinite;' : '';
       const typeLabel = NAPSG_EVENTS[ev.event_type]?.label || ev.event_type || ev.description;
       const extraDesc = ev.description && ev.description !== typeLabel ? ev.description : '';
@@ -1363,7 +1365,7 @@ export function renderZoneC(data, d) {
       h += `<span style="font-size:10px;font-weight:600;flex:1;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">${_esc(typeLabel)}</span>`;
       h += `<span style="font-size:9px;font-weight:700;color:${tagColor};flex-shrink:0;${overdueAnim}" data-countdown-deadline="${ev.response_deadline || ''}">${cd}</span>`;
       h += `</div>`;
-      if (extraDesc) h += `<div style="font-size:9px;color:var(--text3);overflow:hidden;white-space:nowrap;text-overflow:ellipsis;margin-top:1px;font-style:italic;">${extraDesc}</div>`;
+      if (extraDesc) h += `<div style="font-size:9px;color:var(--text3);overflow:hidden;white-space:nowrap;text-overflow:ellipsis;margin-top:1px;font-style:italic;">${_esc(extraDesc)}</div>`;
       h += `<div style="display:flex;align-items:center;margin-top:2px;gap:0;">`;
       h += `<span style="font-size:9px;color:var(--text3);flex-shrink:0;">${uName}</span>`;
       h += `<span style="font-size:9px;color:var(--text3);flex:1;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;padding:0 6px;opacity:.7;">${asgName ? '→ ' + asgName : ''}</span>`;
@@ -1405,7 +1407,8 @@ export function renderZoneC(data, d) {
         const sevColor = ev.severity === 'critical' ? 'var(--severity-critical)' : ev.severity === 'warning' ? 'var(--severity-warning)' : 'var(--severity-info)';
         const uName  = unitNames[ev.reported_by_unit] || '';
         const asgKey = ev.assigned_unit;
-        const asgName = asgKey && asgKey !== ev.reported_by_unit ? (unitNames[asgKey] || asgKey) : '';
+        // #293：unitNames 為安全字面；fallback 落 raw asgKey（assigned_unit PATCH 未 enum 強制）→ escape。
+      const asgName = asgKey && asgKey !== ev.reported_by_unit ? (unitNames[asgKey] || _esc(asgKey)) : '';
         const typeLabel = NAPSG_EVENTS[ev.event_type]?.label || ev.event_type || ev.description;
         const extraDesc = ev.description && ev.description !== typeLabel ? ev.description : '';
         let h = `<div style="cursor:pointer;padding:5px 8px;margin-bottom:2px;background:var(--surface2);border-radius:5px;border-left:3px solid ${sevColor};opacity:.45;" data-action="openEventByCode" data-id="${ev.id}">`;
@@ -1413,7 +1416,7 @@ export function renderZoneC(data, d) {
         h += `<span style="font-size:10px;font-weight:600;flex:1;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">${_esc(typeLabel)}</span>`;
         h += `<span style="font-size:9px;color:var(--text3);flex-shrink:0;">已結案</span>`;
         h += `</div>`;
-        if (extraDesc) h += `<div style="font-size:9px;color:var(--text3);overflow:hidden;white-space:nowrap;text-overflow:ellipsis;margin-top:1px;font-style:italic;">${extraDesc}</div>`;
+        if (extraDesc) h += `<div style="font-size:9px;color:var(--text3);overflow:hidden;white-space:nowrap;text-overflow:ellipsis;margin-top:1px;font-style:italic;">${_esc(extraDesc)}</div>`;
         h += `<div style="display:flex;align-items:center;margin-top:2px;gap:0;">`;
         h += `<span style="font-size:9px;color:var(--text3);flex-shrink:0;">${uName}</span>`;
         h += `<span style="font-size:9px;color:var(--text3);flex:1;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;padding:0 6px;opacity:.7;">${asgName ? '→ ' + asgName : ''}</span>`;

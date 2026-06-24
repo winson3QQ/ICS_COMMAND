@@ -107,10 +107,33 @@ def _assert_safe_mtls_config() -> None:
         )
 
 
+def _verify_audit_chain_on_boot() -> None:
+    """#372（#348-F3）：啟動時驗一次稽核 hash 鏈，把「verify_audit_chain runtime 零 caller＝
+    死驗證器」收斂為「至少每次開機驗一次」（NIST AU-9(3)「真的有在驗」）。非阻斷：斷鏈只 log
+    WARNING 當究責訊號、不擋啟動。互動式驗證另有 GET /api/admin/audit-chain/verify（sysadmin）。"""
+    try:
+        from core.audit_chain import verify_audit_chain
+        from core.database import get_conn
+
+        with get_conn() as conn:
+            report = verify_audit_chain(conn)
+        if report.get("ok"):
+            log.info("[audit-chain] 開機驗證通過（%s 筆鏈記錄）", report.get("total"))
+        else:
+            log.warning(
+                "[audit-chain] 開機驗證**失敗**：broken_at=%s reason=%s（稽核完整性疑慮，請查）",
+                report.get("broken_at"),
+                report.get("reason"),
+            )
+    except Exception:
+        log.warning("[audit-chain] 開機驗證執行失敗（best-effort，不擋啟動）", exc_info=True)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     _assert_safe_mtls_config()
     init_db()
+    _verify_audit_chain_on_boot()  # #372：開機驗一次稽核鏈（NIST AU-9(3)）
     # C1-A：首次啟動產生隨機 PIN（取代舊的預設 1234），印 console + 寫 ~/.ics/first_run_token
     ensure_initial_admin_token()
     ensure_default_admin_pin()

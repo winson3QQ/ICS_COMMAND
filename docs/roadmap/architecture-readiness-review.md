@@ -25,7 +25,7 @@
 
 1. **「TAK 只是來源之一」紅線**（`tak-integration-strategy.md` §1）：TAK 降為 `cop_service` 正規化層其中一個 source，強制每 P2 item 宣告 fallback + 斷線負向測試。降階是設計、不是救火。
 2. **演習 / 實戰 server 權威隔離**（threat_model TAK-C、`exercise_service.resolve_scope`）：不信 ATAK `opex` 自宣告，擋「演習注入污染實戰 COP」。紅隊建議讀 opex 被評估後**明確不採並記錄原因**。
-3. **指揮責任鏈**：decisions 表 + audit hash chain（NIST AU-9(3)）+ 每筆寫入帶 account_id。事後究責與 AAR 有防竄改的根。
+3. **指揮責任鏈**：decisions 表 + audit hash chain（NIST AU-9(3)）+ 每筆寫入帶 account_id。事後究責與 AAR 有完整性**偵測**基礎。<br>⚠ 誠實界定（對齊 `threat_model.md` §157「偵測，非預防」，#372/#348-F3）：hash chain 是**竄改偵測**機制、非防竄改——目前純 SHA-256（**未 keyed**），擋意外損毀＋天真竄改（改列沒補鏈），但**擋不住有 DB 寫權者改列並重算下游 `hash_prev`**；需 keyed HMAC + key off-box 才抗此（延實機，#226/#372-B）。驗證器經 `GET /api/admin/audit-chain/verify`（sysadmin）＋開機 log 接上 runtime（#372 前：runtime 零 caller）。
 4. **後端工程品質紮實**（抽驗一致）：全 parameterized query、exercise mutex 原子 UPDATE 防 TOCTOU、CoT 內容層白名單（座標 / callsign / type prefix）、TAK ingest 全域 token bucket、backup atomic write + SHA-256 + Fernet。
 
 ## A2. 到了現場會痛的地方（按情境）
