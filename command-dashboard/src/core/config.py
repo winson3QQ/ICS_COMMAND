@@ -338,6 +338,10 @@ TAK_INGEST_MAX_EVENTS_PER_SEC: float = float(os.getenv("TAK_INGEST_MAX_EVENTS_PE
 # cop_entity_tracks 超過此天數自動清除（人員行蹤個資不無限保存；90 天前演習將不可 AAR 回放）。
 # runtime 開關（Admin）持久化於 config 表 retention.tracks_ttl_enabled，此處為天數參數。
 TRACKS_TTL_DAYS: int = int(os.getenv("TRACKS_TTL_DAYS", "90"))
+# #348-F10：chats（通聯）超過此天數自動清除。chats 含 message/callsign/lat-lon 個資，且**既不在
+# exercise-cascade、又無 TTL** → 連刪演習都清不掉、永久累積。與 tracks 同政策窗（90 天後該場通聯
+# 不可再 AAR 回放），共用同一 retention 開關（retention.tracks_ttl_enabled）。
+CHATS_TTL_DAYS: int = int(os.getenv("CHATS_TTL_DAYS", "90"))
 
 # 註：舊 COP_STALE_REMOVE_WINDOW_S（#160/#161 WIP last-heard 時窗）已於 #161 reality check
 # 退場——改對齊 TAK 原生 honor `<archive/>` + honor `stale`（見 cop_entity_repo.list_cop_entities
