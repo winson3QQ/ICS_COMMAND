@@ -1,11 +1,15 @@
-"""retention_service — 軌跡 PII retention（P2-20 收尾 / #207，threat_model §8.4 政策乙案）。
+"""retention_service — PII retention TTL（P2-20 收尾 / #207 + #348-F10，threat_model §8.4 政策乙案）。
 
-政策：`cop_entity_tracks`（人員行蹤個資）= **exercise 刪除 cascade（既有）＋ N 天 TTL
-自動清理（本檔）**。TTL 防「沒人刪演習就永遠留著」的個資累積（外洩 blast radius +
-磁碟無界成長）；trade-off = 超過 N 天的演習不可再 AAR 回放（政策已知、記 threat_model）。
+政策：個資表 = **exercise 刪除 cascade ＋ N 天 TTL 自動清理（本檔）**。TTL 防「沒人刪演習
+就永遠留著」的個資累積（外洩 blast radius + 磁碟無界成長）；trade-off = 超過 N 天的演習不可
+再 AAR 回放（政策已知、記 threat_model）。涵蓋：
+  - `cop_entity_tracks`（人員行蹤；#207）
+  - `chats`（通聯 message/callsign/lat-lon；#348-F10）——原既不在 exercise-cascade、又無 TTL，
+    PII 永久累積（連刪演習都清不掉）；本批補 TTL ＋ 補進 `_EXERCISE_SCOPED_TABLES`。
 
 Admin runtime 開關（比照 P2-24 TAK toggle 模式）：config 表 `retention.tracks_ttl_enabled`
-持久化；**預設啟用**（安全政策出廠生效，sysadmin 可關以支援長保存需求）。
+持久化、**單一 PII-retention 政策開關**（tracks + chats 同治，名稱沿用舊鍵不破壞既有持久值）；
+**預設啟用**（安全政策出廠生效，sysadmin 可關以支援長保存需求）。
 每次清理筆數寫 `RETENTION_CLEANUP` audit（個資刪除須留痕，exercise_id=NULL 系統層）。
 """
 
@@ -51,13 +55,34 @@ def cleanup_expired_tracks() -> int:
     # 走 idx_cop_tracks_t（#207 補）索引範圍刪。
     with get_conn() as conn:
         cur = conn.execute(
-            "DELETE FROM cop_entity_tracks "
-            "WHERE t < strftime('%Y-%m-%dT%H:%M:%SZ','now', ?)",
+            "DELETE FROM cop_entity_tracks WHERE t < strftime('%Y-%m-%dT%H:%M:%SZ','now', ?)",
             (f"-{days} days",),
         )
         deleted = cur.rowcount
     if deleted > 0:
-        audit("system", None, "RETENTION_CLEANUP", "cop_entity_tracks", "ttl",
-              {"deleted": deleted, "ttl_days": days})
+        audit("system", None, "RETENTION_CLEANUP", "cop_entity_tracks", "ttl", {"deleted": deleted, "ttl_days": days})
         log.info("[retention] 軌跡 TTL 清理：刪 %d 筆（>%d 天）", deleted, days)
+    return deleted
+
+
+def cleanup_expired_chats() -> int:
+    """#348-F10：刪除超過 CHATS_TTL_DAYS 的通聯訊息（message/callsign/lat-lon 個資）。
+    開關關閉 → no-op 回 0。與 cleanup_expired_tracks 共用 ttl_enabled() 政策開關。
+
+    TTL 軸用 `received_at`（server 入庫時間，schema DEFAULT 必有、不可 client 偽造；非 client
+    宣告的 `time`）。刪除筆數 >0 才寫 `RETENTION_CLEANUP` audit。失敗讓例外上拋（caller 週期
+    task log 後下輪再試）。
+    """
+    if not ttl_enabled():
+        return 0
+    days = max(int(config.CHATS_TTL_DAYS), 1)  # 防呆：≥1 天
+    with get_conn() as conn:
+        cur = conn.execute(
+            "DELETE FROM chats WHERE received_at < strftime('%Y-%m-%dT%H:%M:%SZ','now', ?)",
+            (f"-{days} days",),
+        )
+        deleted = cur.rowcount
+    if deleted > 0:
+        audit("system", None, "RETENTION_CLEANUP", "chats", "ttl", {"deleted": deleted, "ttl_days": days})
+        log.info("[retention] 通聯 TTL 清理：刪 %d 筆（>%d 天）", deleted, days)
     return deleted

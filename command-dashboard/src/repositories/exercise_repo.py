@@ -118,9 +118,20 @@ def get_active_exercise() -> dict | None:
 # 演習-scoped 的表（皆有 exercise_id 欄）。刪除一場時連同其資料級聯清除，
 # 範圍對齊 admin /reset-exercise，但限定 WHERE exercise_id=?（單場）。table 名為常數白名單。
 _EXERCISE_SCOPED_TABLES = (
-    "events", "cop_entities", "decisions", "audit_log", "manual_records",
-    "snapshots", "resource_snapshots", "aar_entries", "exercise_kpis",
-    "ai_recommendations", "ttx_injects",
+    "events",
+    "cop_entities",
+    "decisions",
+    "audit_log",
+    "manual_records",
+    "snapshots",
+    "resource_snapshots",
+    "aar_entries",
+    "exercise_kpis",
+    "ai_recommendations",
+    "ttx_injects",
+    # #348-F10：chats 原漏在此清單外 → 刪演習不清通聯 PII（message/callsign/lat-lon）。補回
+    # 一致性；chats.exercise_id=NULL（實戰/未分場廣播）不受 WHERE exercise_id=? 影響、不誤刪。
+    "chats",
 )
 
 

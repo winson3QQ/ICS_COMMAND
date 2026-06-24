@@ -87,8 +87,9 @@ async def _periodic_retention_cleanup():
     while True:
         try:
             await asyncio.to_thread(retention_service.cleanup_expired_tracks)
+            await asyncio.to_thread(retention_service.cleanup_expired_chats)  # #348-F10
         except Exception:
-            log.warning("[retention] 軌跡 TTL 清理失敗（best-effort，下輪再試）", exc_info=True)
+            log.warning("[retention] PII TTL 清理失敗（best-effort，下輪再試）", exc_info=True)
         await asyncio.sleep(_RETENTION_INTERVAL)
 
 
