@@ -195,6 +195,10 @@ def verify_login(username: str, pin: str, bypass_lockout: bool = False) -> tuple
     with get_conn() as conn:
         row = conn.execute("SELECT * FROM accounts WHERE username=?", (username,)).fetchone()
         if not row:
+            # #348-F15：常數時間化——帳號不存在時仍跑一次等量 PBKDF2（dummy），消除「no_user 不跑
+            # KDF＝回應快」的計時旁路。no_user 與 bad_pin API 同回 401，計時是唯一存在性 oracle；
+            # 補一次 hash_pin(pin)（≈600k 迭代，與 verify_pin 同量級）抹平兩路徑時間差。
+            hash_pin(pin)
             return None, "no_user"
         d = dict(row)
         if d.get("status") == "archived":

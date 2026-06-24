@@ -76,9 +76,7 @@ def _encryption_key() -> bytes:
     """加密用金鑰：BACKUP_KEY 優先，fallback legacy。"""
     key = os.getenv(BACKUP_KEY_ENV) or os.getenv(LEGACY_KEY_ENV)
     if not key:
-        raise RuntimeError(
-            f"{BACKUP_KEY_ENV} 未設定（P1-12a unlock_key.py 提供，或過渡期設 {LEGACY_KEY_ENV}）"
-        )
+        raise RuntimeError(f"{BACKUP_KEY_ENV} 未設定（P1-12a unlock_key.py 提供，或過渡期設 {LEGACY_KEY_ENV}）")
     return key.encode() if isinstance(key, str) else key
 
 
@@ -156,8 +154,7 @@ def _encrypt(plaintext: bytes) -> bytes:
 
 
 def _decrypt(ciphertext: bytes) -> bytes:
-    from cryptography.fernet import Fernet
-    from cryptography.fernet import InvalidToken
+    from cryptography.fernet import Fernet, InvalidToken
 
     last: Exception | None = None
     for key in _decryption_keys():
@@ -172,6 +169,9 @@ def _atomic_write(path: Path, data: bytes) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(path.suffix + ".tmp")
     tmp.write_bytes(data)
+    # #348-F15：備份檔限 owner 讀寫（即使 Fernet 加密，仍縮小本機其他帳號讀取面）。在 replace 前
+    # chmod，使最終檔承繼 0600（POSIX）；Windows os.chmod 僅影響唯讀位、無害。
+    tmp.chmod(0o600)
     tmp.replace(path)
 
 
@@ -311,9 +311,7 @@ def restore_backup(
 
     pre_restore_path: Path | None = None
     if pre_restore and data_dir.exists() and _iter_data_files(data_dir):
-        pre = create_backup(
-            data_dir, backup_dir, trigger="pre-restore", filename_pattern=PRE_RESTORE_PATTERN
-        )
+        pre = create_backup(data_dir, backup_dir, trigger="pre-restore", filename_pattern=PRE_RESTORE_PATTERN)
         pre_restore_path = pre.path
 
     with tempfile.TemporaryDirectory(prefix="ics-restore-") as td:
