@@ -105,8 +105,9 @@ APP_VERSION = "2.15.3"
 # v1.0.0：拆分自 ICS_DMAS 後首個完整可用形態（MapLibre 地圖引擎全換 P1-10b + PWA 移除 P1-11
 #         + 演習/放置/稽核 UI P1-13/14/16/#93 + 分類編輯器 #66）→ 0.x 畢業為 MAJOR 紀元。
 CMD_VERSION: str = os.getenv(
-    "CMD_VERSION", "v1.11.1"
-)  # PATCH v1.11.1：#354 帳號管理 UI 鎖定最後一個 active sysadmin 的降權控制（角色 select + 停用鈕禁用 + 提示）。
+    "CMD_VERSION", "v1.11.2"
+)  # PATCH v1.11.2：#293 前端 DOM-XSS sink escaping（純前端硬化、非視覺）。
+# PATCH v1.11.1：#354 帳號管理 UI 鎖定最後一個 active sysadmin 的降權控制（角色 select + 停用鈕禁用 + 提示）。
 # MINOR v1.10.0：AAR 回放上圖功能組完整——區域（#338）+ 事件/敵我接觸（#339，重用 live milsymbol/
 #  NAPSG 符號、隨 T 移動）；B1-B3 含 iPad/iPhone 觸控 human verify 全齊（#201），故進 frontend MINOR。
 # PATCH v1.9.3：桌機憑證 UX（#327）——「下載 root CA」鈕 + .p12 標 Windows/iMac/Android + 信任提示。
