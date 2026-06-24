@@ -157,7 +157,8 @@ _每次 role 變更、帳號建立 / 刪除均寫 audit log_
 **界限 / 殘留**：
 - 此接受**僅在 mTLS 強制（prod 預設）成立**；非 mTLS 部署下 PIN 即足以建 session → 低熵成真缺口（與 §2.3 lockout、#295 高權不鎖之 mTLS 前提同源）。
 - 線上爆破另由帳號鎖定（§2.3）＋ `/api/auth/login` 限流（10/min/IP）＋ 計時旁路抹平（#348-F15）界定。
-- **真提升熵**（PIN→passphrase，放寬長度/英數）需後端驗證**＋前端輸入**改動，**未做**（碰前端，獨立分刀）。本節為「評估後記錄接受風險＋界定前提」，**不主張已達 800-63B memorized-secret 強度**。
+- **強度策略（P1 已落地）**：`core/pin_policy.validate_pin_strength` 套四出口（create/reset/change-initial/admin-PIN）——**長度 6–128、拒全同/連續/常見/==帳號名、無組成規則、開放長密語**（NIST 800-63B 對齊；本地 blocklist、無外部 API）。**不溯及**（登入只驗 hash）。
+- **待續（分期）**：P2 = 新帳號隨機臨時 PIN + **首登強制改全帳號**（需與系統 first-run gate/#306 bootstrap 解耦，獨立 PR）；P3 = 前端輸入欄放寬 + show-password。本節為「評估後記錄接受風險 + 界定前提」；P1 已把下限/可預測值補上，但**完全提升熵仍取決於使用者選長密語**，**不主張一律達 800-63B memorized-secret 強度**。
 
 ---
 

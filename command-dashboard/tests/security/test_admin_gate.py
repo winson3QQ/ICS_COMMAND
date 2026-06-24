@@ -57,7 +57,7 @@ class TestRoleGate:
 
 class TestAdminBoundary:
     def test_admin_pin_change_requires_sysadmin_session(self, client):
-        r = client.put("/api/admin/pin", headers=_login(client), json={"new_pin": "5678"})
+        r = client.put("/api/admin/pin", headers=_login(client), json={"new_pin": "739104"})
         assert r.status_code == 200
 
     def test_delete_nonexistent_account_returns_404(self, client):
