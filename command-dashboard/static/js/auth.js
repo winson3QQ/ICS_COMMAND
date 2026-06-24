@@ -98,6 +98,12 @@ function _isAccountManagerSession() {
   return _isSysadminSession() || _isCommanderSession();
 }
 
+// #354：判定一個帳號物件（/api/admin/accounts 回傳，帶 role + role_detail）是否為 sysadmin。
+// 用於 UI 鎖定「系統內最後一個 active sysadmin」的降權控制。後端守門仍是最終防線。
+function _isAccountSysadmin(a) {
+  return ROLE_ALIASES.sysadmin.includes(a.role_detail) || ROLE_ALIASES.sysadmin.includes(a.role);
+}
+
 export function getCurrentOperator() {
   return sessionStorage.getItem('cmd_username') || '指揮部';
 }
@@ -1521,6 +1527,10 @@ export async function admLoadAccounts() {
     return;
   }
   const accounts = await resp.json();
+  // #354：系統內唯一的 active sysadmin → UI 禁用其降權控制（角色 / 停用），與後端守門對齊。
+  // 僅 count===1 時鎖；多 sysadmin 時不鎖（後端 409 仍兜底，含 UI 繞不過的並發窗口 #369）。
+  const _activeSysadmins = accounts.filter(x => x.status === 'active' && _isAccountSysadmin(x));
+  const _lastSysadminUser = _activeSysadmins.length === 1 ? _activeSysadmins[0].username : null;
   let html = '';
   if (!accounts.length) {
     html = '<div style="color:var(--text2);font-size:12px;padding:16px;line-height:1.7;">' +
@@ -1535,6 +1545,9 @@ export async function admLoadAccounts() {
   for (const a of accounts) {
     const statusCls = a.status === 'active' ? 'active' : 'suspended';
     const statusLabel = a.status === 'active' ? '啟用' : '停用';
+    // #354：最後一個 active sysadmin → 鎖角色 select + 停用鈕（防自鎖）。
+    const _isLastSysadmin = a.username === _lastSysadminUser;
+    const _lockAttr = _isLastSysadmin ? ' disabled title="系統內最後一個系統管理員，不可降級／停用（防自鎖）"' : '';
     html += '<div class="adm-account-card" id="adm-card-' + a.username + '">' +
       '<div class="adm-account-row">' +
         '<div><span class="adm-account-name">' + a.username + '</span>' +
@@ -1547,7 +1560,7 @@ export async function admLoadAccounts() {
       '</div>' +
       '<div class="adm-btns">' +
         '<button class="adm-btn" data-action="adm-toggle-edit" data-username="' + a.username + '">編輯</button>' +
-        '<button class="adm-btn" data-action="adm-toggle-status" data-username="' + a.username + '" data-status="' + a.status + '">' + (a.status === 'active' ? '停用' : '啟用') + '</button>' +
+        '<button class="adm-btn" data-action="adm-toggle-status" data-username="' + a.username + '" data-status="' + a.status + '"' + _lockAttr + '>' + (a.status === 'active' ? '停用' : '啟用') + '</button>' +
         // #275 wave B：裝置憑證（mTLS 第二因子）管理，sysadmin only
         (_isSysadminSession() ? '<button class="adm-btn" data-action="adm-toggle-certs" data-username="' + a.username + '">🔑 裝置憑證</button>' : '') +
       '</div>' +
@@ -1556,7 +1569,8 @@ export async function admLoadAccounts() {
         '<label>新 PIN（4-6 位數字，留空不改）</label>' +
         '<input id="adm-newpin-' + a.username + '" type="password" inputmode="numeric" maxlength="6" placeholder="新 PIN">' +
         '<label>角色</label>' +
-        '<select id="adm-role-' + a.username + '">' + _admRoleOptions(a.role, _isSysadminSession()) + '</select>' +
+        '<select id="adm-role-' + a.username + '"' + _lockAttr + '>' + _admRoleOptions(a.role, _isSysadminSession()) + '</select>' +
+        (_isLastSysadmin ? '<div style="color:var(--text3);font-size:11px;margin-top:2px;">最後一個系統管理員，角色已鎖定（防自鎖）</div>' : '') +
         '<label>顯示名稱</label>' +
         '<input id="adm-dname-' + a.username + '" value="' + (a.display_name || '') + '">' +
         '<div style="display:flex;gap:6px;">' +

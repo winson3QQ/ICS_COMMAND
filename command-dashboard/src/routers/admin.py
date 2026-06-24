@@ -141,6 +141,29 @@ def _require_commander_target_allowed(session: dict, username: str) -> dict:
     return target
 
 
+def _require_not_last_sysadmin(username: str, *, will_remain_sysadmin: bool = False) -> None:
+    """#354 防自鎖：系統內最後一個 status=active 且 role=sysadmin 的帳號，不得被
+    降級 / 停用 / 封存（否則零管理能力，只能 shell 直操 DB 救回）。
+
+    與 suspend_all_accounts（account_repo.py，#153）排除發起者本人同源防呆，
+    補上單筆 role/status/delete 漏掉的同一條守門。不分是否改自己 —— 只在「會把
+    管理能力歸零」那一刻擋下；多 sysadmin 時不受影響。
+
+    will_remain_sysadmin=True（改角色但新角色仍是 sysadmin）→ 放行，因不減少 active
+    sysadmin 數。sysadmin 判定用正規 role_zh_to_en（不沿用 is_first_run_required 的
+    手寫 SQL predicate），與本 router 其餘 role 判定一致。
+    """
+    if will_remain_sysadmin:
+        return
+    active_sysadmins = [
+        a
+        for a in get_all_accounts()  # 已濾掉 archived
+        if (a.get("status") or "active") == "active" and _session_role(a) == ROLE_SYSADMIN
+    ]
+    if len(active_sysadmins) <= 1 and any(a["username"] == username for a in active_sysadmins):
+        raise HTTPException(409, "不可降級／停用／封存系統內最後一個有效系統管理員（會導致自鎖）")
+
+
 @router.get("/status", tags=["account-admin"])
 def admin_status(request: Request):
     _check_system_admin(request)
@@ -198,6 +221,7 @@ def create_acct(body: AccountCreateIn, request: Request):
 def delete_acct(username: str, request: Request):
     sess = _check_account_manager(request)
     _require_commander_target_allowed(sess, username)
+    _require_not_last_sysadmin(username)  # #354 防自鎖（archive 會移除該 sysadmin）
     if not delete_account(username, sess["username"]):
         raise HTTPException(404, "account not found")
     return {"ok": True}
@@ -209,6 +233,8 @@ def update_status(username: str, body: AccountStatusIn, request: Request):
     _require_commander_target_allowed(sess, username)
     if body.status not in ("active", "suspended"):
         raise HTTPException(422, "status must be active or suspended")
+    if body.status == "suspended":
+        _require_not_last_sysadmin(username)  # #354 防自鎖（設回 active 不擋）
     if not update_account_status(username, body.status, sess["username"]):
         raise HTTPException(404, "account not found")
     return {"ok": True}
@@ -233,6 +259,11 @@ def update_role(username: str, body: RoleUpdateIn, request: Request):
     if not is_valid_account_role(body.role, body.role_detail):
         raise HTTPException(422, "role invalid")
     _require_commander_new_role_allowed(sess, body.role, body.role_detail)
+    # #354 防自鎖：降走最後一個 sysadmin 才擋；新角色仍是 sysadmin 則放行
+    _require_not_last_sysadmin(
+        username,
+        will_remain_sysadmin=role_zh_to_en(body.role, body.role_detail) == ROLE_SYSADMIN,
+    )
     if not update_account_role(username, body.role, sess["username"], body.role_detail):
         raise HTTPException(404, "account not found")
     return {"ok": True}
