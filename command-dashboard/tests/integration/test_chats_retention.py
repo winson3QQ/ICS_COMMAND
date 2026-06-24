@@ -80,3 +80,21 @@ class TestExerciseCascade:
         with get_conn() as conn:
             live = conn.execute("SELECT COUNT(*) FROM chats WHERE exercise_id IS NULL").fetchone()[0]
         assert live == 1  # 實戰廣播不誤刪
+
+
+class TestSystemScopeAudit:
+    def test_chats_retention_audit_is_null_scoped(self, tmp_db):
+        """合規不變量：chats 的 RETENTION_CLEANUP audit 必須 exercise_id=NULL（系統層）。
+        否則會被 active 場 cascade 刪掉 → 個資刪除證明遺失。即使有 active 場亦須 NULL
+        （audit() 的 RETENTION_ 前綴跳過 Model-B 自動戳場，見 _helpers.audit）。"""
+        from services.exercise_service import set_active
+
+        active = create_exercise({"name": "active", "type": "ttx"})["id"]
+        set_active(active, "admin")  # 有 active 場 → Model B 會想自動戳 exercise_id
+        _insert_chat("old", "-200 days", active)
+        retention_service.cleanup_expired_chats()  # → RETENTION_CLEANUP(chats) audit
+        with get_conn() as conn:
+            rows = conn.execute(
+                "SELECT exercise_id FROM audit_log WHERE action_type='RETENTION_CLEANUP' AND target_table='chats'"
+            ).fetchall()
+        assert rows and all(r[0] is None for r in rows)  # 全 NULL → 不被 cascade 刪、證明留存
