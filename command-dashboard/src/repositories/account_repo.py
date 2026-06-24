@@ -195,6 +195,14 @@ def verify_login(username: str, pin: str, bypass_lockout: bool = False) -> tuple
     with get_conn() as conn:
         row = conn.execute("SELECT * FROM accounts WHERE username=?", (username,)).fetchone()
         if not row:
+            # #348-F15：抹平 no_user 的「零-KDF 旁路」——帳號不存在原直接 return（不跑 PBKDF2），與
+            # 存在帳號錯 PIN 跑 600k 的巨大時間差＝存在性 oracle（no_user 與 bad_pin 同回 401，計時是
+            # 唯一洩漏）。補一次 hash_pin(pin)（600k＝現行 default，新帳號與 rehash 後皆此值）抹平。
+            # ⚠ 殘留（已知、非完全常數時間，review #379）：legacy-100k 帳號（pre-wave-4 遷移、尚未登入
+            #   rehash）verify 僅 100k → 比 600k dummy 快，仍可被計時微弱區分。**fresh 佈署無此類帳號**、
+            #   且每次成功登入即透明 rehash 至 600k 收斂；完全閉合需把 verify_pin 補到固定 600k（過度，未做）。
+            # CPU：no_user 噴 600k 由 /api/auth/login 限流（auth_rate_limit 10/min/IP）界定，非放大破口。
+            hash_pin(pin)
             return None, "no_user"
         d = dict(row)
         if d.get("status") == "archived":
