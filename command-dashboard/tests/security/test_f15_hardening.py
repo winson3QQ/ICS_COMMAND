@@ -10,9 +10,10 @@ import sys
 import pytest
 
 
-def test_no_user_runs_dummy_pbkdf2_for_constant_time(tmp_db, monkeypatch):
-    """#348-F15①：verify_login 對不存在帳號仍呼叫 hash_pin（dummy PBKDF2）→ 常數時間化。
-    （以 stub 攔 hash_pin 證明它被呼叫；不實跑 600k 迭代以保測試快速。）"""
+def test_no_user_invokes_dummy_pbkdf2(tmp_db, monkeypatch):
+    """#348-F15①：verify_login 對不存在帳號仍呼叫 hash_pin（dummy 600k PBKDF2）→ 抹平零-KDF 旁路。
+    這是 **call-presence 守門**（防誰刪掉那行回歸），**非計時證明**；legacy-100k 殘留見 verify_login
+    註解（fresh 佈署無此類帳號）。stub 攔 hash_pin 證明被呼叫，不實跑 600k 以保測試快速。"""
     from repositories import account_repo
 
     called: list[int] = []
