@@ -98,6 +98,14 @@ def visible_factions_for_session(session: dict) -> frozenset[str] | None:
 
 
 def allowed_roles_for(method: str, path: str) -> frozenset[str] | None:
+    """回傳某 (method, path) 允許的角色閘。契約（#370 起 default-deny）：
+      - None          → public / 豁免（middleware 跳過角色檢查）
+      - 非空 frozenset → 僅該些角色可過
+      - 空 frozenset   → default-deny（未登記路徑，fail closed，403）
+
+    **新增端點必須在下方明確分類**；漏配會落到空集合 deny，並被
+    test_no_route_falls_through_to_deny_fallback 在 CI 擋下。
+    """
     method = method.upper()
     if path.startswith("/api/auth/") or path == "/api/session/status":
         return None
@@ -167,6 +175,40 @@ def allowed_roles_for(method: str, path: str) -> frozenset[str] | None:
         # 鎖當前 active 場，歷史場 ?exercise_id 限 COMMAND_ROLES）。出向 compose（POST，#216）
         # ＝指揮對外發話、audit-first → 預留 COMMAND_ROLES（未實作；明示避免落非-GET 的 WRITE_ROLES 預設）。
         return READ_ROLES if method == "GET" else COMMAND_ROLES
-    if method in {"GET", "HEAD", "OPTIONS"}:
-        return READ_ROLES
-    return WRITE_ROLES
+    # #370：歷史上靠「寬鬆預設」(GET→READ / else→WRITE) 才通的現役路由，於此明確登記，
+    # 權限照其凍結分類（golden, test_rbac_route_matrix）——行為零變更。個別端點是否該更嚴
+    # 屬另一條 hardening 線（見 #370 follow-up），本單不動。**新端點必須在上方明確分類**，
+    # 不再有寬鬆兜底（落到下方 default-deny）。
+    # 註：health/status/version/ingress/pi-push/csp-report/snapshots-POST 等於 middleware 更早
+    # 豁免，其分類為 dead value，但 golden 仍鎖之 → 一併登記保持 golden 穩定。
+    # /api/sync 非-GET 已由上方 COMMAND case 先攔，故此處 sync 僅 GET→READ 生效。
+    _LEGACY_DEFAULT_PREFIXES = (
+        "/api/cop",
+        "/api/events",
+        "/api/decisions",
+        "/api/manual_records",
+        "/api/snapshots",
+        "/api/security",
+        "/api/sync",
+        "/api/ingress",
+        "/api/pi-push",
+        "/api/pi-data",
+    )
+    _LEGACY_DEFAULT_EXACT = frozenset(
+        {
+            "/api/dashboard",
+            "/api/staff",
+            "/api/audit_log",
+            "/api/facilities",
+            "/api/health",
+            "/api/status",
+            "/api/version",
+        }
+    )
+    if path in _LEGACY_DEFAULT_EXACT or any(path == p or path.startswith(p + "/") for p in _LEGACY_DEFAULT_PREFIXES):
+        return READ_ROLES if method in {"GET", "HEAD", "OPTIONS"} else WRITE_ROLES
+    # #370 default-DENY：未登記路徑 fail closed。空 frozenset() 即正確 deny——middleware
+    # (auth/middleware.py:63-64) 把 `allowed is not None` 當「有規則」、is_role_allowed(role,
+    # frozenset()) 恆 False → 403。None 不重用（None=public/豁免）。空集合亦為回歸測試
+    # (test_no_route_falls_through_to_deny_fallback) 偵測「落兜底」的訊號。
+    return frozenset()

@@ -1,7 +1,9 @@
-"""#296 RBAC 路由分類矩陣（golden snapshot）。
+"""#296 RBAC 路由分類矩陣（golden snapshot）+ #370 default-deny 完整性守門。
 
-防 #287 類「新 router 沒在 allowed_roles_for 登記 → 落寬鬆預設 → 靜默 broken access
-control」：把所有 /api/ route 的 (method, path → 角色閘) 鎖成 golden。
+防 #287 類「新 router 沒在 allowed_roles_for 登記 → 靜默 broken access control」。
+**#370 起 allowed_roles_for 預設為 deny**（未登記路徑回空 frozenset → 403，fail closed），
+故除 golden 外另加 test_no_route_falls_through_to_deny_fallback：斷言無現役路由靠兜底。
+把所有 /api/ route 的 (method, path → 角色閘) 鎖成 golden。
 
 新增 / 改動 route 或改 allowed_roles_for → 本測試失敗 → **必須人工**：
   1. 確認新 route 的角色閘在 `auth/role_enum.allowed_roles_for` 分類正確（勿讓它落
@@ -159,6 +161,8 @@ def _role_label(roleset) -> str:
 
     if roleset is None:
         return "EXEMPT"
+    if roleset == frozenset():
+        return "DENY"  # #370：落 default-deny 兜底（未登記路徑，fail closed）
     for label, val in (
         ("READ", READ_ROLES),
         ("WRITE", WRITE_ROLES),
@@ -215,3 +219,30 @@ def test_rbac_route_matrix_matches_golden():
             + "\n  ".join(f"{r} {m} {p}" for m, p, r in sorted(removed, key=lambda x: (x[1], x[0])))
         )
     assert not (added or removed), "\n\n".join(msg_parts)
+
+
+def test_no_route_falls_through_to_deny_fallback():
+    """#370：任何現役 /api/ route 都不得落到 default-deny 兜底（空 frozenset()）。
+
+    allowed_roles_for 自 #370 改 default-deny：未明確分類的路徑回空集合 → 403。
+    本測試列舉 app.routes 斷言「沒有現役路由靠兜底」——新增 router 漏配角色閘時，
+    它會落空集合 → 本測試紅燈，逼開發者在 allowed_roles_for 明確分類（fail closed）。
+    """
+    from fastapi.routing import APIRoute
+
+    from auth.role_enum import allowed_roles_for
+    from main import app
+
+    fell_through = []
+    for route in app.routes:
+        if isinstance(route, APIRoute) and route.path.startswith("/api/"):
+            for method in route.methods or []:
+                if method in ("HEAD", "OPTIONS"):
+                    continue
+                if allowed_roles_for(method, route.path) == frozenset():
+                    fell_through.append(f"{method} {route.path}")
+
+    assert not fell_through, (
+        "下列現役路由落到 default-deny 兜底（空 frozenset）→ 請在 auth/role_enum.allowed_roles_for "
+        "明確分類其角色閘（勿留給兜底）：\n  " + "\n  ".join(sorted(fell_through))
+    )
