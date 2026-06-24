@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import io
 import sys
-from pathlib import Path
 
 import pytest
 from cryptography.fernet import Fernet
@@ -110,12 +109,18 @@ class TestRestore:
         assert r.status_code == 400
 
     def test_restore_bad_payload_422_current_untouched(self, client, auth, data_isolated, keyed):
-        data_dir, _ = data_isolated
-        before = (data_dir / "test_ics.db").read_bytes()
+        # 壞檔 → 422 且不還原（不覆蓋 current DB）。
+        # #367：不比對原始 DB bytes —— (1) 被拒的 restore 會合法寫一筆 audit_log（留痕被拒），
+        # bytes 本就該變；(2) SQLite WAL checkpoint 把該寫入刷進主檔的時機非決定性 → raw-byte
+        # 比對 flaky（base 上即 ~66% 偽失敗）。改驗邏輯不變量：寫入 current DB 的 sentinel 應存活
+        # （成功 restore 會以備份內容整檔覆蓋 → sentinel 消失；422 不還原 → sentinel 仍在）。
+        from repositories.config_repo import get_config, set_config
+
+        set_config("restore_guard_sentinel_367", "alive")
         files = {"file": ("x.tar.gz.enc", io.BytesIO(b"NOT_ENCRYPTED"), "application/octet-stream")}
         r = client.post("/api/admin/restore", headers=auth, files=files)
         assert r.status_code == 422
-        assert (data_dir / "test_ics.db").read_bytes() == before  # current 未動
+        assert get_config("restore_guard_sentinel_367") == "alive"  # current DB 未被壞檔覆蓋
 
     @pytest.mark.skipif(
         sys.platform == "win32",
