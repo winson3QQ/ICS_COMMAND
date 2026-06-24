@@ -493,6 +493,13 @@ async def cop_ws_updates(websocket: WebSocket):
     if not is_role_allowed(sess, READ_ROLES):
         await websocket.close(code=_WS_UNAUTHORIZED)
         return
+    # #348-F5 P2a：HTTP auth_middleware 的「強制改初始 PIN」閘不跑 WS scope（同 RBAC 須在此補）。
+    # is_default_pin=1（待改 admin 給的初始 PIN）的帳號不得訂閱 live COP 串流，否則繞過閘讀現場感知。
+    from repositories.account_repo import account_needs_pin_change
+
+    if account_needs_pin_change(sess["username"]):
+        await websocket.close(code=_WS_UNAUTHORIZED)
+        return
 
     raw_ex = websocket.query_params.get("exercise_id")
     try:

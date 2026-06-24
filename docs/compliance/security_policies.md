@@ -162,7 +162,10 @@ _每次 role 變更、帳號建立 / 刪除均寫 audit log_
   `must_change_pin` → **auth_middleware per-account 閘**限改 PIN 路徑、其餘 423，server-side 真強制、
   非只靠前端）。`is_first_run_required` 收斂為 bootstrap-only（accounts==1 sysadmin default）→ 第一個
   admin 行為不變（#306 不受影響），第 2+ 帳號 default 不再觸發全系統 423。對齊 NIST：admin 給的初始/
-  臨時憑證須首次使用即換。
+  臨時憑證須首次使用即換。**閘覆蓋（review 補強）**：(a) cop `/ws/updates` WebSocket 不跑 HTTP
+  middleware → handler 自查 `account_needs_pin_change`，待改帳號不得訂閱 live COP 串流；(b) reset_pin
+  （`PUT .../pin`，不驗目前 PIN）僅 first-run bootstrap admin 放行，非 first-run 待改帳號須走
+  change-initial-pin（驗目前 PIN）→ 杜絕「持被盜 session 免舊 PIN 自清 default 解閘」。
 - **待續（分期）**：P2b = create 改「**系統產隨機臨時 PIN**」（取代 admin 自設，admin 不知使用者最終值）
   ；**第一個 admin 免-CLI 量產 onboarding（#382）**；P3 = 前端輸入欄放寬 + show-password。本節「評估後
   記錄接受風險 + 界定前提」；P1 補下限/可預測值、P2a 補初始憑證強制換,但**完全提升熵仍取決於使用者選長

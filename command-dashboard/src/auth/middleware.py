@@ -23,12 +23,17 @@ _PIN_CHANGE_ALLOWED = frozenset(
 
 
 def _is_pin_change_allowed(method: str, path: str) -> bool:
-    """改初始 PIN 期間放行的路徑（與 first_run_gate 白名單一致，含 admin 改 PIN reset 端點）。"""
+    """改初始 PIN 期間放行的路徑。一般待改帳號只准走 change-initial-pin（驗目前 PIN）。"""
     if (method, path) in _PIN_CHANGE_ALLOWED:
         return True
-    # 改 PIN：PUT /api/admin/accounts/<user>/pin（first-admin/README 流程經此；reset_pin 清 default）
+    # 改 PIN：PUT /api/admin/accounts/<user>/pin（reset_pin，**不驗目前 PIN**）。**僅** first-run
+    # bootstrap admin 經此（C1-A 流程，first_run_gate 同白名單）。非 first-run 的待改帳號若放行此路徑，
+    # 持被盜 session 者可免舊 PIN 自清 is_default_pin 解閘（繞過 change-initial-pin 的目前-PIN 驗證）→
+    # 故限定 is_first_run_required；其餘待改帳號一律走 change-initial-pin。
     if method == "PUT" and path.startswith("/api/admin/accounts/") and path.endswith("/pin"):
-        return True
+        from repositories.account_repo import is_first_run_required
+
+        return is_first_run_required()
     return False
 
 

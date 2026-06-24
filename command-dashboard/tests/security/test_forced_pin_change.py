@@ -90,3 +90,56 @@ class TestForcedChangeFlow:
         )
         # is_first_run_required 收斂 → 建第 2 帳號不鎖全系統，admin 仍能用 admin API
         assert client.get("/api/admin/accounts", headers=auth).status_code == 200
+
+
+class TestGatedManagerCannotSelfUnlock:
+    """review 修正：待改帳號不得用 reset_pin（不驗目前 PIN）自清 default 解閘（繞 change-initial-pin）。"""
+
+    def test_reset_pin_self_blocked_when_not_first_run(self, client):
+        auth = _login(client)
+        # 建 gated sysadmin（具 account-manager 權限可呼叫 reset_pin）
+        r = client.post(
+            "/api/admin/accounts",
+            json={"username": "mgr", "pin": "739104", "role": "系統管理員"},
+            headers=auth,
+        )
+        assert r.status_code == 200, r.text
+        tok = client.post("/api/auth/login", json={"username": "mgr", "pin": "739104"}).json()["session_id"]
+        h = {"X-Session-Token": tok}
+        # 非 first-run（已 2 帳號）→ reset_pin 自清 default 被閘擋（須改走 change-initial-pin 驗舊 PIN）
+        rp = client.put("/api/admin/accounts/mgr/pin", json={"new_pin": "820471"}, headers=h)
+        assert rp.status_code == 423 and rp.json().get("code") == "PIN_CHANGE_REQUIRED", rp.text
+        from repositories.account_repo import account_needs_pin_change
+
+        assert account_needs_pin_change("mgr") is True  # 仍待改，未被繞過
+
+
+class TestGatedAccountWebSocket:
+    """review 修正：HTTP 閘不跑 WS scope → cop /ws/updates 須自查 account_needs_pin_change。"""
+
+    def test_cop_ws_blocked_then_allowed(self, client):
+        import pytest
+        from starlette.websockets import WebSocketDisconnect
+
+        auth = _login(client)
+        # gated sysadmin（READ_ROLES 內 → 排除「因 role 被擋」干擾，close 確定來自 PIN 閘）
+        client.post(
+            "/api/admin/accounts",
+            json={"username": "wsadmin", "pin": "739104", "role": "系統管理員"},
+            headers=auth,
+        )
+        tok = client.post("/api/auth/login", json={"username": "wsadmin", "pin": "739104"}).json()["session_id"]
+        subs = ["ics-cop-v1", f"ics.session.{tok}"]
+        # 待改初始 PIN → WS 拒（4401）
+        with (
+            pytest.raises(WebSocketDisconnect) as ei,
+            client.websocket_connect("/api/cop/ws/updates", subprotocols=subs),
+        ):
+            pass
+        assert ei.value.code == 4401
+        # 清旗標 → 同帳號 WS 通（收 hello）
+        from repositories.account_repo import clear_default_pin_flag
+
+        clear_default_pin_flag("wsadmin")
+        with client.websocket_connect("/api/cop/ws/updates", subprotocols=subs) as ws:
+            assert ws.receive_json()["op"] == "hello"

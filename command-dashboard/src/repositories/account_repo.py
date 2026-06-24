@@ -341,6 +341,10 @@ def is_first_run_required() -> bool:
     first_run_gate 423 鎖死（建第二個帳號＝鎖死所有人）。收斂為「accounts==1 且該帳號為 sysadmin
     且 default」→ 第一個 admin 行為完全不變（#306 bootstrap 不受影響），第 2+ 帳號的強制改 PIN
     改由 **per-account 閘**（auth_middleware + account_needs_pin_change）處理，不再走全系統 gate。
+
+    殘餘風險（依賴 invariant）：fresh deploy 只 seed 唯一 admin（ensure_default_admin /
+    ensure_initial_admin_token），故 bootstrap 時 accounts==1 必成立。若未來有路徑在 bootstrap
+    同時 seed 第 2 帳號（目前無），全系統 gate 不再觸發 → 安全網即 per-account 閘（含 cop WS）。
     """
     with get_conn() as conn:
         total = conn.execute("SELECT COUNT(*) AS c FROM accounts").fetchone()["c"]
