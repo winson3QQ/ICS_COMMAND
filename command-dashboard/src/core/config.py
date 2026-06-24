@@ -92,7 +92,10 @@ WARNING_THRESHOLD_SECONDS: int = int(os.getenv("ICS_WARNING_THRESHOLD_SECONDS", 
 #               chats.faction（v32）+ admin /api/admin/factions/* + 三層 server-side 強制點 + AAR 互斥閘。
 # PATCH 2.15.1：安全硬化批次——#354 最後 active sysadmin 不得被降級/停用/封存（防自鎖，後端守門 409）
 #               + #345 session 生命週期（prod idle 1h + 批次清理稽核分流 SESSION_REAPED）。
-APP_VERSION = "2.15.1"
+# PATCH 2.15.2：#370 RBAC 兜底 fail-open→fail-closed——allowed_roles_for 未登記路徑改回空
+#               frozenset()（→403），前置先把所有現役靠兜底的路由顯式登記（golden 零改＝行為等價）
+#               + test_no_route_falls_through_to_deny_fallback 完整性守門。純後端。
+APP_VERSION = "2.15.2"
 
 # CMD_VERSION：前端 UI 功能版本（不同於後端 SemVer APP_VERSION；規則見 CLAUDE.md 版號規則）
 # 兩軌版本命名，不可混用。由 /api/version 提供給前端，是唯一 source-of-truth；release 時更新此值。
