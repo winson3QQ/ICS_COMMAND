@@ -389,6 +389,11 @@ def suspend_all(body: SuspendAllIn, request: Request):
     if body.confirm != "SUSPEND_ALL":
         raise HTTPException(422, 'confirm 必須為 "SUSPEND_ALL"（不可逆批次停權確認）')
     # suspend_all_accounts 已排除發起者本人（防自鎖，見 account_repo）。
+    # ⚠ #369 review 殘留（narrow，未納本鎖）：suspend-all 不在 _SYSADMIN_GUARD_LOCK 內，且其
+    # 自排除保的是「發起者帳號」非「最後一個 sysadmin」。並發下若發起者 S1 同時被他人 demote 成
+    # operator，suspend-all 仍排除 S1（已 operator）卻停掉最後的 sysadmin S2 → 可達零 sysadmin。
+    # 修需 suspend-all 事後 re-assert「≥1 active sysadmin」（非僅自排除），屬獨立 follow-up、非
+    # #369（並發降級）範圍。觸發極窄（須 SUSPEND_ALL 確認串 + 同瞬間 demote 發起者）。
     count = suspend_all_accounts(sess["username"])
     return {"ok": True, "suspended_count": count}
 
