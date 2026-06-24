@@ -180,6 +180,17 @@ document.addEventListener('click', function (e) {
     // ── 認證 ──
     case 'cmdLogin':       import('./auth.js').then(m => m.handleCmdLogin()); break;
     case 'cmdLogout':      cmdLogout(); break;
+    // P3（#348-F5）：密碼欄顯示/隱藏切換。委派涵蓋靜態登入框 + 動態首登 overlay。
+    // 共用大螢幕有肩窺風險 → 預設遮蔽、點擊才顯（opt-in）。
+    case 'pwToggle': {
+      const inp = document.getElementById(id);
+      if (inp) {
+        const hidden = inp.type === 'password';
+        inp.type = hidden ? 'text' : 'password';
+        btn.textContent = hidden ? '🙈' : '👁';
+      }
+      break;
+    }
     case 'sessionContinue': continueSessionFromWarning(); break;
     case 'sessionLogout':  logoutFromSessionWarning(); break;
     case 'openSettings':   openSettings(); break;   // #346：演習管理移至演習面板（admExerciseSub('manage') 時 render）
