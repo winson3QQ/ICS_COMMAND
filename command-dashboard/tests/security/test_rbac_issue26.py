@@ -196,12 +196,12 @@ def test_commander_can_manage_operator_and_observer_accounts(client):
 
     operator = client.post(
         "/api/admin/accounts",
-        json={"username": "cmd_operator", "pin": "1234", "role": ROLE_OPERATOR_ZH},
+        json={"username": "cmd_operator", "pin": "739104", "role": ROLE_OPERATOR_ZH},
         headers=headers,
     )
     observer = client.post(
         "/api/admin/accounts",
-        json={"username": "cmd_observer", "pin": "1234", "role": ROLE_OBSERVER_ZH},
+        json={"username": "cmd_observer", "pin": "739104", "role": ROLE_OBSERVER_ZH},
         headers=headers,
     )
     assert operator.status_code == 200, operator.text
@@ -229,11 +229,11 @@ def test_commander_can_manage_operator_and_observer_accounts(client):
 
     pin = client.put(
         "/api/admin/accounts/cmd_operator/pin",
-        json={"new_pin": "5678"},
+        json={"new_pin": "739104"},
         headers=headers,
     )
     assert pin.status_code == 200, pin.text
-    assert _login(client, "cmd_operator", "5678")
+    assert _login(client, "cmd_operator", "739104")
 
     role = client.put(
         "/api/admin/accounts/cmd_operator/role",

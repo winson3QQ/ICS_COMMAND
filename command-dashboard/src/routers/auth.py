@@ -1,5 +1,3 @@
-import re
-
 import structlog
 from fastapi import APIRouter, HTTPException, Request
 
@@ -13,6 +11,7 @@ from auth.service import (
     session_status,
     validate_session,
 )
+from core.pin_policy import validate_pin_strength  # #348-F5 P1
 from repositories._helpers import audit
 from repositories.account_cert_repo import account_id_for_username, cert_active_for_account, is_mtls_bootstrap
 from repositories.account_repo import (
@@ -101,8 +100,7 @@ def change_initial_pin(body: ChangeInitialPinIn, request: Request):
     if not is_first_run_required():
         raise HTTPException(403, "首次設定已完成，請使用帳號管理改 PIN")
 
-    if not re.match(r"^\d{4,6}$", body.new_pin):
-        raise HTTPException(422, "PIN 必須是 4-6 位數字")
+    validate_pin_strength(body.new_pin, username)  # #348-F5 P1：min6 + 擋可預測 + 開放長密語
 
     # 驗證目前 PIN（防止 session 被盜用後直接改 PIN）
     acct, reason = verify_login(username, body.current_pin)

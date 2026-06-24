@@ -11,7 +11,7 @@ pytestmark = pytest.mark.integration
 
 
 def _mk_account(client, auth, username="alice", role="操作員"):
-    r = client.post("/api/admin/accounts", json={"username": username, "pin": "123456", "role": role}, headers=auth)
+    r = client.post("/api/admin/accounts", json={"username": username, "pin": "739104", "role": role}, headers=auth)
     assert r.status_code in (200, 201), r.text
     return username
 
