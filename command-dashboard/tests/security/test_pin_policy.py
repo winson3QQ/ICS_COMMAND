@@ -49,3 +49,13 @@ class TestPinPolicy:
 
     def test_non_str_rejected(self):
         _rejects(None)
+
+
+def test_existing_short_pin_still_logs_in(client):
+    """無回歸守門（#348-F5 P1 不溯及）：策略前建立的短 PIN（repo-level create_account 繞過
+    validator，模擬既有帳號）仍可登入——登入只驗 hash、不套強度策略。防未來誤把策略加到登入路徑。"""
+    from repositories.account_repo import create_account
+
+    create_account("legacy_short", "1234", "操作員", "", "operator")  # 4 位，策略前
+    r = client.post("/api/auth/login", json={"username": "legacy_short", "pin": "1234"})
+    assert r.status_code == 200, r.text  # 既有短 PIN 不被新策略鎖在門外
