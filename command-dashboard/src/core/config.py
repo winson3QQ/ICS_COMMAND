@@ -100,7 +100,9 @@ WARNING_THRESHOLD_SECONDS: int = int(os.getenv("ICS_WARNING_THRESHOLD_SECONDS", 
 #               （/api/admin/audit-chain/verify + 開機驗證 + 修 overclaim）。
 # PATCH 2.15.4：#369 最後 sysadmin 守門 TOCTOU（module 鎖序列化 check+mutate）+ #285 成功動作
 #               異常偵測（audit() 中央 hook → 敏感單筆/批次量 SECURITY_ALERT）。純後端。
-APP_VERSION = "2.15.4"
+# PATCH 2.15.5：#348-F10 chats PII retention——cleanup_expired_chats（CHATS_TTL_DAYS=90、軸
+#               received_at、共用 retention 開關）+ chats 補進 _EXERCISE_SCOPED_TABLES。純後端。
+APP_VERSION = "2.15.5"
 
 # CMD_VERSION：前端 UI 功能版本（不同於後端 SemVer APP_VERSION；規則見 CLAUDE.md 版號規則）
 # 兩軌版本命名，不可混用。由 /api/version 提供給前端，是唯一 source-of-truth；release 時更新此值。
