@@ -1,5 +1,6 @@
 import asyncio  # noqa: E402 — P1-12b L3 pre-destructive backup
 import os  # noqa: E402 — #315 TAK_DEVICE_CA_DIR 路徑檢查
+import threading  # noqa: E402 — #369 最後 sysadmin 守門並發序列化
 
 import structlog  # noqa: E402
 from fastapi import APIRouter, HTTPException, Request, Response
@@ -141,9 +142,20 @@ def _require_commander_target_allowed(session: dict, username: str) -> dict:
     return target
 
 
+# #369：最後 sysadmin 守門的 check→mutate 跨兩個自動提交連線、無共享交易，FastAPI 同步端點
+# 在 anyio threadpool 並發執行 → 兩個並發降級各看到「還有 2 個」皆通過 → 歸零（#354 要防的自鎖）。
+# 單行程指揮部以 module-level 鎖序列化「count 檢查 + 變更提交」臨界區即可（admin 變更稀少、零競爭）；
+# 跨三出口（role/status/delete）共用同一把鎖，因 delete A + 降級 B 也會互競。role 分類仍走 Python
+# role_zh_to_en（zh/en/alias 混合，難以純 SQL 原子化），故選鎖而非條件 UPDATE。
+_SYSADMIN_GUARD_LOCK = threading.Lock()
+
+
 def _require_not_last_sysadmin(username: str, *, will_remain_sysadmin: bool = False) -> None:
     """#354 防自鎖：系統內最後一個 status=active 且 role=sysadmin 的帳號，不得被
     降級 / 停用 / 封存（否則零管理能力，只能 shell 直操 DB 救回）。
+
+    並發安全（#369）：本函式只做讀取計數；呼叫端必須在 `_SYSADMIN_GUARD_LOCK` 內
+    同時涵蓋「本檢查 + 後續變更提交」，否則並發降級多個 sysadmin 仍可繞過（TOCTOU）。
 
     與 suspend_all_accounts（account_repo.py，#153）排除發起者本人同源防呆，
     補上單筆 role/status/delete 漏掉的同一條守門。不分是否改自己 —— 只在「會把
@@ -221,9 +233,11 @@ def create_acct(body: AccountCreateIn, request: Request):
 def delete_acct(username: str, request: Request):
     sess = _check_account_manager(request)
     _require_commander_target_allowed(sess, username)
-    _require_not_last_sysadmin(username)  # #354 防自鎖（archive 會移除該 sysadmin）
-    if not delete_account(username, sess["username"]):
-        raise HTTPException(404, "account not found")
+    # #369：守門檢查 + 刪除提交須在同一鎖內原子化（防並發降級繞過）。
+    with _SYSADMIN_GUARD_LOCK:
+        _require_not_last_sysadmin(username)  # #354 防自鎖（archive 會移除該 sysadmin）
+        if not delete_account(username, sess["username"]):
+            raise HTTPException(404, "account not found")
     return {"ok": True}
 
 
@@ -233,10 +247,12 @@ def update_status(username: str, body: AccountStatusIn, request: Request):
     _require_commander_target_allowed(sess, username)
     if body.status not in ("active", "suspended"):
         raise HTTPException(422, "status must be active or suspended")
-    if body.status == "suspended":
-        _require_not_last_sysadmin(username)  # #354 防自鎖（設回 active 不擋）
-    if not update_account_status(username, body.status, sess["username"]):
-        raise HTTPException(404, "account not found")
+    # #369：守門檢查 + 狀態提交同鎖原子化（設回 active 不觸發守門，但提交一律在鎖內，序列化成本可忽略）。
+    with _SYSADMIN_GUARD_LOCK:
+        if body.status == "suspended":
+            _require_not_last_sysadmin(username)  # #354 防自鎖（設回 active 不擋）
+        if not update_account_status(username, body.status, sess["username"]):
+            raise HTTPException(404, "account not found")
     return {"ok": True}
 
 
@@ -259,13 +275,15 @@ def update_role(username: str, body: RoleUpdateIn, request: Request):
     if not is_valid_account_role(body.role, body.role_detail):
         raise HTTPException(422, "role invalid")
     _require_commander_new_role_allowed(sess, body.role, body.role_detail)
-    # #354 防自鎖：降走最後一個 sysadmin 才擋；新角色仍是 sysadmin 則放行
-    _require_not_last_sysadmin(
-        username,
-        will_remain_sysadmin=role_zh_to_en(body.role, body.role_detail) == ROLE_SYSADMIN,
-    )
-    if not update_account_role(username, body.role, sess["username"], body.role_detail):
-        raise HTTPException(404, "account not found")
+    # #354 防自鎖：降走最後一個 sysadmin 才擋；新角色仍是 sysadmin 則放行。
+    # #369：守門檢查 + 角色提交同鎖原子化（防兩個並發降級各看到「還有 2 個」皆通過 → 歸零）。
+    with _SYSADMIN_GUARD_LOCK:
+        _require_not_last_sysadmin(
+            username,
+            will_remain_sysadmin=role_zh_to_en(body.role, body.role_detail) == ROLE_SYSADMIN,
+        )
+        if not update_account_role(username, body.role, sess["username"], body.role_detail):
+            raise HTTPException(404, "account not found")
     return {"ok": True}
 
 
@@ -371,6 +389,11 @@ def suspend_all(body: SuspendAllIn, request: Request):
     if body.confirm != "SUSPEND_ALL":
         raise HTTPException(422, 'confirm 必須為 "SUSPEND_ALL"（不可逆批次停權確認）')
     # suspend_all_accounts 已排除發起者本人（防自鎖，見 account_repo）。
+    # ⚠ #369 review 殘留（narrow，未納本鎖）：suspend-all 不在 _SYSADMIN_GUARD_LOCK 內，且其
+    # 自排除保的是「發起者帳號」非「最後一個 sysadmin」。並發下若發起者 S1 同時被他人 demote 成
+    # operator，suspend-all 仍排除 S1（已 operator）卻停掉最後的 sysadmin S2 → 可達零 sysadmin。
+    # 修需 suspend-all 事後 re-assert「≥1 active sysadmin」（非僅自排除），屬獨立 follow-up、非
+    # #369（並發降級）範圍。觸發極窄（須 SUSPEND_ALL 確認串 + 同瞬間 demote 發起者）。
     count = suspend_all_accounts(sess["username"])
     return {"ok": True, "suspended_count": count}
 
