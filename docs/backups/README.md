@@ -11,7 +11,7 @@
 ## 用途
 - C 方案 SoT 規則：GitHub = issue tracker SoT，Codeberg = code mirror
 - 若 GitHub 帳號再被停權，可從這份 JSON 把 open issue 重建至 Codeberg
-- 同時為人工稽核留下機讀備份（補強 matrix.md / ROADMAP 人讀紀錄）
+- 同時為人工稽核留下機讀備份（補強 ROADMAP《Compliance touchpoints》人讀紀錄；matrix.md 已廢）
 
 ## 復原流程
 見 `docs/disaster/` 對應 runbook（停權後手動 import 至 Codeberg）。

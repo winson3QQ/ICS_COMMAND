@@ -1,10 +1,19 @@
-# ICS_DMAS Security Policies
+# ICS_Command Security Policies（承自 ICS_DMAS）
+
+> # ⚠️ 狀態：未完稿骨架（DRAFT SKELETON）— 不得作為合規證據
+> 本文件多數小節仍為 `_Session X 填_` **未填佔位**（見下）。**請勿據此主張任何 control family
+> 的 compliance**——尤其 **AC-1 / AU-1 / IR-1 / CP-1 / PT** 對應的 policy 內文尚未撰寫，依本文件
+> 開頭「未寫 policy 等於該 family 不能主張 compliance」的自訂規則，這些 family **目前不可主張**。
+> 已落地的**技術控制**（RBAC default-deny、cert-bound session、PBKDF2 600k、audit hash chain +
+> runtime 驗證、PII TTL…）證據在 **code + 測試 + `threat_model.md` + ROADMAP《Compliance
+> touchpoints》**；本文件是「政策層」骨架，與技術落地有落差，補實前不等於 ISMS 合規。
+> （#348-F11 誠實化：移除「完稿」overclaim、修死連結、明示主張限制。補實 ISMS 內文為獨立大工。）
 
 > **依據**：NIST SP 800-53 每個 control family（xx-1）均要求對應 policy 文件；未寫 policy 等於該 family 不能主張 compliance。
 > **組織化**：6 份政策併一檔（原本分 6 檔會碎裂），各為獨立章節，各含 Purpose / Scope / Policy Statements / Procedures / References / Review。
-> **狀態**：骨架建立（Session D 完稿；但 C1-A Phase 4 會把草稿升為正式 v1）。
-> **最後更新**：2026-04-25
-> **擁有者**：ICS_DMAS 專案
+> **狀態**：**0.1 草稿骨架，未完稿**（多數小節為未填佔位；補實前不得引為合規證據）。
+> **最後更新**：2026-06-24（#348-F11 誠實化；內文骨架仍 2026-04-25）
+> **擁有者**：ICS_Command 專案（承自 ICS_DMAS）
 > **Review 週期**：每年一次，或重大架構變更時 re-review
 >
 > **重要**：本文件為自我聲明（self-attestation）policy；若需通過 ISO 27001 第三方驗證，需由認證 auditor 覆核並加厚程序細節。
@@ -46,8 +55,9 @@ _Session D 填：系統管理員 / 指揮官 / 操作員 / 觀察員 各自資�
 _Session D 填：對應法規 + 違反處置_
 
 ### 1.6 References
-- compliance/matrix.md
-- compliance/threat_model.md
+- ~~compliance/matrix.md~~（**已廢**：不再維護獨立 matrix.md；Compliance 對照已 inline 於
+  [`docs/ROADMAP.md`](../ROADMAP.md) 各 phase 的《Compliance touchpoints》區塊，見 CLAUDE.md）
+- [compliance/threat_model.md](threat_model.md)
 
 ### 1.7 Review
 _每年 / 重大事件後 re-review_
@@ -159,7 +169,9 @@ _Session B 填。草稿：_
 - Log 不得含明文 PII / 密碼 / token
 
 ### 3.4 Logged Events
-_Session B 填：完整事件清單（對照 matrix AU-2）_
+_未填（草稿）：完整 logged-events 清單（AU-2）。實際 audit action_type 清單見 code（`repositories`
+各 audit() 呼叫）+ `static/js/auth.js` `_AUDIT_BADGE`；本節待補成正式對照。原「matrix AU-2」對照已廢
+（matrix.md 不存在），改以 ROADMAP《Compliance touchpoints》＋ code 為準。_
 
 ### 3.5 Review
 
@@ -250,7 +262,9 @@ _Session B 填：演練資料不出境；雲端 AI 僅用匿名化資料_
 
 ## 附錄 A：Policy 與程式碼 / 設定的對應
 
-_Session D 填：每個 policy statement 對應的 matrix control + 實作檔案_
+_未填（草稿）：每個 policy statement → 實作檔案 / 設定的對照表。原規劃的 `matrix.md` control
+對照已廢；現行 compliance↔實作對照 inline 於 [`docs/ROADMAP.md`](../ROADMAP.md) 各 phase 的
+《Compliance touchpoints》。本附錄待補成 policy-statement 粒度的對照。_
 
 ---
 
@@ -258,4 +272,5 @@ _Session D 填：每個 policy statement 對應的 matrix control + 實作檔案
 
 | 日期 | Version | 變更 |
 |---|---|---|
-| 2026-04-25 | 0.1 | 骨架建立（Session D 完稿） |
+| 2026-04-25 | 0.1 | 骨架建立（多數小節未填佔位） |
+| 2026-06-24 | 0.1.1 | #348-F11 誠實化：加未完稿/不可作合規證據警語、明示 AC-1/AU-1/IR-1/CP-1/PT 暫不可主張、修死連結 `matrix.md`（已廢→指 ROADMAP Compliance touchpoints）、擁有者改 ICS_Command |
