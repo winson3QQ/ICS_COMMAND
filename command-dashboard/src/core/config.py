@@ -95,7 +95,10 @@ WARNING_THRESHOLD_SECONDS: int = int(os.getenv("ICS_WARNING_THRESHOLD_SECONDS", 
 # PATCH 2.15.2：#370 RBAC 兜底 fail-open→fail-closed——allowed_roles_for 未登記路徑改回空
 #               frozenset()（→403），前置先把所有現役靠兜底的路由顯式登記（golden 零改＝行為等價）
 #               + test_no_route_falls_through_to_deny_fallback 完整性守門。純後端。
-APP_VERSION = "2.15.2"
+# PATCH 2.15.3：演練前硬化批次（PR #373）——#293 DOM-XSS sink escaping（decisions/events/admin/
+#               pi-data）+ #295 高權帳號 mTLS 下不硬鎖（防戰時 C2 鎖定-DoS）+ #372 稽核鏈閉環
+#               （/api/admin/audit-chain/verify + 開機驗證 + 修 overclaim）。
+APP_VERSION = "2.15.3"
 
 # CMD_VERSION：前端 UI 功能版本（不同於後端 SemVer APP_VERSION；規則見 CLAUDE.md 版號規則）
 # 兩軌版本命名，不可混用。由 /api/version 提供給前端，是唯一 source-of-truth；release 時更新此值。
