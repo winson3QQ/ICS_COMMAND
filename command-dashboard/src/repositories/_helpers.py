@@ -148,6 +148,13 @@ def audit(
                 hash_prev,
             ),
         )
+    # #285：成功動作異常偵測——audit 落地後中央篩可疑成功動作（best-effort，絕不擋主流程）。
+    try:
+        from services.security_monitor import screen_audit_event
+
+        screen_audit_event(action_type, operator, target_table, str(target_id))
+    except Exception:  # noqa: BLE001 - 偵測絕不可影響 audit/主流程
+        pass
 
 
 # ── PIN hashing（PBKDF2-HMAC-SHA256）──────────────────────────
@@ -158,9 +165,7 @@ _PBKDF2_ITERATIONS = 600_000
 _LEGACY_ITERATIONS = 100_000
 
 
-def hash_pin(
-    pin: str, salt_hex: str | None = None, iterations: int = _PBKDF2_ITERATIONS
-) -> tuple[str, str]:
+def hash_pin(pin: str, salt_hex: str | None = None, iterations: int = _PBKDF2_ITERATIONS) -> tuple[str, str]:
     if salt_hex is None:
         salt = os.urandom(16)
         salt_hex = salt.hex()
