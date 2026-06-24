@@ -90,15 +90,17 @@ WARNING_THRESHOLD_SECONDS: int = int(os.getenv("ICS_WARNING_THRESHOLD_SECONDS", 
 #               + 敵我接觸（kind=contact）source（#339）；audit detail 記區域整包 attributes 快照。
 # MINOR 2.15.0：紅藍陣營隔離（#343/P2-37）——client_faction 分類 + cop_entities.faction（v31）+
 #               chats.faction（v32）+ admin /api/admin/factions/* + 三層 server-side 強制點 + AAR 互斥閘。
-APP_VERSION = "2.15.0"
+# PATCH 2.15.1：安全硬化批次——#354 最後 active sysadmin 不得被降級/停用/封存（防自鎖，後端守門 409）
+#               + #345 session 生命週期（prod idle 1h + 批次清理稽核分流 SESSION_REAPED）。
+APP_VERSION = "2.15.1"
 
 # CMD_VERSION：前端 UI 功能版本（不同於後端 SemVer APP_VERSION；規則見 CLAUDE.md 版號規則）
 # 兩軌版本命名，不可混用。由 /api/version 提供給前端，是唯一 source-of-truth；release 時更新此值。
 # v1.0.0：拆分自 ICS_DMAS 後首個完整可用形態（MapLibre 地圖引擎全換 P1-10b + PWA 移除 P1-11
 #         + 演習/放置/稽核 UI P1-13/14/16/#93 + 分類編輯器 #66）→ 0.x 畢業為 MAJOR 紀元。
 CMD_VERSION: str = os.getenv(
-    "CMD_VERSION", "v1.11.0"
-)  # MINOR v1.11.0：admin 後台「紅藍」分類 tab（#343/P2-37）——列連線 client + 🔵🔴⚪ 分類 + 單物件 override。
+    "CMD_VERSION", "v1.11.1"
+)  # PATCH v1.11.1：#354 帳號管理 UI 鎖定最後一個 active sysadmin 的降權控制（角色 select + 停用鈕禁用 + 提示）。
 # MINOR v1.10.0：AAR 回放上圖功能組完整——區域（#338）+ 事件/敵我接觸（#339，重用 live milsymbol/
 #  NAPSG 符號、隨 T 移動）；B1-B3 含 iPad/iPhone 觸控 human verify 全齊（#201），故進 frontend MINOR。
 # PATCH v1.9.3：桌機憑證 UX（#327）——「下載 root CA」鈕 + .p12 標 Windows/iMac/Android + 信任提示。
