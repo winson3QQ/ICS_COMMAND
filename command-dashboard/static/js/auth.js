@@ -509,8 +509,18 @@ export async function cmdLogout() {
   el('login-screen').style.display = '';
   el('cmd-username').value = '';
   el('cmd-pin').value = '';
+  _maskPwField('cmd-pin');   // P3：清掉上一位的 show-password 明文狀態，下一位恆預設遮蔽
   el('cmd-login-warn').textContent = '';
   el('cmd-user-badge').textContent = '';
+}
+
+// P3（#348-F5）：密碼欄復原為遮蔽 + 眼睛圖示。show-password 是 opt-in，登出/鎖定後須回預設
+// 遮蔽，否則共用大螢幕上「明文」狀態會殘留給下一位使用者（肩窺）。動態 overlay 每次重建免處理。
+function _maskPwField(inputId) {
+  const inp = document.getElementById(inputId);
+  if (inp) inp.type = 'password';
+  const tog = document.querySelector('.pw-toggle[data-id="' + inputId + '"]');
+  if (tog) tog.textContent = '👁';
 }
 
 // ── PinLock ────────────────────────────────────────────────────
@@ -545,6 +555,7 @@ export const PinLock = (() => {
     el('pin-lock-overlay').classList.add('show');
     el('pinlock-user').textContent = sessionStorage.getItem('cmd_display_name') || sessionStorage.getItem('cmd_username') || '';
     el('pinlock-pin').value = '';
+    _maskPwField('pinlock-pin');   // P3：解鎖欄回預設遮蔽（避免明文狀態殘留）
     el('pinlock-warn').textContent = '';
     _notifyAuth('lock');
   }
