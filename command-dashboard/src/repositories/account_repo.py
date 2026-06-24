@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 
 from auth.role_enum import (
+    COMMAND_ROLES,
     ROLE_SYSADMIN,
     ROLE_SYSADMIN_ZH,
     normalize_role_pair,
@@ -181,7 +182,12 @@ def suspend_all_accounts(operator: str) -> int:
 def verify_login(username: str, pin: str, bypass_lockout: bool = False) -> tuple[dict | None, str]:
     """#275 wave 4 鎖定-DoS 緩解：bypass_lockout=True（呼叫端確認此 request 出示了綁定本
     帳號的有效 mTLS 裝置憑證）時，帳號鎖定不擋、錯 PIN 也不再上鎖——攻擊者無裝置證仍可
-    鎖（反爆破保留），但**持本人裝置的合法使用者永不被鎖死**（解 §8.6 鎖死 admin 之患）。"""
+    鎖（反爆破保留），但**持本人裝置的合法使用者永不被鎖死**（解 §8.6 鎖死 admin 之患）。
+
+    #295 鎖定-DoS 續解：高權帳號（指揮官/系統管理員，COMMAND_ROLES）**不硬鎖**——防「戰時
+    對 C2 帳號連送錯 PIN 鎖死 15 分」可用性攻擊。理據：PIN 僅第二因子，prod mTLS 下登入成功
+    仍需綁定本帳號裝置證才能建 session，故對高權移除硬鎖不開爆破缺口；失敗計數仍累計、跨閾值
+    記稽核事件（保留偵測）。per-source 漸進延遲/節流待真實 IP 還原（#280）另解。"""
     with get_conn() as conn:
         row = conn.execute("SELECT * FROM accounts WHERE username=?", (username,)).fetchone()
         if not row:
@@ -191,12 +197,15 @@ def verify_login(username: str, pin: str, bypass_lockout: bool = False) -> tuple
             return None, "archived"
         if d.get("status") != "active":
             return None, "suspended"
-        if _is_locked(d) and not bypass_lockout:
+        # #295：高權帳號不硬鎖（無論是否帶證）；一般帳號維持原鎖定（反爆破）。
+        _high_priv = role_zh_to_en(d.get("role"), d.get("role_detail")) in COMMAND_ROLES
+        _no_hard_lock = bypass_lockout or _high_priv
+        if _is_locked(d) and not _no_hard_lock:
             return None, "locked"
         if not verify_pin(pin, d["pin_hash"], d["pin_salt"]):
             new_count = (d.get("failed_login_count") or 0) + 1
             locked_until = None
-            if new_count >= LOCKOUT_THRESHOLD and not bypass_lockout:
+            if new_count >= LOCKOUT_THRESHOLD and not _no_hard_lock:
                 locked_until = (datetime.now(UTC) + timedelta(minutes=LOCKOUT_DURATION_MIN)).strftime(
                     "%Y-%m-%dT%H:%M:%SZ"
                 )
@@ -208,6 +217,16 @@ def verify_login(username: str, pin: str, bypass_lockout: bool = False) -> tuple
             if locked_until:
                 audit(username, None, "account_locked", "accounts", username, {"failed_count": new_count})
                 return None, "locked"
+            # #295：高權帳號跨閾值但未硬鎖 → 記抑制事件（保留偵測、無 DoS）；僅在剛跨閾值記一次避免洗版。
+            if _high_priv and not bypass_lockout and new_count == LOCKOUT_THRESHOLD:
+                audit(
+                    username,
+                    None,
+                    "lockout_suppressed_high_priv",
+                    "accounts",
+                    username,
+                    {"failed_count": new_count},
+                )
             return None, "bad_pin"
         # 成功：清鎖定 + 透明升級 PIN hash 迭代數（舊 100k → 600k）
         if pin_needs_rehash(d["pin_hash"]):
@@ -219,8 +238,7 @@ def verify_login(username: str, pin: str, bypass_lockout: bool = False) -> tuple
             )
         else:
             conn.execute(
-                "UPDATE accounts SET failed_login_count=0, locked_until=NULL, last_login=? "
-                "WHERE username=?",
+                "UPDATE accounts SET failed_login_count=0, locked_until=NULL, last_login=? WHERE username=?",
                 (_iso_now(), username),
             )
         conn.commit()
