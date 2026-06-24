@@ -87,12 +87,14 @@ class TestAccountLockout:
         acc, reason = verify_login("eve", "right")
         assert acc is not None and reason == "ok"
 
-    def test_high_priv_account_not_hard_locked(self, tmp_db):
-        """#295：高權帳號（指揮官/系統管理員）連續錯 PIN **不被硬鎖**（防戰時 C2 可用性攻擊）。
+    def test_high_priv_account_not_hard_locked(self, tmp_db, monkeypatch):
+        """#295：mTLS 強制下，高權帳號（指揮官/系統管理員）連續錯 PIN **不被硬鎖**（防戰時 C2 可用性攻擊）。
         失敗計數仍累計（保留偵測），但 locked_until 永遠 NULL、reason 永遠 bad_pin、正確 PIN 仍可登入。"""
+        import core.config
         from core.database import get_conn
         from repositories.account_repo import LOCKOUT_THRESHOLD, create_account, verify_login
 
+        monkeypatch.setattr(core.config, "ICS_MTLS_REQUIRED", True)  # 高權不鎖僅在 mTLS 強制下成立
         for uname, role_zh, role_en in (("cmdr", "指揮官", "commander"), ("root", "系統管理員", "sysadmin")):
             create_account(uname, "right", role_zh, "", role_en)
             for i in range(LOCKOUT_THRESHOLD + 3):  # 遠超閾值仍不鎖
@@ -107,10 +109,24 @@ class TestAccountLockout:
             acc, reason = verify_login(uname, "right")  # 未被鎖死 → 正確 PIN 仍可登入
             assert acc is not None and reason == "ok", f"{uname} 高權帳號正確 PIN 應可登入"
 
-    def test_operator_still_locks_high_priv_does_not_share_policy(self, tmp_db):
-        """回歸守門：一般帳號（操作員）仍維持原硬鎖（#295 只放高權，不弱化一般反爆破）。"""
+    def test_high_priv_locks_when_mtls_off(self, tmp_db, monkeypatch):
+        """#295 邊界：非 mTLS 部署（預設）PIN 即足以建 session → 高權帳號**仍硬鎖**以保反爆破。"""
+        import core.config
+        from repositories.account_repo import create_account, verify_login
+
+        monkeypatch.setattr(core.config, "ICS_MTLS_REQUIRED", False)
+        create_account("cmdr2", "right", "指揮官", "", "commander")
+        for _ in range(4):
+            assert verify_login("cmdr2", "wrong")[1] == "bad_pin"
+        assert verify_login("cmdr2", "wrong")[1] == "locked"  # mTLS off → 高權第 5 次仍鎖
+
+    def test_operator_still_locks_high_priv_does_not_share_policy(self, tmp_db, monkeypatch):
+        """回歸守門：一般帳號（操作員）仍維持原硬鎖（#295 只放高權，不弱化一般反爆破）。
+        即使 mTLS 強制，operator 仍鎖（只有 COMMAND_ROLES 享不鎖）。"""
+        import core.config
         from repositories.account_repo import LOCKOUT_THRESHOLD, create_account, verify_login
 
+        monkeypatch.setattr(core.config, "ICS_MTLS_REQUIRED", True)
         create_account("opx", "right", "操作員", "", "operator")
         for _ in range(LOCKOUT_THRESHOLD - 1):
             assert verify_login("opx", "wrong")[1] == "bad_pin"
@@ -133,13 +149,14 @@ class TestLoginAPILockout:
         r = client.post("/api/auth/login", json={"username": "oplock", "pin": "right"})
         assert r.status_code == 423
 
-    def test_high_priv_admin_not_locked(self, client):
-        """#295：預設 admin（系統管理員）連送錯 PIN **不被鎖**——正確 PIN 仍可登入（非 423）。"""
-        for _ in range(6):  # 超過閾值
+    def test_high_priv_admin_locks_when_mtls_off(self, client):
+        """#295 邊界（API 層）：非 mTLS（client fixture 預設）下高權 admin **仍鎖** → 423。
+        （高權不鎖僅在 mTLS 強制成立；mTLS 下 API 因缺裝置證回 401，由 repo 層
+        test_high_priv_account_not_hard_locked 直驗 verify_login 不鎖。）"""
+        for _ in range(5):
             client.post("/api/auth/login", json={"username": "admin", "pin": "wrong"})
         r = client.post("/api/auth/login", json={"username": "admin", "pin": "1234"})
-        assert r.status_code != 423, "高權 admin 不應被鎖死"
-        assert r.status_code == 200  # 正確 PIN 登入成功
+        assert r.status_code == 423, "非 mTLS 下高權 admin 應維持硬鎖（反爆破）"
 
     def test_no_user_returns_401_not_404(self, client):
         """不存在的帳號回 401（不洩漏帳號是否存在）。"""

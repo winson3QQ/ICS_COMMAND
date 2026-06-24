@@ -81,4 +81,37 @@ describe('#293 wiring：renderDecisionList 跳脫使用者欄位', () => {
     expect(html).toContain('&lt;img');
     expect(html).toContain('&lt;b&gt;x&lt;/b&gt;');
   });
+
+  test('showDecisionModal 跳脫 modal 內所有使用者欄位（含 severity/decision_type fallback）', async () => {
+    const m = await import('../../static/js/decisions.js');
+    const bodyNode = { innerHTML: '' };
+    const titleNode = { textContent: '' };
+    const overlayNode = { className: '' };
+    const nodes = { 'modal-body': bodyNode, 'modal-title': titleNode, overlay: overlayNode };
+    // showDecisionModal 於 call 時讀 globalThis.document；本測試覆寫成可讀回 innerHTML 的節點。
+    globalThis.document = {
+      getElementById: (id) => nodes[id] || { innerHTML: '', textContent: '', className: '' },
+      addEventListener: () => {},
+    };
+    m.initDecisions({
+      getData: () => ({
+        decisions: {
+          pending: [{
+            id: 1, status: 'pending', created_at: '2026-06-24T00:00:00Z',
+            severity: ATTACK, decision_type: ATTACK,  // fallback（非 enum）路徑
+            decision_title: ATTACK, impact_description: ATTACK,
+            suggested_action_a: ATTACK, suggested_action_b: ATTACK,
+          }],
+          decided: [],
+        },
+      }),
+      getCurrentOperator: () => '',
+      closeModal: () => {},
+      doPoll: async () => {},
+    });
+    m.showDecisionModal(1);
+    expect(bodyNode.innerHTML).not.toContain('<img src=x onerror=');
+    expect(bodyNode.innerHTML).not.toContain('"><img');
+    expect(bodyNode.innerHTML).toContain('&lt;img');
+  });
 });

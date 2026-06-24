@@ -184,10 +184,14 @@ def verify_login(username: str, pin: str, bypass_lockout: bool = False) -> tuple
     帳號的有效 mTLS 裝置憑證）時，帳號鎖定不擋、錯 PIN 也不再上鎖——攻擊者無裝置證仍可
     鎖（反爆破保留），但**持本人裝置的合法使用者永不被鎖死**（解 §8.6 鎖死 admin 之患）。
 
-    #295 鎖定-DoS 續解：高權帳號（指揮官/系統管理員，COMMAND_ROLES）**不硬鎖**——防「戰時
-    對 C2 帳號連送錯 PIN 鎖死 15 分」可用性攻擊。理據：PIN 僅第二因子，prod mTLS 下登入成功
-    仍需綁定本帳號裝置證才能建 session，故對高權移除硬鎖不開爆破缺口；失敗計數仍累計、跨閾值
-    記稽核事件（保留偵測）。per-source 漸進延遲/節流待真實 IP 還原（#280）另解。"""
+    #295 鎖定-DoS 續解：高權帳號（指揮官/系統管理員，COMMAND_ROLES）在 **mTLS 強制部署下不硬鎖**
+    ——防「戰時對 C2 帳號連送錯 PIN 鎖死 15 分」可用性攻擊。理據：mTLS 下 PIN 僅第二因子，登入成功
+    仍需綁定本帳號裝置證才能建 session，故移除硬鎖不開爆破缺口。**非 mTLS 部署（ICS_MTLS_REQUIRED
+    =false，預設）PIN 即足以建 session → 高權仍維持硬鎖以保反爆破**（此時無 C2 鎖死 DoS 的作戰前提）。
+    失敗計數一律累計、跨閾值記稽核事件（保留偵測）。per-source 漸進延遲/節流待真實 IP 還原（#280）另解。"""
+    # 動態讀（非 import 期綁定）→ 測試可 monkeypatch core.config.ICS_MTLS_REQUIRED。
+    from core.config import ICS_MTLS_REQUIRED
+
     with get_conn() as conn:
         row = conn.execute("SELECT * FROM accounts WHERE username=?", (username,)).fetchone()
         if not row:
@@ -197,8 +201,8 @@ def verify_login(username: str, pin: str, bypass_lockout: bool = False) -> tuple
             return None, "archived"
         if d.get("status") != "active":
             return None, "suspended"
-        # #295：高權帳號不硬鎖（無論是否帶證）；一般帳號維持原鎖定（反爆破）。
-        _high_priv = role_zh_to_en(d.get("role"), d.get("role_detail")) in COMMAND_ROLES
+        # #295：高權帳號**僅在 mTLS 強制下**不硬鎖（cert 為真正第二因子）；非 mTLS 或一般帳號維持原鎖定。
+        _high_priv = ICS_MTLS_REQUIRED and role_zh_to_en(d.get("role"), d.get("role_detail")) in COMMAND_ROLES
         _no_hard_lock = bypass_lockout or _high_priv
         if _is_locked(d) and not _no_hard_lock:
             return None, "locked"

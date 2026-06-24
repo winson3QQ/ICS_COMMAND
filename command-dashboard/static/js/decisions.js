@@ -71,8 +71,10 @@ export function showDecisionModal(decId) {
   const sevColor = dec.severity === 'critical' ? 'var(--red)' : 'var(--yellow)';
 
   let html = `<div style="margin-bottom:12px;">`;
-  const decSevLabel = {critical:'緊急',warning:'警告',info:'一般'}[dec.severity] || dec.severity;
-  const decTypeLabel = {initial:'初始裁示',revision:'修正',escalation:'升級',closure:'結案'}[dec.decision_type] || dec.decision_type;
+  // #293：mapped label 為安全字面；fallback 落 raw dec.severity/decision_type（DecisionIn 未 enum
+  // 強制，可注入）→ fallback 才 escape。
+  const decSevLabel = {critical:'緊急',warning:'警告',info:'一般'}[dec.severity] || _esc(dec.severity);
+  const decTypeLabel = {initial:'初始裁示',revision:'修正',escalation:'升級',closure:'結案'}[dec.decision_type] || _esc(dec.decision_type);
   html += `<span style="display:inline-block;padding:2px 8px;border-radius:3px;background:${sevColor}33;color:${sevColor};font-size:10px;font-weight:700;">${decSevLabel}</span>`;
   html += `<span style="font-size:10px;color:var(--text3);margin-left:8px;">${decTypeLabel} · ${age}</span>`;
   html += `</div>`;

@@ -1354,7 +1354,8 @@ export function renderZoneC(data, d) {
       const sevColor = ev.severity === 'critical' ? 'var(--severity-critical)' : ev.severity === 'warning' ? 'var(--severity-warning)' : 'var(--severity-info)';
       const uName  = unitNames[ev.reported_by_unit] || '';
       const asgKey = ev.assigned_unit;
-      const asgName = asgKey && asgKey !== ev.reported_by_unit ? (unitNames[asgKey] || asgKey) : '';
+      // #293：unitNames 為安全字面；fallback 落 raw asgKey（assigned_unit PATCH 未 enum 強制）→ escape。
+      const asgName = asgKey && asgKey !== ev.reported_by_unit ? (unitNames[asgKey] || _esc(asgKey)) : '';
       const overdueAnim = _isOverdue ? 'animation:pulse 1s infinite;' : '';
       const typeLabel = NAPSG_EVENTS[ev.event_type]?.label || ev.event_type || ev.description;
       const extraDesc = ev.description && ev.description !== typeLabel ? ev.description : '';
@@ -1406,7 +1407,8 @@ export function renderZoneC(data, d) {
         const sevColor = ev.severity === 'critical' ? 'var(--severity-critical)' : ev.severity === 'warning' ? 'var(--severity-warning)' : 'var(--severity-info)';
         const uName  = unitNames[ev.reported_by_unit] || '';
         const asgKey = ev.assigned_unit;
-        const asgName = asgKey && asgKey !== ev.reported_by_unit ? (unitNames[asgKey] || asgKey) : '';
+        // #293：unitNames 為安全字面；fallback 落 raw asgKey（assigned_unit PATCH 未 enum 強制）→ escape。
+      const asgName = asgKey && asgKey !== ev.reported_by_unit ? (unitNames[asgKey] || _esc(asgKey)) : '';
         const typeLabel = NAPSG_EVENTS[ev.event_type]?.label || ev.event_type || ev.description;
         const extraDesc = ev.description && ev.description !== typeLabel ? ev.description : '';
         let h = `<div style="cursor:pointer;padding:5px 8px;margin-bottom:2px;background:var(--surface2);border-radius:5px;border-left:3px solid ${sevColor};opacity:.45;" data-action="openEventByCode" data-id="${ev.id}">`;
