@@ -26,6 +26,10 @@ WARNING_THRESHOLD_SECONDS = config.WARNING_THRESHOLD_SECONDS
 
 EVENT_IDLE_KICKED = "IDLE_KICKED"
 EVENT_SESSION_EXPIRED = "SESSION_EXPIRED"
+# #345 稽核分流：批次清理「被丟棄（abandoned）」session 屬例行維護（低訊號），與 per-request
+# 觸發的 SESSION_EXPIRED / IDLE_KICKED / BINDING_MISMATCH（有人實際在用 → notable）區隔，
+# 避免 routine reap 稀釋安全事件訊噪比。僅 cleanup_expired_sessions 批次路徑用此 action_type。
+EVENT_SESSION_REAPED = "SESSION_REAPED"
 EVENT_BINDING_MISMATCH_IP = "BINDING_MISMATCH_IP"
 EVENT_BINDING_MISMATCH_UA = "BINDING_MISMATCH_UA"
 EVENT_BINDING_MISMATCH_CERT = "BINDING_MISMATCH_CERT"  # #275 mTLS cert-bound session
@@ -301,7 +305,7 @@ def cleanup_expired_sessions() -> int:
             audit(
                 row["username"],
                 None,
-                "SESSION_EXPIRED",
+                EVENT_SESSION_REAPED,  # #345：例行批次清理，與 per-request SESSION_EXPIRED 分流
                 "sessions",
                 row["username"],
                 {"reason": "idle_or_expired_cleanup", "decision": "auto-logout"},

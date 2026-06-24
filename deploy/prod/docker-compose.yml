@@ -67,7 +67,11 @@ services:
       - ICS_ENV=prod
       - ICS_MTLS_REQUIRED=${ICS_MTLS_REQUIRED:-true}
       - ICS_BEHIND_PROXY=true
-      - ICS_IDLE_TIMEOUT_SECONDS=86400
+      # #345 session 生命週期：idle 逾時 1h。原 scaffold 預設 86400（24h）使
+      # cleanup cutoff=min(IDLE,SESSION)=min(24h,14h)=14h → 被丟棄 session 硬撐滿 14h 才清，
+      # 半夜成串 SESSION_EXPIRED（看似入侵的延遲回聲）+ 稽核噪音。降至 3600 後閒置 1h 即清，
+      # 兼顧演習現場指揮短暫離開 dashboard 不被太早登出。check_session 與批次清理同軸 min()。
+      - ICS_IDLE_TIMEOUT_SECONDS=3600
       # #343 紅藍 faction 隔離濾鏡（預設 off「零風險漸進啟用」；演習要紅藍隔離時設 .env=true）。
       # on 時 commander/operator/observer 只見 blue+neutral 的 tak 物件、faction=None 亦藏（fail-closed）；sysadmin 全見。
       - ICS_FACTION_ISOLATION=${ICS_FACTION_ISOLATION:-false}
