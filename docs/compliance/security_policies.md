@@ -148,6 +148,17 @@ _每次 role 變更、帳號建立 / 刪除均寫 audit log_
 
 > **過渡**：mTLS 未全面佈署前，公網存取為**臨時驗證**狀態（`threat_model` §8.6），正式上線前 #275 必須完成。
 
+#### 2.8.1 PIN 熵 — 已評估的接受風險（#348-F5；NIST 800-63B §5.1.1.2）
+
+**現況**：PIN 為 4–6 位純數字（`routers/auth.py` 驗證），knowledge-factor 熵 10⁴–10⁶，**單看**不達 NIST 800-63B memorized-secret 強度，600k PBKDF2 對此空間助益有限。
+
+**定位（doctrine，非疏漏）**：PIN 在本系統是 **mTLS 之後的「本地次因子」**，**非唯一/主要鑑權**。possession factor 是綁定本帳號的 **mTLS 裝置憑證**（something you have）——prod 強制 mTLS（nginx `ssl_verify_client`），**無有效裝置證者在網路層即被擋、根本到不了 PIN 輸入**；且登入成功仍須 cert↔帳號綁定一致才建 session（單純猜中 PIN 不足以登入）。故在「**已具 AAL2 possession**」前提下，PIN 低熵為**刻意接受的風險**（便於現場快速操作），而非鑑權缺口。
+
+**界限 / 殘留**：
+- 此接受**僅在 mTLS 強制（prod 預設）成立**；非 mTLS 部署下 PIN 即足以建 session → 低熵成真缺口（與 §2.3 lockout、#295 高權不鎖之 mTLS 前提同源）。
+- 線上爆破另由帳號鎖定（§2.3）＋ `/api/auth/login` 限流（10/min/IP）＋ 計時旁路抹平（#348-F15）界定。
+- **真提升熵**（PIN→passphrase，放寬長度/英數）需後端驗證**＋前端輸入**改動，**未做**（碰前端，獨立分刀）。本節為「評估後記錄接受風險＋界定前提」，**不主張已達 800-63B memorized-secret 強度**。
+
 ---
 
 ## 3. Audit and Accountability Policy（稽核與課責政策）
@@ -207,25 +218,50 @@ _Session C 填：內部 / PDPC / 司法機關（若涉及犯罪）_
 
 > 對應：NIST 800-53 CP-1；災害防救法
 
+> #348-F9：本節由佔位草稿補成「真實機制 runbook」。⚠️ **HA 與正式 DR 演練未完**，見 §5.5/§5.6 誠實界定——本節是**復原程序文件**，不等於已驗證的 BC/DR。
+
 ### 5.1 Purpose
-_Session C/D 填：系統失效時的備援 + 資料還原 + 演練照常運作_
+系統元件失效（DB 損毀、誤刪、主機故障、勒索）時，能在可接受時間內**還原 user data（`data/`）並恢復指揮運作**；並界定本系統「韌性 > 機密性」的民防第一序與其**已知韌性缺口**。
 
 ### 5.2 Scope
+- **資料**：`data/` 邊界整包（`ics.db` + `map_config.json` + event_taxonomy + uploads；CLAUDE.md User Data 紅線）。
+- **不含**：底圖 tiles（`ics-tiles` 卷，可由 `provision_basemap` 重建）、CA 卷（`ca-data`；砍則已發證全失效，屬金鑰生命週期非資料還原）。
+- **架構現況**：**單機**（CA + DB + app 同主機，無 HA）——見 §5.5 韌性缺口。
 
-### 5.3 Backup Strategy
-_Session C 填（對應 C3-D）。草稿：_
-- SQLite WAL（即時）
-- Daily gzip（保留 30 天）
-- NAS rsync（可選）
-- RTO: 4 hours / RPO: 1 hour
+### 5.3 Backup Strategy（實際機制）
+- **主備份 = 整包 `data/` 加密備份**（`services/user_data_backup_service.py`）：tar.gz 全 `data/`（排除 `data/backups/` 防遞迴）+ `MANIFEST.json`（含 exercise metadata/trigger/app_version）+ **Fernet 加密**；SQLite 走 online backup 一致快照（排除 -wal/-shm）。產物 `data/backups/userdata-*.tar.gz.enc`（#348-F15 起 chmod 0600）。
+- **金鑰**：`BACKUP_KEY`（P1-12a HKDF child[0]；過渡相容 `BACKUP_ENCRYPTION_KEY`）。**無金鑰的 dev 部署不備份**（`key_available()` 略過）。
+- **觸發**：① 手動（admin GUI）② 正常關機 best-effort（`lifespan` shutdown）③ 破壞性操作前自動（reset-db/reset-exercise/restore → `pre-restore-*`）④ admin 端點。
+- **滾動保留**：`ICS_BACKUP_RETAIN_DAYS=30` / `KEEP_MIN=10`；`archive`（演習里程碑）與 `pre-restore`（還原防呆）不被自動刪。
+- **目標**：RPO ≤ 最近一次觸發（關機/手動/破壞前）；RTO ≤ 1 小時（單機重佈署 + restore，未正式計時，見 §5.5）。
+- **離站**：異地副本（NAS/物件儲存）**未自動化**（手動複製 `data/backups/*.enc`，加密故可外放）；列韌性缺口。
 
-### 5.4 Recovery Procedures
-_Session C 填：step-by-step recovery playbook_
+### 5.4 Recovery Procedures（runbook）
 
-### 5.5 Testing
-_Session C 填：每 6 個月至少一次 recovery drill_
+**A. 應用層還原（誤刪/資料損壞，主機仍在）— 主路徑**
+1. sysadmin 登入 → 帳號管理 → 備份/還原；或 API `POST /api/admin/user-data-backups/{name}/restore`（既有備份）/ `POST /api/admin/restore`（上傳 `.tar.gz.enc`）。**active 演習 → 409**（先封存）。
+2. 後端流程（`routers/backup_restore._restore_from_path` → `user_data_backup_service.restore_backup`）：**解密（試 BACKUP_KEY/legacy）→ 驗 MANIFEST → 先自動備份當前（`pre-restore-{ts}`）→ 替換 `data/`**。
+3. 還原後重啟 app（或依提示），驗 `/api/version` + 登入 + COP 正常。失敗可由步驟 2 的 `pre-restore-*` 回滾。
 
-### 5.6 Review
+**B. 主機/容器層 DR（主機故障、勒索、遷機）**
+1. 乾淨佈署棧（見 `deploy/prod/README`）。**保留或還原卷**：`ca-data`（CA，砍則重走 onboarding + 重發證）、`ics-data`（DB）、`ics-tiles`（底圖，可重 provision）。
+2. 還原 `ics-data` 卷（volume-level，已於 #306 測試實證可行）：
+   ```bash
+   docker run --rm -v ics-data:/data -v "$PWD":/bk alpine tar xzf /bk/<備份>.tgz -C /data
+   ```
+   或把 `data/backups/userdata-*.tar.gz.enc` 放回後走 §5.4-A 應用層還原。
+3. 確認 `BACKUP_KEY` 可得（否則加密備份無法解）→ 還原 → 驗證。
+
+**C. 金鑰前提**：所有加密備份還原**依賴 `BACKUP_KEY`**；金鑰遺失＝備份不可解。金鑰保管屬 P1-12a/#226 範圍。
+
+### 5.5 Testing（誠實界定 — 未完）
+- **政策目標**：每 6 個月至少一次完整 recovery drill（乾淨環境從加密備份還原並驗證）。
+- ⚠️ **現況：正式 DR 演練未執行**。已有**部分證據**：#306 測試期間做過 `ics-data` 卷層 tar 備份→還原（B 路徑步驟 2）；應用層 restore 有單元/整合測試（`test_user_data_backup`/`test_backup_restore_api`）。但「乾淨環境端到端、計時 RTO/RPO」的正式演練**尚未做** → 在此之前**不得主張 CP/ISO 22301 BC/DR 達標**。
+
+### 5.6 Review / 已知韌性缺口（#348-F9）
+- **無 HA**：單機（CA+DB+app 同主機），主機故障即服務中斷，無自動 failover。降階 doctrine（TAK 掛 → 退原生 COP；離線 PMTiles 底圖）是**部分**補償，**不等於** HA/BC。HA（多機/備援）屬 infra 大工、**範圍外**、未排程。
+- **離站備份未自動化**、**DR 演練未跑**（§5.5）。
+- 上述為**已記錄的接受/待辦缺口**，非主張已解。每年或重大架構變更 re-review。
 
 ---
 
@@ -274,3 +310,4 @@ _未填（草稿）：每個 policy statement → 實作檔案 / 設定的對照
 |---|---|---|
 | 2026-04-25 | 0.1 | 骨架建立（多數小節未填佔位） |
 | 2026-06-24 | 0.1.1 | #348-F11 誠實化：加未完稿/不可作合規證據警語、明示 AC-1/AU-1/IR-1/CP-1/PT 暫不可主張、修死連結 `matrix.md`（已廢→指 ROADMAP Compliance touchpoints）、擁有者改 ICS_Command |
+| 2026-06-24 | 0.1.2 | #348-F5：§2.8.1 PIN 熵「已評估接受風險」doctrine（PIN=mTLS 後本地次因子，前提/殘留界定，不主張達 800-63B 強度）。#348-F9：§5 Contingency Plan 補真實機制 runbook（加密 data/ 備份 + 應用層/卷層還原 + 金鑰前提），誠實標註 DR 演練未跑、無 HA = 已記錄缺口（不主張 BC/DR 達標） |
