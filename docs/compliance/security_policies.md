@@ -157,7 +157,7 @@ _每次 role 變更、帳號建立 / 刪除均寫 audit log_
 **界限 / 殘留**：
 - 此接受**僅在 mTLS 強制（prod 預設）成立**；非 mTLS 部署下 PIN 即足以建 session → 低熵成真缺口（與 §2.3 lockout、#295 高權不鎖之 mTLS 前提同源）。
 - 線上爆破另由帳號鎖定（§2.3）＋ `/api/auth/login` 限流（10/min/IP）＋ 計時旁路抹平（#348-F15）界定。
-- **強度策略（P1 已落地）**：`core/pin_policy.validate_pin_strength` 套四出口（create/reset/change-initial/admin-PIN）——**長度 6–128、拒全同/連續/常見/==帳號名、無組成規則、開放長密語**（NIST 800-63B 對齊；本地 blocklist、無外部 API）。**不溯及**（登入只驗 hash）。
+- **強度策略（P1 已落地）**：`core/pin_policy.validate_pin_strength` 套四出口——**長度 6–128、拒全同/連續/常見/==帳號名、無組成規則、開放長密語**（NIST 800-63B 對齊；本地 blocklist、無外部 API）。**不溯及**（登入只驗 hash）。**P2b 後**：change-initial / admin-PIN 直驗使用者輸入值；create / reset 改驗 `generate_temp_pin` 的**系統產生值**（內部 retry until 通過同策略）。
 - **P2a 已落地**：admin 建帳號的初始 PIN **首登強制改**（`create` 設 `is_default_pin=1` → 登入
   `must_change_pin` → **auth_middleware per-account 閘**限改 PIN 路徑、其餘 423，server-side 真強制、
   非只靠前端）。`is_first_run_required` 收斂為 bootstrap-only（accounts==1 sysadmin default）→ 第一個
@@ -169,12 +169,17 @@ _每次 role 變更、帳號建立 / 刪除均寫 audit log_
 - **P3 已落地**：前端「使用者長久秘密」輸入欄放寬接受密語 + show-password 眼睛（opt-in，預設遮蔽，
   共用大螢幕防肩窺）。涵蓋 **3 個同一秘密的入口**：登入框、首登強制改 overlay、PinLock 閒置解鎖——
   三者連動（`maxlength 6→128`、去 `inputmode="numeric"`、捨數字正則改長度 6–128；強度/blocklist 仍由
-  BE `pin_policy` 把關，FE 只驗長度+一致）。**未動**：admin 建帳號/reset 的臨時 PIN 欄（會被強制改、且
-  P2b 將改系統產隨機值）、已廢的 Admin PIN 空殼（→ #384 另案移除）。
-- **待續（分期）**：P2b = create 改「**系統產隨機臨時 PIN**」（取代 admin 自設，admin 不知使用者最終值）
-  ；**第一個 admin 免-CLI 量產 onboarding（#382）**。本節「評估後記錄接受風險 + 界定前提」；P1 補下限/
-  可預測值、P2a 補初始憑證強制換、P3 補可見密碼欄對齊（可輸密語），但**完全提升熵仍取決於使用者選長
-  密語**，**不主張一律達 800-63B memorized-secret 強度**。
+  BE `pin_policy` 把關，FE 只驗長度+一致）。已廢的 Admin PIN 空殼維持不動（→ #384 另案移除）。
+- **P2b 已落地**：admin **不再自設** create/reset 的 PIN → 後端 `pin_policy.generate_temp_pin`
+  產**系統隨機臨時 PIN**（retry until 過 `validate_pin_strength`），**一次性**回 `temp_pin` 供前端顯示後
+  轉交（**不落 plaintext、不寫 audit**；DB 僅存 hash）。`create` 移除 `pin` 欄；`reset_pin` 改不收 body、
+  產臨時 PIN 並 `set_default_pin_flag`（**首登強制再改**，對齊 create）。安全性質：admin 無法得知/保留
+  使用者初始 PIN，且初始值必為系統隨機（杜絕「admin 設可預測值 / 共用同一 PIN」）。前端建帳號/編輯面板
+  移除手動 PIN 欄、改「重設為臨時 PIN」按鈕 + 一次性醒目顯示。
+- **待續（分期）**：**第一個 admin 免-CLI 量產 onboarding（#382）**（QR 顯示出廠密碼之安全陷阱已議）。
+  本節「評估後記錄接受風險 + 界定前提」；P1 補下限/可預測值、P2a 補初始憑證強制換、P2b 補系統指派初始
+  憑證、P3 補可見密碼欄對齊（可輸密語），但**完全提升熵仍取決於使用者選長密語**，**不主張一律達
+  800-63B memorized-secret 強度**。
 
 ---
 

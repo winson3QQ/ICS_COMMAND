@@ -334,6 +334,14 @@ def clear_default_pin_flag(username: str) -> bool:
     return cur.rowcount > 0
 
 
+def set_default_pin_flag(username: str) -> bool:
+    # #348-F5 P2b：admin reset 成系統臨時 PIN 後標記待改（首登強制改，對齊 create 的 require_pin_change）。
+    with get_conn() as conn:
+        cur = conn.execute("UPDATE accounts SET is_default_pin=1 WHERE username=?", (username,))
+        conn.commit()
+    return cur.rowcount > 0
+
+
 def is_first_run_required() -> bool:
     """#348-F5 P2a 起收斂為 **bootstrap 專用**：系統剛建、唯一帳號（第一個 admin）且未改 PIN。
 

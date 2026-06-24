@@ -1596,8 +1596,9 @@ export async function admLoadAccounts() {
       '</div>' +
       '<div class="adm-certs-panel" id="adm-certs-' + _u + '" style="display:none;margin-top:8px;"></div>' +
       '<div class="adm-edit-form" id="adm-edit-' + _u + '" style="display:none;">' +
-        '<label>新 PIN（4-6 位數字，留空不改）</label>' +
-        '<input id="adm-newpin-' + _u + '" type="password" inputmode="numeric" maxlength="6" placeholder="新 PIN">' +
+        // #348-F5 P2b：移除手動改 PIN 欄 → 「重設為臨時 PIN」按鈕（系統產隨機值、首登強制改、一次性顯示）。
+        '<label>PIN</label>' +
+        '<button class="adm-btn" data-action="adm-reset-pin" data-username="' + _u + '">🔑 重設為臨時 PIN</button>' +
         '<label>角色</label>' +
         '<select id="adm-role-' + _u + '"' + _lockAttr + '>' + _admRoleOptions(a.role, _isSysadminSession()) + '</select>' +
         (_isLastSysadmin ? '<div style="color:var(--text3);font-size:11px;margin-top:2px;">最後一個系統管理員，角色已鎖定（防自鎖）</div>' : '') +
@@ -1881,14 +1882,10 @@ export async function admPurgeRevoked(username) {
 }
 
 export async function admSaveEdit(username) {
-  const newPin = el('adm-newpin-' + username)?.value.trim();
+  // #348-F5 P2b：改 PIN 移出此處 → 「重設為臨時 PIN」按鈕（admResetPin）。儲存只處理角色 + 顯示名稱。
   const newRole = el('adm-role-' + username)?.value;
   const newDname = el('adm-dname-' + username)?.value.trim();
   const headers = {'X-Admin-PIN': _admPin, 'Content-Type': 'application/json'};
-  if (newPin) {
-    if (!/^\d{4,6}$/.test(newPin)) { alert('PIN 須為 4-6 位數字'); return; }
-    await authFetch(API_BASE + '/api/admin/accounts/' + username + '/pin', {method:'PUT', headers, body:JSON.stringify({new_pin:newPin})});
-  }
   if (newRole) {
     await authFetch(API_BASE + '/api/admin/accounts/' + username + '/role', {
       method:'PUT',
@@ -1906,6 +1903,29 @@ export async function admSaveEdit(username) {
     if (r && !r.ok) { alert('顯示名稱更新失敗（含不允許字元或超過 64 字）'); return; }
   }
   admLoadAccounts();
+}
+
+// #348-F5 P2b：重設帳號 PIN → 系統產隨機臨時 PIN（不收 admin 自設）、標記首登強制改、一次性顯示。
+export async function admResetPin(username) {
+  if (!confirm('重設「' + username + '」的 PIN？\n系統會產生一組臨時 PIN，使用者下次登入須立即修改。\n（此臨時值只顯示一次，無法事後再取得）')) return;
+  const resp = await authFetch(API_BASE + '/api/admin/accounts/' + username + '/pin', {
+    method: 'PUT', headers: {'X-Admin-PIN': _admPin},
+  });
+  if (!resp.ok) { alert('重設失敗（' + resp.status + '）'); return; }
+  const data = await resp.json().catch(() => ({}));
+  _showTempPin(username, data.temp_pin);
+}
+
+// #348-F5 P2b：一次性顯示系統產臨時 PIN（建立 / 重設帳號後）。醒目大字 + 警語；關閉後即無法再取得。
+function _showTempPin(username, pin) {
+  if (!pin) return;
+  const body =
+    '<div style="text-align:center;padding:8px 4px;">' +
+      '<div style="font-size:13px;color:var(--text2);margin-bottom:8px;">帳號 <b>' + _escAudit(username) + '</b> 的臨時 PIN</div>' +
+      '<div style="font-family:var(--mono);font-size:30px;font-weight:700;letter-spacing:4px;color:var(--yellow);margin:8px 0;">' + _escAudit(pin) + '</div>' +
+      '<div style="font-size:12px;color:var(--red);margin-top:10px;">⚠️ 僅顯示一次，請立即記下交給使用者；<br>使用者首次登入後須立即修改。</div>' +
+    '</div>';
+  openModal('臨時 PIN', body, '<button class="adm-btn" data-action="close-modal">我已記下</button>');
 }
 
 export async function admToggleStatus(username, current) {
@@ -1927,12 +1947,13 @@ export async function admDelete(username) {
 }
 
 export function admShowAddForm() {
+  // #348-F5 P2b：移除 PIN 欄——系統產隨機臨時 PIN，建立後一次性顯示供轉交（admin 不自設）。
   el('adm-panel-add').innerHTML =
     '<div class="adm-add-form">' +
       '<label>帳號</label><input id="adm-add-user" placeholder="帳號">' +
-      '<label>PIN（4-6 位數字）</label><input id="adm-add-pin" type="password" inputmode="numeric" maxlength="6" placeholder="PIN">' +
       '<label>角色</label><select id="adm-add-role">' + _admRoleOptions('', _isSysadminSession()) + '</select>' +
       '<label>顯示名稱（選填）</label><input id="adm-add-dname" placeholder="顯示名稱">' +
+      '<div style="font-size:11px;color:var(--text3);margin:4px 0;">建立後系統會產生一組臨時 PIN，僅顯示一次，交給使用者首登後須立即修改。</div>' +
       '<button class="adm-add-btn" data-action="adm-add-account">新增帳號</button>' +
       '<div id="adm-add-warn" style="font-size:11px;color:var(--red);min-height:16px;"></div>' +
     '</div>';
@@ -1940,23 +1961,24 @@ export function admShowAddForm() {
 
 export async function admAddAccount() {
   const username = el('adm-add-user')?.value.trim();
-  const pin = el('adm-add-pin')?.value.trim();
   const role = el('adm-add-role')?.value;
   const displayName = el('adm-add-dname')?.value.trim();
   const warn = el('adm-add-warn');
   warn.textContent = '';
   if (!username) { warn.textContent = '請輸入帳號'; return; }
-  if (!/^\d{4,6}$/.test(pin)) { warn.textContent = 'PIN 須為 4-6 位數字'; return; }
+  // #348-F5 P2b：不再送 pin，後端產隨機臨時 PIN 並回傳。
   const resp = await authFetch(API_BASE + '/api/admin/accounts', {
     method:'POST',
     headers:{'X-Admin-PIN':_admPin,'Content-Type':'application/json'},
-    body: JSON.stringify({username, pin, role, display_name: displayName || null}),
+    body: JSON.stringify({username, role, display_name: displayName || null}),
   });
   if (!resp.ok) {
     const err = await resp.json().catch(() => ({}));
     warn.textContent = err.detail || '新增失敗';
     return;
   }
+  const data = await resp.json().catch(() => ({}));
+  _showTempPin(username, data.temp_pin);   // 一次性顯示臨時 PIN
   admShowTab('list');
 }
 

@@ -194,14 +194,15 @@ def test_commander_can_manage_operator_and_observer_accounts(client):
     token = _login(client, "cmd_mgr", "1234")
     headers = _auth_header(token)
 
+    # #348-F5 P2b：admin 不再自設 PIN，建帳號回隨機 temp_pin
     operator = client.post(
         "/api/admin/accounts",
-        json={"username": "cmd_operator", "pin": "739104", "role": ROLE_OPERATOR_ZH},
+        json={"username": "cmd_operator", "role": ROLE_OPERATOR_ZH},
         headers=headers,
     )
     observer = client.post(
         "/api/admin/accounts",
-        json={"username": "cmd_observer", "pin": "739104", "role": ROLE_OBSERVER_ZH},
+        json={"username": "cmd_observer", "role": ROLE_OBSERVER_ZH},
         headers=headers,
     )
     assert operator.status_code == 200, operator.text
@@ -229,11 +230,10 @@ def test_commander_can_manage_operator_and_observer_accounts(client):
 
     pin = client.put(
         "/api/admin/accounts/cmd_operator/pin",
-        json={"new_pin": "739104"},
         headers=headers,
     )
     assert pin.status_code == 200, pin.text
-    assert _login(client, "cmd_operator", "739104")
+    assert _login(client, "cmd_operator", pin.json()["temp_pin"])
 
     role = client.put(
         "/api/admin/accounts/cmd_operator/role",

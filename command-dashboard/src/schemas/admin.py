@@ -23,8 +23,8 @@ class FactionOverrideIn(BaseModel):
 
 
 class AccountCreateIn(BaseModel):
+    # #348-F5 P2b：移除 pin 欄——admin 不再自設，由後端 generate_temp_pin 產生並一次性回傳。
     username: str
-    pin: str
     role: str = "操作員"
     role_detail: str | None = None
     display_name: str | None = None
@@ -34,8 +34,7 @@ class AccountStatusIn(BaseModel):
     status: str  # active / suspended
 
 
-class PinResetIn(BaseModel):
-    new_pin: str
+# PinResetIn 已移除（#348-F5 P2b）：reset_pin 改系統產隨機臨時 PIN、不收 body。
 
 
 class AdminPinIn(BaseModel):
