@@ -3818,7 +3818,7 @@ export async function loadL3Records(unitId) {
           const max = r.qty_initial || cur || 1;
           const pct = Math.round(cur / max * 100);
           const c = pct <= 20 ? 'var(--red)' : pct <= 40 ? 'var(--yellow)' : 'var(--green)';
-          html += `<div style="display:flex;justify-content:space-between;font-size:11px;margin:2px 0;"><span>${r.name || '?'}</span><span style="color:${c};font-weight:600;">${cur}/${max}</span></div>`;
+          html += `<div style="display:flex;justify-content:space-between;font-size:11px;margin:2px 0;"><span>${_escapeHtml(r.name || '?')}</span><span style="color:${c};font-weight:600;">${cur}/${max}</span></div>`;
           html += `<div style="height:3px;background:var(--surface2);border-radius:2px;margin-bottom:3px;"><div style="height:100%;width:${pct}%;background:${c};border-radius:2px;"></div></div>`;
         }
       }
@@ -3837,24 +3837,24 @@ export async function loadL3Records(unitId) {
         let extra = '';
         if (tableName === 'patients') {
           const dot = triageColorDot[rec.triage_color] || '';
-          const chief = rec.chief_issue ? ` — ${rec.chief_issue.slice(0, 20)}` : '';
-          extra = `${dot} <b>${did}</b>${chief}`;
+          const chief = rec.chief_issue ? ` — ${_escapeHtml(rec.chief_issue.slice(0, 20))}` : '';
+          extra = `${dot} <b>${_escapeHtml(did)}</b>${chief}`;
         } else if (tableName === 'persons') {
-          extra = `<b>${did}</b> · ${rec.status || ''}`;
+          extra = `<b>${_escapeHtml(did)}</b> · ${_escapeHtml(rec.status || '')}`;
         } else if (tableName === 'incidents') {
           const incLabels = { security_threat: '安全威脅', infectious_risk: '傳染疑慮', resource_shortage: '物資短缺', capacity_overload: '量能超載', medication_mgmt: '藥品管理', language_assist: '語言協助', other: '其他' };
-          extra = `${incLabels[rec.type] || rec.type} · ${rec.severity || ''}`;
+          extra = `${_escapeHtml(incLabels[rec.type] || rec.type)} · ${_escapeHtml(rec.severity || '')}`;
         } else {
-          extra = did;
+          extra = _escapeHtml(did);
         }
-        html += `<div data-action="openL4Detail" data-unit="${unitId}" data-table="${tableName}" data-index="${i}" style="padding:5px 8px;margin:2px 0;background:var(--surface);border-radius:3px;cursor:pointer;font-size:11px;">${extra}</div>`;
+        html += `<div data-action="openL4Detail" data-unit="${_escapeHtml(unitId)}" data-table="${tableName}" data-index="${i}" style="padding:5px 8px;margin:2px 0;background:var(--surface);border-radius:3px;cursor:pointer;font-size:11px;">${extra}</div>`;
       });
     }
 
     if (!html) html = '<div style="color:var(--text3);font-size:11px;">無資料</div>';
     container.innerHTML = html;
   } catch (e) {
-    container.innerHTML = '<div style="color:var(--red);font-size:11px;">網路錯誤：' + e.message + '</div>';
+    container.innerHTML = '<div style="color:var(--red);font-size:11px;">網路錯誤：' + _escapeHtml(e.message) + '</div>';
   }
 }
 
@@ -3882,12 +3882,12 @@ export function openL4Detail(unitId, tableName, index) {
         val = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
       }
     }
-    fields += `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid var(--border);font-size:11px;"><span style="color:var(--text3);">${k}</span><span style="font-weight:600;text-align:right;max-width:60%;">${val ?? '—'}</span></div>`;
+    fields += `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid var(--border);font-size:11px;"><span style="color:var(--text3);">${_escapeHtml(k)}</span><span style="font-weight:600;text-align:right;max-width:60%;">${_escapeHtml(val ?? '—')}</span></div>`;
   }
   container.innerHTML = `
     <div style="margin-bottom:8px;">
       <button data-action="backToL3" style="padding:3px 10px;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:3px;font-size:10px;cursor:pointer;font-family:var(--mono);">← 返回列表</button>
-      <span style="font-size:11px;font-weight:700;margin-left:8px;">${label}：${name}</span>
+      <span style="font-size:11px;font-weight:700;margin-left:8px;">${label}：${_escapeHtml(name)}</span>
     </div>
     <div style="background:var(--surface);border-radius:5px;padding:10px;font-size:11px;">${fields}</div>
   `;

@@ -46,6 +46,16 @@ export function _decisionAge(createdAt) {
 
 export function _truncate(s, n) { return s && s.length > n ? s.slice(0, n) + '…' : (s || ''); }
 
+// HTML escape — 裁示欄位（decision_title / impact / suggested_action / decided_by）為操作員/AI
+// 撰寫的自由文字，塞進 innerHTML 模板前一律 escape（DOM-XSS 縱深防禦，#293）。實作對齊 events.js。
+// export 供 dom_xss_escape.test.js 鎖跳脫行為（沿 #292 roster _esc 測試慣例）。
+export function _esc(s) {
+  return String(s == null ? '' : s).replace(
+    /[&<>"']/g,
+    (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]),
+  );
+}
+
 // ══════════════════════════════════════════════════════════════
 // 裁示 Modal
 // ══════════════════════════════════════════════════════════════
@@ -66,17 +76,17 @@ export function showDecisionModal(decId) {
   html += `<span style="display:inline-block;padding:2px 8px;border-radius:3px;background:${sevColor}33;color:${sevColor};font-size:10px;font-weight:700;">${decSevLabel}</span>`;
   html += `<span style="font-size:10px;color:var(--text3);margin-left:8px;">${decTypeLabel} · ${age}</span>`;
   html += `</div>`;
-  html += `<div style="font-size:14px;font-weight:700;margin-bottom:8px;">${dec.decision_title}</div>`;
-  html += `<div style="font-size:11px;color:var(--text2);margin-bottom:12px;">${dec.impact_description}</div>`;
+  html += `<div style="font-size:14px;font-weight:700;margin-bottom:8px;">${_esc(dec.decision_title)}</div>`;
+  html += `<div style="font-size:11px;color:var(--text2);margin-bottom:12px;">${_esc(dec.impact_description)}</div>`;
 
   html += `<div class="slice-card" style="margin-bottom:8px;">`;
   html += `<div class="slice-card-title">建議動作 A</div>`;
-  html += `<div style="font-size:12px;">${dec.suggested_action_a}</div>`;
+  html += `<div style="font-size:12px;">${_esc(dec.suggested_action_a)}</div>`;
   html += `</div>`;
   if (dec.suggested_action_b) {
     html += `<div class="slice-card" style="margin-bottom:8px;">`;
     html += `<div class="slice-card-title">建議動作 B</div>`;
-    html += `<div style="font-size:12px;">${dec.suggested_action_b}</div>`;
+    html += `<div style="font-size:12px;">${_esc(dec.suggested_action_b)}</div>`;
     html += `</div>`;
   }
 
@@ -94,7 +104,7 @@ export function showDecisionModal(decId) {
     html += `<button data-action="closeDecision" data-id="${dec.id}" style="flex:1;padding:6px;background:var(--surface2);color:var(--text2);border:1px solid var(--border);border-radius:5px;font-size:11px;font-weight:700;cursor:pointer;font-family:var(--mono);">✓ 結案</button>`;
     html += `</div></div>`;
   } else {
-    html += `<div style="margin-top:12px;font-size:11px;color:var(--text2);">已裁示：${dec.status} by ${dec.decided_by || '—'}</div>`;
+    html += `<div style="margin-top:12px;font-size:11px;color:var(--text2);">已裁示：${_esc(dec.status)} by ${_esc(dec.decided_by || '—')}</div>`;
   }
 
   const modalTitle = document.getElementById('modal-title');
@@ -171,10 +181,10 @@ export function renderDecisionList(decs) {
     const statusLabel = dec.status==='pending'?'待裁示':'已裁示：'+dec.status;
     html += `<div style="padding:6px 8px;margin-bottom:4px;background:var(--surface2);border-radius:5px;border-left:3px solid ${sevC};cursor:pointer;" data-action="showDecisionModal" data-id="${dec.id}">`;
     html += `<div style="display:flex;justify-content:space-between;">`;
-    html += `<span style="font-size:11px;font-weight:700;">${_truncate(dec.decision_title, 30)}</span>`;
-    html += `<span style="font-size:9px;color:var(--text3);">${statusLabel}</span>`;
+    html += `<span style="font-size:11px;font-weight:700;">${_esc(_truncate(dec.decision_title, 30))}</span>`;
+    html += `<span style="font-size:9px;color:var(--text3);">${_esc(statusLabel)}</span>`;
     html += `</div>`;
-    html += `<div style="font-size:9px;color:var(--text3);margin-top:2px;">${dec.decision_type} · ${age}</div>`;
+    html += `<div style="font-size:9px;color:var(--text3);margin-top:2px;">${_esc(dec.decision_type)} · ${age}</div>`;
     html += `</div>`;
   });
   return html;

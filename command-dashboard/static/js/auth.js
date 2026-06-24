@@ -681,7 +681,8 @@ function _auditEventLabel(log) {
 
 // 稽核日誌欄位 render 進 innerHTML 前的 escape（belt-and-braces；callsign 等已過後端
 // validate_no_unsafe_strings，這層防未來驗證鬆動成 XSS sink）。
-function _escAudit(s) {
+// export 供 dom_xss_escape.test.js 鎖跳脫行為（#293）。
+export function _escAudit(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, (c) =>
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 }
@@ -737,13 +738,15 @@ function _auditRenderModal(logs, activeFilter) {
 
     let targetHtml = '';
     if (log.target_table === 'events') {
-      targetHtml = `<span style="color:var(--text2);font-size:11px;">${_auditEventLabel(log)}</span>`;
+      // #293：_auditEventLabel 回傳 _event_desc / event_code / target_id（皆使用者/TAK 撰寫的自由
+      // 文字），於 sink 統一 escape，涵蓋其三條回傳路徑（與本 modal 其他欄位一致）。
+      targetHtml = `<span style="color:var(--text2);font-size:11px;">${_escAudit(_auditEventLabel(log))}</span>`;
     } else if (log.target_table === 'accounts') {
       targetHtml = `<span style="color:var(--text2);font-size:11px;">${_escAudit(log.target_id || '')}</span>`;
     } else if (log.target_table === 'cop_entities') {
       targetHtml = `<span style="color:var(--text2);font-size:11px;">${_escAudit(_copLabel) || (log.target_id || '').slice(0, 12)}</span>`;
     } else if (log.target_table) {
-      targetHtml = `<span style="color:var(--text3);font-size:10px;">${log.target_table}</span>`;
+      targetHtml = `<span style="color:var(--text3);font-size:10px;">${_escAudit(log.target_table)}</span>`;
     }
 
     rows += `<div style="display:grid;grid-template-columns:90px 88px 80px 1fr;gap:6px;align-items:center;padding:5px 2px;border-bottom:1px solid rgba(255,255,255,.04);">
@@ -1548,34 +1551,41 @@ export async function admLoadAccounts() {
     // #354：最後一個 active sysadmin → 鎖角色 select + 停用鈕（防自鎖）。
     const _isLastSysadmin = a.username === _lastSysadminUser;
     const _lockAttr = _isLastSysadmin ? ' disabled title="系統內最後一個系統管理員，不可降級／停用（防自鎖）"' : '';
-    html += '<div class="adm-account-card" id="adm-card-' + a.username + '">' +
+    // #293 DOM-XSS 自衛：username / display_name / role / status 後端皆為無 charset 限制的 str
+    //（schemas/admin.py AccountCreateIn），塞進 innerHTML 前一律 escape。username 同時進 id/
+    // data-* 屬性，escape 後瀏覽器 entity-decode 與後續 el('adm-edit-'+username) 查找仍一致。
+    const _u = _escAudit(a.username);
+    const _dn = _escAudit(a.display_name || '');
+    const _role = _escAudit(a.role);
+    const _st = _escAudit(a.status);
+    html += '<div class="adm-account-card" id="adm-card-' + _u + '">' +
       '<div class="adm-account-row">' +
-        '<div><span class="adm-account-name">' + a.username + '</span>' +
-          (a.display_name ? ' <span style="color:var(--text3);font-size:11px;">' + a.display_name + '</span>' : '') +
+        '<div><span class="adm-account-name">' + _u + '</span>' +
+          (a.display_name ? ' <span style="color:var(--text3);font-size:11px;">' + _dn + '</span>' : '') +
         '</div>' +
         '<div style="display:flex;gap:4px;">' +
-          '<span class="adm-badge role">' + a.role + '</span>' +
+          '<span class="adm-badge role">' + _role + '</span>' +
           '<span class="adm-badge ' + statusCls + '">' + statusLabel + '</span>' +
         '</div>' +
       '</div>' +
       '<div class="adm-btns">' +
-        '<button class="adm-btn" data-action="adm-toggle-edit" data-username="' + a.username + '">編輯</button>' +
-        '<button class="adm-btn" data-action="adm-toggle-status" data-username="' + a.username + '" data-status="' + a.status + '"' + _lockAttr + '>' + (a.status === 'active' ? '停用' : '啟用') + '</button>' +
+        '<button class="adm-btn" data-action="adm-toggle-edit" data-username="' + _u + '">編輯</button>' +
+        '<button class="adm-btn" data-action="adm-toggle-status" data-username="' + _u + '" data-status="' + _st + '"' + _lockAttr + '>' + (a.status === 'active' ? '停用' : '啟用') + '</button>' +
         // #275 wave B：裝置憑證（mTLS 第二因子）管理，sysadmin only
-        (_isSysadminSession() ? '<button class="adm-btn" data-action="adm-toggle-certs" data-username="' + a.username + '">🔑 裝置憑證</button>' : '') +
+        (_isSysadminSession() ? '<button class="adm-btn" data-action="adm-toggle-certs" data-username="' + _u + '">🔑 裝置憑證</button>' : '') +
       '</div>' +
-      '<div class="adm-certs-panel" id="adm-certs-' + a.username + '" style="display:none;margin-top:8px;"></div>' +
-      '<div class="adm-edit-form" id="adm-edit-' + a.username + '" style="display:none;">' +
+      '<div class="adm-certs-panel" id="adm-certs-' + _u + '" style="display:none;margin-top:8px;"></div>' +
+      '<div class="adm-edit-form" id="adm-edit-' + _u + '" style="display:none;">' +
         '<label>新 PIN（4-6 位數字，留空不改）</label>' +
-        '<input id="adm-newpin-' + a.username + '" type="password" inputmode="numeric" maxlength="6" placeholder="新 PIN">' +
+        '<input id="adm-newpin-' + _u + '" type="password" inputmode="numeric" maxlength="6" placeholder="新 PIN">' +
         '<label>角色</label>' +
-        '<select id="adm-role-' + a.username + '"' + _lockAttr + '>' + _admRoleOptions(a.role, _isSysadminSession()) + '</select>' +
+        '<select id="adm-role-' + _u + '"' + _lockAttr + '>' + _admRoleOptions(a.role, _isSysadminSession()) + '</select>' +
         (_isLastSysadmin ? '<div style="color:var(--text3);font-size:11px;margin-top:2px;">最後一個系統管理員，角色已鎖定（防自鎖）</div>' : '') +
         '<label>顯示名稱</label>' +
-        '<input id="adm-dname-' + a.username + '" value="' + (a.display_name || '') + '">' +
+        '<input id="adm-dname-' + _u + '" value="' + _dn + '">' +
         '<div style="display:flex;gap:6px;">' +
-          '<button class="adm-btn" data-action="adm-save-edit" data-username="' + a.username + '">儲存</button>' +
-          '<button class="adm-btn" data-action="adm-toggle-edit" data-username="' + a.username + '">取消</button>' +
+          '<button class="adm-btn" data-action="adm-save-edit" data-username="' + _u + '">儲存</button>' +
+          '<button class="adm-btn" data-action="adm-toggle-edit" data-username="' + _u + '">取消</button>' +
         '</div>' +
       '</div>' +
     '</div>';
@@ -1938,9 +1948,9 @@ export async function admLoadLog() {
   for (const log of logs) {
     html += '<div class="adm-log-entry">' +
       '<span class="adm-log-time">' + (_fmtLocalDT(log.created_at) || '') + '</span> ' +
-      '<span class="adm-log-action">' + (log.action_type || '') + '</span> ' +
-      '<span style="color:var(--text2);">' + (log.operator || '') + '</span> ' +
-      '<span style="color:var(--text3);font-size:10px;">' + (log.target_table || '') + '/' + (log.target_id || '').slice(0,8) + '</span>' +
+      '<span class="adm-log-action">' + _escAudit(log.action_type || '') + '</span> ' +
+      '<span style="color:var(--text2);">' + _escAudit(log.operator || '') + '</span> ' +
+      '<span style="color:var(--text3);font-size:10px;">' + _escAudit(log.target_table || '') + '/' + _escAudit((log.target_id || '').slice(0,8)) + '</span>' +
     '</div>';
   }
   el('adm-panel-log').innerHTML = html || '<div style="color:var(--text3);text-align:center;padding:20px;">無日誌</div>';
@@ -1995,11 +2005,11 @@ export async function admLoadPiNodes() {
     const seen = n.last_seen_at ? _fmtLocalDT(n.last_seen_at) : '從未連線';
     html += `<div style="display:flex;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);gap:8px;">
       <div style="flex:1;">
-        <div style="font-size:12px;font-weight:600;">${dot} ${n.label || n.unit_id}</div>
-        <div style="font-size:10px;color:var(--text3);">${n.unit_id} · key ...${n.api_key_suffix} · ${seen}</div>
+        <div style="font-size:12px;font-weight:600;">${dot} ${_escAudit(n.label || n.unit_id)}</div>
+        <div style="font-size:10px;color:var(--text3);">${_escAudit(n.unit_id)} · key ...${_escAudit(n.api_key_suffix)} · ${seen}</div>
       </div>
-      <button data-action="adm-rekey-pi-node" data-unit-id="${n.unit_id}" style="padding:3px 8px;font-size:10px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:3px;cursor:pointer;">換 Key</button>
-      <button data-action="adm-delete-pi-node" data-unit-id="${n.unit_id}" style="padding:3px 8px;font-size:10px;background:var(--surface2);color:var(--red);border:1px solid var(--border);border-radius:3px;cursor:pointer;">刪除</button>
+      <button data-action="adm-rekey-pi-node" data-unit-id="${_escAudit(n.unit_id)}" style="padding:3px 8px;font-size:10px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:3px;cursor:pointer;">換 Key</button>
+      <button data-action="adm-delete-pi-node" data-unit-id="${_escAudit(n.unit_id)}" style="padding:3px 8px;font-size:10px;background:var(--surface2);color:var(--red);border:1px solid var(--border);border-radius:3px;cursor:pointer;">刪除</button>
     </div>`;
   }
   el('adm-panel-pi').innerHTML = html;
