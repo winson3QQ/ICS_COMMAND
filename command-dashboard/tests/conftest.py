@@ -87,6 +87,29 @@ def _clear_sessions():
     _delete_all_sessions()
 
 
+# ── #367：auth.service 快取常數隔離（autouse）──────────────────────────────
+# auth.service 於 import 時把 SESSION_TIMEOUT / IDLE_TIMEOUT / WARNING_THRESHOLD_SECONDS
+# 快取成模組級常數（service.py 頂端 `X = config.X`）。若某測試先 monkeypatch core.config.X
+# 後才「首次」import auth.service（視收集順序而定），模組會以 patched 值綁定該常數；monkeypatch
+# 把 patched 值當「原值」記錄 → teardown 還原成 patched 值 → 永久洩漏到後續測試（順序相依污染：
+# min(IDLE,SESSION) 被壓成極小 → 無辜 session 被誤判 idle 踢出）。見 #367。
+#
+# 修法：每個測試後從 core.config 重新同步這三個常數。autouse fixture 最早建立 → 最後 finalize，
+# 故此 teardown 跑在測試自身 monkeypatch 還原（core.config 已回預設）之後，重新同步即還原乾淨。
+@pytest.fixture(autouse=True)
+def _restore_service_cached_constants():
+    yield
+    try:
+        import auth.service as svc
+        import core.config as cfg
+
+        svc.SESSION_TIMEOUT = cfg.SESSION_TIMEOUT
+        svc.IDLE_TIMEOUT = cfg.IDLE_TIMEOUT
+        svc.WARNING_THRESHOLD_SECONDS = cfg.WARNING_THRESHOLD_SECONDS
+    except Exception:
+        pass  # auth.service 尚未 import（純 DB/migration 測試）時忽略
+
+
 # ── C1-A：Rate limit bucket 隔離（autouse）─────────────────────────────────
 # 多測試共用 TestClient → 同一 IP → 沒重置會在第 11 次 login 後撞 429
 @pytest.fixture(autouse=True)

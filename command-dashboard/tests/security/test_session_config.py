@@ -21,13 +21,11 @@ from datetime import UTC
 class TestSessionTimeoutConfig:
     def test_custom_short_timeout_expires_session(self, tmp_db, monkeypatch):
         """SESSION_TIMEOUT=2 秒：2 秒後 session 過期"""
-        import core.config as cfg
-
-        monkeypatch.setattr(cfg, "SESSION_TIMEOUT", 2)
-
         import auth.service as svc
 
-        # monkeypatch 讓 service 使用新 timeout
+        # service 讀自己的模組級快取常數 svc.SESSION_TIMEOUT（非 core.config 直讀），故只 patch svc。
+        # #367：先前另 patch core.config.SESSION_TIMEOUT 是冗餘且為洩漏觸發點（patch cfg 後才首次
+        # import auth.service → 模組以 patched 值綁定常數 → monkeypatch 還原成 patched 值），已移除。
         monkeypatch.setattr(svc, "SESSION_TIMEOUT", 2)
 
         token = svc.create_session({"username": "u1", "role": "op", "display_name": "U1"})
