@@ -818,11 +818,17 @@ def reconcile_tak_device_certs(request: Request):
         else:
             status = "unknown"  # 只有升級前 NULL fingerprint，無從斷定
         m = _ics_match(cs, fp)
+        # #404：per-user 群清單 + in_anon 旗標。groups=None（舊式 registrar 未回群）→ False（不誤判）；
+        # 含 __ANON__ 或空群（runtime 落 __ANON__）→ True（producer 與任何 CA 證同頻＝隔離破口）。
+        groups = u.get("groups")
+        in_anon = groups is not None and ("__ANON__" in groups or len(groups) == 0)
         annotated.append(
             {
                 "callsign": cs,
                 "fingerprint": fp,
                 "status": status,
+                "groups": groups,
+                "in_anon": in_anon,
                 # ICS 對應（供前端撤銷；殭屍/infra 無 → None）：
                 "ics_cert_id": (m or {}).get("id"),
                 "mode": (m or {}).get("mode"),
@@ -837,7 +843,17 @@ def reconcile_tak_device_certs(request: Request):
         for c in rows
     ]
     ics_unsynced.sort(key=lambda x: x["callsign"])
-    return {"ok": True, "reason": "ok", "tak_users": annotated, "ics_unsynced": ics_unsynced}
+    # #404：卡 __ANON__ 的 managed user（隔離破口）——producer 落匿名群 = 與任何 CA 信任的證同頻，
+    # 不明證可注入/竊聽。供前端示警 + 一鍵 strip-anon。ics-tak-admin（REST-only 不 stream）會列入但
+    # 移除唯一群會 bounce 回 → 前端可標示為已知例外；ICS 不替它隱藏（誠實呈現）。
+    anon_users = sorted(u["callsign"] for u in annotated if u["in_anon"])
+    return {
+        "ok": True,
+        "reason": "ok",
+        "tak_users": annotated,
+        "ics_unsynced": ics_unsynced,
+        "anon_users": anon_users,
+    }
 
 
 @router.post("/tak/users/{callsign}/deregister", tags=["account-admin"])
@@ -861,6 +877,35 @@ def deregister_tak_user(callsign: str, request: Request):
         # registrar 未配置 / 逾時 / 該 user 不存在 → 回 503 帶 reason（前端提示，非靜默）。
         raise HTTPException(503, f"從 TAK 移除失敗：{result.get('reason')}")
     return {"ok": True, "callsign": cn, "deregister": result.get("reason")}
+
+
+@router.post("/tak/users/{callsign}/strip-anon", tags=["account-admin"])
+def strip_anon_tak_user(callsign: str, request: Request):
+    """#404：把 TAK managed user 移出 __ANON__ 匿名群（usermod -r -g __ANON__，保留其餘群）——修
+    「producer 卡匿名頻道 = 與任何 CA 信任的證同頻（不明證可注入/竊聽 ICS COP）」隔離破口。
+
+    sysadmin only。fingerprint 由 reconcile 取（usermod -r 帶 -f 確保不動憑證）。強制 audit。
+    與 deregister 不同，**不擋 infra**——ics-cot 正是要修的對象（ics-tak-admin 僅 __ANON__ → bounce 回，no-op）。
+    """
+    sess = _check_system_admin(request)
+    cn = (callsign or "").strip()
+    if not is_valid_cert_cn(cn):
+        raise HTTPException(422, "callsign 不合法")
+    from services.tak_user_enroll import reconcile_tak_users, strip_anon_group
+
+    # 取該 user 的 fingerprint（usermod -r 需 -f）。讀不到 TAK roster / 查無此 user → 明確錯，不靜默。
+    rec = reconcile_tak_users()
+    if not rec["ok"]:
+        raise HTTPException(503, f"無法讀 TAK roster：{rec['reason']}")
+    user = next((u for u in rec["users"] if u["callsign"] == cn), None)
+    if user is None:
+        raise HTTPException(404, f"TAK 無此 managed user：{cn}")
+
+    result = strip_anon_group(cn, user.get("fingerprint") or "")
+    audit(sess["username"], None, "tak_user_strip_anon", "tak", cn, {"strip_anon": result.get("reason")})
+    if not result.get("ok"):
+        raise HTTPException(503, f"移出 __ANON__ 失敗：{result.get('reason')}")
+    return {"ok": True, "callsign": cn, "strip_anon": result.get("reason")}
 
 
 @router.delete("/tak/device-certs/{cert_id}", tags=["account-admin"])

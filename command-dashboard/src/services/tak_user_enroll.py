@@ -127,25 +127,50 @@ def deregister_device(callsign: str) -> dict:
 
 
 def reconcile_tak_users() -> dict:
-    """#398 B：讀 TAK UserAuthenticationFile 取 cert-user → fingerprint 真相（registrar reconcile op）。
+    """#398 B：讀 TAK UserAuthenticationFile 取 cert-user → fingerprint + groupList 真相（registrar reconcile op）。
 
-    回 {ok: bool, users: list[{callsign, fingerprint}], reason: str}。best-effort 不 raise。
-    供 dashboard 對帳 ICS 紀錄 vs TAK 實際（殭屍 / fingerprint 不符 / 未同步）。
+    回 {ok: bool, users: list[{callsign, fingerprint, groups}], reason: str}。best-effort 不 raise。
+    供 dashboard 對帳 ICS 紀錄 vs TAK 實際（殭屍 / fingerprint 不符 / 未同步 / #404 卡 __ANON__）。
+
+    `groups`：list[str] 群清單；`None` 表舊式 registrar 未回群（向後相容、不誤判隔離破口）。
+    空 list（`[]`）= roster 中無顯式群 → runtime 落 __ANON__（#404 視同隔離破口）。
     """
     if not is_configured():
         return {"ok": False, "users": [], "reason": "enroll-not-configured"}
-    # reconcile 要等 registrar 讀檔 + 逐列 sed，給比 enroll 寬的窗（至少 5s）。
+    # reconcile 要等 registrar 讀檔 + 逐列解析，給比 enroll 寬的窗（至少 5s）。
     outcome, body = _submit_op("", "", "neutral", "reconcile", max(config.TAK_ENROLL_TIMEOUT_S, 5.0))
     if outcome != "ok":
         reason = outcome if outcome in ("timeout", "write-failed") else f"registrar-error:{body.strip()[:120]}"
         return {"ok": False, "users": [], "reason": reason}
     users: list[dict] = []
-    # 首行 'OK reconcile <count>'，其後每行 callsign<TAB>fingerprint。
+    # 首行 'OK reconcile <count>'，其後每行 callsign<TAB>fingerprint[<TAB>group1,group2,...]。
+    # #404：第 3 欄群清單為新增；舊式 registrar 只回兩欄 → groups=None（未知，不誤判）。
     for line in body.splitlines()[1:]:
         if "\t" not in line:
             continue
-        cs, fp = line.split("\t", 1)
-        cs, fp = cs.strip(), fp.strip()
+        parts = line.split("\t")
+        cs = parts[0].strip()
+        fp = parts[1].strip() if len(parts) > 1 else ""
+        groups = [g for g in parts[2].strip().split(",") if g] if len(parts) > 2 else None
         if cs:
-            users.append({"callsign": cs, "fingerprint": fp})
+            users.append({"callsign": cs, "fingerprint": fp, "groups": groups})
     return {"ok": True, "users": users, "reason": "ok"}
+
+
+def strip_anon_group(callsign: str, fingerprint: str) -> dict:
+    """#404：移除 managed user 的 __ANON__ 群（usermod -f <fp> -r -g __ANON__，經 registrar），保留其餘群
+    → 把 producer 移出匿名頻道（修「卡 __ANON__ = 與任何 CA 證同頻」隔離破口）。回 {ok, reason}。
+
+    需 fingerprint（usermod -r 帶 -f 確保不動憑證；由 reconcile/裝置證表取得）。best-effort 不 raise。
+    """
+    if not is_configured():
+        return {"ok": False, "reason": "enroll-not-configured"}
+    if not (callsign or "").isascii():
+        return {"ok": False, "reason": "non-ascii-callsign"}
+    outcome, body = _submit_op(callsign, fingerprint or "", "neutral", "strip-anon", config.TAK_ENROLL_TIMEOUT_S)
+    if outcome == "ok":
+        log.info("[tak-enroll] stripped __ANON__ from %s", callsign)
+        return {"ok": True, "reason": "stripped"}
+    if outcome in ("timeout", "write-failed"):
+        return {"ok": False, "reason": outcome}
+    return {"ok": False, "reason": f"registrar-error:{body.strip()[:120]}"}

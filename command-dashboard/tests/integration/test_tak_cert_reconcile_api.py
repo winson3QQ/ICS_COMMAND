@@ -133,3 +133,78 @@ def test_deregister_valid_reaches_service_503_when_unconfigured(client, auth):
 
 def test_revoke_unknown_404(client, auth):
     assert client.post("/api/admin/tak/device-certs/99999/revoke", headers=auth).status_code == 404
+
+
+# ── #404：reconcile in_anon 旗標 + POST /tak/users/{callsign}/strip-anon ──
+
+
+def test_reconcile_flags_in_anon_isolation_gap(client, auth, monkeypatch):
+    """#404：群含 __ANON__ 或空群（runtime 落 __ANON__）→ in_anon=True + 列入 anon_users；
+    named 群 → False；groups=None（舊式 registrar）→ False（不誤判）。"""
+    from services import tak_user_enroll
+
+    def _fake():
+        return {
+            "ok": True,
+            "reason": "ok",
+            "users": [
+                {"callsign": "ics-cot", "fingerprint": "CF", "groups": ["red", "blue", "neutral"]},  # 安全
+                {"callsign": "ics-tak-admin", "fingerprint": "AF", "groups": ["__ANON__"]},  # 卡 __ANON__
+                {"callsign": "selfclosed", "fingerprint": "SF", "groups": []},  # 空群 → runtime __ANON__
+                {"callsign": "legacy", "fingerprint": "LF", "groups": None},  # 舊式未知 → 不誤判
+            ],
+        }
+
+    monkeypatch.setattr(tak_user_enroll, "reconcile_tak_users", _fake)
+    body = client.get("/api/admin/tak/device-certs/reconcile", headers=auth).json()
+    rows = {u["callsign"]: u for u in body["tak_users"]}
+    assert rows["ics-cot"]["in_anon"] is False
+    assert rows["ics-tak-admin"]["in_anon"] is True
+    assert rows["selfclosed"]["in_anon"] is True
+    assert rows["legacy"]["in_anon"] is False
+    assert body["anon_users"] == ["ics-tak-admin", "selfclosed"]  # 排序、只列破口
+
+
+def test_strip_anon_requires_sysadmin(client, auth):
+    create_account("op_sa", "1234", ROLE_OPERATOR_ZH, "Op SA", "operator")
+    assert client.post("/api/admin/tak/users/GGW/strip-anon", headers=_login(client, "op_sa")).status_code == 403
+
+
+def test_strip_anon_invalid_callsign_422(client, auth):
+    assert client.post("/api/admin/tak/users/-bad/strip-anon", headers=auth).status_code == 422
+
+
+def test_strip_anon_unconfigured_503(client, auth):
+    # 無 enroll queue → reconcile 回 not-configured → 讀不到 roster → 503（非 500/422）。
+    assert client.post("/api/admin/tak/users/GGW/strip-anon", headers=auth).status_code == 503
+
+
+def test_strip_anon_user_not_in_roster_404(client, auth, monkeypatch):
+    from services import tak_user_enroll
+
+    monkeypatch.setattr(tak_user_enroll, "reconcile_tak_users", lambda: {"ok": True, "reason": "ok", "users": []})
+    assert client.post("/api/admin/tak/users/GGW/strip-anon", headers=auth).status_code == 404
+
+
+def test_strip_anon_success_passes_fingerprint(client, auth, monkeypatch):
+    from services import tak_user_enroll
+
+    def _rec():
+        return {
+            "ok": True,
+            "reason": "ok",
+            "users": [{"callsign": "ics-cot", "fingerprint": "A2:10:7F", "groups": ["__ANON__", "red"]}],
+        }
+
+    monkeypatch.setattr(tak_user_enroll, "reconcile_tak_users", _rec)
+    captured: dict = {}
+
+    def _fake_strip(cs, fp):
+        captured["cs"], captured["fp"] = cs, fp
+        return {"ok": True, "reason": "stripped"}
+
+    monkeypatch.setattr(tak_user_enroll, "strip_anon_group", _fake_strip)
+    r = client.post("/api/admin/tak/users/ics-cot/strip-anon", headers=auth)
+    assert r.status_code == 200 and r.json()["strip_anon"] == "stripped"
+    # 端點須把 reconcile 取到的 fingerprint 傳給 strip（usermod -r 需 -f 不動憑證）。
+    assert captured == {"cs": "ics-cot", "fp": "A2:10:7F"}
