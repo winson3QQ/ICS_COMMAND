@@ -100,12 +100,14 @@ WARNING_THRESHOLD_SECONDS: int = int(os.getenv("ICS_WARNING_THRESHOLD_SECONDS", 
 #               （/api/admin/audit-chain/verify + 開機驗證 + 修 overclaim）。
 # PATCH 2.15.4：#369 最後 sysadmin 守門 TOCTOU（module 鎖序列化 check+mutate）+ #285 成功動作
 #               異常偵測（audit() 中央 hook → 敏感單筆/批次量 SECURITY_ALERT）。純後端。
+# PATCH 2.16.2：#389 修正——online/last_seen 改用 updated_at（最後活動）非 received_at
+#               （首見、再廣播不更新→live 裝置誤判離線）。dogfood 抓出。
 # PATCH 2.16.1：#389 紅藍分類面板 list_clients 補 online 旗標（_is_online，last_seen 時效近似）+
 #               docstring 正名。顯示層支援，分類邏輯不變。
 # MINOR 2.16.0：#348-F5 P2a + P2b 帳號初始憑證硬化。P2a＝admin 建帳號首登強制改（is_default_pin
 #               + auth_middleware per-account 閘 + cop WS 補閘 + reset_pin 限 first-run）；P2b＝
 #               create/reset 改系統產隨機臨時 PIN（generate_temp_pin，admin 不自設、一次性回傳）。
-APP_VERSION = "2.16.1"
+APP_VERSION = "2.16.2"
 
 # CMD_VERSION：前端 UI 功能版本（不同於後端 SemVer APP_VERSION；規則見 CLAUDE.md 版號規則）
 # 兩軌版本命名，不可混用。由 /api/version 提供給前端，是唯一 source-of-truth；release 時更新此值。
