@@ -116,7 +116,9 @@ WARNING_THRESHOLD_SECONDS: int = int(os.getenv("ICS_WARNING_THRESHOLD_SECONDS", 
 #               存它們，供清單顯示 TAK 同步狀態/比對混用。schema 加欄位、無 API 破壞。
 # MINOR 2.18.0：#398 Slice 2——撤銷連動 TAK deregister（usermod -D）+ 對帳端點（reconcile，讀
 #               UserAuthenticationFile 比對 ICS vs TAK：殭屍/混用/未同步）。registrar 協定加 op。
-APP_VERSION = "2.18.0"
+# MINOR 2.19.0：#401——cert 面板以 TAK server 為 SoT：reconcile enrich（per-row ics_cert_id）+
+#               新端點 deregister 任一 TAK callsign（infra 大小寫不敏感擋）。管理非 dashboard 發的殭屍。
+APP_VERSION = "2.19.0"
 
 # CMD_VERSION：前端 UI 功能版本（不同於後端 SemVer APP_VERSION；規則見 CLAUDE.md 版號規則）
 # 兩軌版本命名，不可混用。由 /api/version 提供給前端，是唯一 source-of-truth；release 時更新此值。
@@ -124,8 +126,9 @@ APP_VERSION = "2.18.0"
 #         + 演習/放置/稽核 UI P1-13/14/16/#93 + 分類編輯器 #66）→ 0.x 畢業為 MAJOR 紀元。
 CMD_VERSION: str = os.getenv(
     "CMD_VERSION",
-    "v1.14.0",  # MINOR：#398 Slice 2——TAK 裝置證面板加「對帳 TAK」（殭屍/混用/未同步）+ 撤銷改真 deregister 語意
-)  # PATCH v1.13.2：#398 Slice 1——清單顯示同步狀態/fingerprint + 發證前防呆（同名重發/中文 callsign）。
+    "v1.15.0",  # MINOR：#401——TAK 裝置證面板改以 TAK server 為準（列全部帳號）+ 直接移除殭屍/從 TAK 刪
+)  # MINOR v1.14.0：#398 Slice 2——「對帳 TAK」（殭屍/混用/未同步）+ 撤銷改真 deregister 語意。
+# PATCH v1.13.2：#398 Slice 1——清單顯示同步狀態/fingerprint + 發證前防呆（同名重發/中文 callsign）。
 # PATCH v1.13.1：#216 dogfood——通聯時間改本地時區顯示（對齊 header 時鐘，原顯示 UTC 慢 8 小時）。
 # MINOR v1.13.0：#216 出向 GeoChat compose 面板（通聯面板收+發、目標跟隨脈絡、COMMAND_ROLES）。
 # PATCH v1.12.3：#384 移除「Admin PIN」驗證畫面 + 子分頁（死功能）。
