@@ -11,6 +11,8 @@ admin 對「連線 client（裝置）」指派陣營：
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 from repositories import client_faction_repo, cop_entity_repo
 from repositories._helpers import NULL_SCOPE
 from services import cop_service, exercise_service, tak_group_sync
@@ -18,6 +20,20 @@ from services.realtime_hub import cop_hub
 
 # 重解析 / 列舉時撈該場 tak entity 的上限（場域 10–30 裝置、數百 entity；含 stale/已刪以求完整盤點）。
 _SCAN_LIMIT = 10000
+
+# #389：以 last_seen 時效近似「在線」（heuristic，非真 TCP 連線態——靜止裝置可能較久未送 SA，
+# 故取較寬的 5 分窗口；精準在線狀態待 (a) 交叉 live TAK presence clientEndPoints）。
+ONLINE_WINDOW_SEC = 300
+
+
+def _is_online(last_seen: str) -> bool:
+    if not last_seen:
+        return False
+    try:
+        ts = datetime.fromisoformat(last_seen.replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    return (datetime.now(UTC) - ts).total_seconds() <= ONLINE_WINDOW_SEC
 
 
 def _scope(exercise_id: int | None):
@@ -33,9 +49,10 @@ def _producer_entities(exercise_id: int | None) -> list[dict]:
 
 
 def list_clients(exercise_id: int | None) -> list[dict]:
-    """列本場觀測到的連線 client（producer）+ 目前分類。
+    """列本場**觀測到的 producer 裝置（含已離線）** + 目前分類（#389：非「即時連線」清單——
+    含 stale，故補 online 旗標近似在線/離線）。
 
-    回 [{client_key, callsign, last_seen, faction, classified}]，未分類者 faction=None/classified=False，
+    回 [{client_key, callsign, last_seen, online, faction, classified}]，未分類者 faction=None/classified=False，
     依 callsign/client_key 排序。
 
     callsign（顯示）優先取**裝置 self-SA**（uid == client_key，裝置自身態勢，呼號即裝置呼號），
@@ -67,6 +84,7 @@ def list_clients(exercise_id: int | None) -> list[dict]:
                 "client_key": ck,
                 "callsign": callsign,
                 "last_seen": d["last_seen"],
+                "online": _is_online(d["last_seen"]),  # #389：在線/離線指示（last_seen 時效近似）
                 "faction": fmap.get(ck),
                 "classified": ck in fmap,
             }
