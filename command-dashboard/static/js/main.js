@@ -223,7 +223,8 @@ document.addEventListener('click', function (e) {
     case 'adm-issue-tak-device': import('./auth.js').then(m => m.admIssueTakDevice()); break;
     case 'adm-revoke-tak-device': import('./auth.js').then(m => m.admRevokeTakDevice(btn.dataset.certId)); break;
     case 'adm-delete-tak-device': import('./auth.js').then(m => m.admDeleteTakDevice(btn.dataset.certId)); break;
-    case 'adm-reconcile-tak': import('./auth.js').then(m => m.admReconcileTak()); break;  // #398 B：對帳 TAK
+    case 'adm-reconcile-tak-refresh': import('./auth.js').then(m => m.admLoadTakDeviceCerts()); break;  // #401：重整 TAK 帳號清單
+    case 'adm-deregister-tak-user': import('./auth.js').then(m => m.admDeregisterTakUser(btn.dataset.callsign)); break;  // #401：移除 TAK 殭屍
     case 'adm-download-rootca': import('./auth.js').then(m => m.admDownloadRootCa()); break;
     case 'adm-faction-classify': import('./auth.js').then(m => m.admClassifyFaction(btn.dataset.clientKey, btn.dataset.faction, btn.dataset.callsign)); break;
     case 'adm-faction-override': import('./auth.js').then(m => m.admOverrideFaction()); break;

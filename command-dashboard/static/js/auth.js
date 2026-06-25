@@ -1046,21 +1046,20 @@ export function admShowTak() {
       </div>
       <div id="adm-tak-device-result"></div>
       <div style="display:flex;align-items:center;gap:8px;margin-top:16px;margin-bottom:4px;">
-        <span style="font-size:12px;font-weight:600;color:var(--text);">已發裝置證（盤點）</span>
-        <button class="adm-btn" data-action="adm-reconcile-tak" title="向 TAK server 查實際 managed user，比對 ICS 紀錄（殭屍/混用/未同步）">對帳 TAK</button>
+        <span style="font-size:12px;font-weight:600;color:var(--text);">TAK Server 帳號</span>
+        <button class="adm-btn" data-action="adm-reconcile-tak-refresh" title="重新向 TAK server 查實際帳號">↻ 重整</button>
       </div>
-      <div style="font-size:11px;color:var(--text3);margin-bottom:6px;line-height:1.5;max-width:440px;">
-        #398：「撤銷」現會從 TAK <b>真移除</b>該 callsign 的 managed user（該 callsign 連不上）；被新證取代的舊列只標撤銷、不動 TAK。「對帳 TAK」查 TAK 端真相 vs ICS 紀錄。
+      <div style="font-size:11px;color:var(--text3);margin-bottom:6px;line-height:1.5;max-width:460px;">
+        #401：此面板以 <b>TAK Server 為準</b>，列出 TAK 上**所有** managed user（不只 ICS 發的）。「撤銷」/「從 TAK 移除」會<b>真</b>從 TAK 刪該帳號。⚙ 基礎設施（ics-cot/ics-tak-admin）鎖死保護。reconcile 未配置時退回 ICS 盤點清單。
       </div>
-      <div id="adm-tak-reconcile" style="max-width:480px;margin-bottom:6px;"></div>
       <div id="adm-tak-device-list" style="max-width:480px;"></div>
     </div>`;
   _admLoadTakConn();
   admLoadTakDeviceCerts();
 }
 
-// #398 C：發證前查同名重發用（admLoadTakDeviceCerts 載入時更新）。
-let _lastTakCerts = [];
+// #398 C / #401：發證前查同名用——已知 active callsign 集（TAK 帳號 + ICS 未同步），載入時更新。
+let _lastTakCallsigns = new Set();
 
 /** #398：fingerprint 短顯（首2 + … + 末2 組），方便和裝置上的證快速比對而不必看完整 64 hex。 */
 function _fpShort(fp) {
@@ -1068,44 +1067,90 @@ function _fpShort(fp) {
   return g.length >= 4 ? g.slice(0, 2).join(':') + '…' + g.slice(-2).join(':') : (fp || '');
 }
 
+// #401：面板以 TAK server 為 SoT——主清單 = TAK 上所有 managed user。先試 reconcile；
+// 未配置 / 失敗 → graceful 退回 ICS-only 盤點清單（舊行為）。
 export async function admLoadTakDeviceCerts() {
   const box = el('adm-tak-device-list');
   if (!box) return;
+  const rec = await authFetch(API_BASE + '/api/admin/tak/device-certs/reconcile');
+  if (rec.ok) {
+    const data = await rec.json();
+    if (data.ok) { _renderTakDriven(box, data); return; }
+  }
+  // fallback：reconcile 未配置 / 不可用 → ICS 盤點清單。
   const resp = await authFetch(API_BASE + '/api/admin/tak/device-certs');
   if (!resp.ok) { box.innerHTML = '<div style="color:var(--text3);font-size:12px;">無法載入（需系統管理員）</div>'; return; }
-  const certs = await resp.json();
-  _lastTakCerts = certs;
+  _renderIcsOnlyList(box, await resp.json());
+}
+
+const _RECON_ST = {
+  matched: ['var(--green)', '✓ 相符'],
+  mismatch: ['var(--red)', '⚠ 混用'],
+  unknown: ['var(--text3)', '? 未知'],
+  zombie: ['#d9a441', '👻 殭屍'],
+  infra: ['var(--text3)', '⚙ 基礎設施'],
+};
+
+/** #401：TAK 為主的清單——TAK 上每個 managed user + ICS 未同步段。 */
+function _renderTakDriven(box, data) {
+  _lastTakCallsigns = new Set([...data.tak_users.map(u => u.callsign), ...data.ics_unsynced.map(c => c.callsign)]);
+  let html = '<div style="font-size:11px;color:var(--text3);margin:2px 0 4px;">TAK Server 帳號（' + data.tak_users.length + '）— 此面板以 TAK 為準：</div>';
+  for (const u of data.tak_users) {
+    const m = _RECON_ST[u.status] || ['var(--text3)', _escAudit(u.status)];
+    const plat = u.mode === 'aware' ? 'iTAK' : (u.mode ? 'ATAK' : '');
+    const when = u.issued_at ? _escAudit((u.issued_at || '').replace('T', ' ').replace('Z', '')) : '';
+    let action;
+    if (u.status === 'infra') action = '<span title="ICS 自身/管理身分，鎖死保護（動了 ICS 連不上 TAK）" style="color:var(--text3);font-size:10px;">🔒 保護</span>';
+    else if (u.ics_cert_id != null) action = '<button class="adm-btn" data-action="adm-revoke-tak-device" data-cert-id="' + u.ics_cert_id + '">撤銷</button>';
+    else action = '<button class="adm-btn" data-action="adm-deregister-tak-user" data-callsign="' + _escAudit(u.callsign) + '">從 TAK 移除</button>';
+    html += '<div style="display:flex;align-items:center;gap:6px;padding:4px 0;border-bottom:1px solid var(--border,#222);font-size:12px;flex-wrap:wrap;">' +
+      '<span style="font-family:monospace;flex:1;min-width:80px;">' + _escAudit(u.callsign) + '</span>' +
+      (plat ? '<span style="color:var(--text3);">' + plat + '</span>' : '') +
+      '<span title="' + _escAudit('SHA-256：' + u.fingerprint) + '" style="font-family:monospace;color:var(--text3);font-size:9px;">' + _escAudit(_fpShort(u.fingerprint)) + '</span>' +
+      '<span style="color:' + m[0] + ';font-size:10px;">' + m[1] + '</span>' +
+      (when ? '<span style="color:var(--text3);font-size:10px;">' + when + '</span>' : '') +
+      action +
+      '</div>';
+  }
+  if (data.ics_unsynced.length) {
+    html += '<div style="font-size:11px;color:var(--red);margin:8px 0 4px;">ICS 發了、TAK 沒有（未同步，發了連不上）：</div>';
+    for (const c of data.ics_unsynced) {
+      html += '<div style="display:flex;align-items:center;gap:6px;padding:3px 0;border-bottom:1px solid var(--border,#222);font-size:12px;">' +
+        '<span style="font-family:monospace;flex:1;">' + _escAudit(c.callsign) + '</span>' +
+        (c.non_ascii ? '<span title="中文 callsign 無法註冊 TAK managed user" style="color:var(--red);font-size:10px;">中文·連不上</span>' : '<span style="color:var(--red);font-size:10px;">未同步</span>') +
+        '<button class="adm-btn" data-action="adm-revoke-tak-device" data-cert-id="' + c.cert_id + '">撤銷</button>' +
+        '</div>';
+    }
+  }
+  box.innerHTML = html;
+}
+
+/** ICS-only fallback（reconcile 未配置時）：列 dashboard 發過的證 + Slice 1 同步徽章。 */
+function _renderIcsOnlyList(box, certs) {
+  _lastTakCallsigns = new Set(certs.filter(c => c.status === 'active').map(c => c.callsign));
   if (!certs.length) { box.innerHTML = '<div style="color:var(--text3);font-size:12px;padding:4px 0;">尚未發過裝置證</div>'; return; }
-  // #398 C/D：同 callsign 多張 active+已同步 → TAK 只認**最新**那張（certs 已新到舊排序，首個=最新）；
-  // 其餘標「已被新證取代」，讓使用者看得出哪張是現行、避免拿舊包混用。
   const currentByCallsign = {};
   for (const c of certs) {
-    if (c.status === 'active' && c.enroll_status === 'ok' && currentByCallsign[c.callsign] == null) {
-      currentByCallsign[c.callsign] = c.id;
-    }
+    if (c.status === 'active' && c.enroll_status === 'ok' && currentByCallsign[c.callsign] == null) currentByCallsign[c.callsign] = c.id;
   }
   let rows = '';
   for (const c of certs) {
     const active = c.status === 'active';
     const plat = c.mode === 'aware' ? 'iTAK' : 'ATAK';
-    const knownStatus = c.enroll_status != null && c.enroll_status !== '';  // NULL = 升級前發的，狀態未知（≠失敗）
+    const knownStatus = c.enroll_status != null && c.enroll_status !== '';
     const enrolled = c.enroll_status === 'ok';
     const superseded = active && enrolled && currentByCallsign[c.callsign] != null && currentByCallsign[c.callsign] !== c.id;
-    // #398 D：enroll 同步狀態（避免 best-effort 默默失敗；混用時標哪張是現行）。
-    // review 修：NULL（升級前）走中性「狀態未知」灰，不誤報紅「未同步」——否則升級後一排健康證全變紅、
-    // 使用者可能無謂重發（作廢現場包）。只有實際拿到失敗 reason（timeout/non-ascii…）才報紅。
     let sync = '';
     if (active) {
-      if (!knownStatus) sync = '<span title="升級前發的證，同步狀態未知（多半正常運作中；重發前可先試連）" style="color:var(--text3);font-size:10px;">? 狀態未知</span>';
-      else if (!enrolled) sync = '<span title="' + _escAudit('TAK enroll 結果：' + c.enroll_status + '（裝置可能連不上 TAK）') + '" style="color:var(--red);font-size:10px;">⚠ 未同步 TAK</span>';
-      else if (superseded) sync = '<span title="同 callsign 有更新的證；TAK 只認最新那張，此張已失效" style="color:var(--text3);font-size:10px;">↩ 已被新證取代</span>';
-      else sync = '<span title="已註冊為 TAK managed user（現行有效）" style="color:var(--green);font-size:10px;">✓ 同步 TAK</span>';
+      if (!knownStatus) sync = '<span title="升級前發的證，同步狀態未知" style="color:var(--text3);font-size:10px;">? 狀態未知</span>';
+      else if (!enrolled) sync = '<span title="' + _escAudit('TAK enroll 結果：' + c.enroll_status) + '" style="color:var(--red);font-size:10px;">⚠ 未同步 TAK</span>';
+      else if (superseded) sync = '<span title="同 callsign 有更新的證" style="color:var(--text3);font-size:10px;">↩ 已被新證取代</span>';
+      else sync = '<span title="已註冊為 TAK managed user" style="color:var(--green);font-size:10px;">✓ 同步 TAK</span>';
     }
     const fp = c.fingerprint ? '<span title="' + _escAudit('SHA-256：' + c.fingerprint) + '" style="font-family:monospace;color:var(--text3);font-size:9px;">' + _escAudit(_fpShort(c.fingerprint)) + '</span>' : '';
     rows += '<div style="display:flex;align-items:center;gap:6px;padding:4px 0;border-bottom:1px solid var(--border,#222);font-size:12px;flex-wrap:wrap;">' +
         '<span style="font-family:monospace;flex:1;min-width:80px;' + (active ? '' : 'text-decoration:line-through;color:var(--text3);') + '">' + _escAudit(c.callsign) + '</span>' +
-        '<span style="color:var(--text3);">' + plat + '</span>' +
-        sync + fp +
+        '<span style="color:var(--text3);">' + plat + '</span>' + sync + fp +
         '<span style="color:var(--text3);font-size:10px;">' + _escAudit((c.issued_at || '').replace('T', ' ').replace('Z', '')) + '</span>' +
         '<span class="adm-badge ' + (active ? 'active' : 'suspended') + '">' + (active ? '有效' : '已撤銷') + '</span>' +
         (active
@@ -1114,6 +1159,14 @@ export async function admLoadTakDeviceCerts() {
       '</div>';
   }
   box.innerHTML = rows;
+}
+
+/** #401：從 TAK 直接移除一個 managed user（殭屍帳號，無 ICS 證列可撤）。 */
+export async function admDeregisterTakUser(callsign) {
+  if (!confirm('從 TAK Server 移除帳號「' + callsign + '」？\n⚠ 該 callsign 將無法連 TAK。此為 TAK 端真移除（usermod -D）。')) return;
+  const resp = await authFetch(API_BASE + '/api/admin/tak/users/' + encodeURIComponent(callsign) + '/deregister', { method: 'POST' });
+  if (!resp.ok) { alert('移除失敗（' + resp.status + '）：' + (await resp.text()).slice(0, 200)); return; }
+  admLoadTakDeviceCerts();
 }
 
 export async function admRevokeTakDevice(certId) {
@@ -1125,34 +1178,6 @@ export async function admRevokeTakDevice(certId) {
   // 連動結果回饋：真移除 / 被取代跳過 / registrar 未配置或失敗。
   if (d && d !== 'deregistered' && d !== 'skipped-superseded') alert('已撤銷（ICS 帳面）。但從 TAK 移除未成功：' + d + '\n（registrar 未配置或逾時——該 callsign 可能仍能連 TAK，請確認 registrar）');
   admLoadTakDeviceCerts();
-}
-
-// #398 B：對帳 ICS 紀錄 vs TAK 實際 managed users（殭屍 / 混用 / 未同步）。
-export async function admReconcileTak() {
-  const box = el('adm-tak-reconcile');
-  if (box) box.innerHTML = '<div style="font-size:11px;color:var(--text3);">對帳中…</div>';
-  const resp = await authFetch(API_BASE + '/api/admin/tak/device-certs/reconcile');
-  if (!resp.ok) { if (box) box.innerHTML = '<div style="font-size:11px;color:var(--red);">對帳失敗（' + resp.status + '）</div>'; return; }
-  const r = await resp.json();
-  if (!box) return;
-  if (!r.ok) { box.innerHTML = '<div style="font-size:11px;color:var(--text3);">對帳未配置 / 失敗：' + _escAudit(r.reason || '') + '（registrar 未接？）</div>'; return; }
-  const ST = {
-    matched: ['var(--green)', '✓ 相符'],
-    mismatch: ['var(--red)', '⚠ fingerprint 不符（混用）'],
-    unknown: ['var(--text3)', '? 未知（升級前）'],
-    zombie: ['var(--red)', '👻 殭屍（TAK 有、ICS 無）'],
-    infra: ['var(--text3)', '⚙ 基礎設施'],
-  };
-  let html = '<div style="font-size:11px;color:var(--text3);margin-bottom:4px;">TAK 端 ' + r.tak_users.length + ' 個 managed user：</div>';
-  for (const u of r.tak_users) {
-    const m = ST[u.status] || ['var(--text3)', u.status];
-    html += '<div style="display:flex;gap:6px;align-items:center;font-size:11px;padding:2px 0;">' +
-      '<span style="font-family:monospace;flex:1;">' + _escAudit(u.callsign) + '</span>' +
-      '<span title="' + _escAudit('SHA-256：' + u.fingerprint) + '" style="font-family:monospace;color:var(--text3);font-size:9px;">' + _escAudit(_fpShort(u.fingerprint)) + '</span>' +
-      '<span style="color:' + m[0] + ';">' + m[1] + '</span></div>';
-  }
-  if (r.ics_unsynced.length) html += '<div style="font-size:11px;color:var(--red);margin-top:4px;">⚠ ICS 有、TAK 無（未同步，發了沒上 TAK）：' + _escAudit(r.ics_unsynced.join('、')) + '</div>';
-  box.innerHTML = html;
 }
 
 // #325：刪除已撤銷的盤點紀錄（清理累積 revoked；刪紀錄 ≠ 撤證）。
@@ -1172,9 +1197,9 @@ export async function admIssueTakDevice() {
   if (!/^[\x00-\x7F]*$/.test(callsign)) {
     if (!confirm('「' + callsign + '」含非 ASCII（中文）字元。\n⚠ 這種 callsign 不會註冊成 TAK managed user，發出的證裝置連不上 TAK。\n建議改用英數 callsign。仍要發嗎？')) return;
   }
-  // #398 C：同 callsign 已有有效證 → 重發會覆寫 TAK fingerprint、作廢舊證（舊裝置須重匯）。發前警告。
-  if (_lastTakCerts.some((c) => c.status === 'active' && c.callsign === callsign)) {
-    if (!confirm('callsign「' + callsign + '」已有有效證。\n⚠ TAK 一個 callsign 只認一張證——重發會作廢舊證，用舊包的裝置會連不上、須重匯新包。\n繼續重發？')) return;
+  // #398 C / #401：callsign 已在 TAK（或 ICS 未同步列）→ 重發會覆寫 TAK fingerprint、作廢舊證。發前警告。
+  if (_lastTakCallsigns.has(callsign)) {
+    if (!confirm('callsign「' + callsign + '」已存在。\n⚠ TAK 一個 callsign 只認一張證——重發會作廢舊證，用舊包的裝置會連不上、須重匯新包。\n繼續重發？')) return;
   }
   const resp = await authFetch(API_BASE + '/api/admin/tak/device-cert?callsign='
     + encodeURIComponent(callsign) + '&mode=' + mode, { method: 'POST' });
