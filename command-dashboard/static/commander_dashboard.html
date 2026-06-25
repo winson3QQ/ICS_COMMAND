@@ -475,6 +475,15 @@ body{position:fixed;inset:0;}
   outline:none;
 }
 .login-input:focus{border-color:var(--yellow);}
+/* P3（#348-F5）：密碼欄「顯示/隱藏」眼睛。輸入框右側內嵌，input 右留 padding 讓位。 */
+.pw-wrap{position:relative;display:flex;align-items:center;width:100%;}
+.pw-wrap > .login-input{padding-right:40px;}
+.pw-toggle{
+  position:absolute;right:6px;top:50%;transform:translateY(-50%);
+  background:none;border:none;cursor:pointer;font-size:16px;line-height:1;
+  padding:4px;opacity:.6;
+}
+.pw-toggle:hover{opacity:1;}
 .login-btn{
   width:100%;padding:10px;border:none;border-radius:6px;cursor:pointer;
   background:var(--yellow);color:#000;font-weight:700;font-size:14px;font-family:var(--mono);
@@ -921,7 +930,10 @@ body{position:fixed;inset:0;}
     <div class="login-sub" id="login-sub">command dashboard</div>
     <div class="login-card">
       <input class="login-input" id="cmd-username" type="text" placeholder="帳號" autocomplete="username" autofocus>
-      <input class="login-input" id="cmd-pin" type="password" inputmode="numeric" maxlength="6" placeholder="PIN（4-6 位數字）" autocomplete="current-password">
+      <div class="pw-wrap">
+        <input class="login-input" id="cmd-pin" type="password" maxlength="128" placeholder="PIN 或密語" autocomplete="current-password">
+        <button type="button" class="pw-toggle" data-action="pwToggle" data-id="cmd-pin" aria-label="顯示或隱藏密碼" tabindex="-1">👁</button>
+      </div>
       <button class="login-btn" id="cmd-login-btn" data-action="cmdLogin">登入</button>
       <div id="cmd-login-warn"></div>
     </div>
@@ -934,7 +946,10 @@ body{position:fixed;inset:0;}
   <div class="pinlock-card">
     <div class="pinlock-title">已鎖定</div>
     <div class="pinlock-sub" id="pinlock-user"></div>
-    <input class="login-input" id="pinlock-pin" type="password" inputmode="numeric" maxlength="6" placeholder="輸入 PIN 解鎖">
+    <div class="pw-wrap">
+      <input class="login-input" id="pinlock-pin" type="password" maxlength="128" placeholder="輸入 PIN 或密語解鎖">
+      <button type="button" class="pw-toggle" data-action="pwToggle" data-id="pinlock-pin" aria-label="顯示或隱藏密碼" tabindex="-1">👁</button>
+    </div>
     <button class="login-btn" data-action="unlockPinLock">解鎖</button>
     <div id="pinlock-warn"></div>
   </div>

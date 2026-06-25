@@ -166,9 +166,14 @@ _每次 role 變更、帳號建立 / 刪除均寫 audit log_
   middleware → handler 自查 `account_needs_pin_change`，待改帳號不得訂閱 live COP 串流；(b) reset_pin
   （`PUT .../pin`，不驗目前 PIN）僅 first-run bootstrap admin 放行，非 first-run 待改帳號須走
   change-initial-pin（驗目前 PIN）→ 杜絕「持被盜 session 免舊 PIN 自清 default 解閘」。
+- **P3 已落地**：前端「使用者長久秘密」輸入欄放寬接受密語 + show-password 眼睛（opt-in，預設遮蔽，
+  共用大螢幕防肩窺）。涵蓋 **3 個同一秘密的入口**：登入框、首登強制改 overlay、PinLock 閒置解鎖——
+  三者連動（`maxlength 6→128`、去 `inputmode="numeric"`、捨數字正則改長度 6–128；強度/blocklist 仍由
+  BE `pin_policy` 把關，FE 只驗長度+一致）。**未動**：admin 建帳號/reset 的臨時 PIN 欄（會被強制改、且
+  P2b 將改系統產隨機值）、已廢的 Admin PIN 空殼（→ #384 另案移除）。
 - **待續（分期）**：P2b = create 改「**系統產隨機臨時 PIN**」（取代 admin 自設，admin 不知使用者最終值）
-  ；**第一個 admin 免-CLI 量產 onboarding（#382）**；P3 = 前端輸入欄放寬 + show-password。本節「評估後
-  記錄接受風險 + 界定前提」；P1 補下限/可預測值、P2a 補初始憑證強制換,但**完全提升熵仍取決於使用者選長
+  ；**第一個 admin 免-CLI 量產 onboarding（#382）**。本節「評估後記錄接受風險 + 界定前提」；P1 補下限/
+  可預測值、P2a 補初始憑證強制換、P3 補可見密碼欄對齊（可輸密語），但**完全提升熵仍取決於使用者選長
   密語**，**不主張一律達 800-63B memorized-secret 強度**。
 
 ---

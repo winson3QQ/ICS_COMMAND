@@ -347,7 +347,9 @@ export async function handleCmdLogin() {
   warn.textContent = '';
 
   if (!username) { warn.textContent = '請輸入帳號'; return; }
-  if (!/^\d{4,6}$/.test(pin)) { warn.textContent = 'PIN 須為 4-6 位數字'; return; }
+  // P3（#348-F5）：登入欄放寬接受密語（與首登強制改連動，否則設了密語登不進）。登入不套 set-time
+  // 強度策略（min6 等由 pin_policy 在「設定時」把關）；此處只擋空值，legacy 短 PIN 帳號仍能登入。
+  if (!pin) { warn.textContent = '請輸入 PIN 或密語'; return; }
 
   btn.disabled = true;
   try {
@@ -409,14 +411,20 @@ function _showInitialPinChangeForm(username, currentPin) {
         🔐 首次設定
       </div>
       <div style="font-size:13px;color:var(--text-muted,#aaa);margin-bottom:24px;">
-        請設定你的新 PIN（至少 6 位數字）<br>設定後 gate 解除，進入系統
+        請設定你的新 PIN 或密語（至少 6 字元）<br>設定後 gate 解除，進入系統
       </div>
-      <input id="ipc-new-pin" class="login-input" type="password" inputmode="numeric"
-             maxlength="6" placeholder="新 PIN（至少 6 位數字）"
-             style="margin-bottom:12px;">
-      <input id="ipc-confirm-pin" class="login-input" type="password" inputmode="numeric"
-             maxlength="6" placeholder="確認新 PIN"
-             style="margin-bottom:16px;">
+      <div class="pw-wrap" style="margin-bottom:12px;">
+        <input id="ipc-new-pin" class="login-input" type="password" maxlength="128"
+               placeholder="新 PIN 或密語（至少 6 字元）">
+        <button type="button" class="pw-toggle" data-action="pwToggle" data-id="ipc-new-pin"
+                aria-label="顯示或隱藏密碼" tabindex="-1">👁</button>
+      </div>
+      <div class="pw-wrap" style="margin-bottom:16px;">
+        <input id="ipc-confirm-pin" class="login-input" type="password" maxlength="128"
+               placeholder="確認新 PIN / 密語">
+        <button type="button" class="pw-toggle" data-action="pwToggle" data-id="ipc-confirm-pin"
+                aria-label="顯示或隱藏密碼" tabindex="-1">👁</button>
+      </div>
       <button id="ipc-submit" class="login-btn">確認設定</button>
       <div id="ipc-warn" style="font-size:12px;color:var(--red,#e74c3c);
                                   min-height:18px;margin-top:10px;"></div>
@@ -431,9 +439,10 @@ function _showInitialPinChangeForm(username, currentPin) {
     const confirmPin = document.getElementById('ipc-confirm-pin').value.trim();
     warnEl.textContent = '';
 
-    if (!/^\d{6}$/.test(newPin))             { warnEl.textContent = 'PIN 須為 6 位數字'; return; }
-    if (newPin !== confirmPin)               { warnEl.textContent = '兩次 PIN 不一致'; return; }
-    if (newPin === currentPin)               { warnEl.textContent = '新 PIN 不能與初始 PIN 相同'; return; }
+    // P3：FE 只驗長度 6–128 + 兩次一致 + 不同初始值；可預測值/blocklist 交 BE pin_policy（422 err.detail 顯）。
+    if (newPin.length < 6 || newPin.length > 128) { warnEl.textContent = 'PIN / 密語至少 6 字元'; return; }
+    if (newPin !== confirmPin)               { warnEl.textContent = '兩次輸入不一致'; return; }
+    if (newPin === currentPin)               { warnEl.textContent = '新 PIN 不能與初始值相同'; return; }
 
     submitBtn.disabled = true;
     try {
@@ -500,8 +509,18 @@ export async function cmdLogout() {
   el('login-screen').style.display = '';
   el('cmd-username').value = '';
   el('cmd-pin').value = '';
+  _maskPwField('cmd-pin');   // P3：清掉上一位的 show-password 明文狀態，下一位恆預設遮蔽
   el('cmd-login-warn').textContent = '';
   el('cmd-user-badge').textContent = '';
+}
+
+// P3（#348-F5）：密碼欄復原為遮蔽 + 眼睛圖示。show-password 是 opt-in，登出/鎖定後須回預設
+// 遮蔽，否則共用大螢幕上「明文」狀態會殘留給下一位使用者（肩窺）。動態 overlay 每次重建免處理。
+function _maskPwField(inputId) {
+  const inp = document.getElementById(inputId);
+  if (inp) inp.type = 'password';
+  const tog = document.querySelector('.pw-toggle[data-id="' + inputId + '"]');
+  if (tog) tog.textContent = '👁';
 }
 
 // ── PinLock ────────────────────────────────────────────────────
@@ -536,6 +555,7 @@ export const PinLock = (() => {
     el('pin-lock-overlay').classList.add('show');
     el('pinlock-user').textContent = sessionStorage.getItem('cmd_display_name') || sessionStorage.getItem('cmd_username') || '';
     el('pinlock-pin').value = '';
+    _maskPwField('pinlock-pin');   // P3：解鎖欄回預設遮蔽（避免明文狀態殘留）
     el('pinlock-warn').textContent = '';
     _notifyAuth('lock');
   }
