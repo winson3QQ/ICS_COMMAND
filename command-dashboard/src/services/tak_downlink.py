@@ -42,6 +42,8 @@ def build_command_cot(
     hae: float = 0.0,
     callsign: str | None = None,
     remarks: str | None = None,
+    team_color: str | None = None,
+    role: str | None = None,
     stale_minutes: int = 60,
     now: datetime | None = None,
 ) -> str:
@@ -50,6 +52,12 @@ def build_command_cot(
     所有外來字串走 XML escape/quoteattr（縱深防護；上游 router 另有內容白名單）。
     含 `<archive/>`：要求 server 持久保留（過 stale 不丟）——對齊 #161 archive doctrine；
     即便 reconnect 重播在本 server 不可靠（P2-14 待解），archive 是正確的持久訊號。
+
+    #214 出向忠實度：帶 `<__group name role>`（隊伍色/角色）——ICS 已存 team_color/role（schema
+    _m015），出向補上讓現場端渲染隊伍色（TAK 隊伍色由 `<__group name>` 決定，非 `<color argb>`，
+    後者是繪圖覆寫色、屬幾何路徑）。鏡像入向 `cop_service._extract_squad`，round-trip 不掉欄位。
+    **刻意不送**裝置遙測 `<takv>`/`<status battery>`/`<track speed/course>`/`<precisionlocation GPS>`
+    ——ICS 非 GPS 裝置，偽造遙測會誤導現場、違背 remarks 的 `source: ICS` 誠實原則（#214 doctrine）。
     """
     now = now or datetime.now(UTC)
     t = now.strftime("%Y-%m-%dT%H:%M:%S.000Z")
@@ -60,6 +68,15 @@ def build_command_cot(
         detail_parts.append(f"<contact callsign={quoteattr(callsign)}/>")
     if remarks:
         detail_parts.append(f"<remarks>{escape(remarks)}</remarks>")
+    # #214：隊伍色/角色。name 帶色名（如 'Cyan'/'Dark Blue'）；role 無 group name 在 wire 無意義，
+    # 故 team_color 必填才出元素、role 選填。name 同步 _extract_squad 的 strip().title() 標準化——否則
+    # _m015 回填的未正規化值（如 'darkBlue'）出向後再被 ingest 會漂成 'Darkblue'，落入不同小隊桶（review）。
+    group_name = team_color.strip().title() if team_color else ""
+    if group_name:
+        if role:
+            detail_parts.append(f"<__group name={quoteattr(group_name)} role={quoteattr(role)}/>")
+        else:
+            detail_parts.append(f"<__group name={quoteattr(group_name)}/>")
     detail_parts.append("<archive/>")  # 持久標記
     detail = "".join(detail_parts)
 
@@ -191,6 +208,10 @@ def entity_to_cot(entity: dict, *, stale_minutes: int = 60, now: datetime | None
         hae=float(entity.get("hae") or 0.0),
         callsign=callsign,
         remarks=remarks,
+        # #214：帶 entity 的隊伍色/角色（正規化欄位，非 echo 原始 attributes —— 避免連帶送出
+        # 不該編的裝置遙測 takv/status/track）。ICS 自建標記無 team_color → 不出 <__group>（誠實）。
+        team_color=entity.get("team_color"),
+        role=entity.get("role"),
         stale_minutes=stale_minutes,
         now=now,
     )

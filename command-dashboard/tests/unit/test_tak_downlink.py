@@ -73,6 +73,95 @@ def test_xml_injection_escaped():
     assert e.find("detail/remarks").text == "<script>&</bad>"
 
 
+# ── #214 出向忠實度：<__group> 隊伍色/角色 + 不偽造遙測 ──────────────────────
+
+
+def test_group_emitted_with_team_color_and_role():
+    cot = build_command_cot(uid="U", type_="a-f-G", lat=0, lon=0, team_color="Cyan", role="Team Member", now=_NOW)
+    g = _parse(cot).find("detail/__group")
+    assert g is not None
+    assert g.get("name") == "Cyan"
+    assert g.get("role") == "Team Member"
+
+
+def test_group_name_only_when_no_role():
+    g = _parse(build_command_cot(uid="U", type_="a-f-G", lat=0, lon=0, team_color="Blue", now=_NOW)).find(
+        "detail/__group"
+    )
+    assert g is not None and g.get("name") == "Blue" and g.get("role") is None
+
+
+def test_no_group_when_no_team_color():
+    # ICS 自建標記無 team_color → 不偽造 <__group>（誠實）
+    assert _parse(build_command_cot(uid="U", type_="a-f-G", lat=0, lon=0, now=_NOW)).find("detail/__group") is None
+
+
+def test_role_without_team_color_emits_no_group():
+    # role 無 group name 在 wire 無意義 → team_color 缺席則整個 <__group> 不出（含 role）
+    cot = build_command_cot(uid="U", type_="a-f-G", lat=0, lon=0, role="HQ", now=_NOW)
+    assert _parse(cot).find("detail/__group") is None
+
+
+def test_blank_team_color_emits_no_group():
+    # 純空白 team_color（truthy 但 strip 後為空）→ 不出空 name 的 <__group>
+    cot = build_command_cot(uid="U", type_="a-f-G", lat=0, lon=0, team_color="   ", now=_NOW)
+    assert _parse(cot).find("detail/__group") is None
+
+
+def test_team_color_canonicalized_outbound():
+    # #214 review：未正規化色名（_m015 回填可能留大小寫不一的 'dark blue'）出向標準化成 title-case，
+    # 與入向 _extract_squad 同標準 → round-trip 不漂移（否則出向後再 ingest 會落入不同小隊桶）。
+    from services.cop_service import _extract_squad
+
+    g = _parse(build_command_cot(uid="U", type_="a-f-G", lat=0, lon=0, team_color="dark blue", now=_NOW)).find(
+        "detail/__group"
+    )
+    assert g.get("name") == "Dark Blue"  # 出向已正規化（對齊 _extract_squad）
+    team_color, _role, _battery = _extract_squad({"__group": dict(g.attrib)})
+    assert team_color == "Dark Blue"  # 再 ingest 仍同值（穩定，不漂移）
+
+
+def test_outbound_does_not_fabricate_device_telemetry():
+    # #214 doctrine：ICS 非 GPS 裝置 → 出向絕不送裝置遙測（偽造會誤導現場）
+    cot = build_command_cot(
+        uid="U", type_="a-f-G", lat=0, lon=0, callsign="X", remarks="Y", team_color="Cyan", role="Team Member", now=_NOW
+    )
+    for forbidden in ("<takv", "<status", "<track", "<precisionlocation"):
+        assert forbidden not in cot, f"出向不得偽造裝置遙測：{forbidden}"
+
+
+def test_group_roundtrips_through_extract_squad():
+    # 出向 <__group> 再被 ICS ingest（_extract_squad）→ 同 team_color/role，不掉欄位
+    from services.cop_service import _extract_squad
+
+    g = _parse(
+        build_command_cot(uid="U", type_="a-f-G", lat=0, lon=0, team_color="Dark Blue", role="HQ", now=_NOW)
+    ).find("detail/__group")
+    team_color, role, _battery = _extract_squad({"__group": dict(g.attrib)})
+    assert team_color == "Dark Blue" and role == "HQ"
+
+
+def test_entity_to_cot_point_carries_team_color():
+    entity = {
+        "uid": "E1",
+        "type": "a-f-G-U-C",
+        "lat": 25.0,
+        "lon": 121.5,
+        "hae": 0.0,
+        "callsign": "Blue-1",
+        "team_color": "Blue",
+        "role": "Team Member",
+        "attributes": {},
+    }
+    g = _parse(tak_downlink.entity_to_cot(entity, now=_NOW)).find("detail/__group")
+    assert g is not None and g.get("name") == "Blue" and g.get("role") == "Team Member"
+
+
+def test_entity_to_cot_ics_marker_without_team_color_emits_no_group():
+    entity = {"uid": "E2", "type": "a-f-G", "lat": 25.0, "lon": 121.5, "hae": 0.0, "callsign": "CMD", "attributes": {}}
+    assert _parse(tak_downlink.entity_to_cot(entity, now=_NOW)).find("detail/__group") is None
+
+
 class _FakeWriter:
     def __init__(self):
         self.written = b""
