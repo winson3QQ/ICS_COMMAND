@@ -146,6 +146,9 @@ def test_is_online_heuristic():
     assert faction_service._is_online(old) is False
     assert faction_service._is_online("") is False
     assert faction_service._is_online("not-a-date") is False
+    # review 加固：無時區(naive) last_seen 不丟 TypeError → 視為 UTC 正常比對（防 500）。
+    naive_recent = now.strftime("%Y-%m-%dT%H:%M:%S")  # 無 Z
+    assert faction_service._is_online(naive_recent) is True
 
 
 def test_override_entity_not_clobbered_by_reresolve(_no_ws):

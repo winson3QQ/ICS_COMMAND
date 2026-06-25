@@ -31,9 +31,11 @@ def _is_online(last_seen: str) -> bool:
         return False
     try:
         ts = datetime.fromisoformat(last_seen.replace("Z", "+00:00"))
-    except ValueError:
+        if ts.tzinfo is None:  # 容錯：無時區的 last_seen 視為 UTC（避免 aware-naive 相減 TypeError → 500）
+            ts = ts.replace(tzinfo=UTC)
+        return (datetime.now(UTC) - ts).total_seconds() <= ONLINE_WINDOW_SEC
+    except (ValueError, TypeError):
         return False
-    return (datetime.now(UTC) - ts).total_seconds() <= ONLINE_WINDOW_SEC
 
 
 def _scope(exercise_id: int | None):
