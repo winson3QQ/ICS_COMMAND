@@ -108,7 +108,9 @@ WARNING_THRESHOLD_SECONDS: int = int(os.getenv("ICS_WARNING_THRESHOLD_SECONDS", 
 #               + auth_middleware per-account 閘 + cop WS 補閘 + reset_pin 限 first-run）；P2b＝
 #               create/reset 改系統產隨機臨時 PIN（generate_temp_pin，admin 不自設、一次性回傳）。
 # PATCH 2.16.3：#384 移除死功能 Admin PIN（X-Admin-PIN 無後端驗證）+ 升級殘列清理。淨刪碼。
-APP_VERSION = "2.16.3"
+# MINOR 2.17.0：出向忠實度兩刀——#214 出向 CoT 帶 <__group> 隊伍色/角色（正規化欄位、不偽造遙測）
+#               + #216 出向 GeoChat（build_geochat_cot + POST /api/tak/chat，COMMAND_ROLES+audit）。
+APP_VERSION = "2.17.0"
 
 # CMD_VERSION：前端 UI 功能版本（不同於後端 SemVer APP_VERSION；規則見 CLAUDE.md 版號規則）
 # 兩軌版本命名，不可混用。由 /api/version 提供給前端，是唯一 source-of-truth；release 時更新此值。
@@ -116,8 +118,9 @@ APP_VERSION = "2.16.3"
 #         + 演習/放置/稽核 UI P1-13/14/16/#93 + 分類編輯器 #66）→ 0.x 畢業為 MAJOR 紀元。
 CMD_VERSION: str = os.getenv(
     "CMD_VERSION",
-    "v1.12.3",  # PATCH：#384 移除「Admin PIN」驗證畫面 + 子分頁（死功能）
-)  # PATCH v1.12.2：#389 紅藍分類面板——「實戰池」正名為「待命池」+「含已離線」文案 + 每行 🟢/⚪ 在線 badge。
+    "v1.13.0",  # MINOR：#216 出向 GeoChat compose 面板（通聯面板收+發、目標跟隨脈絡、COMMAND_ROLES）
+)  # PATCH v1.12.3：#384 移除「Admin PIN」驗證畫面 + 子分頁（死功能）。
+# PATCH v1.12.2：#389 紅藍分類面板——「實戰池」正名為「待命池」+「含已離線」文案 + 每行 🟢/⚪ 在線 badge。
 # PATCH v1.12.1：#348-F5 P2b hotfix——臨時 PIN modal 被帳號管理面板(z300)蓋住看不到 → 改自帶 z10000 overlay。
 # MINOR v1.12.0：#348-F5 P3 密碼欄放寬接受密語（登入/首登/PinLock 解鎖，6→128）+ show-password 眼睛。
 # PATCH v1.11.2：#293 前端 DOM-XSS sink escaping（純前端硬化、非視覺）。
