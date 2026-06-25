@@ -71,3 +71,26 @@ metadata:
 **運維尾巴（非 issue）**：① GitHub Actions `issue-snapshot` + `mirror-to-codeberg` 兩 workflow 已 `disabled_manually`（GitHub Free private repo 2,000 min/月帳號額度用爆、起不來；月底重置或處理 billing 後 `gh workflow enable` 開回）；Test 留著。② Codeberg ICS_COMMAND 161 MiB 警告 = snapshot JSON churn（365 commit 灌 docs/backups，本機壓 15MB、Codeberg 沒 gc）→ 待砍掉重 push（不改寫歷史即可清，方案已議）。③ TAK 殘留休眠 entry `3QQ-atak`/`red-01`/`blue-01` 可選清（usermod -D，安全閘擋過、需手動跑）。
 
 ⚠️ **issue 編號為 2026-06-23 快照、會增減**：動工前先 `gh issue list --state open` 重抓現況再對照本分類。
+
+---
+## ✅ 2026-06-25 session：#348-F5 PIN 硬化全段 + #348 收斂 + #389 faction 面板（全上 prod、公網實機驗）
+
+**prod 現況**：`backend-v2.16.2` / `frontend-v1.12.2`（單機 docker `ics-prod`，home router forward 1.34.230.218:443→nginx mTLS）。
+
+**#348-F5 PIN/密碼硬化四段全落地 + 公網 iPhone E2E PASS**（admin/3QQ/3QQ-test 帳號）：
+- **P1**（#381，先前）`core/pin_policy`：min6 + blocklist + 開放長密語、不溯及。
+- **P2a**（PR #383）admin 建帳號首登強制改：`is_default_pin` + `auth_middleware` per-account 閘（非白名單→423 PIN_CHANGE_REQUIRED）+ **cop `/ws/updates` 補閘**（HTTP middleware 不跑 WS scope）+ `reset_pin` 限 first-run bootstrap（防被盜 session 免舊 PIN 自解閘）。`is_first_run_required` 收斂 **bootstrap-only**（accounts==1 sysadmin default，解「建第 2 帳號鎖死全系統」地雷）。
+- **P3**（PR #385）前端 3 個「同一長久秘密」入口（登入/首登 overlay/PinLock 解鎖）放寬接受密語 6→128 + show-password 眼睛（opt-in、登出/鎖定復原遮蔽 `_maskPwField`）。
+- **P2b**（PR #386）create/reset 改 `pin_policy.generate_temp_pin` 系統產隨機臨時 PIN（admin 不自設、一次性回 `temp_pin`、不落 plaintext/不入 audit）；`reset_pin` 語意變＝admin reset→系統臨時+強制改（不收 body）；first-run admin 自改改走 **change-initial-pin**（非 reset_pin）；FE 建帳號拔 PIN 欄 + 「重設為臨時 PIN」鈕 + 一次性 `_showTempPin` 模態。
+  - **hotfix**（frontend-v1.12.1）：`_showTempPin` 用共用 openModal（#overlay z210）被「帳號管理」面板（#admin-panel z300）蓋住看不到 → 改自帶 z10000 overlay。
+- **衍生**：**#384**（移除死 Admin PIN 空殼——`verify_admin_pin` 零呼叫者、後端不讀 X-Admin-PIN，RBAC 取代後遺留；ROADMAP RT-M2 已更正）、**#382**（第一個 admin 免-CLI 量產 onboarding，QR 出廠密碼陷阱已議）。
+
+**#348 umbrella CLOSED**：8 findings 全處置（程式碼可動全清）；殘留分流 **F1→#226**（加密卡硬體）、**F9 DR 實演練+HA→#387**、**F10-events 去識別化→#388**。
+
+**#389 紅藍分類面板 UX**（PR #390/#391，backend-v2.16.1/2、frontend-v1.12.2，雙實機 ATAK+iTAK 驗 PASS）：① 「實戰池」誤名→「待命池（未開場：非演習非實戰）」（**NULL scope ≠ 實戰**；實戰=type=real active 場、有 id；TAK 連入綁 `current_exercise_id()`，無 active→NULL）；② 文案「連上的」→「本場觀測到的（含已離線）」；③ 🟢/⚪ 在線指示。**關鍵修正**：online/last_seen 必用 **`updated_at`（最後活動）非 `received_at`（首見、再廣播不更新）**——dogfood：live 裝置 received_at 停昨天→誤判離線。**faction 分類 = per-scope**（`client_faction` 鍵 (COALESCE(exercise_id,-1), client_key)；同裝置跨場可不同陣營）。**未決 doctrine**：per-scope 重複分類（裝置陣營若大多固定→是否「全域預設+各場覆寫」，待操作流程定）。
+
+**本 session 工程坑（記取）**：
+- **編輯 worktree 不是 main checkout**：feature 改要編 `.claude/worktrees/<wt>/...`，誤編 `C:\Users\yello\Desktop\ICS_COMMAND\...`（main checkout）會讓 worktree 測到舊碼。修法＝main checkout `git stash` → worktree `git stash pop`。
+- **esbuild minify 把中文/emoji 轉 `\uXXXX`**（#302 前端 IP 保護）→ 驗 minified 檔別 grep 字面中文，改驗 codepoint（待=5f85、🟢=1f7e2）。jsmin stage 有 layer cache，純前端改若疑沒進 → `docker build --no-cache-filter jsmin`。
+- **received_at = 首見、updated_at = 最後活動、stale>now = 原生在線**（cop_entities）。
+- 版號 release commit 撞 ruff E501（中文註解過長）會擋 commit、tag 恐指錯 commit → 先驗 ruff 再 tag。
