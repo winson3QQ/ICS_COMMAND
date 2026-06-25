@@ -1055,20 +1055,53 @@ export function admShowTak() {
   admLoadTakDeviceCerts();
 }
 
+// #398 C：發證前查同名重發用（admLoadTakDeviceCerts 載入時更新）。
+let _lastTakCerts = [];
+
+/** #398：fingerprint 短顯（首2 + … + 末2 組），方便和裝置上的證快速比對而不必看完整 64 hex。 */
+function _fpShort(fp) {
+  const g = String(fp || '').split(':');
+  return g.length >= 4 ? g.slice(0, 2).join(':') + '…' + g.slice(-2).join(':') : (fp || '');
+}
+
 export async function admLoadTakDeviceCerts() {
   const box = el('adm-tak-device-list');
   if (!box) return;
   const resp = await authFetch(API_BASE + '/api/admin/tak/device-certs');
   if (!resp.ok) { box.innerHTML = '<div style="color:var(--text3);font-size:12px;">無法載入（需系統管理員）</div>'; return; }
   const certs = await resp.json();
+  _lastTakCerts = certs;
   if (!certs.length) { box.innerHTML = '<div style="color:var(--text3);font-size:12px;padding:4px 0;">尚未發過裝置證</div>'; return; }
+  // #398 C/D：同 callsign 多張 active+已同步 → TAK 只認**最新**那張（certs 已新到舊排序，首個=最新）；
+  // 其餘標「已被新證取代」，讓使用者看得出哪張是現行、避免拿舊包混用。
+  const currentByCallsign = {};
+  for (const c of certs) {
+    if (c.status === 'active' && c.enroll_status === 'ok' && currentByCallsign[c.callsign] == null) {
+      currentByCallsign[c.callsign] = c.id;
+    }
+  }
   let rows = '';
   for (const c of certs) {
     const active = c.status === 'active';
     const plat = c.mode === 'aware' ? 'iTAK' : 'ATAK';
-    rows += '<div style="display:flex;align-items:center;gap:6px;padding:4px 0;border-bottom:1px solid var(--border,#222);font-size:12px;">' +
-        '<span style="font-family:monospace;flex:1;' + (active ? '' : 'text-decoration:line-through;color:var(--text3);') + '">' + _escAudit(c.callsign) + '</span>' +
+    const knownStatus = c.enroll_status != null && c.enroll_status !== '';  // NULL = 升級前發的，狀態未知（≠失敗）
+    const enrolled = c.enroll_status === 'ok';
+    const superseded = active && enrolled && currentByCallsign[c.callsign] != null && currentByCallsign[c.callsign] !== c.id;
+    // #398 D：enroll 同步狀態（避免 best-effort 默默失敗；混用時標哪張是現行）。
+    // review 修：NULL（升級前）走中性「狀態未知」灰，不誤報紅「未同步」——否則升級後一排健康證全變紅、
+    // 使用者可能無謂重發（作廢現場包）。只有實際拿到失敗 reason（timeout/non-ascii…）才報紅。
+    let sync = '';
+    if (active) {
+      if (!knownStatus) sync = '<span title="升級前發的證，同步狀態未知（多半正常運作中；重發前可先試連）" style="color:var(--text3);font-size:10px;">? 狀態未知</span>';
+      else if (!enrolled) sync = '<span title="' + _escAudit('TAK enroll 結果：' + c.enroll_status + '（裝置可能連不上 TAK）') + '" style="color:var(--red);font-size:10px;">⚠ 未同步 TAK</span>';
+      else if (superseded) sync = '<span title="同 callsign 有更新的證；TAK 只認最新那張，此張已失效" style="color:var(--text3);font-size:10px;">↩ 已被新證取代</span>';
+      else sync = '<span title="已註冊為 TAK managed user（現行有效）" style="color:var(--green);font-size:10px;">✓ 同步 TAK</span>';
+    }
+    const fp = c.fingerprint ? '<span title="' + _escAudit('SHA-256：' + c.fingerprint) + '" style="font-family:monospace;color:var(--text3);font-size:9px;">' + _escAudit(_fpShort(c.fingerprint)) + '</span>' : '';
+    rows += '<div style="display:flex;align-items:center;gap:6px;padding:4px 0;border-bottom:1px solid var(--border,#222);font-size:12px;flex-wrap:wrap;">' +
+        '<span style="font-family:monospace;flex:1;min-width:80px;' + (active ? '' : 'text-decoration:line-through;color:var(--text3);') + '">' + _escAudit(c.callsign) + '</span>' +
         '<span style="color:var(--text3);">' + plat + '</span>' +
+        sync + fp +
         '<span style="color:var(--text3);font-size:10px;">' + _escAudit((c.issued_at || '').replace('T', ' ').replace('Z', '')) + '</span>' +
         '<span class="adm-badge ' + (active ? 'active' : 'suspended') + '">' + (active ? '有效' : '已撤銷') + '</span>' +
         (active
@@ -1099,28 +1132,46 @@ export async function admIssueTakDevice() {
   const callsign = el('adm-tak-callsign')?.value.trim();
   const mode = el('adm-tak-mode')?.value || 'atak';
   if (!callsign) { alert('請輸入 callsign'); return; }
+  // #398 E：非 ASCII callsign 不會註冊成 TAK managed user（enroll skip）→ 發了也連不上。發前擋。
+  if (!/^[\x00-\x7F]*$/.test(callsign)) {
+    if (!confirm('「' + callsign + '」含非 ASCII（中文）字元。\n⚠ 這種 callsign 不會註冊成 TAK managed user，發出的證裝置連不上 TAK。\n建議改用英數 callsign。仍要發嗎？')) return;
+  }
+  // #398 C：同 callsign 已有有效證 → 重發會覆寫 TAK fingerprint、作廢舊證（舊裝置須重匯）。發前警告。
+  if (_lastTakCerts.some((c) => c.status === 'active' && c.callsign === callsign)) {
+    if (!confirm('callsign「' + callsign + '」已有有效證。\n⚠ TAK 一個 callsign 只認一張證——重發會作廢舊證，用舊包的裝置會連不上、須重匯新包。\n繼續重發？')) return;
+  }
   const resp = await authFetch(API_BASE + '/api/admin/tak/device-cert?callsign='
     + encodeURIComponent(callsign) + '&mode=' + mode, { method: 'POST' });
   if (resp.status === 503) { alert('TAK 裝置發證未配置（step-ca daemon 未接，或對外 TAK 位址未設 TAK_DEVICE_CONNECT_HOST）。'); return; }
   if (resp.status === 422) { alert('callsign 不合法或平台錯誤'); return; }
   if (!resp.ok) { alert('發證失敗（' + resp.status + '）：' + (await resp.text()).slice(0, 200)); return; }
+  const enrollStatus = resp.headers.get('X-TAK-Enroll-Status') || 'unknown';  // #398 D：surface 同步結果
   const blob = await resp.blob();
   const blobUrl = URL.createObjectURL(blob);
-  _showTakDeviceResult(callsign, mode, blob, blobUrl);
+  _showTakDeviceResult(callsign, mode, blob, blobUrl, enrollStatus);
   admLoadTakDeviceCerts();  // #317：發完刷新盤點列表
 }
 
-function _showTakDeviceResult(callsign, mode, blob, blobUrl) {
+function _showTakDeviceResult(callsign, mode, blob, blobUrl, enrollStatus) {
   const box = el('adm-tak-device-result');
   if (!box) { URL.revokeObjectURL(blobUrl); return; }
   box.innerHTML = '';
+  const synced = enrollStatus === 'ok' || enrollStatus == null;
   const banner = document.createElement('div');
-  banner.style.cssText = 'border:1px solid var(--green,#2ea043);border-radius:6px;padding:8px;margin-top:8px;font-size:12px;';
+  // #398 D：未同步 TAK → 邊框轉警示色，明確告知「裝置連不上」而非靜默成功。
+  banner.style.cssText = 'border:1px solid ' + (synced ? 'var(--green,#2ea043)' : 'var(--red,#f85149)') + ';border-radius:6px;padding:8px;margin-top:8px;font-size:12px;';
   const label = document.createElement('div');
   label.style.cssText = 'color:var(--text2);margin-bottom:6px;line-height:1.5;';
   const plat = mode === 'aware' ? 'iTAK / TAK Aware（iOS）' : 'ATAK（Android）';
   label.textContent = '✅ 已簽發 ' + callsign + ' 的 ' + plat + ' data package（密碼內嵌、免打）。'
     + '把 .zip 弄到裝置 → TAK app 匯入 data package → 自動帶憑證連上 TAK Server。';
+  if (!synced) {
+    const warn = document.createElement('div');
+    warn.style.cssText = 'color:var(--red,#f85149);margin-bottom:6px;line-height:1.5;font-weight:600;';
+    warn.textContent = '⚠ 未同步 TAK（' + enrollStatus + '）：證已簽發，但沒註冊成 TAK managed user → 裝置匯入後會連不上。'
+      + '請確認 registrar 運作後重發，或改用英數 callsign。';
+    banner.appendChild(warn);
+  }
   const row = document.createElement('div');
   row.style.cssText = 'display:flex;align-items:center;gap:6px;flex-wrap:wrap;';
   const dlBtn = document.createElement('button');

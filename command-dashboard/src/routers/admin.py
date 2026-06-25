@@ -665,15 +665,18 @@ def issue_tak_device_cert(request: Request, callsign: str, mode: str = "atak"):
         )
     except CertIssuanceError as e:
         raise HTTPException(502, f"發證失敗：{e}") from e
-    # #317：盤點記錄（ICS 自建 SoT；TAK 不記 offline 證）+ serial（#318 CRL 前置）。
-    from repositories.tak_device_cert_repo import record_issued
-
-    record_issued(cn, serial, mode, sess["username"])
     # #344：發證即註冊 TAK managed user + 初始群 neutral（fail-closed）→ 之後紅藍分類走 REST update-groups。
     # best-effort：registrar 未配置/沒跑/逾時 → 跳過、不擋發證（裝置仍拿到證、落匿名待補；reason 進 audit + header）。
+    # #398：先 enroll 拿結果，盤點才存得了 enroll_status（清單顯示有沒有同步上 TAK）→ enroll 在 record 前。
     from services.tak_user_enroll import enroll_device
 
     enroll = enroll_device(cn, fingerprint)
+    enroll_status = "ok" if enroll.get("enrolled") else (enroll.get("reason") or "skipped")
+    enroll_status = "".join(c for c in enroll_status if c.isascii() and c.isprintable())[:200] or "skipped"
+    # #317 盤點 + #398：記 fingerprint（= TAK managed-user 鍵，供比對混用）+ enroll_status（同步結果）。
+    from repositories.tak_device_cert_repo import record_issued
+
+    record_issued(cn, serial, mode, sess["username"], fingerprint=fingerprint, enroll_status=enroll_status)
     # 強制 audit（不得 best-effort）：誰發了哪個 callsign 的證 + enrollment 結果。私鑰/密碼/fingerprint 不進 audit。
     audit(
         sess["username"],
@@ -697,10 +700,8 @@ def issue_tak_device_cert(request: Request, callsign: str, mode: str = "atak"):
 
     ascii_safe = "".join(c for c in cn if c.isascii() and (c.isalnum() or c in "-_.")) or "device"
     encoded = urllib.parse.quote(f"{cn}-dp.zip")
-    # #344：前端據此提示「現場群已同步 / 未註冊（待補）」，避免靜默失敗。header 限 latin-1 →
-    # 防禦性濾成 ASCII（registrar-error 夾帶 usermod 輸出，沿用本函式既有 latin-1 戒慎免 500）。
-    enroll_status = "ok" if enroll.get("enrolled") else (enroll.get("reason") or "skipped")
-    enroll_status = "".join(c for c in enroll_status if c.isascii() and c.isprintable())[:200] or "skipped"
+    # #344：X-TAK-Enroll-Status 讓前端提示「已同步 / 未註冊（待補）」，避免靜默失敗（enroll_status 已於上方算，
+    # 已濾成 latin-1 安全的 ASCII——registrar-error 夾帶 usermod 輸出，沿用本函式既有戒慎免 header 500）。
     return Response(
         content=pkg,
         media_type="application/zip",

@@ -17,13 +17,25 @@ def _iso_now() -> str:
     return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def record_issued(callsign: str, serial: str | None, mode: str, operator: str) -> dict:
-    """發證成功後記一列。callsign 可重複（每發一張一列）。"""
+def record_issued(
+    callsign: str,
+    serial: str | None,
+    mode: str,
+    operator: str,
+    fingerprint: str | None = None,
+    enroll_status: str | None = None,
+) -> dict:
+    """發證成功後記一列。callsign 可重複（每發一張一列）。
+
+    #398：fingerprint（該證 SHA-256，= TAK managed-user 鍵）+ enroll_status（發證當下 enroll 結果）
+    一併存——讓清單顯示「TAK 認哪張」「有沒有同步上 TAK」。fingerprint **不進 audit**（敏感）。
+    """
     with get_conn() as conn:
         cur = conn.execute(
-            "INSERT INTO tak_device_certs (callsign, serial, mode, operator, status, issued_at) "
-            "VALUES (?, ?, ?, ?, 'active', ?)",
-            (callsign, serial, mode, operator, _iso_now()),
+            "INSERT INTO tak_device_certs "
+            "(callsign, serial, mode, operator, status, issued_at, fingerprint, enroll_status) "
+            "VALUES (?, ?, ?, ?, 'active', ?, ?, ?)",
+            (callsign, serial, mode, operator, _iso_now(), fingerprint, enroll_status),
         )
         row = conn.execute("SELECT * FROM tak_device_certs WHERE id=?", (cur.lastrowid,)).fetchone()
     audit(
@@ -32,7 +44,7 @@ def record_issued(callsign: str, serial: str | None, mode: str, operator: str) -
         "tak_device_cert_record",
         "tak_device_certs",
         str(cur.lastrowid),
-        {"callsign": callsign, "serial": serial, "mode": mode},
+        {"callsign": callsign, "serial": serial, "mode": mode, "enroll_status": enroll_status},
     )
     return dict(row)
 

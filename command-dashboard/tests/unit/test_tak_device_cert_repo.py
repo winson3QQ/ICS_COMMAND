@@ -33,6 +33,33 @@ class TestRecordAndList:
         rows = list_device_certs()
         assert rows[0]["callsign"] == "b"  # 新到舊
 
+    def test_record_stores_fingerprint_and_enroll_status(self, tmp_db):
+        # #398：fingerprint（= TAK managed-user 鍵）+ enroll_status 一併存，供清單顯示/比對混用。
+        from repositories.tak_device_cert_repo import list_device_certs, record_issued
+
+        rec = record_issued("fp-01", "S1", "atak", "admin", fingerprint="90:10:59:AA", enroll_status="ok")
+        assert rec["fingerprint"] == "90:10:59:AA" and rec["enroll_status"] == "ok"
+        assert list_device_certs()[0]["fingerprint"] == "90:10:59:AA"
+
+    def test_record_fingerprint_optional_defaults_none(self, tmp_db):
+        # 升級前 / 未帶 → NULL（不破既有呼叫端）。
+        from repositories.tak_device_cert_repo import record_issued
+
+        rec = record_issued("noFp", "S1", "atak", "admin")
+        assert rec["fingerprint"] is None and rec["enroll_status"] is None
+
+    def test_record_enroll_status_in_audit_but_not_fingerprint(self, tmp_db):
+        # enroll_status 進 audit（同步結果可稽核）；fingerprint 不進 audit（敏感）。
+        from core.database import get_conn
+        from repositories.tak_device_cert_repo import record_issued
+
+        record_issued("aud-01", "S1", "atak", "admin", fingerprint="DE:AD:BE:EF", enroll_status="timeout")
+        with get_conn() as conn:
+            detail = conn.execute(
+                "SELECT detail FROM audit_log WHERE action_type='tak_device_cert_record' ORDER BY id DESC LIMIT 1"
+            ).fetchone()[0]
+        assert "timeout" in detail and "DE:AD:BE:EF" not in detail
+
 
 class TestMarkRevoked:
     def test_mark_flips_status(self, tmp_db):
