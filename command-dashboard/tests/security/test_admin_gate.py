@@ -30,6 +30,34 @@ class TestSysadminSessionGate:
         assert r.status_code == 200
 
 
+class TestLegacyAdminPinCleanup:
+    """#384 review：升級殘留的 admin_pin* config 列開機一次性刪除，
+    避免低權角色經 GET /api/config/{key} 讀到已廢的 PIN hash（縱深退步）。"""
+
+    def test_cleanup_deletes_legacy_admin_pin_rows(self, client):
+        from repositories.config_repo import cleanup_legacy_admin_pin_config, get_config, set_config
+
+        set_config("admin_pin", '{"hash":"x","salt":"y"}', None)
+        set_config("admin_pin_failed_count", "3", None)
+        set_config("admin_pin_locked_until", "2030-01-01T00:00:00Z", None)
+        assert get_config("admin_pin") is not None
+        deleted = cleanup_legacy_admin_pin_config()
+        assert deleted == 3
+        assert get_config("admin_pin") is None
+        assert get_config("admin_pin_failed_count") is None
+        assert get_config("admin_pin_locked_until") is None
+
+    def test_observer_cannot_read_admin_pin_after_cleanup(self, client):
+        # 殘列已刪 → GET /api/config/admin_pin 回 value=None（無 hash 可洩）
+        from repositories.config_repo import cleanup_legacy_admin_pin_config, set_config
+
+        set_config("admin_pin", '{"hash":"secret","salt":"s"}', None)
+        cleanup_legacy_admin_pin_config()
+        r = client.get("/api/config/admin_pin", headers=_login(client))
+        assert r.status_code == 200
+        assert r.json()["value"] is None
+
+
 class TestRoleGate:
     def _operator_headers(self, client):
         create_account("op_user", "5678", ROLE_OPERATOR_ZH, "Operator", "operator")
