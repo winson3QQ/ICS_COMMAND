@@ -118,6 +118,22 @@ nc -zv localhost 8089 2>&1            # 期望 succeeded
 - TLS **fail-closed**：`build_subscribe_config` 無 cafile 須顯式 `allow_insecure_tls=True` 才關 server 驗證（否則 raise），防靜默 MITM 注入偽造 CoT。
 - 意涵：**COP subscriber cert 只需 CA 簽的 fullchain client cert，不必經 :8446 enrollment**（enroll 是 :8443 web/managed-cert 才需）。被擄裝置撤銷限制見 `docs/compliance/threat_model.md` §8.5。
 
+### TAK 存取控制 = group membership（producer 不掛 `__ANON__`，#403/#404）
+
+**源碼定讞**（官方 `X509Authenticator.java`）：TAK 對 **CA 信任的證架構上永不拒絕**——非名冊證無群即無條件落 `__ANON__`。改 `CoreConfig` 的 `<auth>` 匿名旗標**擋不掉**（`x509addAnonymous="false"` 只在 LDAP 分支生效、對 file-auth 死碼，對活機實證無效）。故「誰能看到/注入 ICS 資料」**只能靠 group 隔離**：
+
+- **🔴 紅線：所有 ICS producer（尤其 `ics-cot` streaming 身分）一律走 named group（red/blue/neutral），永不掛 `__ANON__`。** 否則與**任何 CA 簽過的證（含已 deregister 的舊裝置）同頻** → 不明證可注入假 CoT 進 COP、亦可竊聽 ICS 廣播（#403 端到端實證）。
+- `register-tak-fingerprint.sh` **已強制此紅線**：不再預設 `__ANON__`，須顯式指定 named group；要刻意進 `__ANON__` 須加 `--allow-anon`。
+- **正規 `ics-cot` 註冊**（取代任何落 `__ANON__` 的舊作法）：
+  ```bash
+  ./pki/register-tak-fingerprint.sh --apply <ics-cot-cert.pem> ics-cot red blue neutral
+  # 寫後須 restart TAK（File backend 不 hot-reload）；或對既有 user 線上改群：
+  #   docker exec takserver sh -c 'cd /opt/tak && java -jar utils/UserManager.jar usermod -f <FP> -r -g __ANON__ ics-cot'
+  #   （usermod -r -g __ANON__ = 移除 __ANON__，保留其餘群，live 生效免 restart）
+  ```
+- **撤銷（點名封殺特定證）= 層2**：見 `docs/compliance/threat_model.md` §8.3 與 [#318](https://github.com/winson3QQ/ICS_COMMAND/issues/318)——ICS 離線簽的證 TAK 帳本查無 → 須發證後補登 TAK `certificate` 表 + 開 `x509checkRevocation` 才撤得掉。
+- 例外：`ics-tak-admin`（REST-only、不訂閱 :8089）仍在 `__ANON__` 無 streaming 洩漏，且移除其唯一群會 bounce 回 `__ANON__`，暫不動。
+
 ## 範圍與注意
 
 - **本 task 不含**：實機 boot 驗證（需 release 在手 + 目標機，交付時做）、Federation Hub / federation（P2-07）、commercial plugin（只用 core CoT）、Pi 原生 `.deb` 實裝（僅文件指路）。
