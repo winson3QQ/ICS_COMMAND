@@ -144,6 +144,56 @@ class DownlinkCommandIn(BaseModel):
         return v
 
 
+# ── 出向 GeoChat（#216：ICS→TAK 文字通聯，對稱入向 P2-07 chat_service）──────────────
+# 指揮部主動對現場發 GeoChat（CoT b-t-f）。發話者身分由 server 端（session operator）決定，
+# 不信 client 宣告；client 只給訊息內容 + 收件路由（聊天室 / DM 收件 uid）。
+class ChatSendIn(BaseModel):
+    """指揮部發 GeoChat 的輸入 → `services/tak_downlink.build_geochat_cot`。
+
+    收件路由：預設全體廣播（chatroom='All Chat Rooms'）；給 `recipient_uid` → 點對點 DM；
+    給其他 `chatroom` 名 → 命名聊天室/隊伍頻道。message 走內容白名單（router）+ XML escape（builder）。
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    # 通聯文字（非空，上限 480 字——留裕度於 input_safety 的 512 上限，避免 schema 過、白名單卻 422）。
+    message: str = Field(..., min_length=1, max_length=480)
+    chatroom: str = Field(default="All Chat Rooms", max_length=128)  # 聊天室名（全體/隊伍頻道）
+    recipient_uid: str | None = None  # 點對點 DM 收件裝置 uid（None=聊天室廣播）
+    recipient_callsign: str | None = None  # DM 收件顯示呼號（chatroom 顯示用）
+    lat: float = Field(default=0.0, ge=-90.0, le=90.0)  # 發訊位置（GeoChat 的「Geo」；可省）
+    lon: float = Field(default=0.0, ge=-180.0, le=180.0)
+
+    @field_validator("message")
+    @classmethod
+    def _strip_message(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("通聯訊息不得為空白")
+        return v
+
+    @field_validator("recipient_uid")
+    @classmethod
+    def _validate_recipient_uid(cls, v: str | None) -> str | None:
+        # 收件 uid 進 CoT attr（chatgrp/link/uid 第三段），限保守字元集擋注入/空白。
+        if v and not re.match(r"^[A-Za-z0-9._-]{1,128}$", v):
+            raise ValueError("recipient_uid 只允許 [A-Za-z0-9._-]")
+        return v
+
+    @field_validator("chatroom")
+    @classmethod
+    def _sanitize_chatroom(cls, v: str | None) -> str:
+        # 聊天室名淨化（沿用 callsign 白名單；builder 另 XML escape）。淨化後全空 → 退回全體
+        # 廣播預設（欄位型別為 str，不得回 None——否則 audit 記 None 與實際送出的房名不符）。
+        return _sanitize_callsign(v) or "All Chat Rooms"
+
+    @field_validator("recipient_callsign")
+    @classmethod
+    def _sanitize_recipient_callsign(cls, v: str | None) -> str | None:
+        # DM 顯示呼號淨化（可選；全空 → None，router 退回收件 uid 當顯示名）。
+        return _sanitize_callsign(v)
+
+
 class TakConnectionToggleIn(BaseModel):
     """P2-24（#164）：runtime 啟用/停用 TAK :8089 訂閱。"""
 

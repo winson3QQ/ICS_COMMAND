@@ -136,3 +136,14 @@ def test_geochat_unclassified_sender_fail_closed():
     asyncio.run(chat_service.ingest_chat(_geochat("GeoChat.ANDROID-UNKNOWN.All Chat Rooms.x1", "未分類通聯")))
     assert chat_service.build_chat_feed(None, visible_factions=BLUE)["chats"] == []
     assert len(chat_service.build_chat_feed(None, visible_factions=None)["chats"]) == 1
+
+
+def test_geochat_ics_self_origin_classified_blue():
+    """#216 review：ICS 自身出向 GeoChat（sender=ICS_SELF_UID）經 server 回送 → 歸 blue，
+    不因不在 client_faction 名冊而 fail-closed 隱藏（否則發話的 commander 自己都看不到）。"""
+    from services.tak_downlink import ICS_SELF_UID
+
+    asyncio.run(chat_service.ingest_chat(_geochat(f"GeoChat.{ICS_SELF_UID}.All Chat Rooms.s1", "指揮部廣播")))
+    # 藍方視角看得到 ICS 自己的出向訊息（非被當未分類擋掉）
+    feed = chat_service.build_chat_feed(None, visible_factions=BLUE)
+    assert {c["message"] for c in feed["chats"]} == {"指揮部廣播"}

@@ -107,6 +107,104 @@ def test_downlink_invalid_type_422(client, auth, captured_cot):
     assert captured_cot == []
 
 
+# ── #216：POST /api/tak/chat 出向 GeoChat（指揮部對現場發文字通聯）──────────────────
+def _chat_audit_rows(uid):
+    with get_conn() as conn:
+        return conn.execute(
+            "SELECT operator, detail FROM audit_log WHERE action_type='TAK_CHAT_SEND' AND target_id=?",
+            (uid,),
+        ).fetchall()
+
+
+def test_chat_sends_and_audits(client, auth, captured_cot, tak_enabled):
+    r = client.post("/api/tak/chat", json={"message": "全體注意"}, headers=auth)
+    assert r.status_code == 200, r.text
+    data = r.json()
+    assert data["status"] == "sent" and data["chatroom"] == "All Chat Rooms"
+    # 真的送出一筆 b-t-f GeoChat，含訊息
+    assert len(captured_cot) == 1
+    assert "type='b-t-f'" in captured_cot[0].replace('"', "'") and "全體注意" in captured_cot[0]
+    # audit 落地（含 admin 身分），且**不**記訊息內文（PII 走 chats 保留政策）
+    rows = _chat_audit_rows(data["uid"])
+    assert len(rows) == 1 and rows[0][0] == "admin"
+    assert "全體注意" not in (rows[0][1] or "")
+
+
+def test_chat_dm_routes_to_recipient(client, auth, captured_cot, tak_enabled):
+    r = client.post(
+        "/api/tak/chat",
+        json={"message": "單獨呼叫", "recipient_uid": "ANDROID-9", "recipient_callsign": "BRAVO"},
+        headers=auth,
+    )
+    assert r.status_code == 200, r.text
+    assert "ANDROID-9" in captured_cot[0] and "BRAVO" in captured_cot[0]
+
+
+def test_chat_requires_auth(client, captured_cot):
+    r = client.post("/api/tak/chat", json={"message": "x"})
+    assert r.status_code == 401
+    assert captured_cot == []
+
+
+def test_observer_cannot_chat(client, captured_cot, tak_enabled):
+    create_account("obs_chat", "1234", ROLE_OBSERVER_ZH, "Obs Chat", "observer")
+    r = client.post("/api/tak/chat", json={"message": "x"}, headers=_login(client, "obs_chat"))
+    assert r.status_code == 403
+    assert captured_cot == []
+
+
+def test_operator_cannot_chat(client, captured_cot, tak_enabled):
+    # 對外發話＝指揮層動作（COMMAND_ROLES）；operator（WRITE_ROLES）不可（與 downlink 同層）。
+    create_account("op_chat", "1234", ROLE_OPERATOR_ZH, "Op Chat", "operator")
+    r = client.post("/api/tak/chat", json={"message": "x"}, headers=_login(client, "op_chat"))
+    assert r.status_code == 403
+    assert captured_cot == []
+
+
+def test_chat_empty_message_422(client, auth, captured_cot, tak_enabled):
+    r = client.post("/api/tak/chat", json={"message": "   "}, headers=auth)
+    assert r.status_code == 422
+    assert captured_cot == []
+
+
+def test_chat_unsafe_content_422(client, auth, captured_cot, tak_enabled):
+    # 內容白名單（validate_no_unsafe_strings）擋 HTML metachar → 422、未送。
+    r = client.post("/api/tak/chat", json={"message": "<script>alert(1)</script>"}, headers=auth)
+    assert r.status_code == 422
+    assert captured_cot == []
+
+
+def test_chat_blank_chatroom_falls_back_to_all(client, auth, captured_cot, tak_enabled):
+    # #216 review：chatroom 淨化後全空（全是被剝字元）→ 退回 'All Chat Rooms'（非 None）；
+    # 送出的 CoT 與 audit 房名一致、不矛盾。
+    r = client.post("/api/tak/chat", json={"message": "hi", "chatroom": "&&&"}, headers=auth)
+    assert r.status_code == 200, r.text
+    assert r.json()["chatroom"] == "All Chat Rooms"
+    rows = _chat_audit_rows(r.json()["uid"])
+    assert len(rows) == 1 and '"All Chat Rooms"' in (rows[0][1] or "")
+
+
+def test_chat_disabled_409(client, auth, captured_cot, tak_disabled):
+    # TAK 開關停用 → 409，未送、未稽核（gate 早於 audit）。
+    r = client.post("/api/tak/chat", json={"message": "x"}, headers=auth)
+    assert r.status_code == 409
+    assert captured_cot == []
+
+
+def test_chat_send_failure_503_but_audited(client, auth, monkeypatch):
+    # audit-first：送出失敗 → 503，但稽核已記發話意圖。
+    async def _boom(cot_xml: str) -> None:
+        raise RuntimeError("connection refused")
+
+    monkeypatch.setattr("core.config.TAK_ENABLED", True)
+    monkeypatch.setattr(tak_downlink, "send_cot", _boom)
+    r = client.post("/api/tak/chat", json={"message": "送不出去"}, headers=auth)
+    assert r.status_code == 503
+    with get_conn() as conn:
+        n = conn.execute("SELECT COUNT(*) FROM audit_log WHERE action_type='TAK_CHAT_SEND'").fetchone()[0]
+    assert n == 1
+
+
 # ── P2-30 part 2（#180）：POST /api/tak/share/{uid} 分享既有 COP 標記到 TAK ──
 def _create_entity(client, auth, **over):
     body = {"type": "a-h-G", "lat": 25.03, "lon": 121.56, "callsign": "敵情A"}
