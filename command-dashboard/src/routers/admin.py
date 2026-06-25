@@ -650,6 +650,10 @@ def issue_tak_device_cert(request: Request, callsign: str, mode: str = "atak"):
     validate_no_unsafe_strings(cn, label="callsign")
     if not is_valid_cert_cn(cn):
         raise HTTPException(422, "callsign 不合法（不可含逗號、不可 - 開頭，限字母/數字/空白/-_.@）")
+    # #398 review：保留給 ICS 自身/管理身分的 callsign 不可被裝置證流程佔用——否則發證的 usermod -f
+    # 會改寫 ICS 自己的 TAK 連線/管理 cert、之後 revoke 還會 usermod -D 把它刪掉（毀 ICS 控制面）。
+    if cn in _TAK_INFRA_USERS:
+        raise HTTPException(422, f"callsign「{cn}」為 ICS 保留身分，不可用於裝置證")
     if not config.TAK_DEVICE_CONNECT_HOST:
         raise HTTPException(503, "對外 TAK 位址未設（部署層設 TAK_DEVICE_CONNECT_HOST）")
     # #315：TAK 裝置證由 TAK 自己的 CA（ICS-TAK-SVC-CA）簽——TAK 只信它（非 step-ca）。
@@ -712,6 +716,10 @@ def issue_tak_device_cert(request: Request, callsign: str, mode: str = "atak"):
     )
 
 
+# #398 B：TAK 上非 dashboard-發的 cert-user（ICS 自身連線 / 管理 cert）——對帳時標 infra 非殭屍。
+_TAK_INFRA_USERS = frozenset({"ics-cot", "ics-tak-admin"})
+
+
 @router.get("/tak/device-certs", tags=["account-admin"])
 def list_tak_device_certs(request: Request):
     """#317：列出 dashboard 發過的 TAK 裝置證（盤點）。sysadmin only。"""
@@ -723,14 +731,83 @@ def list_tak_device_certs(request: Request):
 
 @router.post("/tak/device-certs/{cert_id}/revoke", tags=["account-admin"])
 def revoke_tak_device_cert(cert_id: int, request: Request):
-    """#317：標記裝置證為已撤銷（**帳面 flag，不阻擋連線**——真撤銷見 #318 CRL）。sysadmin only。"""
+    """#317 標記已撤銷 + #398 A：撤銷現行證 → 從 TAK **真 deregister**（usermod -D，不再只是帳面 flag）。
+
+    sysadmin only。被取代的舊證（同 callsign 有更新 active 證）只標撤銷、不 deregister（避免誤殺現行）。
+    deregister 走 registrar best-effort：失敗不擋撤銷（ICS 帳面已撤；reason 進回應 + audit）。
+    """
     sess = _check_system_admin(request)
-    from repositories.tak_device_cert_repo import mark_revoked
+    from repositories.tak_device_cert_repo import has_other_active_cert, mark_revoked
 
     result = mark_revoked(cert_id, sess["username"])
     if result is None:
         raise HTTPException(404, "active tak device cert not found")
-    return result
+    callsign = result["callsign"]
+    # #398 A：撤銷現行（唯一 active）證 → 從 TAK 真 deregister。但：
+    #  · 同 callsign 還有其他 active 證 → 模糊（不確定 TAK 綁哪張）→ 只標撤銷、不動 TAK（skipped-ambiguous）。
+    #  · infra 證（ics-cot/ics-tak-admin）→ 絕不 deregister（保護 ICS 自身 TAK 控制面；registrar 另有防線）。
+    if callsign in _TAK_INFRA_USERS:
+        deregister = {"ok": False, "reason": "skipped-infra"}
+    elif has_other_active_cert(callsign, cert_id):
+        deregister = {"ok": False, "reason": "skipped-ambiguous"}
+    else:
+        from services.tak_user_enroll import deregister_device
+
+        deregister = deregister_device(callsign)
+    audit(
+        sess["username"],
+        None,
+        "tak_device_cert_deregister",
+        "tak",
+        result["callsign"],
+        {"cert_id": cert_id, "deregister": deregister.get("reason")},
+    )
+    return {**result, "deregister": deregister.get("reason")}
+
+
+@router.get("/tak/device-certs/reconcile", tags=["account-admin"])
+def reconcile_tak_device_certs(request: Request):
+    """#398 B：對帳 ICS 紀錄 vs TAK 實際 managed users（registrar 讀 UserAuthenticationFile）。sysadmin only。
+
+    回 {ok, reason, tak_users:[{callsign, fingerprint, status}], ics_unsynced:[callsign]}。
+    status：matched（fingerprint 相符）/ mismatch（ICS active 但 fingerprint 不同=混用）/
+    unknown（ICS active 但 fingerprint 未知，升級前）/ zombie（TAK 有、ICS 無 active=刪過/殘留）/
+    infra（ICS 自身/管理 cert，非 dashboard 發的裝置證）。
+    """
+    _check_system_admin(request)
+    from repositories.tak_device_cert_repo import list_device_certs
+    from services.tak_user_enroll import reconcile_tak_users
+
+    rec = reconcile_tak_users()
+    if not rec["ok"]:
+        return {"ok": False, "reason": rec["reason"], "tak_users": [], "ics_unsynced": []}
+    active = [c for c in list_device_certs() if c["status"] == "active"]
+    ics_fp_by_callsign: dict[str, set] = {}
+    for c in active:
+        ics_fp_by_callsign.setdefault(c["callsign"], set()).add(c.get("fingerprint"))
+    tak_callsigns: set[str] = set()
+    annotated = []
+    for u in rec["users"]:
+        cs, fp = u["callsign"], u["fingerprint"]
+        tak_callsigns.add(cs)
+        fps = ics_fp_by_callsign.get(cs)
+        # fps = ICS active 同名證的 fingerprint 集合（可能含 None=升級前未記）。known = 已記的具體 fingerprint。
+        known = {x for x in fps if x} if fps is not None else set()
+        if cs in _TAK_INFRA_USERS and fps is None:
+            status = "infra"  # ICS 自身/管理 cert，非裝置證流程，非殭屍
+        elif fps is None:
+            status = "zombie"  # TAK 有、ICS 無 active → 殭屍（刪過/測試殘留）
+        elif fp in fps:
+            status = "matched"
+        elif known:
+            # review：有具體已記 fingerprint 但都不符 TAK → 真混用（mismatch 優先於 unknown，
+            # 否則只要混一張升級前 NULL 列就把真混用掩蓋成「未知」）。
+            status = "mismatch"
+        else:
+            status = "unknown"  # 只有升級前 NULL fingerprint，無從斷定相符與否
+        annotated.append({"callsign": cs, "fingerprint": fp, "status": status})
+    ics_unsynced = sorted({c["callsign"] for c in active if c["callsign"] not in tak_callsigns})
+    return {"ok": True, "reason": "ok", "tak_users": annotated, "ics_unsynced": ics_unsynced}
 
 
 @router.delete("/tak/device-certs/{cert_id}", tags=["account-admin"])

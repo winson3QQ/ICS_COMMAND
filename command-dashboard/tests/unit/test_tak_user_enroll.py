@@ -67,8 +67,8 @@ def test_success_and_request_protocol(queue):
         t.join()
     assert out["enrolled"] is True
     assert out["group"] == "neutral"
-    # 請求協定 = 三行：callsign / fingerprint / group
-    assert cap and cap[0].splitlines() == ["dev-01", "AA:BB:CC", "neutral"]
+    # 請求協定 = 四行：callsign / fingerprint / group / op（#398：op 第 4 行，enroll=register）
+    assert cap and cap[0].splitlines() == ["dev-01", "AA:BB:CC", "neutral", "register"]
 
 
 def test_default_group_when_none(queue):
@@ -105,3 +105,59 @@ def test_timeout_when_no_registrar_and_cleans_request(queue, monkeypatch):
     assert out == {"enrolled": False, "reason": "timeout"}
     # 逾時後請求檔應被清掉（不殘留）
     assert glob.glob(os.path.join(queue, "requests", "*.req")) == []
+
+
+# ── #398 Slice 2：deregister + reconcile ──────────────────────────────────────
+
+
+def test_deregister_writes_op_and_succeeds(queue):
+    cap: list = []
+    stop = threading.Event()
+    t = threading.Thread(target=_fake_registrar, args=(queue, "OK deregistered", cap, stop))
+    t.start()
+    try:
+        out = tak_user_enroll.deregister_device("dev-09")
+    finally:
+        stop.set()
+        t.join()
+    assert out == {"ok": True, "reason": "deregistered"}
+    # 請求第 4 行 op = deregister（callsign 在、fp 空）
+    lines = cap[0].splitlines()
+    assert lines[0] == "dev-09" and lines[3] == "deregister"
+
+
+def test_deregister_non_ascii_skips_without_request(queue):
+    # 中文 callsign 本就沒 enroll → 不發 registrar 請求（無 user 可刪）
+    out = tak_user_enroll.deregister_device("主教")
+    assert out == {"ok": False, "reason": "non-ascii-callsign"}
+    assert glob.glob(os.path.join(queue, "requests", "*.req")) == []
+
+
+def test_deregister_not_configured(monkeypatch):
+    monkeypatch.setattr(config, "TAK_ENROLL_QUEUE_DIR", "")
+    assert tak_user_enroll.deregister_device("x") == {"ok": False, "reason": "enroll-not-configured"}
+
+
+def test_reconcile_parses_user_list(queue):
+    cap: list = []
+    stop = threading.Event()
+    result = "OK reconcile 2\nred-01\t42:26:5E\nblue-01\t6F:E9:75\n"
+    t = threading.Thread(target=_fake_registrar, args=(queue, result, cap, stop))
+    t.start()
+    try:
+        out = tak_user_enroll.reconcile_tak_users()
+    finally:
+        stop.set()
+        t.join()
+    assert out["ok"] is True
+    assert out["users"] == [
+        {"callsign": "red-01", "fingerprint": "42:26:5E"},
+        {"callsign": "blue-01", "fingerprint": "6F:E9:75"},
+    ]
+    assert cap[0].splitlines()[3] == "reconcile"  # op
+
+
+def test_reconcile_timeout(queue, monkeypatch):
+    monkeypatch.setattr(config, "TAK_ENROLL_TIMEOUT_S", 0.5)
+    out = tak_user_enroll.reconcile_tak_users()
+    assert out["ok"] is False and out["reason"] == "timeout" and out["users"] == []

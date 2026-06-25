@@ -62,6 +62,7 @@ SYSADMIN POST   /api/admin/factions/classify
 SYSADMIN POST   /api/admin/factions/entity-override
 SYSADMIN POST   /api/admin/tak/device-cert
 SYSADMIN GET    /api/admin/tak/device-certs
+SYSADMIN GET    /api/admin/tak/device-certs/reconcile
 SYSADMIN DELETE /api/admin/tak/device-certs/{cert_id}
 SYSADMIN POST   /api/admin/tak/device-certs/{cert_id}/revoke
 SYSADMIN GET    /api/admin/user-data-backups

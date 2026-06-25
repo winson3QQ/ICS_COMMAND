@@ -56,6 +56,22 @@ def list_device_certs() -> list[dict]:
     return [dict(r) for r in rows]
 
 
+def has_other_active_cert(callsign: str, cert_id: int) -> bool:
+    """#398 A：同 callsign 是否還有**其他** active 證（id 不同）。
+
+    撤銷時用以決定是否從 TAK deregister：TAK managed user 1:1、ICS 卻可能多列同名 active（重發未撤）。
+    此時 ICS 無法確知 TAK 現行綁哪張 fingerprint（要 reconcile 才知）→ **保守：只有「這是該 callsign
+    唯一 active 證」才 deregister**；還有其他 active 同名證就只標撤銷、不動 TAK（避免誤殺現行 / 把舊證
+    留成孤兒）。reconcile 視圖會把這種模糊態暴露給 admin 收斂。
+    """
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT 1 FROM tak_device_certs WHERE callsign=? AND id!=? AND status='active' LIMIT 1",
+            (callsign, cert_id),
+        ).fetchone()
+    return row is not None
+
+
 def mark_revoked(cert_id: int, operator: str) -> dict | None:
     """標記為已撤銷（**帳面 flag，不阻擋連線**——真撤銷見 #318 CRL）。
 
