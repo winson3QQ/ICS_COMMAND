@@ -112,8 +112,9 @@ APP_VERSION = "2.16.0"
 # v1.0.0：拆分自 ICS_DMAS 後首個完整可用形態（MapLibre 地圖引擎全換 P1-10b + PWA 移除 P1-11
 #         + 演習/放置/稽核 UI P1-13/14/16/#93 + 分類編輯器 #66）→ 0.x 畢業為 MAJOR 紀元。
 CMD_VERSION: str = os.getenv(
-    "CMD_VERSION", "v1.12.0"
-)  # MINOR v1.12.0：#348-F5 P3 密碼欄放寬接受密語（登入/首登/PinLock 解鎖，6→128）+ show-password 眼睛。
+    "CMD_VERSION", "v1.12.1"
+)  # PATCH v1.12.1：#348-F5 P2b hotfix——臨時 PIN modal 被帳號管理面板(z300)蓋住看不到 → 改自帶 z10000 overlay。
+# MINOR v1.12.0：#348-F5 P3 密碼欄放寬接受密語（登入/首登/PinLock 解鎖，6→128）+ show-password 眼睛。
 # PATCH v1.11.2：#293 前端 DOM-XSS sink escaping（純前端硬化、非視覺）。
 # PATCH v1.11.1：#354 帳號管理 UI 鎖定最後一個 active sysadmin 的降權控制（角色 select + 停用鈕禁用 + 提示）。
 # MINOR v1.10.0：AAR 回放上圖功能組完整——區域（#338）+ 事件/敵我接觸（#339，重用 live milsymbol/

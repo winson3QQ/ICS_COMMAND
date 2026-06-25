@@ -1917,15 +1917,26 @@ export async function admResetPin(username) {
 }
 
 // #348-F5 P2b：一次性顯示系統產臨時 PIN（建立 / 重設帳號後）。醒目大字 + 警語；關閉後即無法再取得。
+// 用「自帶 overlay」而非 openModal（#overlay z-index 210）—— 因本流程在「帳號管理」面板（#admin-panel
+// z-index 300）之上觸發，共用 modal 會被面板蓋住（看不到）。故自建 z-index 10000 的 overlay 確保最上層。
 function _showTempPin(username, pin) {
   if (!pin) return;
-  const body =
-    '<div style="text-align:center;padding:8px 4px;">' +
-      '<div style="font-size:13px;color:var(--text2);margin-bottom:8px;">帳號 <b>' + _escAudit(username) + '</b> 的臨時 PIN</div>' +
-      '<div style="font-family:var(--mono);font-size:30px;font-weight:700;letter-spacing:4px;color:var(--yellow);margin:8px 0;">' + _escAudit(pin) + '</div>' +
-      '<div style="font-size:12px;color:var(--red);margin-top:10px;">⚠️ 僅顯示一次，請立即記下交給使用者；<br>使用者首次登入後須立即修改。</div>' +
+  const ov = document.createElement('div');
+  ov.id = 'temp-pin-overlay';
+  ov.style.cssText = 'position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,.7);' +
+    'display:flex;align-items:center;justify-content:center;';
+  ov.innerHTML =
+    '<div style="background:var(--surface,#16213e);border:1px solid var(--border,#333);border-radius:12px;' +
+                'padding:24px 20px;max-width:340px;width:90%;text-align:center;color:var(--text,#fff);">' +
+      '<div style="font-size:14px;font-weight:700;margin-bottom:10px;">臨時 PIN</div>' +
+      '<div style="font-size:13px;color:var(--text2,#aaa);margin-bottom:6px;">帳號 <b>' + _escAudit(username) + '</b> 的臨時 PIN</div>' +
+      '<div style="font-family:var(--mono,monospace);font-size:30px;font-weight:700;letter-spacing:4px;' +
+                  'color:var(--yellow,#e3b341);margin:10px 0;">' + _escAudit(pin) + '</div>' +
+      '<div style="font-size:12px;color:var(--red,#e74c3c);margin:10px 0 16px;">⚠️ 僅顯示一次，請立即記下交給使用者；<br>使用者首次登入後須立即修改。</div>' +
+      '<button class="adm-btn" id="temp-pin-ok">我已記下</button>' +
     '</div>';
-  openModal('臨時 PIN', body, '<button class="adm-btn" data-action="close-modal">我已記下</button>');
+  document.body.appendChild(ov);
+  ov.querySelector('#temp-pin-ok').addEventListener('click', () => ov.remove());
 }
 
 export async function admToggleStatus(username, current) {
