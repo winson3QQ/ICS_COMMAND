@@ -71,7 +71,18 @@ async def ingest_chat(event: CoTEventIn) -> dict | None:
     ex_id = current_exercise_id()
     # #343：解發話端裝置 → 陣營（與 cop_entity 同 server-authoritative 分類）。NULL=未分類→fail-closed。
     client_key = _geochat_client_key(event.uid)
-    faction = client_faction_repo.get_faction(ex_id, client_key) if client_key else None
+    # #216：ICS 自身出向 GeoChat 經 server 回送（ICS 也訂閱 :8089）→ sender uid = 站台身分
+    # ICS_SELF_UID，不在 client_faction 名冊 → 原解 NULL → fail-closed 對藍方隱藏，連發話的
+    # commander 自己都看不到自己發的訊息。ICS 出向＝指揮部(藍方)發話 → 歸 blue，對齊
+    # 「manual/command 自建恆對藍方可見」doctrine。
+    from services.tak_downlink import ICS_SELF_UID  # lazy：避免 import 期載 tak_downlink→pytak
+
+    if client_key == ICS_SELF_UID:
+        faction = "blue"
+    elif client_key:
+        faction = client_faction_repo.get_faction(ex_id, client_key)
+    else:
+        faction = None
     record = ChatIn(
         sender_uid=event.uid,
         callsign=event.callsign or chat.get("senderCallsign"),

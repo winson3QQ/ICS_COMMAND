@@ -90,6 +90,72 @@ def build_command_cot(
     )
 
 
+# #216：ICS 出向 GeoChat 的「站台身分」。ICS 是 TAK 訂閱者、非 GPS 裝置（無自身 SA/PLI 上線），
+# 故 wire 上原無 ICS 裝置 uid——出向通聯需要一個穩定 sender uid 才能組 chatgrp/link/uid。
+# 用固定站台 uid（指揮部視為單一 contact），實際發話者由 senderCallsign 帶出（誠實標明是誰）。
+ICS_SELF_UID = "ICS-CMD"
+# 全體聊天室名（ATAK 慣例固定字串，真機抓包 fixtures/cot/geochat_btf.xml 實證）。
+ALL_CHAT_ROOMS = "All Chat Rooms"
+
+
+def build_geochat_cot(
+    *,
+    sender_callsign: str,
+    message: str,
+    msg_id: str,
+    sender_uid: str = ICS_SELF_UID,
+    chatroom: str = ALL_CHAT_ROOMS,
+    recipient_uid: str | None = None,
+    lat: float = 0.0,
+    lon: float = 0.0,
+    hae: float = 0.0,
+    stale_minutes: int = 5,
+    now: datetime | None = None,
+) -> str:
+    """組一則 ATAK 原生格式的 GeoChat（CoT `b-t-f`）出向通聯——#216 出向半（對稱入向 chat_service）。
+
+    格式依真機抓包 `fixtures/cot/geochat_btf.xml` + ATAK GeoChat 契約：
+    `<__chat chatroom id senderCallsign>` + `<chatgrp uid0/uid1>` + `<link>`（發話者自連）+
+    `<remarks source to>`。所有外來字串走 XML escape/quoteattr（縱深防護；router 另有內容白名單）。
+
+    收件人路由模型（三態）——由 `room_seg`（uid 第三段 + chatgrp uid1 + __chat id）區分：
+    - **全體廣播**：`recipient_uid=None` + `chatroom="All Chat Rooms"` → room_seg=「All Chat Rooms」。
+    - **命名聊天室/隊伍**：`recipient_uid=None` + `chatroom=<房名>` → room_seg=房名。
+    - **點對點 DM**：`recipient_uid=<裝置uid>` → room_seg=收件 uid、`chatroom` 帶收件呼號（顯示用）。
+
+    sender_uid 預設站台身分 `ICS-CMD`（見 ICS_SELF_UID）；`sender_callsign` 帶實際發話者（誠實）。
+    uid 含 `msg_id`（呼叫端給的唯一 GUID）——回送 ICS 自身時靠它冪等去重（chat_repo.chat_exists）。
+    stale 預設 5 分鐘（對齊 ATAK GeoChat 短時效；通聯非持久態勢，故**不**帶 `<archive/>`）。
+    """
+    now = now or datetime.now(UTC)
+    t = now.strftime("%Y-%m-%dT%H:%M:%S.000Z")
+    stale = (now + timedelta(minutes=stale_minutes)).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+
+    # room_seg = uid 第三段 / chatgrp uid1 / __chat id 三者一致：DM 用收件 uid，否則用聊天室名。
+    room_seg = recipient_uid if recipient_uid else chatroom
+    uid = f"GeoChat.{sender_uid}.{room_seg}.{msg_id}"
+    source = f"BAO.F.ICS.{sender_uid}"  # 標明 ICS 出向來源（對齊 marker 的 source: ICS 誠實原則）
+
+    detail = (
+        f"<__chat parent='RootContactGroup' groupOwner='false' messageId={quoteattr(msg_id)} "
+        f"chatroom={quoteattr(chatroom)} id={quoteattr(room_seg)} senderCallsign={quoteattr(sender_callsign)}>"
+        f"<chatgrp uid0={quoteattr(sender_uid)} uid1={quoteattr(room_seg)} id={quoteattr(room_seg)}/>"
+        "</__chat>"
+        # 發話者自連（ATAK 用以解析「誰發的」→ reply 路由）；ICS 站台身分。
+        f"<link uid={quoteattr(sender_uid)} type='a-f-G-U-C-I' relation='p-p'/>"
+        f"<remarks source={quoteattr(source)} to={quoteattr(room_seg)} time='{t}'>{escape(message)}</remarks>"
+    )
+
+    return (
+        "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>"
+        f"<event version='2.0' uid={quoteattr(uid)} type='b-t-f' "
+        f"how='h-g-i-g-o' time='{t}' start='{t}' stale='{stale}'>"
+        f"<point lat='{float(lat)}' lon='{float(lon)}' hae='{float(hae)}' ce='9999999' le='9999999'/>"
+        f"<detail>{detail}</detail>"
+        "</event>"
+    )
+
+
 # 出向幾何預設樣式（無 entity color 時）。stroke 不透明白（ATAK 預設可見）；fill 半透明黑。
 _DEFAULT_STROKE_ARGB = -1  # 0xFFFFFFFF 白
 _FILL_ALPHA = 0x40  # 出向填色透明度（~25%，現場端看得到底圖）

@@ -162,6 +162,64 @@ def test_entity_to_cot_ics_marker_without_team_color_emits_no_group():
     assert _parse(tak_downlink.entity_to_cot(entity, now=_NOW)).find("detail/__group") is None
 
 
+# ── #216 出向 GeoChat：build_geochat_cot（b-t-f 文字通聯，對稱入向 chat_service）─────────
+
+
+def test_geochat_broadcast_structure():
+    # 全體廣播：uid/chatgrp/__chat 三處 room_seg = "All Chat Rooms"；type b-t-f；發話者站台身分。
+    cot = tak_downlink.build_geochat_cot(sender_callsign="CMD-1", message="全體注意", msg_id="m1", now=_NOW)
+    e = _parse(cot)
+    assert e.get("type") == "b-t-f"
+    assert e.get("uid") == "GeoChat.ICS-CMD.All Chat Rooms.m1"
+    chat = e.find("detail/__chat")
+    assert chat.get("chatroom") == "All Chat Rooms" and chat.get("id") == "All Chat Rooms"
+    assert chat.get("senderCallsign") == "CMD-1" and chat.get("messageId") == "m1"
+    grp = e.find("detail/__chat/chatgrp")
+    assert grp.get("uid0") == "ICS-CMD" and grp.get("uid1") == "All Chat Rooms"
+    assert e.find("detail/link").get("uid") == "ICS-CMD"
+    assert e.find("detail/remarks").text == "全體注意"
+    # 通聯非持久態勢 → 不帶 <archive/>（與 marker/geometry 區別）
+    assert e.find("detail/archive") is None
+
+
+def test_geochat_dm_routes_to_recipient():
+    # 點對點 DM：room_seg = 收件裝置 uid；chatroom 帶顯示呼號。
+    cot = tak_downlink.build_geochat_cot(
+        sender_callsign="CMD-1", message="單獨呼叫", msg_id="m2", chatroom="BRAVO", recipient_uid="ANDROID-9", now=_NOW
+    )
+    e = _parse(cot)
+    assert e.get("uid") == "GeoChat.ICS-CMD.ANDROID-9.m2"
+    chat = e.find("detail/__chat")
+    assert chat.get("chatroom") == "BRAVO" and chat.get("id") == "ANDROID-9"
+    assert e.find("detail/__chat/chatgrp").get("uid1") == "ANDROID-9"
+    assert e.find("detail/remarks").get("to") == "ANDROID-9"
+
+
+def test_geochat_named_room():
+    cot = tak_downlink.build_geochat_cot(
+        sender_callsign="CMD-1", message="隊伍頻道", msg_id="m3", chatroom="Blue Team", now=_NOW
+    )
+    e = _parse(cot)
+    assert e.get("uid") == "GeoChat.ICS-CMD.Blue Team.m3"
+    assert e.find("detail/__chat/chatgrp").get("uid1") == "Blue Team"
+
+
+def test_geochat_escapes_xml_metachars():
+    # 訊息含 XML metachar → escape，產出仍是合法單一 event（不被注入撐破）
+    cot = tak_downlink.build_geochat_cot(sender_callsign='ev"il', message="<script>&</bad>", msg_id="m4", now=_NOW)
+    e = _parse(cot)  # 能 parse = 結構未破
+    assert e.find("detail/__chat").get("senderCallsign") == 'ev"il'
+    assert e.find("detail/remarks").text == "<script>&</bad>"
+
+
+def test_geochat_uid_roundtrips_through_client_key():
+    # 出向 uid 再被 ICS ingest（_geochat_client_key）→ 解回站台 sender uid（ICS-CMD）。
+    from services.chat_service import _geochat_client_key
+
+    cot = tak_downlink.build_geochat_cot(sender_callsign="CMD-1", message="x", msg_id="m5", now=_NOW)
+    assert _geochat_client_key(_parse(cot).get("uid")) == "ICS-CMD"
+
+
 class _FakeWriter:
     def __init__(self):
         self.written = b""

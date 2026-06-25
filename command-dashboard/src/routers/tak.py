@@ -24,7 +24,7 @@ from core import config
 from core.input_safety import validate_no_unsafe_strings
 from repositories import cop_entity_repo
 from repositories._helpers import audit
-from schemas.tak import CoTEventIn, DownlinkCommandIn, TakConnectionToggleIn
+from schemas.tak import ChatSendIn, CoTEventIn, DownlinkCommandIn, TakConnectionToggleIn
 from services import cop_service, tak_downlink, tak_resync, tak_runtime, tak_service
 from services.exercise_service import current_exercise_id
 from services.tak_rest_client import TakRestError
@@ -107,6 +107,67 @@ async def push_downlink(body: DownlinkCommandIn, request: Request):
         raise HTTPException(503, f"TAK 下行送出失敗：{e}") from e
 
     return {"ok": True, "uid": uid, "status": "sent", "planned": body.planned}
+
+
+@router.post("/chat")
+async def send_geochat(body: ChatSendIn, request: Request):
+    """#216 出向 GeoChat：指揮部對現場 TAK 發文字通聯（對稱入向 P2-07 chat_service）。
+
+    RBAC = COMMAND_ROLES（role_enum 中央 gate：POST /api/tak/* → COMMAND_ROLES）。
+    **發話者身分 server 端決定**（session display_name/username），不信 client 宣告——
+    對齊「不信 client 時鐘/身分」doctrine。audit-first（指揮對外發話須留痕；只記路由 +
+    長度 metadata，**不**記訊息內文——內文走 chats 表的 PII 保留政策 #348-F10，不雙重保留）。
+    內容白名單 `validate_no_unsafe_strings`（縱深防護）+ builder XML escape。
+
+    回送 ICS 自身：server 廣播給所有訂閱者（含 ICS 自己的 :8089 訂閱）→ 經入向 ingest_chat
+    落 chats 表顯示。uid 含 msg_id GUID（唯一）→ `chat_repo.chat_exists` 冪等去重，不重複入庫。
+    """
+    # #222：出向受開關閘控——TAK 連線停用時不發通聯。
+    if not tak_runtime.effective_enabled():
+        raise HTTPException(409, "TAK 連線已停用，無法發送通聯（請先於系統設定啟用 TAK 連線）")
+    operator = request.state.session["username"]
+    sender_callsign = request.state.session.get("display_name") or operator
+    # 縱深防護：內容白名單（schema 已驗，這裡再過一次 sink 防護，對齊 downlink/cop）。
+    validate_no_unsafe_strings(body.model_dump())
+
+    msg_id = uuid.uuid4().hex
+    # DM 顯示名：優先收件呼號、退收件 uid；非 DM → 聊天室名（防空白退全體）。
+    if body.recipient_uid:
+        chatroom = body.recipient_callsign or body.recipient_uid
+    else:
+        chatroom = body.chatroom or tak_downlink.ALL_CHAT_ROOMS
+    cot = tak_downlink.build_geochat_cot(
+        sender_callsign=sender_callsign,
+        message=body.message,
+        msg_id=msg_id,
+        chatroom=chatroom,
+        recipient_uid=body.recipient_uid,
+        lat=body.lat,
+        lon=body.lon,
+    )
+
+    room_seg = body.recipient_uid or chatroom
+    uid = f"GeoChat.{tak_downlink.ICS_SELF_UID}.{room_seg}.{msg_id}"
+    # audit-first（DoD 不得 best-effort）：先稽核再送；送出失敗 → 503，稽核已留發話意圖。
+    audit(
+        operator,
+        None,
+        "TAK_CHAT_SEND",
+        "tak",
+        uid,
+        {
+            "chatroom": chatroom,
+            "recipient_uid": body.recipient_uid,
+            "msg_len": len(body.message),  # 不記內文（PII 走 chats 保留政策），只記長度
+        },
+        exercise_id=current_exercise_id(),
+    )
+    try:
+        await tak_downlink.send_cot(cot)
+    except Exception as e:  # noqa: BLE001 — 連線/配置失敗統一回 503（稽核已記發話意圖）
+        raise HTTPException(503, f"TAK 通聯送出失敗：{e}") from e
+
+    return {"ok": True, "uid": uid, "status": "sent", "chatroom": chatroom}
 
 
 @router.post("/share/{uid}")
