@@ -135,6 +135,7 @@ READ     GET    /api/sync/log
 COMMAND  POST   /api/sync/push
 READ     GET    /api/sync/{sync_id}
 COMMAND  POST   /api/sync/{sync_id}/resolve
+COMMAND  POST   /api/tak/chat
 SYSADMIN POST   /api/tak/connection
 COMMAND  POST   /api/tak/downlink
 COMMAND  POST   /api/tak/events

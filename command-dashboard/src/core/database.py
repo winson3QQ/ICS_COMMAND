@@ -1504,6 +1504,25 @@ def _m032_chats_faction_down(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE chats DROP COLUMN faction")
 
 
+def _m033_tak_device_cert_enroll_meta(conn: sqlite3.Connection) -> None:
+    """#398 Slice 1：tak_device_certs 補 fingerprint + enroll_status——讓清單看得到「TAK 認哪張」
+    與「有沒有同步上 TAK」。
+
+    fingerprint = 該證 SHA-256（冒號大寫，= TAK managed-user 鍵），供比對裝置混用；enroll_status =
+    發證當下 enroll_device 的結果（ok / non-ascii-callsign / timeout / registrar-error… / skipped），
+    surface 給前端，避免 best-effort enroll 默默失敗（facet D）。既有列 NULL = 升級前發的（未知）。
+    """
+    _add_column_if_missing(conn, "tak_device_certs", "fingerprint", "TEXT")
+    _add_column_if_missing(conn, "tak_device_certs", "enroll_status", "TEXT")
+
+
+def _m033_tak_device_cert_enroll_meta_down(conn: sqlite3.Connection) -> None:
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(tak_device_certs)")}
+    for col in ("enroll_status", "fingerprint"):
+        if col in cols:
+            conn.execute(f"ALTER TABLE tak_device_certs DROP COLUMN {col}")  # nosec B608
+
+
 _MIGRATIONS: list[tuple[int, str, object]] = [
     (1, "events_columns", _m001_events_columns),
     (2, "decisions_columns", _m002_decisions_columns),
@@ -1537,6 +1556,7 @@ _MIGRATIONS: list[tuple[int, str, object]] = [
     (30, "tak_device_certs", _m030_tak_device_certs),
     (31, "faction_isolation", _m031_faction_isolation),
     (32, "chats_faction", _m032_chats_faction),
+    (33, "tak_device_cert_enroll_meta", _m033_tak_device_cert_enroll_meta),
 ]
 
 
