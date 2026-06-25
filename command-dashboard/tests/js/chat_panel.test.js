@@ -10,11 +10,13 @@ vi.mock('../../static/js/auth.js', () => ({
   API_BASE: '',
   authFetch: () => Promise.resolve({ ok: true, json: async () => ({ chats: [] }) }),
   getToken: () => 't',
+  hasAnyRole: () => true,
 }));
 
 import {
   decodeChatMessage, roomLabel, distinctRooms, filterChatsByRoom, countUnread, maxChatId,
   mergeLiveChat, parseSenderUid, filterChatsBySender, clampWatermark,
+  buildChatBody, composeTargetLabel,
 } from '../../static/js/chat_panel.js';
 
 describe('decodeChatMessage — 還原 html.escape 的固定 5 實體（純文字、無 innerHTML）', () => {
@@ -169,5 +171,40 @@ describe('clampWatermark — #250 fix：stale 高水位夾回（DB rollover）',
     // 模擬：夾回 50 後，來一筆 id=51 → 應算 1 筆未讀
     const w = clampWatermark(100, [{ id: 50 }]);
     expect(countUnread([{ id: 50 }, { id: 51 }], w)).toBe(1);
+  });
+});
+
+describe('buildChatBody — #216 出向 compose 目標路由（脈絡 → POST body）', () => {
+  test('無單位無房 → 全體廣播（僅 message）', () => {
+    expect(buildChatBody('hi', null, '__all__')).toEqual({ message: 'hi' });
+  });
+  test('選命名房 → chatroom（非 __all__）', () => {
+    expect(buildChatBody('hi', null, 'Blue Team')).toEqual({ message: 'hi', chatroom: 'Blue Team' });
+  });
+  test('選單位 → DM（recipient_uid + callsign）', () => {
+    expect(buildChatBody('hi', { uid: 'ANDROID-9', callsign: 'BRAVO' }, '__all__'))
+      .toEqual({ message: 'hi', recipient_uid: 'ANDROID-9', recipient_callsign: 'BRAVO' });
+  });
+  test('選單位無 callsign → 只帶 recipient_uid', () => {
+    expect(buildChatBody('hi', { uid: 'ANDROID-9' }, '__all__'))
+      .toEqual({ message: 'hi', recipient_uid: 'ANDROID-9' });
+  });
+  test('單位優先於房（同時存在時走 DM，不帶 chatroom）', () => {
+    const b = buildChatBody('hi', { uid: 'U1' }, 'Blue Team');
+    expect(b.recipient_uid).toBe('U1');
+    expect(b.chatroom).toBeUndefined();
+  });
+});
+
+describe('composeTargetLabel — #216 送出目標提示文字', () => {
+  test('全體廣播', () => {
+    expect(composeTargetLabel(null, '__all__')).toBe('→ 廣播（全體）');
+  });
+  test('命名房', () => {
+    expect(composeTargetLabel(null, 'Blue Team')).toBe('→ Blue Team');
+  });
+  test('DM 帶 callsign / 退 uid', () => {
+    expect(composeTargetLabel({ uid: 'U1', callsign: 'BRAVO' }, '__all__')).toBe('→ 私訊 BRAVO');
+    expect(composeTargetLabel({ uid: 'U1' }, '__all__')).toBe('→ 私訊 U1');
   });
 });

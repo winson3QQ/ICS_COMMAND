@@ -36,7 +36,7 @@ import {
 } from './cop.js';
 import {
   initChatPanel, switchRightTab, chatFilterRoom, chatClearSender, chatRowDown, chatRowUp,
-  refreshChatNow, restoreRightTab,
+  refreshChatNow, restoreRightTab, chatSend,
 } from './chat_panel.js';
 import { initRoster, stopRoster } from './roster_panel.js';
 import {
@@ -475,6 +475,7 @@ document.addEventListener('click', function (e) {
     case 'switchRightTab':  switchRightTab(btn.dataset.rtab); if (btn.dataset.rtab === 'events') _resizeEvtList(); break;
     case 'chatFilterRoom':  chatFilterRoom(btn.dataset.room); break;
     case 'chatClearSender': chatClearSender(); break;  // #213 b3-1：清除 by-sender 過濾
+    case 'chatSend':        chatSend(); break;  // #216：出向 GeoChat compose 送出
 
     // ── 演習管理（P1-14 PR-2）。#346：openExercisePanel 改開「演習」面板（見上方 case；header chip
     //    與設定入口共用），不再開 settings 捲到區段。 ──
