@@ -2,7 +2,7 @@
 schemas/ — 所有 Pydantic request/response 模型集中管理
 """
 
-from .admin import AccountCreateIn, AccountStatusIn, AdminPinIn, ConfigIn, PiNodeCreateIn, PinResetIn, RoleUpdateIn
+from .admin import AccountCreateIn, AccountStatusIn, AdminPinIn, ConfigIn, PiNodeCreateIn, RoleUpdateIn
 from .ai import AIRecommendIn
 from .auth import LoginIn
 from .cop import CoPEntity, CoPEntityLink, CoPEntityTrack, CoPSeverity, CoPSource
@@ -16,17 +16,31 @@ from .ttx import TTXInjectBulkIn
 
 __all__ = [
     "SnapshotIn",
-    "EventIn", "EventPatch", "DeadlinePatch", "EventNoteIn",
-    "DecisionIn", "DecideIn",
-    "SyncPushIn", "ConflictResolveIn",
+    "EventIn",
+    "EventPatch",
+    "DeadlinePatch",
+    "EventNoteIn",
+    "DecisionIn",
+    "DecideIn",
+    "SyncPushIn",
+    "ConflictResolveIn",
     "LoginIn",
-    "AccountCreateIn", "AccountStatusIn", "PinResetIn",
-    "AdminPinIn", "RoleUpdateIn", "PiNodeCreateIn", "ConfigIn",
+    "AccountCreateIn",
+    "AccountStatusIn",
+    "AdminPinIn",
+    "RoleUpdateIn",
+    "PiNodeCreateIn",
+    "ConfigIn",
     "ManualRecordIn",
-    "ExerciseCreateIn", "ExerciseStatusIn", "AAREntryIn",
+    "ExerciseCreateIn",
+    "ExerciseStatusIn",
+    "AAREntryIn",
     "TTXInjectBulkIn",
     "AIRecommendIn",
     # P1-03 COP schema v1
-    "CoPEntity", "CoPEntityTrack", "CoPEntityLink",
-    "CoPSource", "CoPSeverity",
+    "CoPEntity",
+    "CoPEntityTrack",
+    "CoPEntityLink",
+    "CoPSource",
+    "CoPSeverity",
 ]

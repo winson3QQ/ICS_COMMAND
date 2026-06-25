@@ -13,10 +13,13 @@
 完全提升熵（強制長密語）非本批——本批提下限 + 擋可預測 + 開放長密語能力。
 """
 
+import secrets
+
 from fastapi import HTTPException
 
 MIN_LEN = 6
 MAX_LEN = 128
+TEMP_PIN_DIGITS = 6  # #348-F5 P2b：系統產臨時 PIN 位數（一次性、首登即強制改、有 lockout 擋爆破）
 
 # 常見弱值（本地清單，離線）。短於 MIN_LEN 者本就被長度擋（如 1234/0000），故此處列 ≥6 位
 # 常見 PIN/密碼 + 鍵盤序。全同/連續另由 pattern 檢查通捕，不需逐一列舉。
@@ -81,3 +84,20 @@ def validate_pin_strength(pin: str, username: str | None = None) -> None:
         raise HTTPException(422, "PIN/密語不可為連續序列（如 123456）")
     if username and low == username.lower():
         raise HTTPException(422, "PIN/密語不可與帳號名相同")
+
+
+def generate_temp_pin(username: str | None = None, digits: int = TEMP_PIN_DIGITS) -> str:
+    """#348-F5 P2b：產生「系統指派的隨機臨時 PIN」（取代 admin 自設）。
+
+    供 create_acct / reset_pin：admin 不再得知/自選使用者最終 PIN，只能一次性轉交此臨時值，
+    使用者首登被 P2a 閘強制改。retry until validate_pin_strength 過——隨機數字撞 blocklist /
+    全同 / 連續序列極罕見，迴圈上限純為防衛（理論上幾乎不會用到第二次）。
+    """
+    for _ in range(100):
+        pin = f"{secrets.randbelow(10**digits):0{digits}d}"
+        try:
+            validate_pin_strength(pin, username)
+            return pin
+        except HTTPException:
+            continue
+    raise RuntimeError("無法產生合規的臨時 PIN（重試耗盡，異常）")

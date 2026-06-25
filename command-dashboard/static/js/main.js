@@ -233,6 +233,7 @@ document.addEventListener('click', function (e) {
     case 'unlockPinLock':  unlockPinLock(); break;
     case 'adm-toggle-edit': import('./auth.js').then(m => m.admToggleEdit(btn.dataset.username)); break;
     case 'adm-save-edit': import('./auth.js').then(m => m.admSaveEdit(btn.dataset.username)); break;
+    case 'adm-reset-pin': import('./auth.js').then(m => m.admResetPin(btn.dataset.username)); break;  // #348-F5 P2b
     case 'adm-toggle-status': import('./auth.js').then(m => m.admToggleStatus(btn.dataset.username, btn.dataset.status)); break;
     case 'adm-delete': import('./auth.js').then(m => m.admDelete(btn.dataset.username)); break;
     // #275 wave B：裝置憑證（mTLS 第二因子）綁定/撤銷

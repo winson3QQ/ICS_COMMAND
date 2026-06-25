@@ -145,21 +145,23 @@ class TestFirstRunGate:
         assert r2.status_code == 423
         assert r2.json()["code"] == "FIRST_RUN_REQUIRED"
 
-    def test_change_pin_clears_gate(self, first_run_client, monkeypatch):
-        """改 PIN 後 is_default_pin=0，gate 解除，原本被擋的 API 可訪問。"""
+    def test_change_pin_clears_gate(self, first_run_client):
+        """改 PIN 後 is_default_pin=0，gate 解除，原本被擋的 API 可訪問。
+
+        #348-F5 P2b：first-run admin 自改初始 PIN 走 change-initial-pin（前端 overlay 真實路徑、
+        驗目前 PIN、清旗標）。reset_pin 已改語意為「admin 把別人重設成系統臨時 PIN 並強制再改」，
+        不再是自我清旗標的途徑。
+        """
         # 1. 登入拿 token
         r = first_run_client.post("/api/auth/login", json={"username": "admin", "pin": "999999"})
         token = r.json()["session_id"]
-        # 2. 改 PIN（admin PIN check 也要先存在；先 mock 過）
-        from repositories.config_repo import set_admin_pin
-
-        set_admin_pin("888888", "system")
-        r2 = first_run_client.put(
-            "/api/admin/accounts/admin/pin",
-            json={"new_pin": "739104"},
-            headers={"X-Session-Token": token, "X-Admin-Pin": "888888"},
+        # 2. 自改初始 PIN（驗目前 PIN 999999；whitelist 於 first_run_gate）
+        r2 = first_run_client.post(
+            "/api/auth/change-initial-pin",
+            json={"current_pin": "999999", "new_pin": "739104"},
+            headers={"X-Session-Token": token},
         )
-        assert r2.status_code == 200
+        assert r2.status_code == 200, r2.text
         # 3. is_default_pin 已清，再訪 snapshots 應正常（200 或 404 但不是 423）
         r3 = first_run_client.get("/api/snapshots/shelter", headers={"X-Session-Token": token})
         assert r3.status_code != 423

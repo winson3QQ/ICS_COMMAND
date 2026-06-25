@@ -17,7 +17,7 @@ from auth.role_enum import (
 from auth.service import validate_session
 from core.database import get_conn, get_schema_version
 from core.input_safety import validate_no_unsafe_strings
-from core.pin_policy import validate_pin_strength  # #348-F5 P1
+from core.pin_policy import generate_temp_pin, validate_pin_strength  # #348-F5 P1/P2b
 from repositories._helpers import audit
 from repositories.account_cert_repo import (
     account_id_for_username,
@@ -29,12 +29,12 @@ from repositories.account_cert_repo import (
     revoke_cert,
 )
 from repositories.account_repo import (
-    clear_default_pin_flag,
     create_account,
     delete_account,
     get_account,
     get_all_accounts,
     is_valid_account_role,
+    set_default_pin_flag,
     suspend_all_accounts,
     update_account_display_name,
     update_account_pin,
@@ -58,7 +58,6 @@ from schemas.admin import (
     FactionClassifyIn,
     FactionOverrideIn,
     PiNodeCreateIn,
-    PinResetIn,
     RetentionToggleIn,
     RoleUpdateIn,
     SuspendAllIn,
@@ -212,22 +211,25 @@ def create_acct(body: AccountCreateIn, request: Request):
     if not is_valid_account_role(body.role, body.role_detail):
         raise HTTPException(422, "role invalid")
     _require_commander_new_role_allowed(sess, body.role, body.role_detail)
-    validate_pin_strength(body.pin, body.username)  # #348-F5 P1：min6 + 擋可預測 + 開放長密語
     # display_name 會被 account 列表拼進 innerHTML（auth.js admLoadAccounts）→ XSS sink，落 disk 前擋。
     if body.display_name:
         validate_no_unsafe_strings(body.display_name, label="display_name", max_len=64)
+    # #348-F5 P2b：admin 不再自設初始 PIN → 系統產隨機臨時 PIN，一次性回傳供轉交（不落 plaintext、
+    # 不寫 audit）。使用者首登被 P2a 閘強制改。
+    temp_pin = generate_temp_pin(body.username)
     try:
-        return create_account(
+        result = create_account(
             body.username,
-            body.pin,
+            temp_pin,
             body.role,
             body.display_name,
             body.role_detail,
             sess["username"],
-            require_pin_change=True,  # #348-F5 P2a：admin 給的初始 PIN，使用者首登強制改
+            require_pin_change=True,  # #348-F5 P2a：首登強制改
         )
     except Exception as e:
         raise HTTPException(409, f"account create failed: {e}") from e
+    return {**result, "temp_pin": temp_pin}  # temp_pin：僅此一次，前端顯示後即無法再取得
 
 
 @router.delete("/accounts/{username}")
@@ -258,14 +260,16 @@ def update_status(username: str, body: AccountStatusIn, request: Request):
 
 
 @router.put("/accounts/{username}/pin")
-def reset_pin(username: str, body: PinResetIn, request: Request):
+def reset_pin(username: str, request: Request):
+    # #348-F5 P2b：admin reset 不再自設 → 系統產隨機臨時 PIN、標記首登強制改、一次性回傳供轉交
+    # （不落 plaintext、不寫 audit）。對齊 create_acct，杜絕 admin 得知/保留使用者最終 PIN。
     sess = _check_account_manager(request)
     _require_commander_target_allowed(sess, username)
-    validate_pin_strength(body.new_pin, username)  # #348-F5 P1
-    if not update_account_pin(username, body.new_pin, sess["username"]):
+    temp_pin = generate_temp_pin(username)
+    if not update_account_pin(username, temp_pin, sess["username"]):
         raise HTTPException(404, "account not found")
-    clear_default_pin_flag(username)
-    return {"ok": True}
+    set_default_pin_flag(username)  # P2a 閘：使用者下次登入須改掉此臨時 PIN
+    return {"ok": True, "temp_pin": temp_pin}
 
 
 @router.put("/accounts/{username}/role")
