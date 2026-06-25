@@ -978,19 +978,20 @@ const _FACTION_META = {
 export async function admLoadFactions() {
   const box = el('adm-panel-faction');
   if (!box) return;
-  // active 場 scope（演習中 entity 綁該場；無 active → 實戰池 null）。動態 import 避免循環依賴。
+  // active 場 scope（演習中 entity 綁該場；無 active → 待命池 null＝非演習非實戰）。動態 import 避免循環依賴。
   try {
     const ex = await import('./exercises.js');
     _factionScopeEx = ex.activeExerciseId();
   } catch { _factionScopeEx = null; }
-  const scopeLabel = _factionScopeEx == null ? '實戰池（無 active 演習）' : ('演習 #' + _factionScopeEx);
+  // #389：NULL scope 真正語意＝「沒開任何場（非演習非實戰）」，非「實戰」（實戰是 type=real 的 active 場、有 id）。
+  const scopeLabel = _factionScopeEx == null ? '待命池（未開場：非演習非實戰）' : ('演習 #' + _factionScopeEx);
   const q = _factionScopeEx == null ? '' : ('?exercise_id=' + _factionScopeEx);
   const resp = await authFetch(API_BASE + '/api/admin/factions/clients' + q);
   if (!resp.ok) { box.innerHTML = '<div style="color:var(--text3);font-size:12px;padding:8px;">無法載入（需系統管理員）</div>'; return; }
   const clients = (await resp.json()).clients || [];
   let head =
     '<div style="font-size:11px;color:var(--text2);line-height:1.6;margin-bottom:10px;max-width:480px;">' +
-    '把連上的 TAK client 分類成紅／藍／中立。<b>指揮官以下只看得到藍／中立</b>，紅軍與未分類者對其隱藏（fail-closed）。' +
+    '把本場觀測到的 TAK client（含已離線）分類成紅／藍／中立。<b>指揮官以下只看得到藍／中立</b>，紅軍與未分類者對其隱藏（fail-closed）。' +
     '<br>作用範圍：<b>' + scopeLabel + '</b>　·　共 ' + clients.length + ' 個 client' +
     '<br><span style="color:var(--text3);">⚠ 需開 <code>ICS_FACTION_ISOLATION</code> 過濾才生效（分類本身隨時可做）。</span>' +
     '<button class="adm-btn" data-action="admExerciseSub" data-sub="faction" style="margin-left:8px;">重新整理</button></div>';
@@ -1023,7 +1024,9 @@ export async function admLoadFactions() {
       '<span style="font-family:monospace;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + _escAudit(c.client_key) + '">' +
         _escAudit(c.callsign || c.client_key) + '</span>' +
       badge +
-      '<span style="color:var(--text3);font-size:10px;">' + _escAudit((c.last_seen || '').replace('T', ' ').replace('Z', '')) + '</span>' +
+      // #389：在線/離線指示（last_seen 時效近似，非真連線態）。
+      '<span style="font-size:10px;" title="' + (c.online ? '近期有活動（≈在線）' : '較久無活動（≈離線）') + '">' + (c.online ? '🟢' : '⚪') + '</span>' +
+      '<span style="color:var(--text3);font-size:10px;" title="最後活動時間">' + _escAudit((c.last_seen || '').replace('T', ' ').replace('Z', '')) + '</span>' +
       '<span style="display:flex;gap:3px;">' + btns + '</span>' +
     '</div>';
   }

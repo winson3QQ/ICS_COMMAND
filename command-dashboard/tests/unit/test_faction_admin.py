@@ -128,6 +128,29 @@ def test_list_clients_self_sa_no_callsign_not_clobbered_by_marker(_no_ws):
     assert clients["DEV-D"]["callsign"] != "敵標-丁"  # 不顯 marker 名
 
 
+def test_list_clients_includes_online_flag(_no_ws):
+    """#389：剛 ingest（received_at≈now）→ online=True（在線指示欄存在且正確）。"""
+    _ingest_self_sa("DEV-ON", "在線裝置")
+    clients = {c["client_key"]: c for c in faction_service.list_clients(None)}
+    assert clients["DEV-ON"]["online"] is True
+
+
+def test_is_online_heuristic():
+    """#389：last_seen 時效近似在線——近期 True、逾窗 False、空/壞格式 False（不丟例外）。"""
+    from datetime import UTC, datetime, timedelta
+
+    now = datetime.now(UTC)
+    recent = now.strftime("%Y-%m-%dT%H:%M:%SZ")
+    old = (now - timedelta(seconds=faction_service.ONLINE_WINDOW_SEC + 60)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    assert faction_service._is_online(recent) is True
+    assert faction_service._is_online(old) is False
+    assert faction_service._is_online("") is False
+    assert faction_service._is_online("not-a-date") is False
+    # review 加固：無時區(naive) last_seen 不丟 TypeError → 視為 UTC 正常比對（防 500）。
+    naive_recent = now.strftime("%Y-%m-%dT%H:%M:%S")  # 無 Z
+    assert faction_service._is_online(naive_recent) is True
+
+
 def test_override_entity_not_clobbered_by_reresolve(_no_ws):
     """手動 override（manual）後，classify 該 producer 不覆寫 manual entity。"""
     _ingest_marker("MK-M", "DEV-Z")
