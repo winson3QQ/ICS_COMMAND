@@ -27,21 +27,18 @@ import urllib.error
 import urllib.request
 
 API = "http://127.0.0.1:8000"
-ADMIN_PIN = "1234"
 TEST_USER = "ttx_runner"
 # #348-F5 P2b：TTX 固定 PIN 須過 pin_policy（≥6 位、非可預測）；建帳號已不收 admin 自設 PIN，
 # 帳號改由系統產臨時 PIN，本 runner 首次取 temp_pin 後改成此固定值（之後 run 直登）。
 TEST_PIN = "739104"
 
 
-def _req(method, path, body=None, token=None, admin_pin=None, api=API):
+def _req(method, path, body=None, token=None, api=API):
     """送 HTTP request，回傳 (status_code, response_dict)"""
     url = api + path
     headers = {"Content-Type": "application/json"}
     if token:
         headers["X-Session-Token"] = token
-    if admin_pin:
-        headers["X-Admin-PIN"] = admin_pin
     data = json.dumps(body).encode("utf-8") if body else None
     req = urllib.request.Request(url, data=data, headers=headers, method=method)
     try:
@@ -58,19 +55,12 @@ def _req(method, path, body=None, token=None, admin_pin=None, api=API):
 
 
 def setup_auth(api=API):
-    """確保 admin PIN 已設定 + 測試帳號存在 → 回傳 session token"""
-    # 檢查 admin 狀態
+    """確保測試帳號存在 → 回傳 session token"""
+    # 檢查連線（#384：admin 後台僅 session 把關，無 Admin PIN）
     code, d = _req("GET", "/api/admin/status", api=api)
     if code != 200:
         print(f"  ✗ 無法連線 {api}：{d}")
         return None
-
-    # 設定 admin PIN（如果尚未設定）
-    if not d.get("admin_pin_setup"):
-        code2, d2 = _req("POST", "/api/config/admin_pin", {"value": ADMIN_PIN}, api=api)
-        if code2 not in (200, 405):
-            # 嘗試直接寫 config
-            pass
 
     # P2b：admin 不再自設 PIN（系統產隨機臨時 PIN，首登強制改）。TTX 帳號流程：
     # ① 先試固定 TEST_PIN 直登（前次 run 已設定）；② 否則建帳號取 temp_pin → 登入 →
@@ -88,7 +78,6 @@ def setup_auth(api=API):
             "role_detail": "測試主持人",
             "display_name": "TTX Runner",
         },
-        admin_pin=ADMIN_PIN,
         api=api,
     )
     if code != 200 or not d.get("temp_pin"):

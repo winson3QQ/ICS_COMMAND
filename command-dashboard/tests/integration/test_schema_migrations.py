@@ -6,21 +6,17 @@ tests/integration/test_schema_migrations.py — C1-E schema 版本追蹤測試
 - 所有已知 migrations 都已套用
 - _migrate() 為 idempotent（重複執行不會新增重複紀錄）
 - get_schema_version() 回傳最高版本號
-- /api/admin/schema-migrations 端點需 Admin PIN 並回傳正確格式
+- /api/admin/schema-migrations 端點需 sysadmin session 並回傳正確格式
 """
 
-import pytest
-from core.database import get_conn, get_schema_version, init_db, _MIGRATIONS
-from repositories.config_repo import set_admin_pin
+from core.database import _MIGRATIONS, get_conn, get_schema_version, init_db
 
 
 class TestMigrationsTable:
     def test_schema_migrations_table_exists(self, tmp_db):
         """init_db() 後 schema_migrations 表應存在。"""
         with get_conn() as conn:
-            tables = {r[0] for r in conn.execute(
-                "SELECT name FROM sqlite_master WHERE type='table'"
-            )}
+            tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
         assert "schema_migrations" in tables
 
     def test_all_migrations_applied(self, tmp_db):
@@ -33,13 +29,11 @@ class TestMigrationsTable:
     def test_migration_records_have_name_and_timestamp(self, tmp_db):
         """每筆 migration 紀錄需有 name 和 applied_at。"""
         with get_conn() as conn:
-            rows = conn.execute(
-                "SELECT version, name, applied_at FROM schema_migrations ORDER BY version"
-            ).fetchall()
+            rows = conn.execute("SELECT version, name, applied_at FROM schema_migrations ORDER BY version").fetchall()
         assert len(rows) == len(_MIGRATIONS)
         for row in rows:
-            assert row["name"]       # name 不為空
-            assert row["applied_at"] # applied_at 不為空
+            assert row["name"]  # name 不為空
+            assert row["applied_at"]  # applied_at 不為空
 
     def test_get_schema_version_returns_max(self, tmp_db):
         """get_schema_version() 應回傳最高版本號。"""
@@ -61,15 +55,13 @@ class TestMigrationsTable:
 
 
 class TestSchemaMigrationsApi:
-    def test_list_migrations_requires_admin_pin(self, client):
-        """/api/admin/schema-migrations Admin PIN 已設定但無 PIN header → 403。"""
-        set_admin_pin("1234", "test")
+    def test_list_migrations_requires_session(self, client):
+        """/api/admin/schema-migrations 無 session → 401（#384：僅 session 角色把關）。"""
         r = client.get("/api/admin/schema-migrations")
         assert r.status_code == 401
 
     def test_list_migrations_returns_all_versions(self, client, auth):
-        """正確 PIN → 200，回傳所有已套用的 migrations。"""
-        set_admin_pin("1234", "test")
+        """sysadmin session → 200，回傳所有已套用的 migrations。"""
         r = client.get("/api/admin/schema-migrations", headers=auth)
         assert r.status_code == 200
         data = r.json()
@@ -79,11 +71,10 @@ class TestSchemaMigrationsApi:
 
     def test_list_migrations_record_structure(self, client, auth):
         """每筆 migration 紀錄需包含 version / name / applied_at。"""
-        set_admin_pin("1234", "test")
         r = client.get("/api/admin/schema-migrations", headers=auth)
         for m in r.json():
-            assert "version"    in m
-            assert "name"       in m
+            assert "version" in m
+            assert "name" in m
             assert "applied_at" in m
 
     def test_admin_status_includes_schema_version(self, client, auth):

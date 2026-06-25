@@ -35,10 +35,7 @@ class AccountStatusIn(BaseModel):
 
 
 # PinResetIn 已移除（#348-F5 P2b）：reset_pin 改系統產隨機臨時 PIN、不收 body。
-
-
-class AdminPinIn(BaseModel):
-    new_pin: str
+# AdminPinIn 已移除（#384）：Admin PIN 為死功能（X-Admin-PIN 無後端驗證），整套移除。
 
 
 class RoleUpdateIn(BaseModel):

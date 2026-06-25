@@ -639,8 +639,6 @@ body{position:fixed;inset:0;}
 }
 .adm-header span{font-size:14px;font-weight:700;}
 .adm-close{background:none;border:none;color:var(--text2);font-size:18px;cursor:pointer;}
-#adm-pin-screen{padding:24px;display:flex;flex-direction:column;align-items:center;gap:12px;}
-#adm-pin-screen .pinlock-title{font-size:14px;}
 #adm-main{display:none;flex:1;overflow:hidden;flex-direction:column;}
 .adm-tabs{display:flex;border-bottom:1px solid var(--border);flex-shrink:0;}
 .adm-tab{
@@ -1029,16 +1027,9 @@ body{position:fixed;inset:0;}
 <div id="admin-overlay" data-action="closeAdminPanel"></div>
 <div id="admin-panel">
   <div class="adm-header"><span>帳號管理</span><button class="adm-close" data-action="closeAdminPanel">&times;</button></div>
-  <div id="adm-pin-screen">
-    <div class="pinlock-title">管理員驗證</div>
-    <div class="pinlock-sub">需要系統管理員 session 權限</div>
-    <input class="login-input" id="adm-pin-input" type="password" inputmode="numeric" maxlength="6" placeholder="Admin PIN">
-    <button class="login-btn" data-action="adminLogin">驗證</button>
-    <div id="adm-pin-warn" style="font-size:11px;color:var(--red);min-height:16px;"></div>
-  </div>
+  <!-- #384：移除 Admin PIN 驗證畫面（死功能）。後台僅靠 session 角色 RBAC 把關，直接開內容。 -->
   <div id="adm-main">
-    <!-- #346：帳號群（帳號列表+新增+系統 PIN 併一；系統子區僅 sysadmin，見 admShowTab RBAC）。
-         演習群（演習管理+紅藍+AAR）移至設定面板，故此處不再有「紅藍」tab。 -->
+    <!-- #346：帳號群（帳號列表+新增）。演習群（演習管理+紅藍+AAR）移至設定面板，故此處不再有「紅藍」tab。 -->
     <div class="adm-tabs">
       <div class="adm-tab active" data-action="admShowTab" data-tab="account">帳號</div>
       <div class="adm-tab" data-action="admShowTab" data-tab="pi">Pi 節點</div>
@@ -1046,15 +1037,13 @@ body{position:fixed;inset:0;}
       <div class="adm-tab" data-action="admShowTab" data-tab="data">備份／重設</div>
       <div class="adm-tab" data-action="admShowTab" data-tab="tak">TAK</div>
     </div>
-    <!-- 帳號群：子分頁（segmented）一次顯一段，免長捲（#346 UX）。Admin PIN 僅 sysadmin。 -->
+    <!-- 帳號群：子分頁（segmented）一次顯一段，免長捲（#346 UX）。 -->
     <div class="adm-subtabs" id="adm-account-subtabs" style="display:none;">
       <div class="adm-subtab active" data-action="admAccountSub" data-sub="list">帳號列表</div>
       <div class="adm-subtab" data-action="admAccountSub" data-sub="add">新增</div>
-      <div class="adm-subtab" id="adm-subtab-sys" data-action="admAccountSub" data-sub="sys" style="display:none;">Admin PIN</div>
     </div>
     <div class="adm-panel-body" id="adm-panel-list"></div>
     <div class="adm-panel-body" id="adm-panel-add" style="display:none;"></div>
-    <div class="adm-panel-body" id="adm-panel-sys" style="display:none;"></div>
     <div class="adm-panel-body" id="adm-panel-pi" style="display:none;"></div>
     <div class="adm-panel-body" id="adm-panel-log" style="display:none;"></div>
     <div class="adm-panel-body" id="adm-panel-data" style="display:none;"></div>

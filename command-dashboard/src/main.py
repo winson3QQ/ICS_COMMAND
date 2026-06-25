@@ -33,7 +33,7 @@ from core.database import init_db
 from core.logging import correlation_middleware, init_logging
 from core.security_headers import security_headers_middleware
 from repositories.account_repo import ensure_initial_admin_token
-from repositories.config_repo import ensure_default_admin_pin
+from repositories.config_repo import cleanup_legacy_admin_pin_config
 
 # ── Routers ───────────────────────────────────────────────────────────────────
 from routers import (
@@ -137,7 +137,7 @@ async def lifespan(app: FastAPI):
     _verify_audit_chain_on_boot()  # #372：開機驗一次稽核鏈（NIST AU-9(3)）
     # C1-A：首次啟動產生隨機 PIN（取代舊的預設 1234），印 console + 寫 ~/.ics/first_run_token
     ensure_initial_admin_token()
-    ensure_default_admin_pin()
+    cleanup_legacy_admin_pin_config()  # #384：刪升級殘留的已廢 admin_pin* config 列（防低權讀 hash）
     cleanup_expired_sessions()  # 清除上次遺留的過期 session
     # P1-13（issue #27）：首次啟動 / fresh deploy 把 seed 複製到 runtime；
     # 已存在則 no-op。避免 first GET /api/map_config 抓不到檔。

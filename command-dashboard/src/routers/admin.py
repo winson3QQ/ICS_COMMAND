@@ -17,7 +17,7 @@ from auth.role_enum import (
 from auth.service import validate_session
 from core.database import get_conn, get_schema_version
 from core.input_safety import validate_no_unsafe_strings
-from core.pin_policy import generate_temp_pin, validate_pin_strength  # #348-F5 P1/P2b
+from core.pin_policy import generate_temp_pin  # #348-F5 P2b
 from repositories._helpers import audit
 from repositories.account_cert_repo import (
     account_id_for_username,
@@ -42,7 +42,6 @@ from repositories.account_repo import (
     update_account_status,
 )
 from repositories.audit_repo import get_audit_log
-from repositories.config_repo import get_config, set_admin_pin
 from repositories.pi_node_repo import (
     create_pi_node,
     delete_pi_node,
@@ -53,7 +52,6 @@ from schemas.admin import (
     AccountCertBindIn,
     AccountCreateIn,
     AccountStatusIn,
-    AdminPinIn,
     DisplayNameUpdateIn,
     FactionClassifyIn,
     FactionOverrideIn,
@@ -109,10 +107,6 @@ async def _pre_destructive_backup(trigger: str) -> str | None:
     except Exception:
         log.warning("pre_destructive_backup_failed", msg=f"{trigger} 前備份失敗（best-effort）", exc_info=True)
         return None
-
-
-def _check_admin_pin(request: Request) -> dict:
-    return _check_system_admin(request)
 
 
 def _check_account_manager(request: Request) -> dict:
@@ -179,13 +173,12 @@ def _require_not_last_sysadmin(username: str, *, will_remain_sysadmin: bool = Fa
 @router.get("/status", tags=["account-admin"])
 def admin_status(request: Request):
     _check_system_admin(request)
-    raw = get_config("admin_pin")
     with get_conn() as conn:
         cnt = conn.execute(
             "SELECT COUNT(*) as c FROM accounts WHERE COALESCE(status, 'active') != 'archived'"
         ).fetchone()["c"]
         schema_ver = get_schema_version(conn)
-    return {"admin_pin_setup": raw is not None, "active_accounts": cnt, "schema_version": schema_ver}
+    return {"active_accounts": cnt, "schema_version": schema_ver}
 
 
 @router.get("/schema-migrations", tags=["account-admin"])
@@ -299,14 +292,6 @@ def update_display_name(username: str, body: DisplayNameUpdateIn, request: Reque
     validate_no_unsafe_strings(body.display_name, label="display_name", max_len=64)
     if not update_account_display_name(username, body.display_name, sess["username"]):
         raise HTTPException(404, "account not found")
-    return {"ok": True}
-
-
-@router.put("/pin")
-def change_pin(body: AdminPinIn, request: Request):
-    sess = _check_system_admin(request)
-    validate_pin_strength(body.new_pin)  # #348-F5 P1（Admin break-glass PIN 同強度策略）
-    set_admin_pin(body.new_pin, sess["username"])
     return {"ok": True}
 
 

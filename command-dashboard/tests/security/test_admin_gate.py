@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from auth.role_enum import ROLE_OPERATOR_ZH, ROLE_SYSADMIN_ZH
 from repositories.account_repo import create_account
-from repositories.config_repo import set_admin_pin
 
 
 def _login(client, username: str = "admin", pin: str = "1234") -> dict[str, str]:
@@ -12,22 +11,51 @@ def _login(client, username: str = "admin", pin: str = "1234") -> dict[str, str]
 
 
 class TestSysadminSessionGate:
-    def test_sysadmin_session_without_admin_pin_passes(self, client):
-        set_admin_pin("1234", "test")
+    """#384：admin 後台僅靠 session 角色 RBAC 把關；舊的 X-Admin-PIN 已移除、後端不再讀（inert）。"""
+
+    def test_sysadmin_session_passes(self, client):
         r = client.get("/api/admin/accounts", headers=_login(client))
         assert r.status_code == 200
 
-    def test_admin_pin_without_session_is_rejected(self, client):
-        set_admin_pin("1234", "test")
+    def test_no_session_is_rejected(self, client):
+        # 無 session → 401（即使帶已廢的 X-Admin-PIN header 也一樣，header 已無作用）
         r = client.get("/api/admin/accounts", headers={"X-Admin-PIN": "1234"})
         assert r.status_code == 401
 
-    def test_wrong_admin_pin_does_not_override_sysadmin_session(self, client):
-        set_admin_pin("1234", "test")
+    def test_stray_admin_pin_header_is_ignored(self, client):
+        # 帶任意 X-Admin-PIN 不影響結果——session 角色才是唯一 gate
         headers = _login(client)
         headers["X-Admin-PIN"] = "000000"
         r = client.get("/api/admin/accounts", headers=headers)
         assert r.status_code == 200
+
+
+class TestLegacyAdminPinCleanup:
+    """#384 review：升級殘留的 admin_pin* config 列開機一次性刪除，
+    避免低權角色經 GET /api/config/{key} 讀到已廢的 PIN hash（縱深退步）。"""
+
+    def test_cleanup_deletes_legacy_admin_pin_rows(self, client):
+        from repositories.config_repo import cleanup_legacy_admin_pin_config, get_config, set_config
+
+        set_config("admin_pin", '{"hash":"x","salt":"y"}', None)
+        set_config("admin_pin_failed_count", "3", None)
+        set_config("admin_pin_locked_until", "2030-01-01T00:00:00Z", None)
+        assert get_config("admin_pin") is not None
+        deleted = cleanup_legacy_admin_pin_config()
+        assert deleted == 3
+        assert get_config("admin_pin") is None
+        assert get_config("admin_pin_failed_count") is None
+        assert get_config("admin_pin_locked_until") is None
+
+    def test_observer_cannot_read_admin_pin_after_cleanup(self, client):
+        # 殘列已刪 → GET /api/config/admin_pin 回 value=None（無 hash 可洩）
+        from repositories.config_repo import cleanup_legacy_admin_pin_config, set_config
+
+        set_config("admin_pin", '{"hash":"secret","salt":"s"}', None)
+        cleanup_legacy_admin_pin_config()
+        r = client.get("/api/config/admin_pin", headers=_login(client))
+        assert r.status_code == 200
+        assert r.json()["value"] is None
 
 
 class TestRoleGate:
@@ -56,10 +84,6 @@ class TestRoleGate:
 
 
 class TestAdminBoundary:
-    def test_admin_pin_change_requires_sysadmin_session(self, client):
-        r = client.put("/api/admin/pin", headers=_login(client), json={"new_pin": "739104"})
-        assert r.status_code == 200
-
     def test_delete_nonexistent_account_returns_404(self, client):
         r = client.delete("/api/admin/accounts/ghost_user", headers=_login(client))
         assert r.status_code == 404

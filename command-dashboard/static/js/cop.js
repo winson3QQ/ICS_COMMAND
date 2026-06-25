@@ -35,7 +35,7 @@ import {
   initMap, renderMapOverlay, refreshLeafletMarkers,
   getMapConfig, findZoneByEventId, saveMapConfig,
 } from './map.js';
-import { getCurrentOperator, closeSettings, getAdminPin, closeAdminPanel, getToken } from './auth.js';
+import { getCurrentOperator, closeSettings, closeAdminPanel, getToken } from './auth.js';
 import { takLightState, takConnState } from './tak_light_state.js';
 
 const API_BASE = location.origin;
@@ -103,9 +103,8 @@ export function confirmResolve(val) {
 // ══════════════════════════════════════════════════════════════
 
 export async function confirmResetDB() {
-  // 此 action 從 admin 面板系統分頁觸發，admPin 已在登入面板時快取
-  // 若從別處觸發（無快取）再 fallback 到 prompt
-  const cachedPin = getAdminPin();
+  // #384：移除前端 Admin PIN 確認（死功能）。重設由 appConfirm（UX）+ 後端 session 角色（sysadmin）
+  // + body confirm:"RESET" 三道把關，不再走假的 X-Admin-PIN。
   closeAdminPanel();
   closeSettings();
 
@@ -115,13 +114,10 @@ export async function confirmResetDB() {
   );
   if (!ok) return;
 
-  const pin = cachedPin || prompt('請輸入管理員 PIN 確認：');
-  if (!pin) return;
-
   try {
     const resp = await authFetch(API_BASE + '/api/admin/reset-db', {
       method: 'POST',
-      headers: { 'X-Admin-PIN': pin, 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json' },
       // P1-12b OP-2：後端強制 body confirm:"RESET"（不依賴前端 dialog）
       body: JSON.stringify({ confirm: 'RESET' }),
     });

@@ -790,35 +790,26 @@ function _auditRenderModal(logs, activeFilter) {
 }
 
 // ── Admin 面板 ─────────────────────────────────────────────────
-let _admPin = '';
-
-/** 提供給 cop.js 等模組讀取已快取的 Admin PIN（admin 面板登入後設定） */
-export function getAdminPin() { return _admPin; }
+// #384：移除死掉的「Admin PIN」第二道（X-Admin-PIN 無後端驗證，後台僅靠 session 角色 RBAC 把關）。
+// 面板直接開（帳號管理角色才到得了此入口），無 PIN gate 畫面。
 
 export function openAdminPanel() {
   closeSettings();
   el('admin-overlay').classList.add('show');
   el('admin-panel').classList.add('show');
-  el('adm-pin-input').value = '';
-  el('adm-pin-warn').textContent = '';
-  if (_isAccountManagerSession()) {
-    _admPin = '';
-    el('adm-pin-screen').style.display = 'none';
-    el('adm-main').style.display = 'flex';
-    _applyAdminTabVisibility();
-    admShowTab('list');
-    _admLoadSysInfo();
+  if (!_isAccountManagerSession()) {
+    el('adm-main').style.display = 'none';   // 非帳號管理角色不應到此（後端 admin API 一律 403）
     return;
   }
-  el('adm-pin-screen').style.display = '';
-  el('adm-main').style.display = 'none';
-  el('adm-pin-warn').textContent = '需要系統管理員權限';
+  el('adm-main').style.display = 'flex';
+  _applyAdminTabVisibility();
+  admShowTab('list');
+  _admLoadSysInfo();
 }
 
 export function closeAdminPanel() {
   el('admin-overlay').classList.remove('show');
   el('admin-panel').classList.remove('show');
-  _admPin = '';
 }
 
 // #346：演習面板（設定→演習開）。內含 segmented 子分頁 演習管理/紅藍/回放（跟帳號一致）。
@@ -855,45 +846,6 @@ export function admExerciseSub(sub) {
   // aar 子分頁＝純導航按鈕，無需 load
 }
 
-export async function adminLogin() {
-  const pin = el('adm-pin-input').value.trim();
-  if (_isAccountManagerSession() && !pin) {
-    el('adm-pin-screen').style.display = 'none';
-    el('adm-main').style.display = 'flex';
-    _applyAdminTabVisibility();
-    admShowTab('list');
-    _admLoadSysInfo();
-    return;
-  }
-  if (!pin) { el('adm-pin-warn').textContent = '請輸入 PIN'; return; }
-  const resp = await authFetch(API_BASE + '/api/admin/accounts', {
-    headers: {'X-Admin-PIN': pin},
-  });
-  if (!resp.ok) {
-    const body = await resp.json().catch(() => ({}));
-    const detail = body.detail || '';
-    if (resp.status === 503) {
-      el('adm-pin-warn').textContent = '⚠️ Admin PIN 尚未設定，請查看伺服器啟動 log';
-    } else if (resp.status === 423) {
-      const localDetail = detail.replace(
-        /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z/,
-        s => new Date(s).toLocaleTimeString('zh-TW', {hour:'2-digit', minute:'2-digit'})
-      );
-      el('adm-pin-warn').textContent = '🔒 ' + (localDetail || '管理員 PIN 已鎖定，請稍後再試');
-    } else {
-      el('adm-pin-warn').textContent = detail.includes('剩餘') ? '❌ ' + detail : '❌ 管理員 PIN 錯誤';
-    }
-    el('adm-pin-input').value = '';
-    el('adm-pin-input').focus();
-    return;
-  }
-  _admPin = pin;
-  el('adm-pin-screen').style.display = 'none';
-  el('adm-main').style.display = 'flex';
-  admShowTab('list');
-  _admLoadSysInfo();
-}
-
 async function _admLoadSysInfo() {
   if (!_isSysadminSession()) return;
   try {
@@ -918,21 +870,21 @@ function _applyAdminTabVisibility() {
   });
 }
 
-// #346：admin 後台 IA 重整——8 tab → 5 群（帳號群併 list+add+sys）。演習群（紅藍/演習管理/AAR）
-// 移至設定面板（見 PART B）。RBAC：帳號群的 sys(Admin PIN) 子區僅 sysadmin；非帳號群整群僅 sysadmin。
+// #346：admin 後台 IA 重整——8 tab → 5 群（帳號群併 list+add）。演習群（紅藍/演習管理/AAR）移至設定
+// 面板（見 PART B）。RBAC：非帳號群整群僅 sysadmin。#384：移除 sys(Admin PIN) 子分頁（死功能）。
 const _ADM_GROUPS = {
-  account: ['list', 'add', 'sys'],
+  account: ['list', 'add'],
   pi: ['pi'],
   log: ['log'],
   data: ['data'],
   tak: ['tak'],
 };
-const _ADM_ALL_PANELS = ['list', 'add', 'sys', 'pi', 'log', 'data', 'tak'];
-let _admAccountSub = 'list';  // 帳號群 segmented 子分頁狀態（list/add/sys，#346 免長捲）
+const _ADM_ALL_PANELS = ['list', 'add', 'pi', 'log', 'data', 'tak'];
+let _admAccountSub = 'list';  // 帳號群 segmented 子分頁狀態（list/add，#346 免長捲）
 
 export function admShowTab(group) {
-  // 相容舊 tab 名：list/add/sys 是帳號群的子分頁、faction 已移至設定面板
-  if (['list', 'add', 'sys'].includes(group)) { _admAccountSub = group; group = 'account'; }
+  // 相容舊 tab 名：list/add 是帳號群的子分頁、faction 已移至設定面板
+  if (['list', 'add'].includes(group)) { _admAccountSub = group; group = 'account'; }
   else if (!_ADM_GROUPS[group]) group = 'account';
   if (!_isSysadminSession() && group !== 'account') group = 'account';     // 非 sysadmin 只見帳號群
   _applyAdminTabVisibility();
@@ -940,8 +892,6 @@ export function admShowTab(group) {
   const subbar = el('adm-account-subtabs');
   if (group === 'account') {
     if (subbar) subbar.style.display = '';
-    const sysSub = el('adm-subtab-sys');
-    if (sysSub) sysSub.style.display = _isSysadminSession() ? '' : 'none';   // RBAC：Admin PIN 子分頁僅 sysadmin
     ['pi', 'log', 'data', 'tak'].forEach(k => { const e = el('adm-panel-' + k); if (e) e.style.display = 'none'; });
     admAccountSub(_admAccountSub);
   } else {
@@ -954,16 +904,14 @@ export function admShowTab(group) {
   }
 }
 
-// #346：帳號群 segmented 子分頁（帳號列表 / 新增 / Admin PIN），一次顯一段、免長捲。
+// #346：帳號群 segmented 子分頁（帳號列表 / 新增），一次顯一段、免長捲。
 export function admAccountSub(sub) {
-  if (sub === 'sys' && !_isSysadminSession()) sub = 'list';                  // RBAC：Admin PIN 僅 sysadmin
-  if (!['list', 'add', 'sys'].includes(sub)) sub = 'list';
+  if (!['list', 'add'].includes(sub)) sub = 'list';
   _admAccountSub = sub;
   document.querySelectorAll('#adm-account-subtabs .adm-subtab').forEach(t => t.classList.toggle('active', t.dataset.sub === sub));
-  ['list', 'add', 'sys'].forEach(k => { const e = el('adm-panel-' + k); if (e) e.style.display = k === sub ? '' : 'none'; });
+  ['list', 'add'].forEach(k => { const e = el('adm-panel-' + k); if (e) e.style.display = k === sub ? '' : 'none'; });
   if (sub === 'list') admLoadAccounts();
   else if (sub === 'add') admShowAddForm();
-  else if (sub === 'sys') admShowSys();
 }
 
 // #343 紅藍隔離：admin 把連線 TAK client 分類成紅/藍/中立。per-exercise（active 場 scope）。
@@ -1064,22 +1012,7 @@ export async function admOverrideFaction() {
   if (msg) msg.textContent = resp.ok ? ('✓ 已套用 ' + _FACTION_META[faction].label) : ('失敗（' + resp.status + '）');
 }
 
-export function admShowSys() {
-  el('adm-panel-sys').innerHTML = `
-    <div style="margin-bottom:24px;">
-      <div style="font-size:13px;font-weight:600;margin-bottom:12px;color:var(--text);">🔑 更改 Admin PIN</div>
-      <div style="display:flex;flex-direction:column;gap:8px;max-width:320px;">
-        <input id="adm-sys-old-pin" class="login-input" type="password" inputmode="numeric"
-               maxlength="6" placeholder="目前 Admin PIN">
-        <input id="adm-sys-new-pin" class="login-input" type="password" inputmode="numeric"
-               maxlength="6" placeholder="新 PIN（4-6 位數字）">
-        <input id="adm-sys-new-pin2" class="login-input" type="password" inputmode="numeric"
-               maxlength="6" placeholder="確認新 PIN">
-        <button class="login-btn" data-action="adm-change-pin" style="margin-top:4px;">更改 Admin PIN</button>
-        <div id="adm-sys-warn" style="font-size:12px;color:var(--red);min-height:16px;"></div>
-      </div>
-    </div>`;
-}
+// #384：admShowSys（更改 Admin PIN 子分頁）已移除——Admin PIN 為死功能（X-Admin-PIN 無後端驗證）。
 
 // #315 P2-26 L2：TAK tab —— 連線開關（搬自系統 tab）+ TAK 裝置證自助發放。
 export function admShowTak() {
@@ -1495,43 +1428,7 @@ export async function admToggleTak() {
   }
 }
 
-export async function admChangeAdminPin() {
-  const oldPin  = el('adm-sys-old-pin').value.trim();
-  const newPin  = el('adm-sys-new-pin').value.trim();
-  const newPin2 = el('adm-sys-new-pin2').value.trim();
-  const warn    = el('adm-sys-warn');
-  warn.textContent = '';
-
-  if (!oldPin || !newPin || !newPin2) { warn.textContent = '⚠️ 請填寫所有欄位'; return; }
-  if (!/^\d{4,6}$/.test(newPin))     { warn.textContent = '⚠️ 新 PIN 須為 4-6 位數字'; return; }
-  if (newPin !== newPin2)             { warn.textContent = '⚠️ 新 PIN 兩次輸入不一致'; return; }
-
-  const resp = await authFetch(API_BASE + '/api/admin/pin', {
-    method: 'PUT',
-    headers: {'X-Admin-PIN': oldPin, 'Content-Type': 'application/json'},
-    body: JSON.stringify({new_pin: newPin}),
-  });
-  const body = await resp.json().catch(() => ({}));
-  if (!resp.ok) {
-    const detail = body.detail || '';
-    if (resp.status === 423) {
-      warn.textContent = '🔒 ' + detail.replace(
-        /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z/,
-        s => new Date(s).toLocaleTimeString('zh-TW', {hour:'2-digit', minute:'2-digit'})
-      );
-    } else {
-      warn.textContent = '❌ ' + (detail || '更改失敗，請確認目前 PIN 是否正確');
-    }
-    return;
-  }
-  _admPin = newPin;
-  el('adm-sys-old-pin').value = '';
-  el('adm-sys-new-pin').value = '';
-  el('adm-sys-new-pin2').value = '';
-  warn.style.color = 'var(--green, #4caf50)';
-  warn.textContent = '✅ Admin PIN 已更新';
-  setTimeout(() => { warn.textContent = ''; warn.style.color = 'var(--red)'; }, 3000);
-}
+// #384：admChangeAdminPin（更改 Admin PIN）已移除——死功能。
 
 function _admRoleOptions(selectedRole = '', sysadminOnly = false) {
   const roles = sysadminOnly
@@ -1543,7 +1440,7 @@ function _admRoleOptions(selectedRole = '', sysadminOnly = false) {
 }
 
 export async function admLoadAccounts() {
-  const resp = await authFetch(API_BASE + '/api/admin/accounts', {headers:{'X-Admin-PIN':_admPin}});
+  const resp = await authFetch(API_BASE + '/api/admin/accounts', {});
   if (!resp.ok) {
     const msg = _isCommanderSession()
       ? '無法載入下屬帳號，請重新登入後再試。'
@@ -1888,7 +1785,7 @@ export async function admSaveEdit(username) {
   // #348-F5 P2b：改 PIN 移出此處 → 「重設為臨時 PIN」按鈕（admResetPin）。儲存只處理角色 + 顯示名稱。
   const newRole = el('adm-role-' + username)?.value;
   const newDname = el('adm-dname-' + username)?.value.trim();
-  const headers = {'X-Admin-PIN': _admPin, 'Content-Type': 'application/json'};
+  const headers = {'Content-Type': 'application/json'};
   if (newRole) {
     await authFetch(API_BASE + '/api/admin/accounts/' + username + '/role', {
       method:'PUT',
@@ -1912,7 +1809,7 @@ export async function admSaveEdit(username) {
 export async function admResetPin(username) {
   if (!confirm('重設「' + username + '」的 PIN？\n系統會產生一組臨時 PIN，使用者下次登入須立即修改。\n（此臨時值只顯示一次，無法事後再取得）')) return;
   const resp = await authFetch(API_BASE + '/api/admin/accounts/' + username + '/pin', {
-    method: 'PUT', headers: {'X-Admin-PIN': _admPin},
+    method: 'PUT',
   });
   if (!resp.ok) { alert('重設失敗（' + resp.status + '）'); return; }
   const data = await resp.json().catch(() => ({}));
@@ -1946,7 +1843,7 @@ export async function admToggleStatus(username, current) {
   const newStatus = current === 'active' ? 'suspended' : 'active';
   await authFetch(API_BASE + '/api/admin/accounts/' + username + '/status', {
     method:'PUT',
-    headers:{'X-Admin-PIN':_admPin,'Content-Type':'application/json'},
+    headers:{'Content-Type':'application/json'},
     body: JSON.stringify({status: newStatus}),
   });
   admLoadAccounts();
@@ -1955,7 +1852,7 @@ export async function admToggleStatus(username, current) {
 export async function admDelete(username) {
   if (!confirm('確定刪除帳號 ' + username + '？')) return;
   await authFetch(API_BASE + '/api/admin/accounts/' + username, {
-    method:'DELETE', headers:{'X-Admin-PIN':_admPin},
+    method:'DELETE',
   });
   admLoadAccounts();
 }
@@ -1983,7 +1880,7 @@ export async function admAddAccount() {
   // #348-F5 P2b：不再送 pin，後端產隨機臨時 PIN 並回傳。
   const resp = await authFetch(API_BASE + '/api/admin/accounts', {
     method:'POST',
-    headers:{'X-Admin-PIN':_admPin,'Content-Type':'application/json'},
+    headers:{'Content-Type':'application/json'},
     body: JSON.stringify({username, role, display_name: displayName || null}),
   });
   if (!resp.ok) {
@@ -1997,7 +1894,7 @@ export async function admAddAccount() {
 }
 
 export async function admLoadLog() {
-  const resp = await authFetch(API_BASE + '/api/admin/audit-log?limit=50', {headers:{'X-Admin-PIN':_admPin}});
+  const resp = await authFetch(API_BASE + '/api/admin/audit-log?limit=50', {});
   if (!resp.ok) return;
   const logs = await resp.json();
   let html = '';
@@ -2016,7 +1913,7 @@ export async function admLoadLog() {
 let _lastCreatedApiKey = null;
 
 export async function admLoadPiNodes() {
-  const resp = await authFetch(API_BASE + '/api/admin/pi-nodes', {headers:{'X-Admin-PIN':_admPin}});
+  const resp = await authFetch(API_BASE + '/api/admin/pi-nodes', {});
   if (!resp.ok) return;
   const nodes = await resp.json();
   let html = '';
@@ -2075,7 +1972,7 @@ export async function admCreatePiNode() {
   const unit_id = el('pi-new-unit')?.value;
   const label = el('pi-new-label')?.value.trim() || unit_id;
   const resp = await authFetch(API_BASE + '/api/admin/pi-nodes', {
-    method:'POST', headers:{'X-Admin-PIN':_admPin,'Content-Type':'application/json'},
+    method:'POST', headers:{'Content-Type':'application/json'},
     body: JSON.stringify({unit_id, label}),
   });
   if (!resp.ok) {
@@ -2095,7 +1992,7 @@ export async function admCreatePiNode() {
 export async function admRekeyPiNode(unitId) {
   if (!confirm(`確定要重新產生 ${unitId} 的 API Key？舊 Key 將立即失效。`)) return;
   const resp = await authFetch(API_BASE + `/api/admin/pi-nodes/${unitId}/rekey`, {
-    method:'POST', headers:{'X-Admin-PIN':_admPin},
+    method:'POST',
   });
   if (!resp.ok) { alert('操作失敗'); return; }
   const result = await resp.json();
@@ -2110,7 +2007,7 @@ export async function admRekeyPiNode(unitId) {
 export async function admDeletePiNode(unitId) {
   if (!confirm(`確定刪除 ${unitId} 節點？`)) return;
   await authFetch(API_BASE + `/api/admin/pi-nodes/${unitId}`, {
-    method:'DELETE', headers:{'X-Admin-PIN':_admPin},
+    method:'DELETE',
   });
   admLoadPiNodes();
 }
@@ -2124,12 +2021,12 @@ export async function admPushKeyToPi() {
   resultEl.textContent = '推送中...'; resultEl.style.color = 'var(--text3)';
   try {
     const r1 = await fetch(piUrl + '/admin/command-url', {
-      method:'POST', headers:{'X-Admin-PIN':'1234','Content-Type':'application/json'},
+      method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({url: API_BASE}),
     });
     if (!r1.ok) { resultEl.textContent = '設定 command_url 失敗（檢查 Pi Admin PIN）'; resultEl.style.color='var(--red)'; return; }
     const r2 = await fetch(piUrl + '/admin/pi-api-key', {
-      method:'POST', headers:{'X-Admin-PIN':'1234','Content-Type':'application/json'},
+      method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({api_key: key}),
     });
     if (!r2.ok) { resultEl.textContent = '設定 api_key 失敗'; resultEl.style.color='var(--red)'; return; }
@@ -2165,9 +2062,6 @@ document.addEventListener('keydown', e => {
   if (pl && pl.classList.contains('show') && document.activeElement?.id === 'pinlock-pin') {
     PinLock.unlock();
     return;
-  }
-  if (document.activeElement?.id === 'adm-pin-input') {
-    adminLogin();
   }
 });
 
