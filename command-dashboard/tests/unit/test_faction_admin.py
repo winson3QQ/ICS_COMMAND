@@ -129,10 +129,28 @@ def test_list_clients_self_sa_no_callsign_not_clobbered_by_marker(_no_ws):
 
 
 def test_list_clients_includes_online_flag(_no_ws):
-    """#389：剛 ingest（received_at≈now）→ online=True（在線指示欄存在且正確）。"""
+    """#389：剛 ingest（updated_at≈now）→ online=True（在線指示欄存在且正確）。"""
     _ingest_self_sa("DEV-ON", "在線裝置")
     clients = {c["client_key"]: c for c in faction_service.list_clients(None)}
     assert clients["DEV-ON"]["online"] is True
+
+
+def test_list_clients_online_uses_updated_at_not_received_at(_no_ws):
+    """#389 修正：live 裝置 received_at 久遠（首見）但 updated_at 近期（最後活動）→ 仍 online。
+    原用 received_at 會把持續廣播的裝置誤判離線（dogfood：received_at 停在昨天）。"""
+    from datetime import UTC, datetime
+
+    from core.database import get_conn
+
+    _ingest_self_sa("DEV-LIVE", "活裝置")
+    old = "2020-01-01T00:00:00Z"
+    recent = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    with get_conn() as conn:
+        conn.execute("UPDATE cop_entities SET received_at=?, updated_at=? WHERE uid='DEV-LIVE'", (old, recent))
+        conn.commit()
+    clients = {c["client_key"]: c for c in faction_service.list_clients(None)}
+    assert clients["DEV-LIVE"]["online"] is True  # 用 updated_at（近期）非 received_at（久遠）
+    assert clients["DEV-LIVE"]["last_seen"] == recent  # last_seen 顯示最後活動
 
 
 def test_is_online_heuristic():
