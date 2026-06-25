@@ -114,7 +114,9 @@ WARNING_THRESHOLD_SECONDS: int = int(os.getenv("ICS_WARNING_THRESHOLD_SECONDS", 
 #               （無 dest 時 server 廣播全發、私訊外洩）。入向 DM→ICS 結構限制另開 #397。
 # PATCH 2.17.2：#398 Slice 1——tak_device_certs 加 fingerprint/enroll_status 欄（_m033）+ record
 #               存它們，供清單顯示 TAK 同步狀態/比對混用。schema 加欄位、無 API 破壞。
-APP_VERSION = "2.17.2"
+# MINOR 2.18.0：#398 Slice 2——撤銷連動 TAK deregister（usermod -D）+ 對帳端點（reconcile，讀
+#               UserAuthenticationFile 比對 ICS vs TAK：殭屍/混用/未同步）。registrar 協定加 op。
+APP_VERSION = "2.18.0"
 
 # CMD_VERSION：前端 UI 功能版本（不同於後端 SemVer APP_VERSION；規則見 CLAUDE.md 版號規則）
 # 兩軌版本命名，不可混用。由 /api/version 提供給前端，是唯一 source-of-truth；release 時更新此值。
@@ -122,8 +124,9 @@ APP_VERSION = "2.17.2"
 #         + 演習/放置/稽核 UI P1-13/14/16/#93 + 分類編輯器 #66）→ 0.x 畢業為 MAJOR 紀元。
 CMD_VERSION: str = os.getenv(
     "CMD_VERSION",
-    "v1.13.2",  # PATCH：#398 Slice 1——TAK 裝置證清單顯示同步狀態/fingerprint + 發證前防呆（同名重發/中文 callsign）
-)  # PATCH v1.13.1：#216 dogfood——通聯時間改本地時區顯示（對齊 header 時鐘，原顯示 UTC 慢 8 小時）。
+    "v1.14.0",  # MINOR：#398 Slice 2——TAK 裝置證面板加「對帳 TAK」（殭屍/混用/未同步）+ 撤銷改真 deregister 語意
+)  # PATCH v1.13.2：#398 Slice 1——清單顯示同步狀態/fingerprint + 發證前防呆（同名重發/中文 callsign）。
+# PATCH v1.13.1：#216 dogfood——通聯時間改本地時區顯示（對齊 header 時鐘，原顯示 UTC 慢 8 小時）。
 # MINOR v1.13.0：#216 出向 GeoChat compose 面板（通聯面板收+發、目標跟隨脈絡、COMMAND_ROLES）。
 # PATCH v1.12.3：#384 移除「Admin PIN」驗證畫面 + 子分頁（死功能）。
 # PATCH v1.12.2：#389 紅藍分類面板——「實戰池」正名為「待命池」+「含已離線」文案 + 每行 🟢/⚪ 在線 badge。
