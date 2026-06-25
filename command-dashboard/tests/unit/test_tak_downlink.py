@@ -204,6 +204,29 @@ def test_geochat_named_room():
     assert e.find("detail/__chat/chatgrp").get("uid1") == "Blue Team"
 
 
+def test_geochat_dm_emits_marti_dest():
+    # #216 dogfood 修：DM 補 <marti><dest callsign> 讓 server 只投遞給該呼號（chatroom=收件呼號）。
+    cot = tak_downlink.build_geochat_cot(
+        sender_callsign="CMD-1", message="私訊", msg_id="m6", chatroom="3QQ-itak", recipient_uid="ITAK-9", now=_NOW
+    )
+    dest = _parse(cot).find("detail/marti/dest")
+    assert dest is not None and dest.get("callsign") == "3QQ-itak"
+
+
+def test_geochat_broadcast_has_no_marti_dest():
+    # 廣播不帶 dest → server 群發（帶 dest 反而只發給某呼號）。
+    cot = tak_downlink.build_geochat_cot(sender_callsign="CMD-1", message="全體", msg_id="m7", now=_NOW)
+    assert _parse(cot).find("detail/marti") is None
+
+
+def test_geochat_named_room_has_no_marti_dest():
+    # 命名聊天室（非 DM）不帶 dest → 走聊天室群發語意。
+    cot = tak_downlink.build_geochat_cot(
+        sender_callsign="CMD-1", message="隊伍", msg_id="m8", chatroom="Blue Team", now=_NOW
+    )
+    assert _parse(cot).find("detail/marti") is None
+
+
 def test_geochat_escapes_xml_metachars():
     # 訊息含 XML metachar → escape，產出仍是合法單一 event（不被注入撐破）
     cot = tak_downlink.build_geochat_cot(sender_callsign='ev"il', message="<script>&</bad>", msg_id="m4", now=_NOW)

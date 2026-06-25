@@ -122,6 +122,8 @@ def build_geochat_cot(
     - **全體廣播**：`recipient_uid=None` + `chatroom="All Chat Rooms"` → room_seg=「All Chat Rooms」。
     - **命名聊天室/隊伍**：`recipient_uid=None` + `chatroom=<房名>` → room_seg=房名。
     - **點對點 DM**：`recipient_uid=<裝置uid>` → room_seg=收件 uid、`chatroom` 帶收件呼號（顯示用）。
+      DM 另補 `<marti><dest callsign>` 讓 **server 只投遞給該呼號**——否則 server 對無 dest 的
+      GeoChat 廣播全發、靠 client 過濾顯示，而 ATAK/iTAK 鬆緊不一會外洩（#216 dogfood 實證）。
 
     sender_uid 預設站台身分 `ICS-CMD`（見 ICS_SELF_UID）；`sender_callsign` 帶實際發話者（誠實）。
     uid 含 `msg_id`（呼叫端給的唯一 GUID）——回送 ICS 自身時靠它冪等去重（chat_repo.chat_exists）。
@@ -143,8 +145,12 @@ def build_geochat_cot(
         "</__chat>"
         # 發話者自連（ATAK 用以解析「誰發的」→ reply 路由）；ICS 站台身分。
         f"<link uid={quoteattr(sender_uid)} type='a-f-G-U-C-I' relation='p-p'/>"
-        f"<remarks source={quoteattr(source)} to={quoteattr(room_seg)} time='{t}'>{escape(message)}</remarks>"
     )
+    # DM：補 server 路由指令——只投遞給該呼號（chatroom 在 DM 模式即收件呼號）。廣播/聊天室不帶
+    # dest（讓 server 群發）。沒這個 → server 廣播全發、私訊外洩給非收件端（#216 dogfood）。
+    if recipient_uid:
+        detail += f"<marti><dest callsign={quoteattr(chatroom)}/></marti>"
+    detail += f"<remarks source={quoteattr(source)} to={quoteattr(room_seg)} time='{t}'>{escape(message)}</remarks>"
 
     return (
         "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>"

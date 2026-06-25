@@ -506,9 +506,13 @@ function _row(c) {
   return row;
 }
 
-/** ISO 8601 → HH:MM:SS（顯示用；非 ISO 原樣回傳，不臆測）。 */
+/** ISO 8601（UTC，帶 Z）→ **本地** HH:MM:SS。對齊 header 時鐘（main.js toTimeString=本地），
+ *  否則通聯顯示 UTC、比 header 慢一個時區（#216 dogfood 抓出）。CoT/received_at 皆帶 Z（UTC），
+ *  new Date 解為 UTC、toTimeString 轉本地。非標準 ISO（無法解析）→ 退回原樣切，不臆測時區。 */
 function _shortTime(t) {
   if (typeof t !== 'string') return '';
+  const d = new Date(t);
+  if (!Number.isNaN(d.getTime())) return d.toTimeString().slice(0, 8);
   const m = t.match(/T(\d{2}:\d{2}:\d{2})/);
   return m ? m[1] : t;
 }
