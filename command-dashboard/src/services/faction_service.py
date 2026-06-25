@@ -60,17 +60,22 @@ def list_clients(exercise_id: int | None) -> list[dict]:
     callsign（顯示）優先取**裝置 self-SA**（uid == client_key，裝置自身態勢，呼號即裝置呼號），
     而非該 producer 名下最新一筆——否則裝置標一個 marker 後，marker 較新會把裝置呼號蓋成 marker 名
     （dogfood 實證：ATAK 標 marker 後分類面板顯示成「N.23.…」而非「3QQ-atak」）。無 self-SA 時
-    才 fallback 到最新一筆 callsign。last_seen 仍取名下任一最新（活動時間語意不變）。
+    才 fallback 到最新一筆 callsign。
+
+    last_seen/online（#389 修正）取 **updated_at（最後活動）** 而非 received_at——後者是「首見」時間、
+    再廣播不更新（dogfood：live 裝置 received_at 停在昨天、online 誤判離線）。updated_at 每次更新都 bump、
+    且不會被設成未來（不像 archived marker 的 stale=2099），故「max(updated_at)」即裝置最後活動的可靠近似。
     """
     fmap = client_faction_repo.get_faction_map(exercise_id)
     agg: dict[str, dict] = {}
     for e in _producer_entities(exercise_id):
         ck = cop_service.resolve_client_key_from_parts(e["uid"], e.get("attributes") or {})
-        seen = e.get("received_at") or ""
+        seen = e.get("received_at") or ""  # 首見（呼號排序用，穩定）
+        upd = e.get("updated_at") or seen  # 最後活動（last_seen/online 用）
         is_self = e["uid"] == ck  # 裝置 self-SA：自身 uid 即 client_key（marker 的 uid 不同）
         d = agg.setdefault(ck, {"client_key": ck, "last_seen": "", "_self_seen": "", "_any_seen": ""})
-        if seen > d["last_seen"]:
-            d["last_seen"] = seen
+        if upd > d["last_seen"]:
+            d["last_seen"] = upd
         # 呼號優先序：最新的 self-SA > 最新的非 self（marker fallback）
         if is_self and seen >= d["_self_seen"]:
             d["_self_seen"], d["_self_cs"] = seen, e.get("callsign")
@@ -86,7 +91,7 @@ def list_clients(exercise_id: int | None) -> list[dict]:
                 "client_key": ck,
                 "callsign": callsign,
                 "last_seen": d["last_seen"],
-                "online": _is_online(d["last_seen"]),  # #389：在線/離線指示（last_seen 時效近似）
+                "online": _is_online(d["last_seen"]),  # #389：在線指示（last_seen=updated_at 最後活動，時效近似）
                 "faction": fmap.get(ck),
                 "classified": ck in fmap,
             }
