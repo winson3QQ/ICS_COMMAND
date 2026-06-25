@@ -1045,10 +1045,14 @@ export function admShowTak() {
         <button class="adm-btn" data-action="adm-issue-tak-device" title="線上簽發並下載 data package">發裝置證</button>
       </div>
       <div id="adm-tak-device-result"></div>
-      <div style="font-size:12px;font-weight:600;margin-top:16px;margin-bottom:4px;color:var(--text);">已發裝置證（盤點）</div>
-      <div style="font-size:11px;color:var(--text3);margin-bottom:6px;line-height:1.5;max-width:420px;">
-        ⚠ 「撤銷」目前僅<b>帳面標記</b>，<b>不會阻擋該裝置連 TAK</b>（TAK 信任整個 CA、無 per-cert 拒絕）。真撤銷（CRL）見 #318。
+      <div style="display:flex;align-items:center;gap:8px;margin-top:16px;margin-bottom:4px;">
+        <span style="font-size:12px;font-weight:600;color:var(--text);">已發裝置證（盤點）</span>
+        <button class="adm-btn" data-action="adm-reconcile-tak" title="向 TAK server 查實際 managed user，比對 ICS 紀錄（殭屍/混用/未同步）">對帳 TAK</button>
       </div>
+      <div style="font-size:11px;color:var(--text3);margin-bottom:6px;line-height:1.5;max-width:440px;">
+        #398：「撤銷」現會從 TAK <b>真移除</b>該 callsign 的 managed user（該 callsign 連不上）；被新證取代的舊列只標撤銷、不動 TAK。「對帳 TAK」查 TAK 端真相 vs ICS 紀錄。
+      </div>
+      <div id="adm-tak-reconcile" style="max-width:480px;margin-bottom:6px;"></div>
       <div id="adm-tak-device-list" style="max-width:480px;"></div>
     </div>`;
   _admLoadTakConn();
@@ -1113,10 +1117,42 @@ export async function admLoadTakDeviceCerts() {
 }
 
 export async function admRevokeTakDevice(certId) {
-  if (!confirm('標記此 TAK 裝置證為已撤銷？\n⚠ 這只是帳面記錄，不會阻擋該裝置連 TAK（真撤銷需 CRL，#318）。')) return;
+  // #398 A：撤現行證會從 TAK 真移除 managed user（該 callsign 連不上）；被取代的舊列只標撤銷。
+  if (!confirm('撤銷此 TAK 裝置證？\n⚠ 若為現行證 → 會從 TAK 移除該 callsign 的 managed user，該 callsign 將連不上（含同名其他證）。被新證取代的舊列只標撤銷、不動 TAK。')) return;
   const resp = await authFetch(API_BASE + '/api/admin/tak/device-certs/' + certId + '/revoke', { method: 'POST' });
-  if (!resp.ok) { alert('撤銷標記失敗（' + resp.status + '）'); return; }
+  if (!resp.ok) { alert('撤銷失敗（' + resp.status + '）'); return; }
+  const d = (await resp.json()).deregister;
+  // 連動結果回饋：真移除 / 被取代跳過 / registrar 未配置或失敗。
+  if (d && d !== 'deregistered' && d !== 'skipped-superseded') alert('已撤銷（ICS 帳面）。但從 TAK 移除未成功：' + d + '\n（registrar 未配置或逾時——該 callsign 可能仍能連 TAK，請確認 registrar）');
   admLoadTakDeviceCerts();
+}
+
+// #398 B：對帳 ICS 紀錄 vs TAK 實際 managed users（殭屍 / 混用 / 未同步）。
+export async function admReconcileTak() {
+  const box = el('adm-tak-reconcile');
+  if (box) box.innerHTML = '<div style="font-size:11px;color:var(--text3);">對帳中…</div>';
+  const resp = await authFetch(API_BASE + '/api/admin/tak/device-certs/reconcile');
+  if (!resp.ok) { if (box) box.innerHTML = '<div style="font-size:11px;color:var(--red);">對帳失敗（' + resp.status + '）</div>'; return; }
+  const r = await resp.json();
+  if (!box) return;
+  if (!r.ok) { box.innerHTML = '<div style="font-size:11px;color:var(--text3);">對帳未配置 / 失敗：' + _escAudit(r.reason || '') + '（registrar 未接？）</div>'; return; }
+  const ST = {
+    matched: ['var(--green)', '✓ 相符'],
+    mismatch: ['var(--red)', '⚠ fingerprint 不符（混用）'],
+    unknown: ['var(--text3)', '? 未知（升級前）'],
+    zombie: ['var(--red)', '👻 殭屍（TAK 有、ICS 無）'],
+    infra: ['var(--text3)', '⚙ 基礎設施'],
+  };
+  let html = '<div style="font-size:11px;color:var(--text3);margin-bottom:4px;">TAK 端 ' + r.tak_users.length + ' 個 managed user：</div>';
+  for (const u of r.tak_users) {
+    const m = ST[u.status] || ['var(--text3)', u.status];
+    html += '<div style="display:flex;gap:6px;align-items:center;font-size:11px;padding:2px 0;">' +
+      '<span style="font-family:monospace;flex:1;">' + _escAudit(u.callsign) + '</span>' +
+      '<span title="' + _escAudit('SHA-256：' + u.fingerprint) + '" style="font-family:monospace;color:var(--text3);font-size:9px;">' + _escAudit(_fpShort(u.fingerprint)) + '</span>' +
+      '<span style="color:' + m[0] + ';">' + m[1] + '</span></div>';
+  }
+  if (r.ics_unsynced.length) html += '<div style="font-size:11px;color:var(--red);margin-top:4px;">⚠ ICS 有、TAK 無（未同步，發了沒上 TAK）：' + _escAudit(r.ics_unsynced.join('、')) + '</div>';
+  box.innerHTML = html;
 }
 
 // #325：刪除已撤銷的盤點紀錄（清理累積 revoked；刪紀錄 ≠ 撤證）。

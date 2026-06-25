@@ -15,10 +15,14 @@
 #   經**共享卷檔佇列**收 dashboard 的註冊請求 → 跑 usermod 把裝置證 fingerprint 註冊成 managed user
 #   + 指派初始群（預設 neutral，fail-closed）。之後 admin 紅藍分類走 REST update-groups（#363）。
 #
-# 協定（無外部依賴、injection-safe；不用 JSON，bash 解三行純文字）：
-#   請求：$QUEUE/requests/<id>.req  內容三行＝callsign / fingerprint / group
-#         （dashboard 先寫 .tmp 再 rename 進來，避免讀到半寫）。
-#   結果：$QUEUE/results/<id>.res   首 token＝OK|ERR，其後為訊息。
+# 協定（無外部依賴、injection-safe；不用 JSON，bash 解純文字行）：
+#   請求：$QUEUE/requests/<id>.req  內容＝callsign / fingerprint / group / op（#398：第 4 行 op
+#         選用，預設 register，向後相容既有三行請求）。dashboard 先寫 .tmp 再 rename，避免讀半寫。
+#   op（#398 Slice 2）：
+#     · register   ＝ usermod -f <fp> -g <group> <callsign>（建/改 cert-user）。
+#     · deregister ＝ usermod -D <callsign>（從 TAK 移除 managed user；刪/撤連動，facet A）。
+#     · reconcile  ＝ 讀 UserAuthenticationFile.xml 回 TAK 端真相（facet B；無使用者輸入、不碰 usermod）。
+#   結果：$QUEUE/results/<id>.res   首 token＝OK|ERR，其後為訊息 / reconcile 的 callsign<TAB>fp 列。
 #   watcher 處理後刪請求檔；dashboard 輪詢結果檔（逾時 = best-effort 跳過）。
 #
 # 安全：fingerprint / callsign / group 一律格式驗證後才餵 usermod（defense-in-depth，
@@ -31,6 +35,8 @@ REQ_DIR="$QUEUE/requests"
 RES_DIR="$QUEUE/results"
 JAR="${USERMANAGER_JAR:-/opt/tak/utils/UserManager.jar}"
 POLL_S="${REGISTRAR_POLL_S:-1}"
+# #398 B：reconcile 讀此檔取 TAK 端 cert-user → fingerprint 真相（與 usermod 同一份 SoT）。
+AUTH_FILE="${USER_AUTH_FILE:-/opt/tak/UserAuthenticationFile.xml}"
 
 # fingerprint＝SHA-256 冒號分隔大小寫 hex（openssl x509 -fingerprint -sha256 原樣，32 組）。
 FP_RE='^([0-9A-Fa-f]{2}:){31}[0-9A-Fa-f]{2}$'
@@ -43,6 +49,11 @@ log() { echo "[registrar $(date -u +%FT%TZ)] $*"; }
 
 valid_group() { case "$1" in neutral | red | blue) return 0 ;; *) return 1 ;; esac; }
 
+# #398 review：infra cert-user 防護線——ICS 自身連線(ics-cot)/管理(ics-tak-admin) 證**不可**被
+# deregister（usermod -D）。即使上游 dashboard 已擋，本容器跑 root usermod = 敏感，且佇列 0777
+# 共享、被攻陷的 web tier 可直寫請求 → 此處獨立 denylist 防「刪掉 ICS 自己的 TAK 身分」blast radius。
+is_infra_user() { case "$1" in ics-cot | ics-tak-admin) return 0 ;; *) return 1 ;; esac; }
+
 mkdir -p "$REQ_DIR" "$RES_DIR"
 # 佇列由 root（本容器，takserver image）建，但消費端 ics-command 跑**非 root**（uid 10001 `ics`）→
 # root:root 755 會讓 ICS 寫請求檔 Permission denied、enroll 靜默失敗。0777（無 sticky）：兩個受信
@@ -54,33 +65,78 @@ while true; do
   shopt -s nullglob
   for f in "$REQ_DIR"/*.req; do
     id="$(basename "$f" .req)"
-    # 三行：callsign / fingerprint / group。mapfile 容空尾行。
+    # 四行：callsign / fingerprint / group / op（#398：op 選用，預設 register，向後相容既有三行請求）。
     mapfile -t L <"$f" || true
     callsign="${L[0]:-}"
     fp="${L[1]:-}"
     group="${L[2]:-neutral}"
-    # 注意：請求檔 .req **不在此刪**，而是在「結果寫完後」才刪（見各分支末），達 at-least-once：
-    # 若 crash 在 usermod 後、刪檔前 → 重啟重跑（usermod -f 為 replace、冪等，無害），不會靜默丟件。
+    op="${L[3]:-register}"
+    op="${op%$'\r'}"  # 防 CRLF 殘留（ICS 寫 \n，但戒慎）
+    # 請求檔 .req 在「結果寫完後」才刪（見各分支末），達 at-least-once：crash 重跑（usermod 冪等）不丟件。
 
-    if ! [[ "$callsign" =~ $CN_RE ]] || ! [[ "$fp" =~ $FP_RE ]] || ! valid_group "$group"; then
-      log "reject $id: bad-input (callsign/fp/group 格式不符)"
-      echo "ERR bad-input" >"$RES_DIR/$id.res.tmp" && mv "$RES_DIR/$id.res.tmp" "$RES_DIR/$id.res"
-      rm -f "$f"
-      continue
-    fi
-
-    # usermod -f <fp> -g <group> <callsign>：建/改 cert-user（-g = in+out 群權限）。
-    # 連 takserver 本機 IPC 熱套用（共享 netns 才到得了）。
-    out="$(cd /opt/tak && java -jar "$JAR" usermod -f "$fp" -g "$group" "$callsign" 2>&1)"
-    rc=$?
-    if [ "$rc" -eq 0 ]; then
-      log "registered $callsign -> group=$group"
-      echo "OK $group" >"$RES_DIR/$id.res.tmp" && mv "$RES_DIR/$id.res.tmp" "$RES_DIR/$id.res"
-    else
-      msg="${out//$'\n'/ }"
-      log "usermod FAIL $callsign rc=$rc: $msg"
-      printf 'ERR rc=%s %s\n' "$rc" "$msg" >"$RES_DIR/$id.res.tmp" && mv "$RES_DIR/$id.res.tmp" "$RES_DIR/$id.res"
-    fi
+    case "$op" in
+      register)
+        # usermod -f <fp> -g <group> <callsign>：建/改 cert-user（-g = in+out 群權限）。連本機 IPC 熱套用。
+        if ! [[ "$callsign" =~ $CN_RE ]] || ! [[ "$fp" =~ $FP_RE ]] || ! valid_group "$group"; then
+          log "reject $id: bad-input (register callsign/fp/group 格式不符)"
+          echo "ERR bad-input" >"$RES_DIR/$id.res.tmp" && mv "$RES_DIR/$id.res.tmp" "$RES_DIR/$id.res"
+        else
+          out="$(cd /opt/tak && java -jar "$JAR" usermod -f "$fp" -g "$group" "$callsign" 2>&1)"
+          rc=$?
+          if [ "$rc" -eq 0 ]; then
+            log "registered $callsign -> group=$group"
+            echo "OK $group" >"$RES_DIR/$id.res.tmp" && mv "$RES_DIR/$id.res.tmp" "$RES_DIR/$id.res"
+          else
+            msg="${out//$'\n'/ }"
+            log "usermod FAIL $callsign rc=$rc: $msg"
+            printf 'ERR rc=%s %s\n' "$rc" "$msg" >"$RES_DIR/$id.res.tmp" && mv "$RES_DIR/$id.res.tmp" "$RES_DIR/$id.res"
+          fi
+        fi
+        ;;
+      deregister)
+        # #398 A：從 TAK 移除 managed user（usermod -D = --delete-user）。只需 callsign（fp/group 忽略）。
+        if ! [[ "$callsign" =~ $CN_RE ]]; then
+          log "reject $id: bad-input (deregister callsign 格式不符)"
+          echo "ERR bad-input" >"$RES_DIR/$id.res.tmp" && mv "$RES_DIR/$id.res.tmp" "$RES_DIR/$id.res"
+        elif is_infra_user "$callsign"; then
+          # review：拒刪 ICS 自身/管理證——保護 ICS 的 TAK 控制面（防 footgun / 被攻陷 web tier）。
+          log "reject $id: infra-protected deregister '$callsign'"
+          echo "ERR infra-protected" >"$RES_DIR/$id.res.tmp" && mv "$RES_DIR/$id.res.tmp" "$RES_DIR/$id.res"
+        else
+          out="$(cd /opt/tak && java -jar "$JAR" usermod -D "$callsign" 2>&1)"
+          rc=$?
+          if [ "$rc" -eq 0 ]; then
+            log "deregistered $callsign"
+            echo "OK deregistered" >"$RES_DIR/$id.res.tmp" && mv "$RES_DIR/$id.res.tmp" "$RES_DIR/$id.res"
+          else
+            msg="${out//$'\n'/ }"
+            log "usermod -D FAIL $callsign rc=$rc: $msg"
+            printf 'ERR rc=%s %s\n' "$rc" "$msg" >"$RES_DIR/$id.res.tmp" && mv "$RES_DIR/$id.res.tmp" "$RES_DIR/$id.res"
+          fi
+        fi
+        ;;
+      reconcile)
+        # #398 B：回 TAK 端真相——讀 UserAuthenticationFile.xml 取每個 cert-user 的 fingerprint（無使用者
+        # 輸入、不碰 usermod）。輸出首行 'OK reconcile <count>'，其後每行 callsign<TAB>fingerprint。
+        # review：取整個 <User …> 元素（含兩屬性的才要），再各自抽 identifier/fingerprint——**不依賴
+        # 屬性相鄰或順序**（usermod marshaller / register-tak-fingerprint.sh 會插 role= 在中間，
+        # 舊「相鄰」pattern 會漏抓 → reconcile 誤報全未同步）。grep -F 過濾兩屬性都在。
+        mapfile -t USERS < <(grep -oE '<User [^>]*>' "$AUTH_FILE" 2>/dev/null | grep -F 'identifier=' | grep -F 'fingerprint=' || true)
+        {
+          printf 'OK reconcile %s\n' "${#USERS[@]}"
+          for u in "${USERS[@]}"; do
+            uid_="$(printf '%s' "$u" | sed -E 's/.*identifier="([^"]+)".*/\1/')"
+            ufp="$(printf '%s' "$u" | sed -E 's/.*fingerprint="([0-9A-Fa-f:]+)".*/\1/')"
+            printf '%s\t%s\n' "$uid_" "$ufp"
+          done
+        } >"$RES_DIR/$id.res.tmp" && mv "$RES_DIR/$id.res.tmp" "$RES_DIR/$id.res"
+        log "reconcile -> ${#USERS[@]} users"
+        ;;
+      *)
+        log "reject $id: unknown-op '$op'"
+        echo "ERR unknown-op" >"$RES_DIR/$id.res.tmp" && mv "$RES_DIR/$id.res.tmp" "$RES_DIR/$id.res"
+        ;;
+    esac
     rm -f "$f"  # 結果已落地，刪請求（at-least-once：crash 重跑冪等）
   done
   shopt -u nullglob
