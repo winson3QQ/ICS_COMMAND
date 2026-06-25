@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from auth.role_enum import ROLE_OPERATOR_ZH, ROLE_SYSADMIN_ZH
 from repositories.account_repo import create_account
-from repositories.config_repo import set_admin_pin
 
 
 def _login(client, username: str = "admin", pin: str = "1234") -> dict[str, str]:
@@ -12,18 +11,19 @@ def _login(client, username: str = "admin", pin: str = "1234") -> dict[str, str]
 
 
 class TestSysadminSessionGate:
-    def test_sysadmin_session_without_admin_pin_passes(self, client):
-        set_admin_pin("1234", "test")
+    """#384：admin 後台僅靠 session 角色 RBAC 把關；舊的 X-Admin-PIN 已移除、後端不再讀（inert）。"""
+
+    def test_sysadmin_session_passes(self, client):
         r = client.get("/api/admin/accounts", headers=_login(client))
         assert r.status_code == 200
 
-    def test_admin_pin_without_session_is_rejected(self, client):
-        set_admin_pin("1234", "test")
+    def test_no_session_is_rejected(self, client):
+        # 無 session → 401（即使帶已廢的 X-Admin-PIN header 也一樣，header 已無作用）
         r = client.get("/api/admin/accounts", headers={"X-Admin-PIN": "1234"})
         assert r.status_code == 401
 
-    def test_wrong_admin_pin_does_not_override_sysadmin_session(self, client):
-        set_admin_pin("1234", "test")
+    def test_stray_admin_pin_header_is_ignored(self, client):
+        # 帶任意 X-Admin-PIN 不影響結果——session 角色才是唯一 gate
         headers = _login(client)
         headers["X-Admin-PIN"] = "000000"
         r = client.get("/api/admin/accounts", headers=headers)
@@ -56,10 +56,6 @@ class TestRoleGate:
 
 
 class TestAdminBoundary:
-    def test_admin_pin_change_requires_sysadmin_session(self, client):
-        r = client.put("/api/admin/pin", headers=_login(client), json={"new_pin": "739104"})
-        assert r.status_code == 200
-
     def test_delete_nonexistent_account_returns_404(self, client):
         r = client.delete("/api/admin/accounts/ghost_user", headers=_login(client))
         assert r.status_code == 404

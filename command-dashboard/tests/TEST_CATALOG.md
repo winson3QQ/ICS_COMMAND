@@ -1,10 +1,10 @@
 # ICS DMAS 測試目錄
 
-> 目前共 **303 個測試案例**（**303 passed + 0 xfailed**），分四層執行（Unit / Integration / API / Security）。  
-> 最新報告：cmd-v2.0.8，2026-04-25，303 passed（C3-D 第二階段新增 17 個 API 測試）  
-> 注意：Linux/Mac CI 全 pass；Windows 環境下 1 個 test_writes_token_file 因 chmod 0o600 在 Win 無 Unix 語義而失敗（pre-existing，與功能無關）  
-> 新增：C2-D `TestAdminPinLockout`（7）、C1-E `TestMigrationsTable`（6）+ `TestSchemaMigrationsApi`（4）、Admin PIN 503 測試（1）；**C3-D 階段一 `Test{CreateBackup,ListBackups,CleanupOldBackups,VerifyBackup,RestoreBackup}`（17）+ 階段二 admin API `Test{AdminPinGate,ListBackups,TriggerBackup,VerifyEndpoint,PreviewEndpoint,RestoreCmdEndpoint}`（17）**  
-> Coverage：**44%**（legacy dead code `db.py` / `main_legacy.py` 於 2026-04-25 Session C audit 後移除）  
+> 目前共 **303 個測試案例**（**303 passed + 0 xfailed**），分四層執行（Unit / Integration / API / Security）。
+> 最新報告：cmd-v2.0.8，2026-04-25，303 passed（C3-D 第二階段新增 17 個 API 測試）
+> 注意：Linux/Mac CI 全 pass；Windows 環境下 1 個 test_writes_token_file 因 chmod 0o600 在 Win 無 Unix 語義而失敗（pre-existing，與功能無關）
+> 新增：C2-D `TestAdminPinLockout`（7）、C1-E `TestMigrationsTable`（6）+ `TestSchemaMigrationsApi`（4）、Admin PIN 503 測試（1）；**C3-D 階段一 `Test{CreateBackup,ListBackups,CleanupOldBackups,VerifyBackup,RestoreBackup}`（17）+ 階段二 admin API `Test{AdminPinGate,ListBackups,TriggerBackup,VerifyEndpoint,PreviewEndpoint,RestoreCmdEndpoint}`（17）**
+> Coverage：**44%**（legacy dead code `db.py` / `main_legacy.py` 於 2026-04-25 Session C audit 後移除）
 > 執行指令：`bash scripts/run_tests.sh`
 
 ---
@@ -258,7 +258,7 @@
 
 ## Security 測試（19 個）—— C1-A Phase 1（cmd-v2.0.2）
 
-> 對應規格：`docs/commercialization_plan_v1.md §C1-A`  
+> 對應規格：`docs/commercialization_plan_v1.md §C1-A`
 > 測試檔路徑：`tests/security/`
 
 ### `test_login_lockout.py` — 登入鎖定 + IP rate limit（9 個）
@@ -322,7 +322,7 @@
 
 ## Security 測試擴充（51 個）—— Smoke v2（2026-04-24）
 
-> 對應規格：韌性 / 安全 / 模糊測試  
+> 對應規格：韌性 / 安全 / 模糊測試
 > 測試檔路徑：`tests/security/`
 
 ### `test_sync_integrity.py` — 同步完整性（9 個）
@@ -492,30 +492,10 @@
 
 ### `test_admin_gate.py` — Admin 權限集中化守門（10 個）
 
-#### `TestSessionVsAdminPin`（4 個）
+#### ~~Admin PIN gate 系列~~ — **已移除（#384）**
 
-| 測試案例 | 驗證什麼 |
-|---------|---------|
-| `test_valid_session_without_admin_pin_returns_403` | 有效 session + 無 X-Admin-PIN → 403（session 不替代 PIN）|
-| `test_valid_session_with_wrong_admin_pin_returns_403` | 有效 session + 錯誤 PIN → 403 |
-| `test_no_session_with_correct_admin_pin_passes` | 無 session + 正確 PIN → 200（admin 端點豁免 session auth）|
-| `test_valid_session_with_correct_admin_pin_passes` | 有效 session + 正確 PIN → 200 |
-
-#### `TestRoleVsAdminPin`（3 個）
-
-| 測試案例 | 驗證什麼 |
-|---------|---------|
-| `test_operator_without_admin_pin_gets_403` | 操作員角色 + 無 PIN → 403（角色不替代 PIN）|
-| `test_operator_with_correct_admin_pin_can_access` | 操作員 + 正確 PIN → 200（PIN 才是守門關鍵）|
-| `test_operator_cannot_escalate_own_role_without_pin` | 操作員嘗試升級自己角色（無 PIN）→ 403 |
-
-#### `TestAdminPinBoundary`（3 個）
-
-| 測試案例 | 驗證什麼 |
-|---------|---------|
-| `test_admin_pin_not_setup_verify_returns_false` | 空 DB 無 admin_pin → `verify_admin_pin()` 回 False |
-| `test_admin_pin_change_takes_effect_immediately` | 改 PIN 後舊 PIN 立刻失效，新 PIN 立刻生效 |
-| `test_delete_nonexistent_account_returns_404` | 刪除不存在帳號（正確 PIN）→ 404 |
+> Admin PIN（`X-Admin-PIN` / `verify_admin_pin` / `set_admin_pin` / `change_pin` 端點）為**死功能**（後端從未驗證該 header，RBAC session 角色才是實際 gate），整套移除。
+> 現行 admin 端點 gate 測試見 `tests/security/test_admin_gate.py::TestSysadminSessionGate`（session 角色把關 + 廢 header 已 inert）。上方描述「PIN 才是守門關鍵 / 無 session + 正確 PIN → 200」皆為**已失效的舊模型**，不再適用。
 
 ---
 
@@ -628,7 +608,7 @@
 | `calc_engine.py` | 61% | 下半段為 Wave 6 功能，尚未實裝 | Wave 6 |
 | ~~`db.py` / `main_legacy.py`~~ | — | **已於 2026-04-25 Session C audit 後刪除** | ✅ |
 
-> **已關閉的風險項**  
+> **已關閉的風險項**
 > ✅ ~~演練 mutex TOCTOU~~：2026-04-25 hotfix（commit 待補）— `exercise_repo.update_exercise_status` 改原子寫入（`UPDATE ... WHERE NOT EXISTS(...)` 單 statement + rowcount 檢查）；`test_concurrent_activate_at_most_one_wins` 從 xfail 改為 passed。
 
 ---

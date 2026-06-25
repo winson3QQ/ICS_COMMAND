@@ -17,8 +17,8 @@ import {
   authInit, cmdLogout, PinLock,
   openSettings, closeSettings,
   exportDashboardJSON, showAuditLog,
-  openAdminPanel, closeAdminPanel, adminLogin,
-  admShowTab, admShowSys, admChangeAdminPin,
+  openAdminPanel, closeAdminPanel,
+  admShowTab,
   admBackupNow, admRefreshBackups, admToggleDetail, admToggleBackupList, admRestore, admDownloadBackup, admRestoreFromList,
   unlockPinLock, setModalHandlers,
   canAccessMapObjects, canCreateEvents, canUseRealModeControls,
@@ -209,10 +209,8 @@ document.addEventListener('click', function (e) {
     case 'openTaxonomyEditor': openTaxonomyEditor(); break;   // #66 PR-C1
     case 'taxSave':        _handleTaxSave(); break;
     case 'closeAdminPanel': closeAdminPanel(); break;
-    case 'adminLogin':     adminLogin(); break;
     case 'admShowTab':     admShowTab(btn.dataset.tab); break;
     case 'admAccountSub':  import('./auth.js').then(m => m.admAccountSub(btn.dataset.sub)); break;  // #346
-    case 'admShowSys':     admShowSys(); break;
     // P1-12b（#228）整包備份 / 還原（admin 系統 tab）
     case 'admBackupNow':      admBackupNow(); break;
     case 'admRefreshBackups': admRefreshBackups(); break;
@@ -221,8 +219,6 @@ document.addEventListener('click', function (e) {
     case 'admDownloadBackup': admDownloadBackup(btn.dataset.name); break;
     case 'admRestoreFromList': admRestoreFromList(btn.dataset.name); break;
     case 'admRestore':        admRestore(); break;
-    case 'admChangePin':
-    case 'adm-change-pin': admChangeAdminPin(); break;
     case 'adm-toggle-tak': import('./auth.js').then(m => m.admToggleTak()); break;
     case 'adm-issue-tak-device': import('./auth.js').then(m => m.admIssueTakDevice()); break;
     case 'adm-revoke-tak-device': import('./auth.js').then(m => m.admRevokeTakDevice(btn.dataset.certId)); break;

@@ -4,7 +4,7 @@ routers/backups.py — Admin Backup 管理 API
 對應 ROADMAP C3-D 第二階段（admin UI 配套）；NIST CP-9/CP-10、CIS §11。
 
 設計：
-- 所有 endpoint 需 Admin PIN（per `_check_admin_pin`）
+- 所有 endpoint 限 sysadmin（per `_check_system_admin`，session 角色把關）
 - 不提供 production 還原 API（必須停服務 → CLI 操作；見 disaster_recovery.md）
 - 只提供 read-only inspect（preview）+ 列表 + 觸發 + 驗證 + 還原指令產生
 - 全部操作寫 audit_log
@@ -31,7 +31,7 @@ from fastapi import APIRouter, HTTPException, Request
 
 from core.config import DB_PATH
 from repositories._helpers import audit
-from routers.admin import _check_admin_pin
+from routers.admin import _check_system_admin
 from services.backup_service import (
     BACKUP_ENCRYPTION_KEY_ENV,
     BACKUP_KEY_ENV,
@@ -73,7 +73,7 @@ def list_all_backups(request: Request):
 
     #41 Sync v3: 每個 backup item 含 encrypted flag (UI 顯示加密 indicator)
     """
-    _check_admin_pin(request)
+    _check_system_admin(request)
     backups = list_backups(BACKUP_DIR)
     items = []
     for b in reversed(backups):  # 最新在前
@@ -109,7 +109,7 @@ def list_all_backups(request: Request):
 @router.post("/backups")
 def trigger_backup(request: Request):
     """立即觸發 backup（不等 systemd timer）。"""
-    _check_admin_pin(request)
+    _check_system_admin(request)
     if not DB_PATH_PATH.exists():
         raise HTTPException(404, f"DB 不存在：{DB_PATH_PATH}")
     try:
@@ -185,7 +185,7 @@ def trigger_backup(request: Request):
 @router.post("/backups/{name}/verify")
 def verify(name: str, request: Request):
     """驗證指定 backup 完整性（SQLite 可開 + schema_migrations 表存在）。"""
-    _check_admin_pin(request)
+    _check_system_admin(request)
     backup_path = _resolve_backup(name)
     ok = verify_backup(backup_path)
     audit(
@@ -205,7 +205,7 @@ def preview_contents(name: str, request: Request):
 
     用途：稽核 / forensic — 看「2 個月前資料筆數」不接觸 PII 明文。
     """
-    _check_admin_pin(request)
+    _check_system_admin(request)
     backup_path = _resolve_backup(name)
     if not verify_backup(backup_path):
         raise HTTPException(400, "backup 無效或損毀，請先 verify")
@@ -256,7 +256,7 @@ def preview_contents(name: str, request: Request):
 @router.get("/backups/{name}/restore-cmd")
 def restore_command(name: str, request: Request):
     """產生 production 還原 CLI 指令給 admin 複製（不直接執行 — 需停服務後手動跑）。"""
-    _check_admin_pin(request)
+    _check_system_admin(request)
     backup_path = _resolve_backup(name)
     audit(
         "admin",

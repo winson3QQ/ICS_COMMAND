@@ -47,7 +47,6 @@ SYSADMIN GET    /api/admin/pi-nodes
 SYSADMIN POST   /api/admin/pi-nodes
 SYSADMIN DELETE /api/admin/pi-nodes/{unit_id}
 SYSADMIN POST   /api/admin/pi-nodes/{unit_id}/rekey
-SYSADMIN PUT    /api/admin/pin
 SYSADMIN POST   /api/admin/reset-db
 SYSADMIN POST   /api/admin/reset-exercise
 SYSADMIN POST   /api/admin/restore

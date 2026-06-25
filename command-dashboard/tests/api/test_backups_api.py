@@ -2,7 +2,7 @@
 tests/api/test_backups_api.py — Admin Backup API 測試
 
 涵蓋：
-  - 5 個 endpoint 都需 Admin PIN（無 PIN → 403）
+  - 5 個 endpoint 都需 sysadmin session（無 session → 401）
   - GET /api/admin/backups list 行為
   - POST /api/admin/backups 觸發備份
   - POST /api/admin/backups/{name}/verify
@@ -19,18 +19,15 @@ from pathlib import Path
 
 import pytest
 
-from repositories.config_repo import set_admin_pin
-
-PIN = {"X-Admin-PIN": "1234"}
-
 
 def admin_headers(auth):
-    return {**auth, **PIN}
+    # #384：X-Admin-PIN 已移除；admin 端點僅靠 session（sysadmin 角色）把關。
+    return dict(auth)
 
 
 @pytest.fixture
 def with_admin_pin(client):
-    set_admin_pin("1234", "test")
+    # 名稱沿用（避免大量改 usage）；#384 後不再設 Admin PIN，純 client passthrough。
     return client
 
 

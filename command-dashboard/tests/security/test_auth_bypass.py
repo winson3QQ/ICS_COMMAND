@@ -1,45 +1,27 @@
 from __future__ import annotations
 
-from repositories.config_repo import set_admin_pin
-
 
 class TestAdminEndpointProtection:
+    """admin 端點一律需有效 session（角色 RBAC）。#384：X-Admin-PIN 已廢、後端不讀，帶與不帶皆無作用。"""
+
     def test_list_accounts_without_session_returns_401(self, client):
-        set_admin_pin("999999", "test")
         r = client.get("/api/admin/accounts")
         assert r.status_code == 401
 
-    def test_list_accounts_wrong_admin_pin_without_session_returns_401(self, client):
-        set_admin_pin("999999", "test")
-        r = client.get("/api/admin/accounts", headers={"X-Admin-PIN": "000000"})
-        assert r.status_code == 401
-
-    def test_list_accounts_empty_admin_pin_without_session_returns_401(self, client):
-        set_admin_pin("999999", "test")
-        r = client.get("/api/admin/accounts", headers={"X-Admin-PIN": ""})
-        assert r.status_code == 401
+    def test_stray_admin_pin_header_without_session_still_401(self, client):
+        # 帶已廢的 X-Admin-PIN（任意值/空值）也不能繞過 session
+        assert client.get("/api/admin/accounts", headers={"X-Admin-PIN": "000000"}).status_code == 401
+        assert client.get("/api/admin/accounts", headers={"X-Admin-PIN": ""}).status_code == 401
 
     def test_create_account_without_session_returns_401(self, client):
-        set_admin_pin("999999", "test")
         r = client.post(
             "/api/admin/accounts",
-            json={
-                "username": "hacker",
-                "pin": "1234",
-                "role": "操作員",
-                "display_name": "",
-                "role_detail": "operator",
-            },
+            json={"username": "hacker", "role": "操作員", "display_name": "", "role_detail": "operator"},
         )
         assert r.status_code == 401
 
     def test_delete_account_without_session_returns_401(self, client):
-        set_admin_pin("999999", "test")
         r = client.delete("/api/admin/accounts/admin")
-        assert r.status_code == 401
-
-    def test_admin_pin_not_configured_still_requires_session(self, client):
-        r = client.get("/api/admin/accounts")
         assert r.status_code == 401
 
 

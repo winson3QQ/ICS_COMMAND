@@ -312,7 +312,6 @@ def test_commander_cannot_access_system_admin_endpoints(client):
         ("GET", "/api/admin/audit-log", None),
         ("GET", "/api/admin/pi-nodes", None),
         ("GET", "/api/admin/schema-migrations", None),
-        ("PUT", "/api/admin/pin", {"new_pin": "5678"}),
         ("POST", "/api/admin/reset-db", None),
         ("POST", "/api/admin/reset-exercise", None),
         ("POST", "/api/admin/suspend-all", None),

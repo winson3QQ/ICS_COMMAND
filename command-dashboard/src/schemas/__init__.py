@@ -2,7 +2,7 @@
 schemas/ — 所有 Pydantic request/response 模型集中管理
 """
 
-from .admin import AccountCreateIn, AccountStatusIn, AdminPinIn, ConfigIn, PiNodeCreateIn, RoleUpdateIn
+from .admin import AccountCreateIn, AccountStatusIn, ConfigIn, PiNodeCreateIn, RoleUpdateIn
 from .ai import AIRecommendIn
 from .auth import LoginIn
 from .cop import CoPEntity, CoPEntityLink, CoPEntityTrack, CoPSeverity, CoPSource
@@ -27,7 +27,6 @@ __all__ = [
     "LoginIn",
     "AccountCreateIn",
     "AccountStatusIn",
-    "AdminPinIn",
     "RoleUpdateIn",
     "PiNodeCreateIn",
     "ConfigIn",
