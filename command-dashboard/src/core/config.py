@@ -100,20 +100,21 @@ WARNING_THRESHOLD_SECONDS: int = int(os.getenv("ICS_WARNING_THRESHOLD_SECONDS", 
 #               （/api/admin/audit-chain/verify + 開機驗證 + 修 overclaim）。
 # PATCH 2.15.4：#369 最後 sysadmin 守門 TOCTOU（module 鎖序列化 check+mutate）+ #285 成功動作
 #               異常偵測（audit() 中央 hook → 敏感單筆/批次量 SECURITY_ALERT）。純後端。
+# PATCH 2.16.1：#389 紅藍分類面板 list_clients 補 online 旗標（_is_online，last_seen 時效近似）+
+#               docstring 正名。顯示層支援，分類邏輯不變。
 # MINOR 2.16.0：#348-F5 P2a + P2b 帳號初始憑證硬化。P2a＝admin 建帳號首登強制改（is_default_pin
 #               + auth_middleware per-account 閘 + cop WS 補閘 + reset_pin 限 first-run）；P2b＝
 #               create/reset 改系統產隨機臨時 PIN（generate_temp_pin，admin 不自設、一次性回傳）。
-# PATCH 2.15.5：#348-F10 chats PII retention——cleanup_expired_chats（CHATS_TTL_DAYS=90、軸
-#               received_at、共用 retention 開關）+ chats 補進 _EXERCISE_SCOPED_TABLES。純後端。
-APP_VERSION = "2.16.0"
+APP_VERSION = "2.16.1"
 
 # CMD_VERSION：前端 UI 功能版本（不同於後端 SemVer APP_VERSION；規則見 CLAUDE.md 版號規則）
 # 兩軌版本命名，不可混用。由 /api/version 提供給前端，是唯一 source-of-truth；release 時更新此值。
 # v1.0.0：拆分自 ICS_DMAS 後首個完整可用形態（MapLibre 地圖引擎全換 P1-10b + PWA 移除 P1-11
 #         + 演習/放置/稽核 UI P1-13/14/16/#93 + 分類編輯器 #66）→ 0.x 畢業為 MAJOR 紀元。
 CMD_VERSION: str = os.getenv(
-    "CMD_VERSION", "v1.12.1"
-)  # PATCH v1.12.1：#348-F5 P2b hotfix——臨時 PIN modal 被帳號管理面板(z300)蓋住看不到 → 改自帶 z10000 overlay。
+    "CMD_VERSION", "v1.12.2"
+)  # PATCH v1.12.2：#389 紅藍分類面板——「實戰池」正名為「待命池」+「含已離線」文案 + 每行 🟢/⚪ 在線 badge。
+# PATCH v1.12.1：#348-F5 P2b hotfix——臨時 PIN modal 被帳號管理面板(z300)蓋住看不到 → 改自帶 z10000 overlay。
 # MINOR v1.12.0：#348-F5 P3 密碼欄放寬接受密語（登入/首登/PinLock 解鎖，6→128）+ show-password 眼睛。
 # PATCH v1.11.2：#293 前端 DOM-XSS sink escaping（純前端硬化、非視覺）。
 # PATCH v1.11.1：#354 帳號管理 UI 鎖定最後一個 active sysadmin 的降權控制（角色 select + 停用鈕禁用 + 提示）。
