@@ -15,8 +15,8 @@ from core.pin_policy import validate_pin_strength  # #348-F5 P1
 from repositories._helpers import audit
 from repositories.account_cert_repo import account_id_for_username, cert_active_for_account, is_mtls_bootstrap
 from repositories.account_repo import (
+    account_needs_pin_change,
     clear_default_pin_flag,
-    is_first_run_required,
     update_account_pin,
     verify_login,
 )
@@ -89,16 +89,17 @@ def login(body: LoginIn, request: Request):
 
 @router.post("/change-initial-pin")
 def change_initial_pin(body: ChangeInitialPinIn, request: Request):
-    """首次啟動改 PIN（C1-A first-run gate 解除）。
+    """改初始/admin 給的 PIN（清 is_default_pin）。
 
     不需要 admin 系統 PIN，只驗目前帳號 PIN 後更新。
-    只在 is_default_pin=1 期間有效（gate 解除後回 403）。
+    #348-F5 P2a：原限 is_first_run_required（只第一個 admin）→ 改判「此帳號 is_default_pin=1」，
+    使**任何 admin 新建、待改初始 PIN 的帳號**皆可走此端點（first-admin bootstrap 仍是其特例）。
     """
     sess = validate_session(request)
     username = sess["username"]
 
-    if not is_first_run_required():
-        raise HTTPException(403, "首次設定已完成，請使用帳號管理改 PIN")
+    if not account_needs_pin_change(username):
+        raise HTTPException(403, "此帳號無待改的初始 PIN（如需改 PIN 請洽管理員）")
 
     validate_pin_strength(body.new_pin, username)  # #348-F5 P1：min6 + 擋可預測 + 開放長密語
 

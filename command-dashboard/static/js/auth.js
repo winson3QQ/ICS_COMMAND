@@ -409,10 +409,10 @@ function _showInitialPinChangeForm(username, currentPin) {
         🔐 首次設定
       </div>
       <div style="font-size:13px;color:var(--text-muted,#aaa);margin-bottom:24px;">
-        請設定你的新 PIN（4-6 位數字）<br>設定後 gate 解除，進入系統
+        請設定你的新 PIN（至少 6 位數字）<br>設定後 gate 解除，進入系統
       </div>
       <input id="ipc-new-pin" class="login-input" type="password" inputmode="numeric"
-             maxlength="6" placeholder="新 PIN（4-6 位數字）"
+             maxlength="6" placeholder="新 PIN（至少 6 位數字）"
              style="margin-bottom:12px;">
       <input id="ipc-confirm-pin" class="login-input" type="password" inputmode="numeric"
              maxlength="6" placeholder="確認新 PIN"
@@ -431,7 +431,7 @@ function _showInitialPinChangeForm(username, currentPin) {
     const confirmPin = document.getElementById('ipc-confirm-pin').value.trim();
     warnEl.textContent = '';
 
-    if (!/^\d{4,6}$/.test(newPin))          { warnEl.textContent = 'PIN 須為 4-6 位數字'; return; }
+    if (!/^\d{6}$/.test(newPin))             { warnEl.textContent = 'PIN 須為 6 位數字'; return; }
     if (newPin !== confirmPin)               { warnEl.textContent = '兩次 PIN 不一致'; return; }
     if (newPin === currentPin)               { warnEl.textContent = '新 PIN 不能與初始 PIN 相同'; return; }
 

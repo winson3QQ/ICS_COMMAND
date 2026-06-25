@@ -9,6 +9,33 @@ from repositories._helpers import audit
 from .role_enum import allowed_roles_for, is_role_allowed
 from .service import check_session
 
+# #348-F5 P2a：帳號 is_default_pin=1（待改 admin 給的初始 PIN）時，session 僅准走這些路徑，其餘
+# API 回 423 → server-side 真強制改 PIN（不只靠前端 must_change_pin flow）。改完 default 清即解。
+_PIN_CHANGE_ALLOWED = frozenset(
+    {
+        ("POST", "/api/auth/change-initial-pin"),
+        ("POST", "/api/auth/logout"),
+        ("GET", "/api/auth/me"),
+        ("GET", "/api/auth/heartbeat"),
+        ("GET", "/api/session/status"),
+    }
+)
+
+
+def _is_pin_change_allowed(method: str, path: str) -> bool:
+    """改初始 PIN 期間放行的路徑。一般待改帳號只准走 change-initial-pin（驗目前 PIN）。"""
+    if (method, path) in _PIN_CHANGE_ALLOWED:
+        return True
+    # 改 PIN：PUT /api/admin/accounts/<user>/pin（reset_pin，**不驗目前 PIN**）。**僅** first-run
+    # bootstrap admin 經此（C1-A 流程，first_run_gate 同白名單）。非 first-run 的待改帳號若放行此路徑，
+    # 持被盜 session 者可免舊 PIN 自清 is_default_pin 解閘（繞過 change-initial-pin 的目前-PIN 驗證）→
+    # 故限定 is_first_run_required；其餘待改帳號一律走 change-initial-pin。
+    if method == "PUT" and path.startswith("/api/admin/accounts/") and path.endswith("/pin"):
+        from repositories.account_repo import is_first_run_required
+
+        return is_first_run_required()
+    return False
+
 
 def _audit_session_failure(event: str, session: dict | None, request: Request) -> None:
     audit(
@@ -79,6 +106,17 @@ async def auth_middleware(request: Request, call_next):
                 },
             )
             return JSONResponse({"detail": "role denied"}, status_code=403)
+
+        # #348-F5 P2a：per-account 強制改初始 PIN（在授權通過後）。非改 PIN 白名單路徑時才查
+        # is_default_pin（白名單先短路、省 DB），待改即 423。改完（clear_default_pin_flag）即解。
+        if not _is_pin_change_allowed(method, path):
+            from repositories.account_repo import account_needs_pin_change
+
+            if account_needs_pin_change(sess["username"]):
+                return JSONResponse(
+                    {"detail": "須先修改初始 PIN", "code": "PIN_CHANGE_REQUIRED"},
+                    status_code=423,
+                )
 
         request.state.session = sess
 

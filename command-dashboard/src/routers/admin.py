@@ -224,6 +224,7 @@ def create_acct(body: AccountCreateIn, request: Request):
             body.display_name,
             body.role_detail,
             sess["username"],
+            require_pin_change=True,  # #348-F5 P2a：admin 給的初始 PIN，使用者首登強制改
         )
     except Exception as e:
         raise HTTPException(409, f"account create failed: {e}") from e

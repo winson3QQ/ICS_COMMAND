@@ -46,16 +46,29 @@ def create_account(
     display_name: str | None = None,
     role_detail: str | None = None,
     operator: str = "admin",
+    require_pin_change: bool = False,
 ) -> dict:
+    # #348-F5 P2a：require_pin_change=True → is_default_pin=1（首登強制改）。
+    # 強制由 auth_middleware per-account 閘做；預設 False，repo caller/測試不變。
     role, role_detail = normalize_role_pair(role, role_detail)
     pin_hash, pin_salt = hash_pin(pin)
     now = now_utc()
     with get_conn() as conn:
         conn.execute(
             """INSERT INTO accounts
-               (username, pin_hash, pin_salt, role, role_detail, display_name, status, created_at)
-               VALUES (?,?,?,?,?,?,?,?)""",
-            (username, pin_hash, pin_salt, role, role_detail, display_name, "active", now),
+               (username, pin_hash, pin_salt, role, role_detail, display_name, status, created_at, is_default_pin)
+               VALUES (?,?,?,?,?,?,?,?,?)""",
+            (
+                username,
+                pin_hash,
+                pin_salt,
+                role,
+                role_detail,
+                display_name,
+                "active",
+                now,
+                1 if require_pin_change else 0,
+            ),
         )
     audit(operator, None, "account_created", "accounts", username, {"role": role, "role_detail": role_detail})
     return {
@@ -322,14 +335,33 @@ def clear_default_pin_flag(username: str) -> bool:
 
 
 def is_first_run_required() -> bool:
+    """#348-F5 P2a 起收斂為 **bootstrap 專用**：系統剛建、唯一帳號（第一個 admin）且未改 PIN。
+
+    原本「任一 sysadmin is_default_pin=1」會讓 P2a 對**新建帳號**設 is_default_pin=1 時觸發全系統
+    first_run_gate 423 鎖死（建第二個帳號＝鎖死所有人）。收斂為「accounts==1 且該帳號為 sysadmin
+    且 default」→ 第一個 admin 行為完全不變（#306 bootstrap 不受影響），第 2+ 帳號的強制改 PIN
+    改由 **per-account 閘**（auth_middleware + account_needs_pin_change）處理，不再走全系統 gate。
+
+    殘餘風險（依賴 invariant）：fresh deploy 只 seed 唯一 admin（ensure_default_admin /
+    ensure_initial_admin_token），故 bootstrap 時 accounts==1 必成立。若未來有路徑在 bootstrap
+    同時 seed 第 2 帳號（目前無），全系統 gate 不再觸發 → 安全網即 per-account 閘（含 cop WS）。
+    """
     with get_conn() as conn:
-        row = conn.execute(
-            """SELECT COUNT(*) as c
-                 FROM accounts
-                WHERE is_default_pin=1
-                  AND (role_detail='sysadmin' OR role='系統管理員' OR role='admin')"""
-        ).fetchone()
-    return row["c"] > 0
+        total = conn.execute("SELECT COUNT(*) AS c FROM accounts").fetchone()["c"]
+        if total != 1:
+            return False
+        row = conn.execute("SELECT is_default_pin, role, role_detail FROM accounts").fetchone()
+    if not row or row["is_default_pin"] != 1:
+        return False
+    return row["role_detail"] == "sysadmin" or row["role"] in ("系統管理員", "admin")
+
+
+def account_needs_pin_change(username: str) -> bool:
+    """#348-F5 P2a：此帳號是否仍持「初始/管理員給的」PIN（is_default_pin=1），須強制改。
+    供 auth_middleware per-account 閘 + change-initial-pin 授權判斷。"""
+    with get_conn() as conn:
+        row = conn.execute("SELECT is_default_pin FROM accounts WHERE username=?", (username,)).fetchone()
+    return bool(row) and row["is_default_pin"] == 1
 
 
 def is_valid_account_role(role: str | None, role_detail: str | None = None) -> bool:
