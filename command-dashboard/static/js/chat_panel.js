@@ -15,7 +15,7 @@
  * 範圍邊界（移出 b1，各自後置）：b3 marker 連結 / 欄位盤點(#193) / O/C 識別與限可見 / b2 即時 WS。
  */
 
-import { authFetch, getToken } from './auth.js';
+import { authFetch, getToken, hasAnyRole } from './auth.js';
 
 // 同 cop.js 慣例：各模組各自定義（auth.js 的 API_BASE 非 export）。typeof 守門讓純函式
 // 能在無 location 的 vitest node 環境被 import（不影響瀏覽器：location 必存在）。
@@ -105,6 +105,26 @@ export function parseSenderUid(senderUid) {
   return senderUid.startsWith('GeoChat.') ? (senderUid.split('.')[1] || senderUid) : senderUid;
 }
 
+/** #216：依當前過濾脈絡組出向 GeoChat 的 POST body（純函式，可單測）。
+ *  選單位 → DM（recipient_uid[+callsign]）；選命名房 → chatroom；否則全體廣播（僅 message）。 */
+export function buildChatBody(message, sender, room) {
+  const body = { message };
+  if (sender && sender.uid) {
+    body.recipient_uid = sender.uid;
+    if (sender.callsign) body.recipient_callsign = sender.callsign;
+  } else if (room && room !== '__all__') {
+    body.chatroom = room;
+  }
+  return body;
+}
+
+/** #216：送出目標提示文字（純函式，可單測）。 */
+export function composeTargetLabel(sender, room) {
+  if (sender && sender.uid) return `→ 私訊 ${sender.callsign || sender.uid}`;
+  if (room && room !== '__all__') return `→ ${room}`;
+  return '→ 廣播（全體）';
+}
+
 /** by-sender 過濾（b3-1）：以**解析後 uid 精準比對**（uid 唯一）。sender = {uid, callsign}；
  *  無 sender → 不過濾。**不用 callsign 比對**——callsign 非唯一，兩單位同 callsign 會誤混
  *  （code-review）；callsign 僅供 sender chip 顯示，不參與匹配。 */
@@ -149,6 +169,7 @@ function _clampLastSeenIfStale(chats) {
 }
 let _currentTab = 'events'; // 右欄當前分頁（events | chat | roster | decisions，#269）
 let _takDisabled = false;
+let _sendingChat = false;   // #216：出向 compose 送出中旗標（擋 Enter/click 重複送）
 let _pollTimer = null;
 
 function _el(id) { return document.getElementById(id); }
@@ -159,15 +180,93 @@ export function initChatPanel() {
   document.addEventListener('chat:new', (e) => _onLiveChat(e?.detail)); // b2：WS 即時推播
   document.addEventListener('map:unitSelected', (e) => _onUnitSelected(e?.detail)); // b3-1：點 marker 過濾
   document.addEventListener('map:senderNotLocated', (e) => _onUnitSelected(e?.detail)); // b3-2：訊息無座標 → fallback by-sender
+  _initCompose(); // #216：出向 compose（依角色顯隱 + Enter 送出）
   if (_pollTimer) clearInterval(_pollTimer);
   _pollTimer = setInterval(() => _poll(), POLL_MS);
   _poll();
+}
+
+// #216：出向 GeoChat compose ─────────────────────────────────────────────────
+// 對外發話＝指揮層動作（後端 POST /api/tak/chat = COMMAND_ROLES）。observer/operator
+// 唯讀通聯，故 compose 僅 COMMAND_ROLES 顯示（否則他們會看到一個必 403 的送出框）。
+function _canSendChat() { return hasAnyRole('sysadmin', 'commander'); }
+
+/** 依角色顯隱 compose（COMMAND_ROLES 才出）。initChatPanel 可能在登入前跑（role 未進
+ *  sessionStorage）→ refreshChatNow（登入後 hook）會再套一次，否則 commander 也看不到送出框。 */
+function _applyComposeVisibility() {
+  const box = _el('chat-compose');
+  if (box) box.style.display = _canSendChat() ? 'flex' : 'none';
+}
+
+/** compose 初始化：綁 Enter 鍵送出（一次）+ 套用角色顯隱 + 渲染初始目標。 */
+function _initCompose() {
+  const input = _el('chat-compose-input');
+  if (input) {
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); chatSend(); }
+    });
+  }
+  _applyComposeVisibility();
+  _renderComposeTarget();
+}
+
+/** 更新送出目標提示——跟隨當前過濾脈絡：選單位→DM、選房間→該房、否則→全體廣播。 */
+function _renderComposeTarget() {
+  const el = _el('chat-compose-target');
+  if (el) el.textContent = composeTargetLabel(_activeSender, _activeRoom);
+}
+
+/** 顯示 compose 錯誤（短暫）。 */
+function _composeError(status) {
+  const el = _el('chat-compose-err');
+  if (!el) return;
+  const msg = status === 409 ? 'TAK 已停用，無法發送'
+    : status === 403 ? '無發送權限'
+    : status === 422 ? '訊息含不允許的字元或過長'
+    : '送出失敗，請重試';
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+
+/** 送出一則出向 GeoChat（data-action='chatSend' / Enter）。目標跟隨當前過濾脈絡。
+ *  不本地樂觀插入——訊息經 server 回送（WS chat:new）進串流，避免與回送重複（後端 uid 冪等）。 */
+export async function chatSend() {
+  const input = _el('chat-compose-input');
+  // review fix：in-flight 旗標擋重複送——Enter keydown 不經 button.disabled，連按會送出重複
+  // 通聯（後端每次 mint 新 msg_id → 兩筆真實 GeoChat 上現場，非回送冪等可救）。
+  if (!input || _takDisabled || !_canSendChat() || _sendingChat) return;
+  const message = (input.value || '').trim();
+  const errEl = _el('chat-compose-err');
+  if (errEl) errEl.style.display = 'none';
+  if (!message) return;
+  const body = buildChatBody(message, _activeSender, _activeRoom);
+  _sendingChat = true;
+  const btn = _el('chat-compose-send');
+  if (btn) btn.disabled = true;
+  try {
+    const resp = await authFetch(API_BASE + '/api/tak/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (resp.ok) {
+      input.value = '';            // 清空＝送出成功的回饋；訊息隨 server 回送進串流
+    } else {
+      _composeError(resp.status);
+    }
+  } catch (_) {
+    _composeError(0);
+  } finally {
+    _sendingChat = false;
+    if (btn) btn.disabled = false;
+  }
 }
 
 /** #250：登入後（onEnterDashboard）立即補一次 poll——initChatPanel 的首次 _poll 在登入前跑、
  *  因 !getToken() 早退，原本要等下一個 30s interval 通聯才填（事件 poll() 登入後即跑 → 通聯比事件晚出）。
  *  本函式讓通聯與事件同步在登入後立即載入。 */
 export function refreshChatNow() {
+  _applyComposeVisibility();  // #216：登入後角色才在 sessionStorage → 此時才能正確顯隱 compose
   _poll();
 }
 
@@ -266,14 +365,15 @@ function _renderChips() {
     return;
   }
   const rooms = distinctRooms(_chats);
-  // 若當前選的 room 已不在資料中（時間窗滾動）→ 回退「全部」
-  if (_activeRoom !== '__all__' && !rooms.includes(_activeRoom)) _activeRoom = '__all__';
+  // 若當前選的 room 已不在資料中（時間窗滾動）→ 回退「全部」。review fix：靜默 reset 後
+  // 同步刷新 compose 目標提示，否則提示仍寫「→ <房>」、buildChatBody 卻送廣播（提示與實送不符）。
+  if (_activeRoom !== '__all__' && !rooms.includes(_activeRoom)) { _activeRoom = '__all__'; _renderComposeTarget(); }
   bar.replaceChildren();
   // ≤1 房間時篩選無意義（「全部」與該房間同集合）→ 隱藏整條 chips bar，避免與 TAK
   // 內建房間名（如「All Chat Rooms」）視覺撞「全部」。每則仍有 [room] 行內標籤。
   if (rooms.length <= 1) {
     bar.style.display = 'none';
-    _activeRoom = '__all__';
+    if (_activeRoom !== '__all__') { _activeRoom = '__all__'; _renderComposeTarget(); }
     return;
   }
   bar.style.display = 'flex';
@@ -305,6 +405,7 @@ export function chatFilterRoom(room) {
   _activeRoom = room || '__all__';
   _renderChips();
   _renderStream();
+  _renderComposeTarget();  // #216：房間切換 → 送出目標跟著變
 }
 
 /** 點地圖 TAK marker（map:unitSelected，b3-1）→ by-sender 過濾 + 切到通聯。 */
@@ -313,6 +414,7 @@ function _onUnitSelected(detail) {
   _activeSender = { uid: detail.uid, callsign: detail.callsign || null };
   switchRightTab('chat');  // 切到通聯（內部 _renderStream 已吃 _activeSender）
   _renderChips();          // 顯示可清除的 sender chip
+  _renderComposeTarget();  // #216：選單位 → 送出變 DM
 }
 
 /** 清除 by-sender 過濾（sender chip ✕，main.js data-action）。 */
@@ -320,6 +422,7 @@ export function chatClearSender() {
   _activeSender = null;
   _renderChips();
   _renderStream();
+  _renderComposeTarget();  // #216：清除單位過濾 → 送出回退廣播/房間
 }
 
 // b3-2：訊息**長按**（press-and-hold 600ms，對齊 events.js `_evtCardDown/_evtCardUp`）。
