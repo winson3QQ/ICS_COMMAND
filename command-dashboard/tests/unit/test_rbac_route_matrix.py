@@ -65,6 +65,7 @@ SYSADMIN GET    /api/admin/tak/device-certs
 SYSADMIN GET    /api/admin/tak/device-certs/reconcile
 SYSADMIN DELETE /api/admin/tak/device-certs/{cert_id}
 SYSADMIN POST   /api/admin/tak/device-certs/{cert_id}/revoke
+SYSADMIN POST   /api/admin/tak/users/{callsign}/deregister
 SYSADMIN GET    /api/admin/user-data-backups
 SYSADMIN POST   /api/admin/user-data-backups
 SYSADMIN GET    /api/admin/user-data-backups/{name}/download

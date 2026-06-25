@@ -83,9 +83,52 @@ def test_reconcile_classifies_matched_mismatch_zombie_infra_unsynced(client, aut
     r = client.get("/api/admin/tak/device-certs/reconcile", headers=auth)
     assert r.status_code == 200
     body = r.json()
-    by = {u["callsign"]: u["status"] for u in body["tak_users"]}
-    assert by == {"blue-01": "matched", "red-01": "mismatch", "GGW": "zombie", "ics-cot": "infra"}
-    assert "only-ics" in body["ics_unsynced"]
+    rows = {u["callsign"]: u for u in body["tak_users"]}
+    assert {k: v["status"] for k, v in rows.items()} == {
+        "blue-01": "matched",
+        "red-01": "mismatch",
+        "GGW": "zombie",
+        "ics-cot": "infra",
+    }
+    # #401 enrich：ICS 發的帶 ics_cert_id（供撤銷）；殭屍/infra 無。
+    assert rows["blue-01"]["ics_cert_id"] is not None and rows["red-01"]["ics_cert_id"] is not None
+    assert rows["GGW"]["ics_cert_id"] is None and rows["ics-cot"]["ics_cert_id"] is None
+    # ics_unsynced 現為物件（callsign/cert_id/non_ascii）。
+    uns = {c["callsign"]: c for c in body["ics_unsynced"]}
+    assert "only-ics" in uns and uns["only-ics"]["cert_id"] is not None and uns["only-ics"]["non_ascii"] is False
+
+
+def test_reconcile_unsynced_marks_non_ascii(client, auth, monkeypatch):
+    from services import tak_user_enroll
+
+    record_issued("山豬", "S1", "atak", "admin", fingerprint=None, enroll_status="non-ascii-callsign")
+    monkeypatch.setattr(tak_user_enroll, "reconcile_tak_users", lambda: {"ok": True, "reason": "ok", "users": []})
+    body = client.get("/api/admin/tak/device-certs/reconcile", headers=auth).json()
+    uns = {c["callsign"]: c for c in body["ics_unsynced"]}
+    assert uns["山豬"]["non_ascii"] is True
+
+
+# ── #401：POST /tak/users/{callsign}/deregister（直接移除 TAK 殭屍）──
+def test_deregister_user_requires_sysadmin(client, auth):
+    create_account("op_dr", "1234", ROLE_OPERATOR_ZH, "Op DR", "operator")
+    assert client.post("/api/admin/tak/users/GGW/deregister", headers=_login(client, "op_dr")).status_code == 403
+
+
+def test_deregister_infra_user_blocked(client, auth):
+    assert client.post("/api/admin/tak/users/ics-cot/deregister", headers=auth).status_code == 422
+    assert client.post("/api/admin/tak/users/ics-tak-admin/deregister", headers=auth).status_code == 422
+    # review 硬化：大小寫變體也擋（防 TAK usermod 若大小寫不敏感被繞過刪 ics-cot）。
+    assert client.post("/api/admin/tak/users/ICS-COT/deregister", headers=auth).status_code == 422
+    assert client.post("/api/admin/tak/users/Ics-Tak-Admin/deregister", headers=auth).status_code == 422
+
+
+def test_deregister_invalid_callsign_422(client, auth):
+    assert client.post("/api/admin/tak/users/-bad/deregister", headers=auth).status_code == 422
+
+
+def test_deregister_valid_reaches_service_503_when_unconfigured(client, auth):
+    # 合法非 infra callsign → 走到 deregister_device（測試環境無 queue → not-configured → 503，非 422/500）。
+    assert client.post("/api/admin/tak/users/GGW/deregister", headers=auth).status_code == 503
 
 
 def test_revoke_unknown_404(client, auth):
