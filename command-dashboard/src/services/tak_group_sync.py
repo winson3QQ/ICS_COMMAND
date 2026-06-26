@@ -47,6 +47,36 @@ def _build_admin_client():
     )
 
 
+async def list_online_subscriptions() -> list[dict]:
+    """查 TAK 在線訂閱（`/Marti/api/subscriptions/all`，admin 證）→ [{client_uid, username, groups}]。
+
+    #404：面板顯示「誰**連著**」（含匿名 `__ANON__`），補 reconcile（只讀名冊 UserAuthenticationFile）
+    的盲區——被刪帳號/未授權但 CA 信任的裝置會**匿名連入、不在名冊**，唯有在線視圖看得到。
+    best-effort：未配置 admin cert / cert 壞 / TAK 錯 → 回 []（不拖垮 reconcile 面板）。
+    """
+    if not is_configured():
+        return []
+    client = None
+    try:
+        client = _build_admin_client()
+        data = await client.get_json("/Marti/api/subscriptions/all")
+        rows = (data or {}).get("data", []) if isinstance(data, dict) else (data or [])
+        out: list[dict] = []
+        for r in rows:
+            if not isinstance(r, dict):
+                continue
+            grps = r.get("groups") or []
+            groups = sorted({g.get("name") for g in grps if isinstance(g, dict) and g.get("name")})
+            out.append({"client_uid": r.get("clientUid") or "", "username": r.get("username") or "", "groups": groups})
+        return out
+    except (TakRestError, OSError, ssl.SSLError, ValueError) as exc:
+        log.warning("[tak-group-sync] list_online_subscriptions 失敗（best-effort）：%s", exc)
+        return []
+    finally:
+        if client is not None:
+            await client.close()
+
+
 async def _username_for_client_key(client, client_key: str) -> str | None:
     """查在線訂閱找 client_key（CoT uid）對應的 TAK username。離線/查無 → None。
 

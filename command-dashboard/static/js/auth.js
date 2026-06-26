@@ -1132,6 +1132,20 @@ function _renderTakDriven(box, data) {
         '</div>';
     }
   }
+  // #404：在線匿名連線（CA 信任但不在名冊）——reconcile 只看名冊看不到，這裡補在線視圖。最該盯的對象
+  // （被刪帳號/未授權仍掛著）；隔離後它看不到/送不出 ICS 資料，但仍佔連線——真踢除＝撤銷（#318）。
+  const onlineAnon = data.online_anon || [];
+  if (onlineAnon.length) {
+    html += '<div style="font-size:11px;color:var(--red);margin:8px 0 4px;">🔴 在線匿名連線（CA 信任、不在名冊——已踢除/未授權仍連著；已隔離看不到 ICS 資料，真踢除須撤銷 #318）：</div>';
+    for (const o of onlineAnon) {
+      const name = o.username || '(無 callsign)';
+      html += '<div style="display:flex;align-items:center;gap:6px;padding:3px 0;border-bottom:1px solid var(--border,#222);font-size:12px;flex-wrap:wrap;">' +
+        '<span style="font-family:monospace;flex:1;min-width:80px;">' + _escAudit(name) + '</span>' +
+        '<span title="' + _escAudit('CoT uid：' + (o.client_uid || '')) + '" style="font-family:monospace;color:var(--text3);font-size:9px;">' + _escAudit((o.client_uid || '').slice(0, 8)) + '</span>' +
+        '<span style="color:var(--red);font-size:10px;">⚠ 匿名在線</span>' +
+        '</div>';
+    }
+  }
   box.innerHTML = html;
 }
 

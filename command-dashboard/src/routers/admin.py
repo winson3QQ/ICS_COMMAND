@@ -847,12 +847,25 @@ def reconcile_tak_device_certs(request: Request):
     # 不明證可注入/竊聽。供前端示警 + 一鍵 strip-anon。ics-tak-admin（REST-only 不 stream）會列入但
     # 移除唯一群會 bounce 回 → 前端可標示為已知例外；ICS 不替它隱藏（誠實呈現）。
     anon_users = sorted(u["callsign"] for u in annotated if u["in_anon"])
+    # #404：在線**匿名**連線（CA 信任但不在名冊）——reconcile 只讀名冊，看不到匿名連入的裝置（被刪
+    # 帳號/未授權仍掛著的最該盯對象）。補查在線視圖 subscriptions/all，篩出 __ANON__ 且非名冊 user。
+    # best-effort：未配置 admin cert / 查錯 → []。sync route 在 threadpool（無 running loop）→ asyncio.run 安全
+    # （asyncio 已於模組頂 import）。
+    from services.tak_group_sync import list_online_subscriptions
+
+    roster = {u["callsign"] for u in annotated}
+    try:
+        online = asyncio.run(list_online_subscriptions())
+    except RuntimeError:
+        online = []  # 戒慎：若已在 event loop（理論上 sync route 不會）→ 降級空清單，不炸面板
+    online_anon = [o for o in online if "__ANON__" in o["groups"] and (o.get("username") or "") not in roster]
     return {
         "ok": True,
         "reason": "ok",
         "tak_users": annotated,
         "ics_unsynced": ics_unsynced,
         "anon_users": anon_users,
+        "online_anon": online_anon,
     }
 
 

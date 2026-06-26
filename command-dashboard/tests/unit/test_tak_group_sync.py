@@ -101,3 +101,37 @@ def test_best_effort_swallows_build_error(monkeypatch):
     monkeypatch.setattr(tak_group_sync, "_build_admin_client", _boom)
     res = asyncio.run(tak_group_sync.sync_client_faction("UID-1", "blue"))
     assert res["synced"] is False and res["reason"].startswith("sync-error:")  # 不 raise
+
+
+# ── #404：list_online_subscriptions（在線視圖，含匿名）──────────────────────────
+
+
+def test_list_online_not_configured(monkeypatch):
+    monkeypatch.setattr(tak_group_sync.config, "TAK_MARTI_ADMIN_CERT", "")
+    assert asyncio.run(tak_group_sync.list_online_subscriptions()) == []
+
+
+def test_list_online_parses_uid_user_groups(_admin_configured):
+    fc = _admin_configured(
+        [
+            {"clientUid": "AC4B", "username": "3QQ-itak", "groups": [{"name": "__ANON__"}, {"name": "__ANON__"}]},
+            {"clientUid": "", "username": "ics-cot", "groups": [{"name": "red"}, {"name": "blue"}]},
+        ]
+    )
+    out = asyncio.run(tak_group_sync.list_online_subscriptions())
+    assert out == [
+        {"client_uid": "AC4B", "username": "3QQ-itak", "groups": ["__ANON__"]},  # 群去重 + 排序
+        {"client_uid": "", "username": "ics-cot", "groups": ["blue", "red"]},
+    ]
+    assert fc.closed is True  # client 有關閉
+
+
+def test_list_online_best_effort_on_error(_admin_configured):
+    fc = _admin_configured([], put_raises=None)
+
+    async def _boom(path, params=None):
+        raise TakRestError("subscriptions 500")
+
+    fc.get_json = _boom
+    assert asyncio.run(tak_group_sync.list_online_subscriptions()) == []
+    assert fc.closed is True  # 錯誤路徑也關閉

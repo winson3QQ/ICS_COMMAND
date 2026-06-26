@@ -165,6 +165,29 @@ def test_reconcile_flags_in_anon_isolation_gap(client, auth, monkeypatch):
     assert body["anon_users"] == ["ics-tak-admin", "selfclosed"]  # 排序、只列破口
 
 
+def test_reconcile_surfaces_online_anon(client, auth, monkeypatch):
+    """#404：在線匿名連線（__ANON__ 且非名冊）列入 online_anon；非匿名/名冊內的不列。"""
+    from services import tak_group_sync, tak_user_enroll
+
+    def _rec():
+        return {
+            "ok": True,
+            "reason": "ok",
+            "users": [{"callsign": "ics-cot", "fingerprint": "CF", "groups": ["red", "blue", "neutral"]}],
+        }
+
+    async def _online():
+        return [
+            {"client_uid": "AC4B", "username": "3QQ-itak", "groups": ["__ANON__"]},  # 匿名+非名冊 → 列
+            {"client_uid": "", "username": "ics-cot", "groups": ["red", "blue", "neutral"]},  # 非匿名 → 不列
+        ]
+
+    monkeypatch.setattr(tak_user_enroll, "reconcile_tak_users", _rec)
+    monkeypatch.setattr(tak_group_sync, "list_online_subscriptions", _online)
+    body = client.get("/api/admin/tak/device-certs/reconcile", headers=auth).json()
+    assert body["online_anon"] == [{"client_uid": "AC4B", "username": "3QQ-itak", "groups": ["__ANON__"]}]
+
+
 def test_strip_anon_requires_sysadmin(client, auth):
     create_account("op_sa", "1234", ROLE_OPERATOR_ZH, "Op SA", "operator")
     assert client.post("/api/admin/tak/users/GGW/strip-anon", headers=_login(client, "op_sa")).status_code == 403
