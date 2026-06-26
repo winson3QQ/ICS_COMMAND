@@ -213,6 +213,21 @@ def test_strip_anon_user_not_in_roster_404(client, auth, monkeypatch):
     assert client.post("/api/admin/tak/users/GGW/strip-anon", headers=auth).status_code == 404
 
 
+def test_strip_anon_empty_fingerprint_409(client, auth, monkeypatch):
+    """#404 review：升級前 NULL fingerprint → usermod -r 無 -f 可帶 → 清楚 409，非 opaque registrar 503。"""
+    from services import tak_user_enroll
+
+    def _rec():
+        return {
+            "ok": True,
+            "reason": "ok",
+            "users": [{"callsign": "legacy-x", "fingerprint": "", "groups": ["__ANON__"]}],
+        }
+
+    monkeypatch.setattr(tak_user_enroll, "reconcile_tak_users", _rec)
+    assert client.post("/api/admin/tak/users/legacy-x/strip-anon", headers=auth).status_code == 409
+
+
 def test_strip_anon_success_passes_fingerprint(client, auth, monkeypatch):
     from services import tak_user_enroll
 

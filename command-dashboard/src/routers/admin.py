@@ -870,9 +870,11 @@ def reconcile_tak_device_certs(request: Request):
     roster = {u["callsign"] for u in annotated}
     try:
         online = asyncio.run(list_online_subscriptions())
-    except RuntimeError:
-        online = []  # 戒慎：若已在 event loop（理論上 sync route 不會）→ 降級空清單，不炸面板
-    online_anon = [o for o in online if "__ANON__" in o["groups"] and (o.get("username") or "") not in roster]
+    except Exception:  # online_anon 為附加診斷——任何錯（巢狀 loop RuntimeError、逃逸例外）都不得炸面板
+        online = []
+    online_anon = [
+        o for o in online if "__ANON__" in (o.get("groups") or []) and (o.get("username") or "") not in roster
+    ]
     return {
         "ok": True,
         "reason": "ok",
@@ -927,8 +929,12 @@ def strip_anon_tak_user(callsign: str, request: Request):
     user = next((u for u in rec["users"] if u["callsign"] == cn), None)
     if user is None:
         raise HTTPException(404, f"TAK 無此 managed user：{cn}")
+    fp = user.get("fingerprint") or ""
+    if not fp:
+        # 升級前 NULL fingerprint：usermod -r 需 -f，無 fp 無法 strip → 清楚回報（非 opaque registrar 503）。
+        raise HTTPException(409, f"「{cn}」在 TAK 無 fingerprint 紀錄，無法移出 __ANON__（需重發證 / 重 enroll）")
 
-    result = strip_anon_group(cn, user.get("fingerprint") or "")
+    result = strip_anon_group(cn, fp)
     audit(sess["username"], None, "tak_user_strip_anon", "tak", cn, {"strip_anon": result.get("reason")})
     if not result.get("ok"):
         raise HTTPException(503, f"移出 __ANON__ 失敗：{result.get('reason')}")

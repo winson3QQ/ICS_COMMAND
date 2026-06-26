@@ -123,21 +123,33 @@ while true; do
         # fingerprint + groupList（無使用者輸入、不碰 usermod）。輸出首行 'OK reconcile <count>'，
         # 其後每行 callsign<TAB>fingerprint<TAB>group1,group2,...（#404：第 3 欄群清單，供 ICS
         # 偵測 producer 卡 __ANON__ 隔離破口；舊式兩欄 client 忽略第 3 欄即向後相容）。
-        # awk 逐行 walk：<User …> 起 → 收集其 <groupList> 子元素 → </User>（或自閉 />）emit。
-        # 只 emit identifier+fingerprint 皆在的（同舊條件，無 fp 的 --help 等略過）。屬性不依賴相鄰/順序。
+        # awk 逐行 walk，**兼容單行與多行** User（usermod marshal=多行；register-tak-fingerprint.sh=單行）：
+        # <User …> 起 → 抽同一行所有 inline <groupList>（單行格式）→ 同行 </User>/自閉即收尾；否則
+        # 續收後續 <groupList> 行直到 </User>。只 emit identifier+fingerprint 皆在的（無 fp 的 --help 略過）。
+        # 進新 <User> 前先收尾上一個未閉合的（防跨行 back-to-back 漏抓）。屬性不依賴相鄰/順序。
+        # 假設**一行至多一個 User**（usermod marshal 與 register-tak-fingerprint.sh 皆如此）；兩 User
+        # 擠同一行屬理論 malformed、不處理（inline group while-loop 會把兩者群併入前者，極罕見不 over-engineer）。
         out_rows="$(awk '
+          function emit() { if (id != "" && fp != "") print id "\t" fp "\t" grp }
           /<User / {
+            if (inu) emit()                                  # 收尾上一個未閉合的（back-to-back 防漏）
             id=""; fp=""; grp=""; inu=1
             if (match($0, /identifier="[^"]*"/)) id=substr($0,RSTART+12,RLENGTH-13)
             if (match($0, /fingerprint="[^"]*"/)) fp=substr($0,RSTART+13,RLENGTH-14)
-            if ($0 ~ /\/>/) { if (id!="" && fp!="") print id"\t"fp"\t"grp; inu=0 }
+            line=$0                                          # 抽同一行 inline <groupList>（單行格式）
+            while (match(line, /<groupList>[^<]*<\/groupList>/)) {
+              g=substr(line,RSTART,RLENGTH); sub(/^<groupList>/,"",g); sub(/<\/groupList>$/,"",g)
+              grp=(grp==""?g:grp","g); line=substr(line,RSTART+RLENGTH)
+            }
+            if ($0 ~ /\/>/ || $0 ~ /<\/User>/) { emit(); inu=0 }   # 單行收尾（自閉或同行 </User>）
             next
           }
           inu && /<groupList>/ {
             g=$0; sub(/.*<groupList>/,"",g); sub(/<\/groupList>.*/,"",g)
             grp=(grp==""?g:grp","g); next
           }
-          inu && /<\/User>/ { if (id!="" && fp!="") print id"\t"fp"\t"grp; inu=0; next }
+          inu && /<\/User>/ { emit(); inu=0; next }
+          END { if (inu) emit() }                            # 檔尾未閉合的也收尾
         ' "$AUTH_FILE" 2>/dev/null)"
         n="$(printf '%s' "$out_rows" | grep -c . || true)"
         {
