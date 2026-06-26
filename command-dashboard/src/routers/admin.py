@@ -771,15 +771,27 @@ def revoke_tak_device_cert(cert_id: int, request: Request):
         from services.tak_user_enroll import deregister_device
 
         deregister = deregister_device(callsign)
+    # #318 層2 真撤銷：寫 TAK `certificate` 表 → 該證 :8089 串流/:8443 REST **連都連不進**（非僅 deregister
+    # 降匿名）。**按 fingerprint 精準** → 不受 has_other_active_cert（callsign 粗粒度）影響，即使同 callsign
+    # 多張 active 也只撤這張 hash。infra（ics-cot/ics-tak-admin）絕不撤（毀 ICS 自身 TAK 控制面）。
+    fp = result.get("fingerprint")
+    if _is_infra_callsign(callsign):
+        tak_revoke = {"ok": False, "reason": "skipped-infra"}
+    elif not fp:
+        tak_revoke = {"ok": False, "reason": "no-fingerprint"}  # 升級前 NULL fingerprint → 無 hash 可撤
+    else:
+        from services.tak_revocation import revoke_in_tak
+
+        tak_revoke = revoke_in_tak(fp, callsign)
     audit(
         sess["username"],
         None,
         "tak_device_cert_deregister",
         "tak",
         result["callsign"],
-        {"cert_id": cert_id, "deregister": deregister.get("reason")},
+        {"cert_id": cert_id, "deregister": deregister.get("reason"), "tak_revoke": tak_revoke.get("reason")},
     )
-    return {**result, "deregister": deregister.get("reason")}
+    return {**result, "deregister": deregister.get("reason"), "tak_revoke": tak_revoke.get("reason")}
 
 
 @router.get("/tak/device-certs/reconcile", tags=["account-admin"])
