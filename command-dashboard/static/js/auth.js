@@ -1076,7 +1076,16 @@ export async function admLoadTakDeviceCerts() {
   const rec = await authFetch(API_BASE + '/api/admin/tak/device-certs/reconcile');
   if (rec.ok) {
     const data = await rec.json();
-    if (data.ok) { _renderTakDriven(box, data); return; }
+    if (data.ok) {
+      // #318 Slice 3：TAK-driven 視圖不含 ICS 盤點 → 另抓「已撤但無 fingerprint」的證（TAK 撤不掉），補誠實標示段。
+      let nullFpRevoked = [];
+      try {
+        const dc = await authFetch(API_BASE + '/api/admin/tak/device-certs');
+        if (dc.ok) nullFpRevoked = (await dc.json()).filter(c => c.status === 'revoked' && !c.fingerprint);
+      } catch (e) { /* best-effort，不擋主視圖 */ }
+      _renderTakDriven(box, data, nullFpRevoked);
+      return;
+    }
   }
   // fallback：reconcile 未配置 / 不可用 → ICS 盤點清單。
   const resp = await authFetch(API_BASE + '/api/admin/tak/device-certs');
@@ -1093,7 +1102,7 @@ const _RECON_ST = {
 };
 
 /** #401：TAK 為主的清單——TAK 上每個 managed user + ICS 未同步段。 */
-function _renderTakDriven(box, data) {
+function _renderTakDriven(box, data, nullFpRevoked = []) {
   _lastTakCallsigns = new Set([...data.tak_users.map(u => u.callsign), ...data.ics_unsynced.map(c => c.callsign)]);
   let html = '<div style="font-size:11px;color:var(--text3);margin:2px 0 4px;">TAK Server 帳號（' + data.tak_users.length + '）— 此面板以 TAK 為準：</div>';
   // #404：卡 __ANON__ 隔離破口面板級示警——producer 落匿名群 = 與任何 CA 信任的證同頻（不明證可注入/竊聽 COP）。
@@ -1150,6 +1159,12 @@ function _renderTakDriven(box, data) {
         '<span style="color:var(--red);font-size:10px;">⚠ 匿名在線</span>' +
         '</div>';
     }
+  }
+  // #318 Slice 3：ICS 已撤但無 fingerprint → TAK 撤不掉（此 TAK-driven 視圖不含 ICS 盤點，補誠實標示，免誤以為全已 enforce）。
+  if (nullFpRevoked && nullFpRevoked.length) {
+    html += '<div style="font-size:11px;color:var(--red);margin:8px 0 4px;border:1px solid var(--red);border-radius:4px;padding:4px 6px;">' +
+      '⚠ ' + nullFpRevoked.length + ' 張 ICS 已撤但 <b>TAK 撤不掉</b>（無 fingerprint，#398 前發 → 需重發證 / 等過期）：' +
+      nullFpRevoked.map(c => _escAudit(c.callsign)).join('、') + '</div>';
   }
   box.innerHTML = html;
 }
