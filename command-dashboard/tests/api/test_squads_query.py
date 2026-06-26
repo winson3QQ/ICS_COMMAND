@@ -84,9 +84,7 @@ def test_commander_can_query_historical_exercise(client, auth, commander_auth):
     b = _mk_exercise(client, auth, "B")
     client.post(f"/api/exercises/{b['id']}/activate", json={}, headers=auth)
     # commander 帶 ?exercise_id=A（歷史封存場）→ 看得到 A 的 Red 隊
-    by = _squads_by_color(
-        client.get(f"/api/cop/squads?exercise_id={a['id']}", headers=commander_auth).json()
-    )
+    by = _squads_by_color(client.get(f"/api/cop/squads?exercise_id={a['id']}", headers=commander_auth).json())
     assert "Red" in by and by["Red"]["total"] == 1
 
 
@@ -100,7 +98,5 @@ def test_observer_override_blocked_back_to_active(client, auth, observer_auth):
     client.post(f"/api/exercises/{b['id']}/activate", json={}, headers=auth)
     client.post("/api/cop/entities", json=_mk_cop("b1", "Green"), headers=auth)
     # observer 帶 ?exercise_id=A（歷史）→ resolve_scope 擋回 active=B → 只看 Green
-    by = _squads_by_color(
-        client.get(f"/api/cop/squads?exercise_id={a['id']}", headers=observer_auth).json()
-    )
+    by = _squads_by_color(client.get(f"/api/cop/squads?exercise_id={a['id']}", headers=observer_auth).json())
     assert "Green" in by and "Red" not in by

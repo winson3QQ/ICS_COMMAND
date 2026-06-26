@@ -15,15 +15,18 @@ pytestmark = pytest.mark.api
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 
+
 @pytest.fixture
 def shelter_node(tmp_db):
     from repositories.pi_node_repo import create_pi_node
+
     return create_pi_node("shelter", "收容組")
 
 
 @pytest.fixture
 def medical_node(tmp_db):
     from repositories.pi_node_repo import create_pi_node
+
     return create_pi_node("medical", "醫療組")
 
 
@@ -39,30 +42,48 @@ def _push(c, sign, unit_id: str, records: list, api_key: str):
 
 
 SHELTER_RECORDS = [
-    {"table_name": "persons",
-     "record": {"id": "P001", "status": "已安置", "srt_color": "green"}},
-    {"table_name": "persons",
-     "record": {"id": "P002", "status": "已安置", "srt_color": "yellow"}},
-    {"table_name": "persons",
-     "record": {"id": "P003", "status": "等候中", "srt_color": "green"}},
-    {"table_name": "beds",
-     "record": {"id": "B001", "status": "occupied"}},
+    {"table_name": "persons", "record": {"id": "P001", "status": "已安置", "srt_color": "green"}},
+    {"table_name": "persons", "record": {"id": "P002", "status": "已安置", "srt_color": "yellow"}},
+    {"table_name": "persons", "record": {"id": "P003", "status": "等候中", "srt_color": "green"}},
+    {"table_name": "beds", "record": {"id": "B001", "status": "occupied"}},
 ]
 
 MEDICAL_RECORDS = [
-    {"table_name": "patients",
-     "record": {"id": "M001", "current_zone": "在場", "triage_color": "red",
-                "care_status": "triaged", "disposition": "在場"}},
-    {"table_name": "patients",
-     "record": {"id": "M002", "current_zone": "在場", "triage_color": "yellow",
-                "care_status": "triaged", "disposition": "在場"}},
-    {"table_name": "patients",
-     "record": {"id": "M003", "current_zone": "已離區", "triage_color": "green",
-                "care_status": "discharged", "disposition": "離院"}},
+    {
+        "table_name": "patients",
+        "record": {
+            "id": "M001",
+            "current_zone": "在場",
+            "triage_color": "red",
+            "care_status": "triaged",
+            "disposition": "在場",
+        },
+    },
+    {
+        "table_name": "patients",
+        "record": {
+            "id": "M002",
+            "current_zone": "在場",
+            "triage_color": "yellow",
+            "care_status": "triaged",
+            "disposition": "在場",
+        },
+    },
+    {
+        "table_name": "patients",
+        "record": {
+            "id": "M003",
+            "current_zone": "已離區",
+            "triage_color": "green",
+            "care_status": "discharged",
+            "disposition": "離院",
+        },
+    },
 ]
 
 
 # ── 空 Dashboard ──────────────────────────────────────────────────────────────
+
 
 class TestEmptyDashboard:
     def test_returns_200(self, client, auth):
@@ -79,6 +100,7 @@ class TestEmptyDashboard:
 
 
 # ── Shelter 推送後 Dashboard ──────────────────────────────────────────────────
+
 
 class TestDashboardAfterShelterPush:
     def test_pi_node_appears_after_push(self, hmac_client, shelter_node, auth):
@@ -109,6 +131,7 @@ class TestDashboardAfterShelterPush:
 
 # ── Medical 推送後 Dashboard ──────────────────────────────────────────────────
 
+
 class TestDashboardAfterMedicalPush:
     def test_medical_red_casualties(self, hmac_client, medical_node, auth):
         """1 位紅傷患在場 → casualties_red = 1"""
@@ -130,6 +153,7 @@ class TestDashboardAfterMedicalPush:
 
 
 # ── 多節點同時上線 ────────────────────────────────────────────────────────────
+
 
 class TestMultiNodeDashboard:
     def test_both_nodes_in_pi_nodes_list(self, hmac_client, shelter_node, medical_node, auth):

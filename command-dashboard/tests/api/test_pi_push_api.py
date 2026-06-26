@@ -16,19 +16,23 @@ pytestmark = pytest.mark.api
 
 # ── Fixture：建立測試用 Pi 節點 ─────────────────────────────────────────────
 
+
 @pytest.fixture
 def shelter_node(tmp_db):
     from repositories.pi_node_repo import create_pi_node
+
     return create_pi_node("shelter", "收容組測試節點")
 
 
 @pytest.fixture
 def medical_node(tmp_db):
     from repositories.pi_node_repo import create_pi_node
+
     return create_pi_node("medical", "醫療組測試節點")
 
 
 # ── 輔助：HMAC + Bearer push ──────────────────────────────────────────────────
+
 
 def _push(c, sign, unit_id: str, records: list, api_key: str):
     """Pi push helper：HMAC 簽名 + Bearer token。
@@ -42,6 +46,7 @@ def _push(c, sign, unit_id: str, records: list, api_key: str):
 
 
 # ── 心跳測試 ──────────────────────────────────────────────────────────────────
+
 
 class TestHeartbeat:
     def test_shelter_heartbeat(self, hmac_client, shelter_node):
@@ -57,6 +62,7 @@ class TestHeartbeat:
 
 
 # ── 認證錯誤 ──────────────────────────────────────────────────────────────────
+
 
 class TestAuthErrors:
     def test_no_bearer_returns_401(self, client, shelter_node):
@@ -88,18 +94,12 @@ class TestAuthErrors:
 # ── Shelter Pi 推送（人員 + 床位）─────────────────────────────────────────────
 
 SHELTER_RECORDS = [
-    {"table_name": "persons",
-     "record": {"id": "P001", "status": "admitted", "srt_color": "green"}},
-    {"table_name": "persons",
-     "record": {"id": "P002", "status": "admitted", "srt_color": "yellow"}},
-    {"table_name": "beds",
-     "record": {"id": "B001", "status": "occupied"}},
-    {"table_name": "beds",
-     "record": {"id": "B002", "status": "available"}},
-    {"table_name": "beds_meta",
-     "record": {"capacity_max": 20}},
-    {"table_name": "resources",
-     "record": {"name": "water", "qty_current": 80, "qty_initial": 100, "disabled": False}},
+    {"table_name": "persons", "record": {"id": "P001", "status": "admitted", "srt_color": "green"}},
+    {"table_name": "persons", "record": {"id": "P002", "status": "admitted", "srt_color": "yellow"}},
+    {"table_name": "beds", "record": {"id": "B001", "status": "occupied"}},
+    {"table_name": "beds", "record": {"id": "B002", "status": "available"}},
+    {"table_name": "beds_meta", "record": {"capacity_max": 20}},
+    {"table_name": "resources", "record": {"name": "water", "qty_current": 80, "qty_initial": 100, "disabled": False}},
 ]
 
 
@@ -134,19 +134,38 @@ class TestShelterPush:
 # ── Medical Pi 推送（傷患 + 資源）────────────────────────────────────────────
 
 MEDICAL_RECORDS = [
-    {"table_name": "patients",
-     "record": {"id": "M001", "current_zone": "在場", "triage_color": "red",
-                "care_status": "triaged", "disposition": "在場"}},
-    {"table_name": "patients",
-     "record": {"id": "M002", "current_zone": "在場", "triage_color": "yellow",
-                "care_status": "triaged", "disposition": "在場"}},
-    {"table_name": "patients",
-     "record": {"id": "M003", "current_zone": "在場", "triage_color": "green",
-                "care_status": "waiting", "disposition": "在場"}},
-    {"table_name": "resources",
-     "record": {"name": "oxygen", "qty_current": 45, "qty_initial": 100, "disabled": False}},
-    {"table_name": "incidents",
-     "record": {"id": "I001", "status": "open", "severity": "高"}},
+    {
+        "table_name": "patients",
+        "record": {
+            "id": "M001",
+            "current_zone": "在場",
+            "triage_color": "red",
+            "care_status": "triaged",
+            "disposition": "在場",
+        },
+    },
+    {
+        "table_name": "patients",
+        "record": {
+            "id": "M002",
+            "current_zone": "在場",
+            "triage_color": "yellow",
+            "care_status": "triaged",
+            "disposition": "在場",
+        },
+    },
+    {
+        "table_name": "patients",
+        "record": {
+            "id": "M003",
+            "current_zone": "在場",
+            "triage_color": "green",
+            "care_status": "waiting",
+            "disposition": "在場",
+        },
+    },
+    {"table_name": "resources", "record": {"name": "oxygen", "qty_current": 45, "qty_initial": 100, "disabled": False}},
+    {"table_name": "incidents", "record": {"id": "I001", "status": "open", "severity": "高"}},
 ]
 
 
@@ -177,6 +196,7 @@ class TestMedicalPush:
 #
 # 舊路徑 /api/pi-push/{unit_id} 用同 handler 雙裝飾器保留為別名（向後相容
 # ICS_DMAS Pi client），新主路徑 /api/ingress/pi-node/{unit_id} 必須行為一致。
+
 
 def _push_ingress(c, sign, unit_id: str, records: list, api_key: str):
     """新路徑版 _push：走 /api/ingress/pi-node/{unit_id}。"""

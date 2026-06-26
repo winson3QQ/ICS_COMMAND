@@ -158,7 +158,7 @@ def test_db_path_fallback_default(monkeypatch):
 
 
 def test_get_current_schema_version_helper(tmp_db):
-    from core.database import get_conn, get_health_schema_version, _MIGRATIONS
+    from core.database import _MIGRATIONS, get_conn, get_health_schema_version
 
     with get_conn() as conn:
         assert get_health_schema_version(conn) == max(version for version, _, _ in _MIGRATIONS)

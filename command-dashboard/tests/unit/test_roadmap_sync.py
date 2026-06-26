@@ -25,23 +25,21 @@ def _issue(title: str, labels=None) -> dict:
 
 def test_maps_primary_not_prep_crossref():
     # #27 真實標題：主體 P1-13，「P1-12 prep」順帶 → 不對映 P1-12
-    assert ris.issue_item_ids(_issue(
-        "refactor(map): split map_config into tracked seed + gitignored runtime (P1-13, P1-12 prep)"
-    )) == ["P1-13"]
+    assert ris.issue_item_ids(
+        _issue("refactor(map): split map_config into tracked seed + gitignored runtime (P1-13, P1-12 prep)")
+    ) == ["P1-13"]
 
 
 def test_excludes_deferred_crossref():
     # #140：主體 P2-11b，「延 P2-13」順帶
-    assert ris.issue_item_ids(_issue(
-        "P2-11b（部分）CoPEntity 加 planned/simulated 欄位（source command 延 P2-13）"
-    )) == ["P2-11b"]
+    assert ris.issue_item_ids(
+        _issue("P2-11b（部分）CoPEntity 加 planned/simulated 欄位（source command 延 P2-13）")
+    ) == ["P2-11b"]
 
 
 def test_excludes_prerequisite_crossref():
     # #141：主體無 P-item（source command enum），「P2-13 前置」順帶 → 空
-    assert ris.issue_item_ids(_issue(
-        "TAK source 'command' enum + cop_entities table rebuild（P2-13 前置）"
-    )) == []
+    assert ris.issue_item_ids(_issue("TAK source 'command' enum + cop_entities table rebuild（P2-13 前置）")) == []
 
 
 def test_primary_id_kept():
@@ -50,21 +48,25 @@ def test_primary_id_kept():
 
 def test_bundled_all_kept():
     # 打包 issue：多主體全對映（非交叉引用，不可被誤殺）
-    assert ris.issue_item_ids(
-        _issue("P1-05 + P1-06 + P1-07: tests green + CI + 規格 header")
-    ) == ["P1-05", "P1-06", "P1-07"]
+    assert ris.issue_item_ids(_issue("P1-05 + P1-06 + P1-07: tests green + CI + 規格 header")) == [
+        "P1-05",
+        "P1-06",
+        "P1-07",
+    ]
 
 
 # ── _iter_item_rows：只讀表格列首格，跳散文 ─────────────────────────────────
 
 
 def test_status_from_table_row_not_prose():
-    text = "\n".join([
-        "> reality check：P2-01 部署全 greenfield、零實作",  # 散文先出現，無 marker
-        "| ✅ P2-01 | 部署官方 TAK Server |",  # 真正定義列，有 ✅
-    ])
+    text = "\n".join(
+        [
+            "> reality check：P2-01 部署全 greenfield、零實作",  # 散文先出現，無 marker
+            "| ✅ P2-01 | 部署官方 TAK Server |",  # 真正定義列，有 ✅
+        ]
+    )
     iid, cells, m = next(r for r in ris._iter_item_rows(text) if r[0] == "P2-01")
-    assert "✅" in cells[1][:m.start()]  # marker 取自首格、ID 之前
+    assert "✅" in cells[1][: m.start()]  # marker 取自首格、ID 之前
 
 
 def test_iter_skips_non_table_lines():
@@ -81,14 +83,10 @@ def test_done_without_issue_is_not_drift(capsys):
 
 
 def test_done_with_open_issue_is_drift(capsys):
-    drift = ris.print_status_report(
-        {"P2-12": "panels"}, {"P2-12": "done"}, {"P2-12": {"number": 136, "state": "OPEN"}}
-    )
+    drift = ris.print_status_report({"P2-12": "panels"}, {"P2-12": "done"}, {"P2-12": {"number": 136, "state": "OPEN"}})
     assert drift == 1
 
 
 def test_closed_issue_pending_item_is_drift(capsys):
-    drift = ris.print_status_report(
-        {"P2-99": "x"}, {"P2-99": "pending"}, {"P2-99": {"number": 1, "state": "CLOSED"}}
-    )
+    drift = ris.print_status_report({"P2-99": "x"}, {"P2-99": "pending"}, {"P2-99": {"number": 1, "state": "CLOSED"}})
     assert drift == 1  # issue 關了但 ROADMAP 沒勾 = 真 8.5 漏勾

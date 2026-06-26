@@ -21,11 +21,14 @@ def test_dead_tile_exempt_prefix_removed():
     assert "/static/" in AUTH_EXEMPT_PREFIXES
 
 
-@pytest.mark.parametrize("bad", [
-    "../../../etc/passwd.pmtiles",
-    "../secret.pmtiles",
-    "..%2f..%2fsecret.pmtiles".replace("%2f", "/"),  # 解碼後含 '/'，模擬繞過
-])
+@pytest.mark.parametrize(
+    "bad",
+    [
+        "../../../etc/passwd.pmtiles",
+        "../secret.pmtiles",
+        "..%2f..%2fsecret.pmtiles".replace("%2f", "/"),  # 解碼後含 '/'，模擬繞過
+    ],
+)
 def test_serve_pmtiles_rejects_path_traversal(bad):
     # #64-2：resolve() 容器檢查擋下逃出 MBTILES_DIR 的路徑 → 404（不洩漏外部檔）。
     with pytest.raises(HTTPException) as ei:

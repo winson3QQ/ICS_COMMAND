@@ -13,9 +13,8 @@ def create_decision(data: dict, exercise_id: int | None = None) -> dict:
     if data.get("parent_decision_id"):
         with get_conn() as conn:
             row = conn.execute(
-                "SELECT COUNT(*) as cnt FROM decisions WHERE "
-                "(id=? OR parent_decision_id=?)",
-                (data["parent_decision_id"], data["parent_decision_id"])
+                "SELECT COUNT(*) as cnt FROM decisions WHERE (id=? OR parent_decision_id=?)",
+                (data["parent_decision_id"], data["parent_decision_id"]),
             ).fetchone()
         seq = (row["cnt"] or 0) + 2
 
@@ -28,34 +27,46 @@ def create_decision(data: dict, exercise_id: int | None = None) -> dict:
         VALUES (?,?,?,?, ?,?,?,?, ?,?,?, ?,?,?)
     """
     with get_conn() as conn:
-        conn.execute(sql, (
-            did,
-            data.get("primary_event_id"),
-            seq,
-            data.get("parent_decision_id"),
-            data["decision_type"],
-            data["severity"],
-            data["decision_title"],
-            data["impact_description"],
-            data["suggested_action_a"],
-            data.get("suggested_action_b"),
-            "pending",
-            data["created_by"],
-            now,
-            exercise_id,
-        ))
+        conn.execute(
+            sql,
+            (
+                did,
+                data.get("primary_event_id"),
+                seq,
+                data.get("parent_decision_id"),
+                data["decision_type"],
+                data["severity"],
+                data["decision_title"],
+                data["impact_description"],
+                data["suggested_action_a"],
+                data.get("suggested_action_b"),
+                "pending",
+                data["created_by"],
+                now,
+                exercise_id,
+            ),
+        )
         if data.get("parent_decision_id"):
             conn.execute(
                 "UPDATE decisions SET status='superseded', superseded_by=? WHERE id=?",
-                (did, data["parent_decision_id"]))
+                (did, data["parent_decision_id"]),
+            )
 
-    audit(data["created_by"], None, "decision_created", "decisions", did,
-          {"title": data["decision_title"], "severity": data["severity"]}, exercise_id)
+    audit(
+        data["created_by"],
+        None,
+        "decision_created",
+        "decisions",
+        did,
+        {"title": data["decision_title"], "severity": data["severity"]},
+        exercise_id,
+    )
     return {"id": did}
 
 
-def decide(decision_id: str, action: str, decided_by: str,
-           execution_note: str = "", exercise_id: int | None = None) -> dict:
+def decide(
+    decision_id: str, action: str, decided_by: str, execution_note: str = "", exercise_id: int | None = None
+) -> dict:
     valid_actions = {"approved", "hold", "redirect", "completed"}
     if action not in valid_actions:
         raise ValueError(f"Invalid action: {action}")
@@ -71,10 +82,10 @@ def decide(decision_id: str, action: str, decided_by: str,
             raise ValueError(f"Decision already decided: {row['status']}")
         conn.execute(
             f"UPDATE decisions SET status=?, decided_by=?, decided_at=?, execution_note=? WHERE id=?{sc}",  # nosec B608
-            [action, decided_by, now, execution_note, decision_id] + sp)
+            [action, decided_by, now, execution_note, decision_id] + sp,
+        )
 
-    audit(decided_by, None, "decision_made", "decisions", decision_id,
-          {"action": action}, exercise_id)
+    audit(decided_by, None, "decision_made", "decisions", decision_id, {"action": action}, exercise_id)
     return {"id": decision_id, "status": action, "decided_at": now}
 
 

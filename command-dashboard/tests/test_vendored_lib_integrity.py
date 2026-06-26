@@ -26,9 +26,7 @@ def test_pmtiles_js_matches_pinned_sha():
     p = _CMD_ROOT / "static" / "lib" / "pmtiles.js"
     assert p.exists(), f"vendored pmtiles.js 不存在：{p}"
     got = _normalized_sha256(p)
-    assert got == _PMTILES_JS_SHA256, (
-        f"pmtiles.js SHA 不符（疑似被替換）：{got} != {_PMTILES_JS_SHA256}"
-    )
+    assert got == _PMTILES_JS_SHA256, f"pmtiles.js SHA 不符（疑似被替換）：{got} != {_PMTILES_JS_SHA256}"
 
 
 def test_policy_doc_pins_same_sha():

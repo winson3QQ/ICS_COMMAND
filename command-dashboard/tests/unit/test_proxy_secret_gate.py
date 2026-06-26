@@ -7,6 +7,7 @@ unit/test_proxy_secret_gate.py — #280 紅隊修補：nginx↔後端共享密�
 涵蓋：未配置 secret = back-compat（信任）；配置後缺/錯 secret → cert header 不採信；
 相符 → 採信；等時比較。
 """
+
 from types import SimpleNamespace
 
 import pytest
@@ -30,6 +31,7 @@ class TestBackCompat:
     def test_no_secret_configured_trusts_headers(self, monkeypatch):
         import core.config as config
         from auth.service import client_cert_cn, client_cert_verified
+
         monkeypatch.setattr(config, "ICS_PROXY_SHARED_SECRET", "")
         r = _req(verify="SUCCESS", cn="dev-1")  # 無 X-Proxy-Auth
         assert client_cert_verified(r) is True
@@ -41,6 +43,7 @@ class TestSecretGate:
         """紅隊攻擊 5：偽造 cert header 但沒 secret → 不採信。"""
         import core.config as config
         from auth.service import client_cert_cn, client_cert_verified
+
         monkeypatch.setattr(config, "ICS_PROXY_SHARED_SECRET", "s3cr3t")
         r = _req(verify="SUCCESS", cn="cmd-tablet")  # 偽造但無 X-Proxy-Auth
         assert client_cert_verified(r) is False
@@ -49,6 +52,7 @@ class TestSecretGate:
     def test_wrong_secret_untrusted(self, monkeypatch):
         import core.config as config
         from auth.service import client_cert_cn, client_cert_verified
+
         monkeypatch.setattr(config, "ICS_PROXY_SHARED_SECRET", "s3cr3t")
         r = _req(verify="SUCCESS", cn="cmd-tablet", proxy_auth="guess")
         assert client_cert_verified(r) is False
@@ -58,6 +62,7 @@ class TestSecretGate:
         """合法經 nginx：nginx 注入相符 secret → 採信。"""
         import core.config as config
         from auth.service import client_cert_cn, client_cert_verified
+
         monkeypatch.setattr(config, "ICS_PROXY_SHARED_SECRET", "s3cr3t")
         r = _req(verify="SUCCESS", cn="cmd-tablet", proxy_auth="s3cr3t")
         assert client_cert_verified(r) is True
@@ -66,6 +71,7 @@ class TestSecretGate:
     def test_none_request_untrusted(self, monkeypatch):
         import core.config as config
         from auth.service import client_cert_cn, client_cert_verified
+
         monkeypatch.setattr(config, "ICS_PROXY_SHARED_SECRET", "s3cr3t")
         assert client_cert_verified(None) is False
         assert client_cert_cn(None) is None

@@ -19,6 +19,7 @@ _BASE = {
 class TestCreateDecision:
     def test_basic_create(self, tmp_db):
         from repositories.decision_repo import create_decision, get_decisions
+
         dec = create_decision(_BASE.copy())
         assert dec["id"] is not None
         # 查詢確認 status 預設為 pending
@@ -26,15 +27,18 @@ class TestCreateDecision:
         assert found["status"] == "pending"
 
     def test_with_primary_event(self, tmp_db):
-        from repositories.event_repo import create_event
         from repositories.decision_repo import create_decision, get_decisions
-        ev = create_event({
-            "reported_by_unit": "shelter",
-            "event_type": "fire",
-            "severity": "critical",
-            "description": "x",
-            "operator_name": "admin",
-        })
+        from repositories.event_repo import create_event
+
+        ev = create_event(
+            {
+                "reported_by_unit": "shelter",
+                "event_type": "fire",
+                "severity": "critical",
+                "description": "x",
+                "operator_name": "admin",
+            }
+        )
         dec = create_decision({**_BASE, "primary_event_id": ev["id"]})
         decisions = get_decisions()
         found = next((d for d in decisions if d["id"] == dec["id"]), None)
@@ -44,6 +48,7 @@ class TestCreateDecision:
 class TestDecide:
     def test_approve_decision(self, tmp_db):
         from repositories.decision_repo import create_decision, decide, get_decisions
+
         dec = create_decision(_BASE.copy())
         decide(dec["id"], "approved", "指揮官A", "立即執行")
         decisions = get_decisions()
@@ -53,6 +58,7 @@ class TestDecide:
 
     def test_hold_decision(self, tmp_db):
         from repositories.decision_repo import create_decision, decide, get_decisions
+
         dec = create_decision(_BASE.copy())
         decide(dec["id"], "hold", "指揮官A", "暫緩觀察")
         decisions = get_decisions()
@@ -61,6 +67,7 @@ class TestDecide:
 
     def test_nonexistent_raises(self, tmp_db):
         from repositories.decision_repo import decide
+
         with pytest.raises(Exception):
             decide("nonexistent-id", "approved", "admin", "note")
 
@@ -68,14 +75,16 @@ class TestDecide:
 class TestGetDecisions:
     def test_list_decisions(self, tmp_db):
         from repositories.decision_repo import create_decision, get_decisions
+
         create_decision(_BASE.copy())
         create_decision({**_BASE, "decision_title": "第二個決策"})
         decisions = get_decisions()
         assert len(decisions) >= 2
 
     def test_filter_by_exercise(self, tmp_db):
-        from repositories.exercise_repo import create_exercise
         from repositories.decision_repo import create_decision, get_decisions
+        from repositories.exercise_repo import create_exercise
+
         ex = create_exercise({"name": "E", "type": "ttx"})
         create_decision({**_BASE, "exercise_id": ex["id"]}, exercise_id=ex["id"])
         create_decision(_BASE.copy())  # 無 exercise_id

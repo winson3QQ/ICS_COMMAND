@@ -3,7 +3,8 @@
 產生符合 PWA 資料模型的測試快照並推送到 Command Server。
 
 Shelter: bed_used/bed_total + SRT(red/yellow/green) + pending_intake + staff_on_duty
-Medical: casualties(red/yellow/green/black) + pending_evac + staff_on_duty + extra{src_a, src_b, src_c, supplies, supplies_max}
+Medical: casualties(red/yellow/green/black) + pending_evac + staff_on_duty
+  + extra{src_a, src_b, src_c, supplies, supplies_max}
 
 模擬 SRT→醫療橋接效應：SRT Red+ 上升 → 約 15 分鐘後醫療 Red 跟著上升
 """
@@ -103,9 +104,9 @@ def gen_medical(i: int, total: int, shelter_srt_history: list) -> dict:
     bed_used = min(bed_total, cas_red + cas_yellow + cas_green + cas_black)
 
     # 來源 A/B/C 累計
-    src_a = int(3 + 8 * phase + random.randint(-1, 1))   # 前進組→醫療
-    src_b = int(1 + 5 * phase + random.randint(-1, 1))   # 收容轉送→醫療
-    src_c = int(2 + 3 * phase + random.randint(0, 1))    # 自行抵達→醫療
+    src_a = int(3 + 8 * phase + random.randint(-1, 1))  # 前進組→醫療
+    src_b = int(1 + 5 * phase + random.randint(-1, 1))  # 收容轉送→醫療
+    src_c = int(2 + 3 * phase + random.randint(0, 1))  # 自行抵達→醫療
 
     # 60~80% 進度時 pending_evac 持續上升（觸發 output_monitor backlog）
     if 0.60 <= phase <= 0.80:

@@ -13,20 +13,20 @@ tests/security/test_session_edge.py — Session 超時邊界測試
   → 恰好等於 timeout 的 session 仍算有效
 """
 
-import pytest
-from unittest.mock import patch
 import time
-
+from datetime import UTC
 
 # ─────────────────────────────────────────────────────────────────
 # 超時邊界
 # ─────────────────────────────────────────────────────────────────
+
 
 class TestSessionTimeout:
     def test_session_valid_just_before_timeout(self, tmp_db, monkeypatch):
         """SESSION_TIMEOUT - 1 秒：session 仍有效"""
         from auth import service as svc
         from core.config import IDLE_TIMEOUT
+
         fake_account = {"username": "u1", "role": "operator", "display_name": "U1"}
         token = svc.create_session(fake_account)
 
@@ -41,6 +41,7 @@ class TestSessionTimeout:
         """SESSION_TIMEOUT + 1 秒：session 應過期"""
         from auth import service as svc
         from core.config import IDLE_TIMEOUT
+
         fake_account = {"username": "u2", "role": "operator", "display_name": "U2"}
         token = svc.create_session(fake_account)
 
@@ -54,6 +55,7 @@ class TestSessionTimeout:
         from auth import service as svc
         from core.config import IDLE_TIMEOUT
         from core.database import get_conn
+
         fake_account = {"username": "u3", "role": "operator", "display_name": "U3"}
         token = svc.create_session(fake_account)
         _patch_last_active(tmp_db, token, IDLE_TIMEOUT + 10)
@@ -61,15 +63,14 @@ class TestSessionTimeout:
         svc.check_and_touch(token)  # 觸發過期刪除
 
         with get_conn() as conn:
-            row = conn.execute(
-                "SELECT * FROM sessions WHERE token=?", (token,)
-            ).fetchone()
+            row = conn.execute("SELECT * FROM sessions WHERE token=?", (token,)).fetchone()
         assert row is None, "過期 session 應從 DB 移除"
 
     def test_session_remaining_zero_after_expiry(self, tmp_db):
         """過期後 session_remaining 回傳 0"""
         from auth import service as svc
         from core.config import IDLE_TIMEOUT
+
         token = svc.create_session({"username": "u4", "role": "operator", "display_name": "U4"})
         _patch_last_active(tmp_db, token, IDLE_TIMEOUT + 60)
 
@@ -81,19 +82,19 @@ class TestSessionTimeout:
 # Heartbeat 延長 Session
 # ─────────────────────────────────────────────────────────────────
 
+
 class TestSessionHeartbeat:
     def test_heartbeat_via_api_extends_session(self, client):
         """GET /api/auth/heartbeat 刷新 last_active → session 延長"""
         from core.database import get_conn
+
         # 登入拿 token
         r = client.post("/api/auth/login", json={"username": "admin", "pin": "1234"})
         token = r.json()["session_id"]
 
         # 讀目前 last_active
         with get_conn() as conn:
-            before = conn.execute(
-                "SELECT last_active FROM sessions WHERE token=?", (token,)
-            ).fetchone()["last_active"]
+            before = conn.execute("SELECT last_active FROM sessions WHERE token=?", (token,)).fetchone()["last_active"]
 
         time.sleep(1.1)  # 等 1 秒讓時間戳有差
 
@@ -101,9 +102,7 @@ class TestSessionHeartbeat:
         client.get("/api/auth/heartbeat", headers={"X-Session-Token": token})
 
         with get_conn() as conn:
-            after = conn.execute(
-                "SELECT last_active FROM sessions WHERE token=?", (token,)
-            ).fetchone()["last_active"]
+            after = conn.execute("SELECT last_active FROM sessions WHERE token=?", (token,)).fetchone()["last_active"]
 
         assert after > before, "heartbeat 應更新 last_active"
 
@@ -111,6 +110,7 @@ class TestSessionHeartbeat:
 # ─────────────────────────────────────────────────────────────────
 # 登出後 Token 失效
 # ─────────────────────────────────────────────────────────────────
+
 
 class TestSessionDestroy:
     def test_logout_invalidates_token(self, client):
@@ -157,6 +157,7 @@ class TestSessionDestroy:
 # 嚴格邊界（Strict Boundary）
 # ─────────────────────────────────────────────────────────────────
 
+
 class TestSessionStrictBoundary:
     def test_heartbeat_api_remaining_refreshes(self, client):
         """heartbeat 後 remaining 不繼續遞減（應 ≥ 第一次呼叫的值 - 1s 容差）"""
@@ -168,6 +169,7 @@ class TestSessionStrictBoundary:
         rem1 = first.json()["remaining"]
 
         import time
+
         time.sleep(1.1)
 
         second = client.get("/api/auth/heartbeat", headers={"X-Session-Token": token})
@@ -181,8 +183,8 @@ class TestSessionStrictBoundary:
         """已過期的 session 呼叫 heartbeat API → 401（HTTP 層驗證）"""
         from auth import service as svc
         from core.config import IDLE_TIMEOUT
-        token = svc.create_session({"username": "expired_hb", "role": "operator",
-                                    "display_name": "Expired"})
+
+        token = svc.create_session({"username": "expired_hb", "role": "operator", "display_name": "Expired"})
         _patch_last_active(tmp_db, token, IDLE_TIMEOUT + 2)
 
         r = client.get("/api/auth/heartbeat", headers={"X-Session-Token": token})
@@ -191,13 +193,11 @@ class TestSessionStrictBoundary:
 
 def _patch_last_active(tmp_db, token: str, seconds_ago: int):
     """直接修改 DB，讓 last_active = 現在 - seconds_ago 秒"""
-    from datetime import datetime, timezone, timedelta
+    from datetime import datetime, timedelta
+
     from core.database import get_conn
-    old_time = (datetime.now(timezone.utc) - timedelta(seconds=seconds_ago)
-                ).strftime('%Y-%m-%dT%H:%M:%SZ')
+
+    old_time = (datetime.now(UTC) - timedelta(seconds=seconds_ago)).strftime("%Y-%m-%dT%H:%M:%SZ")
     with get_conn() as conn:
-        conn.execute(
-            "UPDATE sessions SET last_active=? WHERE token=?",
-            (old_time, token)
-        )
+        conn.execute("UPDATE sessions SET last_active=? WHERE token=?", (old_time, token))
         conn.commit()

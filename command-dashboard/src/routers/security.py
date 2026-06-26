@@ -24,6 +24,7 @@ router = APIRouter(prefix="/api/security", tags=["安全"])
 # C1-D：structlog 取代舊式 logging.getLogger
 log = structlog.get_logger()
 
+
 # Rate limiter：60 次/分鐘/IP，防 violation flood（C1-F）
 # on_throttle 接入 C1-D structlog
 def _on_csp_throttle(source_ip: str, count: int) -> None:
@@ -32,6 +33,7 @@ def _on_csp_throttle(source_ip: str, count: int) -> None:
         msg="CSP report rate limit 已達上限",
         detail={"ip": source_ip, "count": count},
     )
+
 
 _csp_limiter = FixedWindowLimiter(
     limit=60,
@@ -61,9 +63,9 @@ async def csp_report(request: Request):
         return Response(status_code=429)
 
     violated_directive = None
-    blocked_uri        = None
-    document_uri       = None
-    raw_report         = None
+    blocked_uri = None
+    document_uri = None
+    raw_report = None
 
     try:
         body = await request.body()
@@ -74,16 +76,16 @@ async def csp_report(request: Request):
                 # W3C CSP Level 2 格式：{"csp-report": {...}}
                 inner = report.get("csp-report") or report
                 violated_directive = inner.get("violated-directive") or inner.get("effectiveDirective")
-                blocked_uri        = inner.get("blocked-uri")
-                document_uri       = inner.get("document-uri")
+                blocked_uri = inner.get("blocked-uri")
+                document_uri = inner.get("document-uri")
                 log.warning(
                     "csp_violation",
                     msg="瀏覽器 CSP 違規回報",
                     detail={
                         "directive": violated_directive,
-                        "blocked":   blocked_uri,
-                        "doc":       document_uri,
-                        "ip":        source_ip,
+                        "blocked": blocked_uri,
+                        "doc": document_uri,
+                        "ip": source_ip,
                     },
                 )
             except json.JSONDecodeError:

@@ -26,6 +26,7 @@ ROADMAP P1-02 完成：自 `pi_push.py` 改名而來，URL 命名空間統一為
 否則 FastAPI 啟動會 ValueError（兩 route 共用 function name，operation_id 必須
 依賴 FastAPI 自動加 path 後綴消歧）。
 """
+
 import json
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -39,7 +40,7 @@ router = APIRouter(tags=["Ingress"])
 
 
 @router.post("/api/ingress/pi-node/{unit_id}", dependencies=[Depends(verify_hmac)])
-@router.post("/api/pi-push/{unit_id}",         dependencies=[Depends(verify_hmac)])
+@router.post("/api/pi-push/{unit_id}", dependencies=[Depends(verify_hmac)])
 async def receive_pi_node_ingress(unit_id: str, request: Request):
     """Pi 上游節點推送接收。
 
@@ -50,7 +51,7 @@ async def receive_pi_node_ingress(unit_id: str, request: Request):
     if not auth_header.startswith("Bearer "):
         raise HTTPException(401, "缺少 Bearer token")
     token = auth_header[7:]
-    body  = await request.json()
+    body = await request.json()
     try:
         return process_push(unit_id, token, body)
     except PermissionError as e:
@@ -67,14 +68,16 @@ def get_pi_data(unit_id: str, request: Request):
     validate_session(request)
     batch = get_latest_pi_batch(unit_id)
     if not batch:
-        return {"records": [], "grouped": {}, "pushed_at": None,
-                "received_at": None, "offline": True}
-    records = (json.loads(batch["records_json"])
-               if isinstance(batch["records_json"], str) else batch["records_json"])
+        return {"records": [], "grouped": {}, "pushed_at": None, "received_at": None, "offline": True}
+    records = json.loads(batch["records_json"]) if isinstance(batch["records_json"], str) else batch["records_json"]
     grouped: dict = {}
     for r in records:
         tbl = r.get("table_name", "unknown")
         grouped.setdefault(tbl, []).append(r)
-    return {"records": records, "grouped": grouped,
-            "pushed_at": batch["pushed_at"], "received_at": batch["received_at"],
-            "offline": False}
+    return {
+        "records": records,
+        "grouped": grouped,
+        "pushed_at": batch["pushed_at"],
+        "received_at": batch["received_at"],
+        "offline": False,
+    }

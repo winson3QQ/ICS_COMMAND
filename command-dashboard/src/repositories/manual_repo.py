@@ -7,8 +7,8 @@ from ._helpers import NULL_SCOPE, audit, now_utc, row_to_dict
 
 
 def create_manual_record(data: dict, exercise_id: int | None = None) -> dict:
-    rid     = str(uuid.uuid4())
-    now     = now_utc()
+    rid = str(uuid.uuid4())
+    now = now_utc()
     payload = data.get("payload", {})
 
     sql = """
@@ -18,28 +18,35 @@ def create_manual_record(data: dict, exercise_id: int | None = None) -> dict:
         VALUES (?,?,?,?,?, ?,?,?,?,?)
     """
     with get_conn() as conn:
-        conn.execute(sql, (
-            rid,
-            data["form_id"],
-            data["form_type"],
-            data["target_table"],
-            data["operator"],
-            data.get("summary"),
-            json.dumps(payload, ensure_ascii=False),
-            "pending",
-            now,
-            exercise_id,
-        ))
+        conn.execute(
+            sql,
+            (
+                rid,
+                data["form_id"],
+                data["form_type"],
+                data["target_table"],
+                data["operator"],
+                data.get("summary"),
+                json.dumps(payload, ensure_ascii=False),
+                "pending",
+                now,
+                exercise_id,
+            ),
+        )
 
-    audit(data["operator"], data.get("device_id"),
-          "manual_input", "manual_records", rid,
-          {"form_id": data["form_id"], "summary": data.get("summary")},
-          exercise_id)
+    audit(
+        data["operator"],
+        data.get("device_id"),
+        "manual_input",
+        "manual_records",
+        rid,
+        {"form_id": data["form_id"], "summary": data.get("summary")},
+        exercise_id,
+    )
     return {"id": rid, "submitted_at": now}
 
 
-def get_manual_records(sync_status: str | None = None, limit: int = 100,
-                       exercise_id=None) -> list[dict]:
+def get_manual_records(sync_status: str | None = None, limit: int = 100, exercise_id=None) -> list[dict]:
     # P1-14：exercise_id 三態（見 _helpers.NULL_SCOPE）——
     #   int → exact / NULL_SCOPE → IS NULL（實戰池）/ None → 不過濾（內部 caller）
     clauses, params = [], []
@@ -71,10 +78,7 @@ def get_manual_records(sync_status: str | None = None, limit: int = 100,
     return result
 
 
-def mark_manual_record_synced(record_id: str, operator: str,
-                               exercise_id: int | None = None):
+def mark_manual_record_synced(record_id: str, operator: str, exercise_id: int | None = None):
     with get_conn() as conn:
-        conn.execute(
-            "UPDATE manual_records SET sync_status='synced', synced_at=? WHERE id=?",
-            (now_utc(), record_id))
+        conn.execute("UPDATE manual_records SET sync_status='synced', synced_at=? WHERE id=?", (now_utc(), record_id))
     audit(operator, None, "manual_record_synced", "manual_records", record_id, {}, exercise_id)

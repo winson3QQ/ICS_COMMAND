@@ -61,11 +61,7 @@ def _build_csp(include_unsafe_inline: bool) -> str:
     include_unsafe_inline=True：report-only 路徑（兼容未重構頁面）
     include_unsafe_inline=False：enforce 路徑（已完成模組化）
     """
-    script_src = (
-        "script-src 'self' 'unsafe-inline'"
-        if include_unsafe_inline
-        else "script-src 'self'"
-    )
+    script_src = "script-src 'self' 'unsafe-inline'" if include_unsafe_inline else "script-src 'self'"
     directives = [
         "default-src 'self'",
         script_src,
@@ -86,7 +82,7 @@ def _build_csp(include_unsafe_inline: bool) -> str:
 
 
 # 預先組好兩版 CSP 字串，避免每次 request 重組
-_CSP_ENFORCE    = _build_csp(include_unsafe_inline=False)
+_CSP_ENFORCE = _build_csp(include_unsafe_inline=False)
 _CSP_REPORT_ONLY = _build_csp(include_unsafe_inline=True)
 
 

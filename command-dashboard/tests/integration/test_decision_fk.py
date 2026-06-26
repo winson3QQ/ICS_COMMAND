@@ -68,13 +68,16 @@ class TestDecisionFkEnforced:
     def test_dangling_primary_event_rejected(self, tmp_db):
         """FK on：建決策指向不存在 event → 被擋（證明 FK 真強制，非裝飾）。"""
         import sqlite3
+
         from repositories.decision_repo import create_decision
+
         with pytest.raises(sqlite3.IntegrityError):
             create_decision({**_BASE, "primary_event_id": "no-such-event"})
 
     def test_null_primary_event_ok(self, tmp_db):
         """primary_event_id 為 NULL（指揮官無事件直接決策）→ FK 不擋。"""
         from repositories.decision_repo import create_decision, get_decisions
+
         dec = create_decision(_BASE.copy())
         found = next(d for d in get_decisions() if d["id"] == dec["id"])
         assert found["primary_event_id"] is None
@@ -83,8 +86,9 @@ class TestDecisionFkEnforced:
 class TestOnDeleteSetNull:
     def test_event_delete_nulls_decision_ref(self, tmp_db):
         """硬刪 event → 決策本體保留、primary_event_id 變 NULL（問責紀錄不消失）。"""
-        from repositories.event_repo import create_event
         from repositories.decision_repo import create_decision, get_decisions
+        from repositories.event_repo import create_event
+
         ev = create_event(_EVENT.copy())
         dec = create_decision({**_BASE, "primary_event_id": ev["id"]})
         with get_conn() as conn:
@@ -96,6 +100,7 @@ class TestOnDeleteSetNull:
     def test_parent_decision_delete_nulls_self_ref(self, tmp_db):
         """硬刪上游決策 → 下游 parent_decision_id 變 NULL（自我參照 SET NULL）。"""
         from repositories.decision_repo import create_decision, get_decisions
+
         parent = create_decision(_BASE.copy())
         child = create_decision({**_BASE, "parent_decision_id": parent["id"]})
         with get_conn() as conn:
@@ -109,10 +114,10 @@ class TestDeleteExerciseCascadeWithFk:
     def test_delete_exercise_does_not_crash_under_fk(self, tmp_db):
         """載重測試：events 先於 decisions、decisions 先於 ai_recommendations 被刪，
         SET NULL 路徑使 FK on 下整場級聯不炸。"""
-        from repositories.exercise_repo import create_exercise, delete_exercise
-        from repositories.event_repo import create_event
-        from repositories.decision_repo import create_decision
         from repositories.ai_repo import create_recommendation, update_outcome
+        from repositories.decision_repo import create_decision
+        from repositories.event_repo import create_event
+        from repositories.exercise_repo import create_exercise, delete_exercise
 
         ex = create_exercise({"name": "刪除測試", "type": "ttx"})
         exid = ex["id"]
@@ -125,9 +130,7 @@ class TestDeleteExerciseCascadeWithFk:
         assert "skipped" not in cleared
         with get_conn() as conn:
             assert conn.execute("PRAGMA foreign_key_check").fetchall() == []
-            assert conn.execute(
-                "SELECT COUNT(*) FROM decisions WHERE exercise_id=?", (exid,)
-            ).fetchone()[0] == 0
+            assert conn.execute("SELECT COUNT(*) FROM decisions WHERE exercise_id=?", (exid,)).fetchone()[0] == 0
 
 
 class TestRebuildScrub:
@@ -135,6 +138,7 @@ class TestRebuildScrub:
         """模擬舊 DB（無 FK + dangling 資料）→ down 退回無 FK、塞 dangling、再 up rebuild：
         scrub 把指向不存在 event / decision 的欄位 null 化，foreign_key_check 乾淨。"""
         from core.database import _m023_decisions_fk, _m023_decisions_fk_down
+
         _ins = (
             "INSERT INTO decisions "
             "(id, primary_event_id, parent_decision_id, decision_type, severity, "

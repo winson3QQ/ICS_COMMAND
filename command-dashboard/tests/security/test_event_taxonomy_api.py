@@ -21,9 +21,18 @@ def _valid_payload():
     return {
         "version": 1,
         "groups": [{"key": "security", "label": "安全威脅", "order": 1}],
-        "events": [{"key": "explosive", "label": "疑似爆裂物", "group": "security",
-                    "icon": "explosive", "abbr": "爆", "severity": "critical",
-                    "defaultAssigned": "forward", "cot_type": "a-h-G"}],
+        "events": [
+            {
+                "key": "explosive",
+                "label": "疑似爆裂物",
+                "group": "security",
+                "icon": "explosive",
+                "abbr": "爆",
+                "severity": "critical",
+                "defaultAssigned": "forward",
+                "cot_type": "a-h-G",
+            }
+        ],
     }
 
 

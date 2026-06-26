@@ -38,8 +38,12 @@ def _mk_decision(client, auth, title):
     r = client.post(
         "/api/decisions",
         json={
-            "decision_type": "initial", "severity": "warning", "decision_title": title,
-            "impact_description": "x", "suggested_action_a": "a", "created_by": "sys",
+            "decision_type": "initial",
+            "severity": "warning",
+            "decision_title": title,
+            "impact_description": "x",
+            "suggested_action_a": "a",
+            "created_by": "sys",
         },
         headers=auth,
     )
@@ -62,6 +66,7 @@ def two_exercises(client, auth):
 
 # ── 跨場寫入被擋（active=B，operator scope=B，目標在 A）──────────────────────
 
+
 def test_operator_cannot_patch_cross_exercise_event(client, operator_auth, two_exercises):
     _, _, ev_a, _, _ = two_exercises
     r = client.patch(f"/api/events/{ev_a}", json={"assigned_unit": "hacked"}, headers=operator_auth)
@@ -82,11 +87,14 @@ def test_operator_cannot_note_cross_exercise(client, operator_auth, two_exercise
 
 def test_operator_cannot_decide_cross_exercise(client, operator_auth, two_exercises):
     _, _, _, _, dec_a = two_exercises
-    r = client.post(f"/api/decisions/{dec_a}/decide", json={"action": "approved", "decided_by": "op"}, headers=operator_auth)
+    r = client.post(
+        f"/api/decisions/{dec_a}/decide", json={"action": "approved", "decided_by": "op"}, headers=operator_auth
+    )
     assert r.status_code in (400, 404)
 
 
 # ── 當前場日常寫入不受影響（operator 對 active=B 的 event）─────────────────────
+
 
 def test_operator_can_note_current_exercise(client, operator_auth, two_exercises):
     _, _, _, ev_b, _ = two_exercises
@@ -95,6 +103,7 @@ def test_operator_can_note_current_exercise(client, operator_auth, two_exercises
 
 
 # ── commander 可顯式帶 exercise_id 寫歷史場（與讀取對稱）──────────────────────
+
 
 def test_commander_can_note_historical_with_scope(client, commander_auth, two_exercises):
     ex_a, _, ev_a, _, _ = two_exercises

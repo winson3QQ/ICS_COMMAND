@@ -9,6 +9,7 @@ calc_engine.py — ICS 計算引擎
 from datetime import UTC, datetime
 
 import structlog as _structlog
+
 _log = _structlog.get_logger()
 
 # ──────────────────────────────────────────
@@ -18,42 +19,42 @@ _log = _structlog.get_logger()
 
 DEFAULT_THRESHOLDS = {
     "medical": {
-        "bed_usage_yellow": 0.70,   # 70%
-        "bed_usage_red":    0.90,   # 90%
+        "bed_usage_yellow": 0.70,  # 70%
+        "bed_usage_red": 0.90,  # 90%
         "red_casualties_yellow": 1,
-        "red_casualties_red":    2,
+        "red_casualties_red": 2,
         "waiting_yellow": 3,
-        "waiting_red":    6,
-        "supply_yellow":  0.30,     # 剩餘 30%
-        "supply_red":     0.10,     # 剩餘 10%
+        "waiting_red": 6,
+        "supply_yellow": 0.30,  # 剩餘 30%
+        "supply_red": 0.10,  # 剩餘 10%
         # Phase 2：Data freshness = snapshot_time 的新舊
         # <5 fresh（ok）／5–15 stale（warn）／≥15 LKP
-        "freshness_warn_min":  5,
-        "freshness_crit_min": 15,   # 實務上 lkp 會先 hit
-        "lkp_min":            15,
+        "freshness_warn_min": 5,
+        "freshness_crit_min": 15,  # 實務上 lkp 會先 hit
+        "lkp_min": 15,
     },
     "shelter": {
         "bed_usage_yellow": 0.70,
-        "bed_usage_red":    0.90,
+        "bed_usage_red": 0.90,
         "pending_intake_yellow": 5,
-        "pending_intake_red":   10,
+        "pending_intake_red": 10,
         "srt_red_yellow": 3,
-        "srt_red_red":    6,
-        "freshness_warn_min":  5,
+        "srt_red_red": 6,
+        "freshness_warn_min": 5,
         "freshness_crit_min": 15,
-        "lkp_min":            15,
+        "lkp_min": 15,
     },
     "forward": {
         "red_per_team_yellow": 1,
-        "red_per_team_red":    2,
-        "freshness_warn_min":  5,
+        "red_per_team_red": 2,
+        "freshness_warn_min": 5,
         "freshness_crit_min": 15,
-        "lkp_min":            15,
+        "lkp_min": 15,
     },
     "security": {
-        "freshness_warn_min":  5,
+        "freshness_warn_min": 5,
         "freshness_crit_min": 15,
-        "lkp_min":            15,
+        "lkp_min": 15,
     },
 }
 
@@ -64,6 +65,7 @@ MIN_SPAN_FOR_TREND = 10
 # ──────────────────────────────────────────
 # 時間工具
 # ──────────────────────────────────────────
+
 
 def _parse_dt(s: str) -> datetime:
     """解析 ISO 8601 UTC 字串"""
@@ -83,8 +85,7 @@ def minutes_ago(dt_str: str) -> float:
         return delta.total_seconds() / 60
     except Exception:
         # Q1 凍結：不改 except 結構，只補 logger.error（C1-D）
-        _log.error("calc_engine_error", msg="calc_engine 計算異常",
-                   detail={"func": "minutes_ago", "input": dt_str})
+        _log.error("calc_engine_error", msg="calc_engine 計算異常", detail={"func": "minutes_ago", "input": dt_str})
         return 999.0
 
 
@@ -92,16 +93,15 @@ def minutes_ago(dt_str: str) -> float:
 # 6.5 新鮮度（Freshness）
 # ──────────────────────────────────────────
 
-def freshness(snapshot_time: str, node_type: str = "medical",
-              thresholds: dict = None) -> dict:
+
+def freshness(snapshot_time: str, node_type: str = "medical", thresholds: dict = None) -> dict:
     """
     回傳 {level: 'ok'|'warn'|'crit'|'lkp', minutes: float, label: str}
     """
-    th = (thresholds or DEFAULT_THRESHOLDS).get(node_type,
-          DEFAULT_THRESHOLDS["medical"])
+    th = (thresholds or DEFAULT_THRESHOLDS).get(node_type, DEFAULT_THRESHOLDS["medical"])
     mins = minutes_ago(snapshot_time)
 
-    lkp_min  = th.get("lkp_min", 10)
+    lkp_min = th.get("lkp_min", 10)
     crit_min = th.get("freshness_crit_min", 5)
     warn_min = th.get("freshness_warn_min", 3)
 
@@ -125,8 +125,8 @@ def freshness(snapshot_time: str, node_type: str = "medical",
 # 6.2 趨勢計算
 # ──────────────────────────────────────────
 
-def trend(snapshots: list[dict], field: str,
-          thresholds: dict = None) -> dict:
+
+def trend(snapshots: list[dict], field: str, thresholds: dict = None) -> dict:
     """
     趨勢速率 = (現值 - N分前值) ÷ N
     輸入：依時間倒序的快照列表（最新在前）
@@ -161,7 +161,7 @@ def trend(snapshots: list[dict], field: str,
             "current": newest[field],
             "confidence": "low",
             "span_min": round(span_min, 1),
-            "note": f"快照跨度 {round(span_min,1)} 分鐘（< {MIN_SPAN_FOR_TREND} 分），信心度低"
+            "note": f"快照跨度 {round(span_min, 1)} 分鐘（< {MIN_SPAN_FOR_TREND} 分），信心度低",
         }
 
     rate = (newest[field] - oldest[field]) / span_min
@@ -172,7 +172,7 @@ def trend(snapshots: list[dict], field: str,
         "current": newest[field],
         "confidence": conf,
         "span_min": round(span_min, 1),
-        "note": f"依據 {len(valid)} 筆快照，跨度 {round(span_min,1)} 分鐘"
+        "note": f"依據 {len(valid)} 筆快照，跨度 {round(span_min, 1)} 分鐘",
     }
 
 
@@ -185,10 +185,7 @@ def _direction(rate: float) -> str:
 
 
 def _no_trend(note: str) -> dict:
-    return {
-        "rate": None, "direction": None, "current": None,
-        "confidence": "insufficient", "span_min": 0, "note": note
-    }
+    return {"rate": None, "direction": None, "current": None, "confidence": "insufficient", "span_min": 0, "note": note}
 
 
 def _span_minutes(older_dt_str: str, newer_dt_str: str) -> float:
@@ -198,9 +195,11 @@ def _span_minutes(older_dt_str: str, newer_dt_str: str) -> float:
         return (newer - older).total_seconds() / 60
     except Exception:
         # Q1 凍結：不改 except 結構，只補 logger.error（C1-D）
-        _log.error("calc_engine_error", msg="calc_engine 計算異常",
-                   detail={"func": "_span_minutes",
-                           "input": [older_dt_str, newer_dt_str]})
+        _log.error(
+            "calc_engine_error",
+            msg="calc_engine 計算異常",
+            detail={"func": "_span_minutes", "input": [older_dt_str, newer_dt_str]},
+        )
         return 0.0
 
 
@@ -208,9 +207,8 @@ def _span_minutes(older_dt_str: str, newer_dt_str: str) -> float:
 # 6.4 警戒倒數計算
 # ──────────────────────────────────────────
 
-def countdown(snapshots: list[dict], field: str,
-              threshold_value: float,
-              node_type: str = "medical") -> dict:
+
+def countdown(snapshots: list[dict], field: str, threshold_value: float, node_type: str = "medical") -> dict:
     """
     預計到達門檻時間 = (門檻值 - 現值) ÷ 趨勢速率
     回傳：
@@ -224,17 +222,24 @@ def countdown(snapshots: list[dict], field: str,
     t = trend(snapshots, field)
 
     if t["current"] is None:
-        return {"minutes_to_threshold": None, "label": "資料不足",
-                "confidence": "insufficient", "already_breached": False}
+        return {
+            "minutes_to_threshold": None,
+            "label": "資料不足",
+            "confidence": "insufficient",
+            "already_breached": False,
+        }
 
     current = t["current"]
     if current >= threshold_value:
-        return {"minutes_to_threshold": 0, "label": "已超門檻",
-                "confidence": t["confidence"], "already_breached": True}
+        return {"minutes_to_threshold": 0, "label": "已超門檻", "confidence": t["confidence"], "already_breached": True}
 
     if t["rate"] is None or t["rate"] <= 0:
-        return {"minutes_to_threshold": None, "label": "趨勢穩定或下降，無倒數",
-                "confidence": t["confidence"], "already_breached": False}
+        return {
+            "minutes_to_threshold": None,
+            "label": "趨勢穩定或下降，無倒數",
+            "confidence": t["confidence"],
+            "already_breached": False,
+        }
 
     mins = (threshold_value - current) / t["rate"]
     mins = round(mins, 1)
@@ -246,32 +251,28 @@ def countdown(snapshots: list[dict], field: str,
     else:
         label = f"{int(mins)}分鐘後達門檻"
 
-    return {
-        "minutes_to_threshold": mins,
-        "label": label,
-        "confidence": t["confidence"],
-        "already_breached": False
-    }
+    return {"minutes_to_threshold": mins, "label": label, "confidence": t["confidence"], "already_breached": False}
 
 
 # ──────────────────────────────────────────
 # 6.3 醫療壓力指數
 # ──────────────────────────────────────────
 
+
 def medical_pressure_index(
-    medical_snap:  dict | None,
-    shelter_snap:  dict | None,
-    forward_snap:  dict | None,
+    medical_snap: dict | None,
+    shelter_snap: dict | None,
+    forward_snap: dict | None,
     security_snap: dict | None,
-    coefficients:  dict = None,
+    coefficients: dict = None,
 ) -> dict:
     """
     MPI = (等待÷床位剩餘) + (前進傷患×0.8) + (收容升級×0.3) + (安全事件×0.1)
     規格 6.3
     """
     coef = coefficients or {
-        "forward":  0.8,
-        "shelter":  0.3,
+        "forward": 0.8,
+        "shelter": 0.3,
         "security": 0.1,
     }
 
@@ -279,8 +280,8 @@ def medical_pressure_index(
 
     # ① 等待壓力：等待÷床位剩餘
     if medical_snap:
-        waiting   = medical_snap.get("waiting_count") or 0
-        bed_used  = medical_snap.get("bed_used")  or 0
+        waiting = medical_snap.get("waiting_count") or 0
+        bed_used = medical_snap.get("bed_used") or 0
         bed_total = medical_snap.get("bed_total") or 10
         remaining = max(bed_total - bed_used, 1)  # 避免除以零
         wait_pressure = waiting / remaining
@@ -304,7 +305,7 @@ def medical_pressure_index(
     # ③ 收容組 SRT 升級壓力
     if shelter_snap:
         extra = shelter_snap.get("extra") or {}
-        srt   = extra.get("srt", {})
+        srt = extra.get("srt", {})
         srt_red = srt.get("red", 0) if srt else 0
         components["shelter"] = round(srt_red * coef["shelter"], 2)
     else:
@@ -313,7 +314,7 @@ def medical_pressure_index(
     # ④ 安全事件密度（以隔離人數近似）
     if security_snap:
         extra = security_snap.get("extra") or {}
-        iso   = extra.get("isolation_count", 0) or 0
+        iso = extra.get("isolation_count", 0) or 0
         components["security"] = round(iso * coef["security"], 2)
     else:
         components["security"] = 0
@@ -337,7 +338,7 @@ def medical_pressure_index(
             f"前進 {components['forward']} + "
             f"收容 {components['shelter']} + "
             f"安全 {components['security']}"
-        )
+        ),
     }
 
 
@@ -345,10 +346,11 @@ def medical_pressure_index(
 # 整合：產生儀表板所需的所有計算結果
 # ──────────────────────────────────────────
 
+
 def dashboard_calc(
-    medical_snaps:  list[dict],
-    shelter_snaps:  list[dict],
-    forward_snaps:  list[dict],
+    medical_snaps: list[dict],
+    shelter_snaps: list[dict],
+    forward_snaps: list[dict],
     security_snaps: list[dict],
     thresholds: dict = None,
     open_event_count: int = 0,
@@ -360,19 +362,19 @@ def dashboard_calc(
     """
     th = thresholds or DEFAULT_THRESHOLDS
 
-    med  = medical_snaps[0]  if medical_snaps  else None
-    shel = shelter_snaps[0]  if shelter_snaps  else None
-    fwd  = forward_snaps[0]  if forward_snaps  else None
-    sec  = security_snaps[0] if security_snaps else None
+    med = medical_snaps[0] if medical_snaps else None
+    shel = shelter_snaps[0] if shelter_snaps else None
+    fwd = forward_snaps[0] if forward_snaps else None
+    sec = security_snaps[0] if security_snaps else None
 
     # 新鮮度
-    freshness_medical  = freshness(med["snapshot_time"],  "medical",  th) if med  else _stale()
-    freshness_shelter  = freshness(shel["snapshot_time"], "shelter",  th) if shel else _stale()
-    freshness_forward  = freshness(fwd["snapshot_time"],  "forward",  th) if fwd  else _stale()
-    freshness_security = freshness(sec["snapshot_time"],  "security", th) if sec  else _stale()
+    freshness_medical = freshness(med["snapshot_time"], "medical", th) if med else _stale()
+    freshness_shelter = freshness(shel["snapshot_time"], "shelter", th) if shel else _stale()
+    freshness_forward = freshness(fwd["snapshot_time"], "forward", th) if fwd else _stale()
+    freshness_security = freshness(sec["snapshot_time"], "security", th) if sec else _stale()
 
     # 醫療趨勢
-    med_bed_trend     = trend(medical_snaps, "bed_used")
+    med_bed_trend = trend(medical_snaps, "bed_used")
     med_waiting_trend = trend(medical_snaps, "waiting_count")
 
     # 醫療警戒倒數（床位達 90%）
@@ -390,9 +392,9 @@ def dashboard_calc(
     forward_units = _parse_forward_units(fwd)
 
     # 信心度低的預測數量
-    low_conf_count = sum(1 for t in [
-        med_bed_trend, med_waiting_trend, shel_bed_trend
-    ] if t["confidence"] in ("low", "insufficient"))
+    low_conf_count = sum(
+        1 for t in [med_bed_trend, med_waiting_trend, shel_bed_trend] if t["confidence"] in ("low", "insufficient")
+    )
 
     # ── Wave 1.3 新增：三項智慧 ──
 
@@ -415,9 +417,9 @@ def dashboard_calc(
 
     # 通訊健康度
     comm = {
-        "medical":  comm_health(medical_snaps,  "medical",  th),
-        "shelter":  comm_health(shelter_snaps,  "shelter",  th),
-        "forward":  comm_health(forward_snaps,  "forward",  th),
+        "medical": comm_health(medical_snaps, "medical", th),
+        "shelter": comm_health(shelter_snaps, "shelter", th),
+        "forward": comm_health(forward_snaps, "forward", th),
         "security": comm_health(security_snaps, "security", th),
     }
 
@@ -426,15 +428,20 @@ def dashboard_calc(
 
     # ── Wave 2 新增：DCI（資料信心度指數）──
     freshness_all = {
-        "medical": freshness_medical, "shelter": freshness_shelter,
-        "forward": freshness_forward, "security": freshness_security,
+        "medical": freshness_medical,
+        "shelter": freshness_shelter,
+        "forward": freshness_forward,
+        "security": freshness_security,
     }
     trend_all = [med_bed_trend, med_waiting_trend, shel_bed_trend]
     dci = data_confidence_index(freshness_all, comm, trend_all)
 
     # ── 升降級檢查 ──
     esc = escalation_check(
-        shelter_snaps, medical_snaps, forward_snaps, security_snaps,
+        shelter_snaps,
+        medical_snaps,
+        forward_snaps,
+        security_snaps,
         burn_rates,
         events_open_count=open_event_count,
         events_trend_up=event_trend_up,
@@ -442,9 +449,8 @@ def dashboard_calc(
 
     return {
         "computed_at": _now_utc().strftime("%Y-%m-%dT%H:%M:%SZ"),
-
         "medical": {
-            "snapshot":  med,
+            "snapshot": med,
             "freshness": freshness_medical,
             "bed_trend": med_bed_trend,
             "waiting_trend": med_waiting_trend,
@@ -455,7 +461,7 @@ def dashboard_calc(
             "ops_metrics": _extract_ops_metrics(med),
         },
         "shelter": {
-            "snapshot":  shel,
+            "snapshot": shel,
             "freshness": freshness_shelter,
             "bed_trend": shel_bed_trend,
             "incident_pressure": _extract_ipi(shel),
@@ -463,12 +469,12 @@ def dashboard_calc(
             "ops_metrics": _extract_ops_metrics(shel),
         },
         "forward": {
-            "snapshot":  fwd,
+            "snapshot": fwd,
             "freshness": freshness_forward,
-            "units":     forward_units,
+            "units": forward_units,
         },
         "security": {
-            "snapshot":  sec,
+            "snapshot": sec,
             "freshness": freshness_security,
         },
         "medical_pressure": mpi,
@@ -496,9 +502,13 @@ def _extract_source_breakdown(snap: dict | None) -> dict:
 def _extract_ipi(snap: dict | None) -> dict:
     """從快照 extra.incident_pressure 取事件壓力三維指標"""
     default = {
-        "high": 0, "medium": 0, "low": 0,
-        "ipi": 0, "recent_types": [],
-        "open_total": 0, "resolved_30min": 0,
+        "high": 0,
+        "medium": 0,
+        "low": 0,
+        "ipi": 0,
+        "recent_types": [],
+        "open_total": 0,
+        "resolved_30min": 0,
     }
     if not snap:
         return default
@@ -507,12 +517,12 @@ def _extract_ipi(snap: dict | None) -> dict:
     if not ip:
         return default
     return {
-        "high":           ip.get("high", 0),
-        "medium":         ip.get("medium", 0),
-        "low":            ip.get("low", 0),
-        "ipi":            ip.get("ipi", 0),
-        "recent_types":   ip.get("recent_types", []),
-        "open_total":     ip.get("open_total", 0),
+        "high": ip.get("high", 0),
+        "medium": ip.get("medium", 0),
+        "low": ip.get("low", 0),
+        "ipi": ip.get("ipi", 0),
+        "recent_types": ip.get("recent_types", []),
+        "open_total": ip.get("open_total", 0),
         "resolved_30min": ip.get("resolved_30min", 0),
     }
 
@@ -525,7 +535,7 @@ def _extract_supplies(snap: dict | None) -> dict:
     extra = snap.get("extra") or {}
     return {
         "current": extra.get("supplies", {}),
-        "max":     extra.get("supplies_max", {}),
+        "max": extra.get("supplies_max", {}),
     }
 
 
@@ -542,9 +552,9 @@ def _extract_ops_metrics(snap: dict | None) -> dict:
     extra = snap.get("extra") or {}
     return {
         "active_staff": extra.get("active_staff"),
-        "staff_ratio":  extra.get("staff_ratio"),
-        "stuck_count":  extra.get("stuck_count", 0),
-        "stuck_rate":   extra.get("stuck_rate", 0),
+        "staff_ratio": extra.get("staff_ratio"),
+        "stuck_count": extra.get("stuck_count", 0),
+        "stuck_rate": extra.get("stuck_rate", 0),
     }
 
 
@@ -555,6 +565,7 @@ def _stale() -> dict:
 # ──────────────────────────────────────────
 # 物資消耗速率（Resource Burn Rate）
 # ──────────────────────────────────────────
+
 
 def burn_rate(snapshots: list[dict], supply_key: str) -> dict:
     """
@@ -573,9 +584,13 @@ def burn_rate(snapshots: list[dict], supply_key: str) -> dict:
       }
     """
     no_data = {
-        "rate_per_min": None, "current": None, "max_val": None,
-        "pct_remaining": None, "time_to_zero_min": None,
-        "level": "ok", "note": "無物資資料"
+        "rate_per_min": None,
+        "current": None,
+        "max_val": None,
+        "pct_remaining": None,
+        "time_to_zero_min": None,
+        "level": "ok",
+        "note": "無物資資料",
     }
 
     # 收集有效資料點：(snapshot_time, supply_value)
@@ -610,9 +625,13 @@ def burn_rate(snapshots: list[dict], supply_key: str) -> dict:
         elif pct is not None and pct < 0.30:
             level = "warn"
         return {
-            "rate_per_min": None, "current": current, "max_val": max_val,
-            "pct_remaining": pct, "time_to_zero_min": None,
-            "level": level, "note": "僅一筆資料，無法計算消耗速率"
+            "rate_per_min": None,
+            "current": current,
+            "max_val": max_val,
+            "pct_remaining": pct,
+            "time_to_zero_min": None,
+            "level": level,
+            "note": "僅一筆資料，無法計算消耗速率",
         }
 
     # 用最新和最舊有效點計算速率
@@ -622,9 +641,13 @@ def burn_rate(snapshots: list[dict], supply_key: str) -> dict:
 
     if span < 1:
         return {
-            "rate_per_min": None, "current": current, "max_val": max_val,
-            "pct_remaining": pct, "time_to_zero_min": None,
-            "level": "ok", "note": "時間跨度不足"
+            "rate_per_min": None,
+            "current": current,
+            "max_val": max_val,
+            "pct_remaining": pct,
+            "time_to_zero_min": None,
+            "level": "ok",
+            "note": "時間跨度不足",
         }
 
     # rate > 0 表示在消耗（值在減少）
@@ -652,10 +675,12 @@ def burn_rate(snapshots: list[dict], supply_key: str) -> dict:
         "pct_remaining": pct,
         "time_to_zero_min": time_to_zero,
         "level": level,
-        "note": (f"消耗 {round(rate,2)}/min，"
-                 f"剩餘 {current}"
-                 + (f"（{round(pct*100)}%）" if pct is not None else "")
-                 + (f"，預估 {int(time_to_zero)} 分鐘歸零" if time_to_zero else ""))
+        "note": (
+            f"消耗 {round(rate, 2)}/min，"
+            f"剩餘 {current}"
+            + (f"（{round(pct * 100)}%）" if pct is not None else "")
+            + (f"，預估 {int(time_to_zero)} 分鐘歸零" if time_to_zero else "")
+        ),
     }
 
 
@@ -663,8 +688,8 @@ def burn_rate(snapshots: list[dict], supply_key: str) -> dict:
 # 通訊健康度（Communication Health）
 # ──────────────────────────────────────────
 
-def comm_health(snapshots: list[dict], node_type: str,
-                thresholds: dict = None) -> dict:
+
+def comm_health(snapshots: list[dict], node_type: str, thresholds: dict = None) -> dict:
     """
     綜合評估某節點的通訊健康：
     1. freshness — 最新快照新鮮度
@@ -682,15 +707,17 @@ def comm_health(snapshots: list[dict], node_type: str,
         note: str
       }
     """
-    th = (thresholds or DEFAULT_THRESHOLDS).get(node_type,
-          DEFAULT_THRESHOLDS.get("medical", {}))
+    th = (thresholds or DEFAULT_THRESHOLDS).get(node_type, DEFAULT_THRESHOLDS.get("medical", {}))
 
     if not snapshots:
         return {
             "freshness": _stale(),
-            "gap_detected": False, "gap_max_min": 0,
-            "zero_anomaly": False, "zero_fields": [],
-            "health_level": "lkp", "note": "無快照"
+            "gap_detected": False,
+            "gap_max_min": 0,
+            "zero_anomaly": False,
+            "zero_fields": [],
+            "health_level": "lkp",
+            "note": "無快照",
         }
 
     # 1. 新鮮度
@@ -753,7 +780,7 @@ def comm_health(snapshots: list[dict], node_type: str,
         "zero_anomaly": zero_anomaly,
         "zero_fields": zero_fields,
         "health_level": health_level,
-        "note": "；".join(notes) if notes else "通訊正常"
+        "note": "；".join(notes) if notes else "通訊正常",
     }
 
 
@@ -761,8 +788,8 @@ def comm_health(snapshots: list[dict], node_type: str,
 # 產出監控（Output Monitor）
 # ──────────────────────────────────────────
 
-def output_monitor(medical_snaps: list[dict],
-                   shelter_snaps: list[dict]) -> dict:
+
+def output_monitor(medical_snaps: list[dict], shelter_snaps: list[dict]) -> dict:
     """
     監控系統的「產出」端：後送效率、離站效率、積壓狀況。
 
@@ -777,9 +804,12 @@ def output_monitor(medical_snaps: list[dict],
       }
     """
     result = {
-        "evac_backlog": None, "evac_trend": None,
-        "discharge_rate": None, "shelter_exit_rate": None,
-        "level": "ok", "note": "產出正常"
+        "evac_backlog": None,
+        "evac_trend": None,
+        "discharge_rate": None,
+        "shelter_exit_rate": None,
+        "level": "ok",
+        "note": "產出正常",
     }
 
     notes = []
@@ -796,15 +826,11 @@ def output_monitor(medical_snaps: list[dict],
 
         # discharge rate（evacuated_total 的增長速率）
         if len(medical_snaps) >= 2:
-            valid = [s for s in medical_snaps
-                     if s.get("evacuated_total") is not None]
+            valid = [s for s in medical_snaps if s.get("evacuated_total") is not None]
             if len(valid) >= 2:
-                span = _span_minutes(
-                    valid[-1].get("snapshot_time", ""),
-                    valid[0].get("snapshot_time", ""))
+                span = _span_minutes(valid[-1].get("snapshot_time", ""), valid[0].get("snapshot_time", ""))
                 if span > 0:
-                    diff = (valid[0].get("evacuated_total", 0) -
-                            valid[-1].get("evacuated_total", 0))
+                    diff = valid[0].get("evacuated_total", 0) - valid[-1].get("evacuated_total", 0)
                     result["discharge_rate"] = round(diff / span, 3)
 
         # 判斷：pending_evac 持續上升 = 積壓
@@ -817,16 +843,13 @@ def output_monitor(medical_snaps: list[dict],
 
     # 收容離站速率
     if shelter_snaps and len(shelter_snaps) >= 2:
-        extra_newest = (shelter_snaps[0].get("extra") or {})
-        extra_oldest = (shelter_snaps[-1].get("extra") or {})
+        extra_newest = shelter_snaps[0].get("extra") or {}
+        extra_oldest = shelter_snaps[-1].get("extra") or {}
         exit_newest = extra_newest.get("exited_total", 0) or 0
         exit_oldest = extra_oldest.get("exited_total", 0) or 0
-        span = _span_minutes(
-            shelter_snaps[-1].get("snapshot_time", ""),
-            shelter_snaps[0].get("snapshot_time", ""))
+        span = _span_minutes(shelter_snaps[-1].get("snapshot_time", ""), shelter_snaps[0].get("snapshot_time", ""))
         if span > 0 and exit_newest >= exit_oldest:
-            result["shelter_exit_rate"] = round(
-                (exit_newest - exit_oldest) / span, 3)
+            result["shelter_exit_rate"] = round((exit_newest - exit_oldest) / span, 3)
 
     if notes:
         result["note"] = "；".join(notes)
@@ -837,6 +860,7 @@ def output_monitor(medical_snaps: list[dict],
 # ──────────────────────────────────────────
 # 升降級檢查（Escalation Check）
 # ──────────────────────────────────────────
+
 
 def escalation_check(
     shelter_snaps: list[dict],
@@ -867,26 +891,26 @@ def escalation_check(
     if shelter_snaps:
         cap_snaps_30 = _snaps_within_minutes(shelter_snaps, 30)
         if len(cap_snaps_30) >= 2:
-            all_above_80 = all(
-                _bed_ratio(s) > 0.80 for s in cap_snaps_30
-            )
-            all_above_90 = all(
-                _bed_ratio(s) > 0.90 for s in cap_snaps_30
-            )
+            all_above_80 = all(_bed_ratio(s) > 0.80 for s in cap_snaps_30)
+            all_above_90 = all(_bed_ratio(s) > 0.90 for s in cap_snaps_30)
             if all_above_90:
-                triggers.append({
-                    "rule_id": "ESC-CAP",
-                    "description": "收容率 > 90% 持續 30 分鐘",
-                    "severity": "critical",
-                    "direction": "escalation",
-                })
+                triggers.append(
+                    {
+                        "rule_id": "ESC-CAP",
+                        "description": "收容率 > 90% 持續 30 分鐘",
+                        "severity": "critical",
+                        "direction": "escalation",
+                    }
+                )
             elif all_above_80:
-                triggers.append({
-                    "rule_id": "ESC-CAP",
-                    "description": "收容率 > 80% 持續 30 分鐘",
-                    "severity": "warning",
-                    "direction": "escalation",
-                })
+                triggers.append(
+                    {
+                        "rule_id": "ESC-CAP",
+                        "description": "收容率 > 80% 持續 30 分鐘",
+                        "severity": "warning",
+                        "direction": "escalation",
+                    }
+                )
 
     # ESC-RED：Red 傷患佔比突然上升
     if len(medical_snaps) >= 6:
@@ -897,21 +921,25 @@ def escalation_check(
         abs_increase = avg_recent - avg_prev
         ratio = avg_recent / avg_prev if avg_prev > 0 else None
         if abs_increase >= 2 or (ratio is not None and ratio >= 1.5):
-            triggers.append({
-                "rule_id": "ESC-RED",
-                "description": f"Red 傷患急升（近 3 筆均值 {avg_recent:.1f} vs 前 3 筆 {avg_prev:.1f}）",
-                "severity": "warning",
-                "direction": "escalation",
-            })
+            triggers.append(
+                {
+                    "rule_id": "ESC-RED",
+                    "description": f"Red 傷患急升（近 3 筆均值 {avg_recent:.1f} vs 前 3 筆 {avg_prev:.1f}）",
+                    "severity": "warning",
+                    "direction": "escalation",
+                }
+            )
 
     # ESC-INC：未結事件 > 5 且持續增加
     if events_open_count > 5 and events_trend_up:
-        triggers.append({
-            "rule_id": "ESC-INC",
-            "description": f"未結事件 {events_open_count} 件且持續增加",
-            "severity": "warning",
-            "direction": "escalation",
-        })
+        triggers.append(
+            {
+                "rule_id": "ESC-INC",
+                "description": f"未結事件 {events_open_count} 件且持續增加",
+                "severity": "warning",
+                "direction": "escalation",
+            }
+        )
 
     # ESC-STAFF：staff_ratio > 8（超載）
     for label, snaps in [("收容組", shelter_snaps), ("醫療組", medical_snaps)]:
@@ -919,23 +947,27 @@ def escalation_check(
             extra = snaps[0].get("extra") or {}
             sr = extra.get("staff_ratio")
             if sr is not None and sr > 8:
-                triggers.append({
-                    "rule_id": "ESC-STAFF",
-                    "description": f"{label} staff_ratio={sr}（超載）",
-                    "severity": "critical",
-                    "direction": "escalation",
-                })
+                triggers.append(
+                    {
+                        "rule_id": "ESC-STAFF",
+                        "description": f"{label} staff_ratio={sr}（超載）",
+                        "severity": "critical",
+                        "direction": "escalation",
+                    }
+                )
 
     # ESC-SUPPLY：burn rate time_to_zero < 120 min
     for key, br in burn_rates.items():
         ttz = br.get("time_to_zero_min")
         if ttz is not None and ttz < 120:
-            triggers.append({
-                "rule_id": "ESC-SUPPLY",
-                "description": f"物資 {key} 預估 {int(ttz)} 分鐘歸零",
-                "severity": "critical",
-                "direction": "escalation",
-            })
+            triggers.append(
+                {
+                    "rule_id": "ESC-SUPPLY",
+                    "description": f"物資 {key} 預估 {int(ttz)} 分鐘歸零",
+                    "severity": "critical",
+                    "direction": "escalation",
+                }
+            )
 
     # ── 降級規則 ──
 
@@ -943,15 +975,15 @@ def escalation_check(
     if shelter_snaps:
         cap_snaps_60 = _snaps_within_minutes(shelter_snaps, 60)
         if len(cap_snaps_60) >= 2:
-            all_below_50 = all(
-                _bed_ratio(s) < 0.50 for s in cap_snaps_60
-            )
+            all_below_50 = all(_bed_ratio(s) < 0.50 for s in cap_snaps_60)
             if all_below_50:
-                deesc.append({
-                    "rule_id": "DE-CAP",
-                    "description": "收容率 < 50% 持續 1 小時",
-                    "direction": "deescalation",
-                })
+                deesc.append(
+                    {
+                        "rule_id": "DE-CAP",
+                        "description": "收容率 < 50% 持續 1 小時",
+                        "direction": "deescalation",
+                    }
+                )
 
     # DE-RED：無新 Red 傷患超過 45 分鐘
     if medical_snaps:
@@ -961,19 +993,23 @@ def escalation_check(
             red_vals = [s.get("casualties_red", 0) or 0 for s in red_snaps_45]
             all_zero_or_stable = all(v == red_vals[0] for v in red_vals) or all(v == 0 for v in red_vals)
             if all_zero_or_stable:
-                deesc.append({
-                    "rule_id": "DE-RED",
-                    "description": "無新 Red 傷患超過 45 分鐘",
-                    "direction": "deescalation",
-                })
+                deesc.append(
+                    {
+                        "rule_id": "DE-RED",
+                        "description": "無新 Red 傷患超過 45 分鐘",
+                        "direction": "deescalation",
+                    }
+                )
 
     # DE-INC：events_open_count == 0
     if events_open_count == 0:
-        deesc.append({
-            "rule_id": "DE-INC",
-            "description": "無未結事件",
-            "direction": "deescalation",
-        })
+        deesc.append(
+            {
+                "rule_id": "DE-INC",
+                "description": "無未結事件",
+                "direction": "deescalation",
+            }
+        )
 
     # DE-STAFF：全部組 staff_ratio < 3
     all_staff_low = True
@@ -986,24 +1022,25 @@ def escalation_check(
                 break
         # 無資料視為不適用，不阻擋降級
     if all_staff_low:
-        deesc.append({
-            "rule_id": "DE-STAFF",
-            "description": "全部組 staff_ratio < 3",
-            "direction": "deescalation",
-        })
+        deesc.append(
+            {
+                "rule_id": "DE-STAFF",
+                "description": "全部組 staff_ratio < 3",
+                "direction": "deescalation",
+            }
+        )
 
     # DE-SUPPLY：所有物資 burn rate rate_per_min ≤ 0 或 None
     if burn_rates:
-        all_stable = all(
-            (br.get("rate_per_min") is None or br.get("rate_per_min") <= 0)
-            for br in burn_rates.values()
-        )
+        all_stable = all((br.get("rate_per_min") is None or br.get("rate_per_min") <= 0) for br in burn_rates.values())
         if all_stable:
-            deesc.append({
-                "rule_id": "DE-SUPPLY",
-                "description": "所有物資消耗穩定或無消耗",
-                "direction": "deescalation",
-            })
+            deesc.append(
+                {
+                    "rule_id": "DE-SUPPLY",
+                    "description": "所有物資消耗穩定或無消耗",
+                    "direction": "deescalation",
+                }
+            )
 
     # ── level 判斷 ──
     severities = [t["severity"] for t in triggers]
@@ -1054,6 +1091,7 @@ def _bed_ratio(snap: dict) -> float:
 # Wave 2：DCI（Data Confidence Index，資料信心度指數）
 # ──────────────────────────────────────────
 
+
 def data_confidence_index(
     freshness_all: dict[str, dict],
     comm_all: dict[str, dict],
@@ -1075,10 +1113,7 @@ def data_confidence_index(
     """
     # ① 新鮮度分數：四組平均，level → 分數
     _fresh_score = {"ok": 100, "warn": 60, "crit": 30, "lkp": 0}
-    fresh_scores = [
-        _fresh_score.get(f.get("level", "lkp"), 0)
-        for f in freshness_all.values()
-    ]
+    fresh_scores = [_fresh_score.get(f.get("level", "lkp"), 0) for f in freshness_all.values()]
     freshness_score = sum(fresh_scores) / max(len(fresh_scores), 1)
 
     # ② 覆蓋率：四組中有幾組有資料（非 lkp）
@@ -1087,27 +1122,16 @@ def data_confidence_index(
 
     # ③ 趨勢信心度平均
     _conf_score = {"high": 100, "medium": 70, "low": 30, "insufficient": 0}
-    trend_scores = [
-        _conf_score.get(t.get("confidence", "insufficient"), 0)
-        for t in trends
-    ]
+    trend_scores = [_conf_score.get(t.get("confidence", "insufficient"), 0) for t in trends]
     trend_score = sum(trend_scores) / max(len(trend_scores), 1) if trend_scores else 0
 
     # ④ 通訊健康度平均
     _health_score = {"ok": 100, "warn": 60, "crit": 30, "lkp": 0}
-    comm_scores = [
-        _health_score.get(c.get("health_level", "lkp"), 0)
-        for c in comm_all.values()
-    ]
+    comm_scores = [_health_score.get(c.get("health_level", "lkp"), 0) for c in comm_all.values()]
     comm_score = sum(comm_scores) / max(len(comm_scores), 1)
 
     # 加權合計
-    overall = (
-        freshness_score * 0.4 +
-        coverage_score * 0.3 +
-        trend_score * 0.2 +
-        comm_score * 0.1
-    )
+    overall = freshness_score * 0.4 + coverage_score * 0.3 + trend_score * 0.2 + comm_score * 0.1
     overall = round(overall, 1)
 
     # 判斷等級
@@ -1143,28 +1167,32 @@ def _parse_forward_units(fwd_snap: dict | None) -> list[dict]:
         for u in units:
             last_update = u.get("last_update", fwd_snap.get("snapshot_time", now_str))
             f = freshness(last_update, "forward")
-            result.append({
-                "unit":        u.get("unit"),
-                "casualties":  u.get("casualties", {}),
-                "ccp_status":  u.get("ccp_status"),
-                "vehicle_needed": u.get("vehicle_needed", 0),
-                "hazard":      u.get("hazard", "none"),
-                "freshness":   f,
-            })
+            result.append(
+                {
+                    "unit": u.get("unit"),
+                    "casualties": u.get("casualties", {}),
+                    "ccp_status": u.get("ccp_status"),
+                    "vehicle_needed": u.get("vehicle_needed", 0),
+                    "hazard": u.get("hazard", "none"),
+                    "freshness": f,
+                }
+            )
         return result
     else:
         # 單小隊格式（舊式）
         f = freshness(fwd_snap.get("snapshot_time", ""), "forward")
-        return [{
-            "unit": "A",
-            "casualties": {
-                "red":    fwd_snap.get("casualties_red",    0),
-                "yellow": fwd_snap.get("casualties_yellow", 0),
-                "green":  fwd_snap.get("casualties_green",  0),
-                "black":  fwd_snap.get("casualties_black",  0),
-            },
-            "ccp_status": None,
-            "vehicle_needed": 0,
-            "hazard": "none",
-            "freshness": f,
-        }]
+        return [
+            {
+                "unit": "A",
+                "casualties": {
+                    "red": fwd_snap.get("casualties_red", 0),
+                    "yellow": fwd_snap.get("casualties_yellow", 0),
+                    "green": fwd_snap.get("casualties_green", 0),
+                    "black": fwd_snap.get("casualties_black", 0),
+                },
+                "ccp_status": None,
+                "vehicle_needed": 0,
+                "hazard": "none",
+                "freshness": f,
+            }
+        ]

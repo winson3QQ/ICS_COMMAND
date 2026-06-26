@@ -17,14 +17,22 @@ _SAMPLE = {
     "version": 1,
     "groups": [{"key": "security", "label": "安全威脅", "order": 1}],
     "events": [
-        {"key": "explosive", "label": "疑似爆裂物", "group": "security",
-         "icon": "explosive", "abbr": "爆", "severity": "critical",
-         "defaultAssigned": "forward", "cot_type": "a-h-G"},
+        {
+            "key": "explosive",
+            "label": "疑似爆裂物",
+            "group": "security",
+            "icon": "explosive",
+            "abbr": "爆",
+            "severity": "critical",
+            "defaultAssigned": "forward",
+            "cot_type": "a-h-G",
+        },
     ],
 }
 
 
 # ── ensure() ────────────────────────────────────────────────
+
 
 def test_ensure_copies_seed_when_runtime_missing(tmp_path: Path):
     seed = tmp_path / "seed.json"
@@ -56,6 +64,7 @@ def test_ensure_writes_empty_shell_when_seed_missing(tmp_path: Path):
 
 # ── read() ──────────────────────────────────────────────────
 
+
 def test_read_prefers_runtime_over_seed(tmp_path: Path):
     seed = tmp_path / "seed.json"
     runtime = tmp_path / "runtime.json"
@@ -71,7 +80,9 @@ def test_read_falls_back_to_seed_then_shell(tmp_path: Path):
     assert event_taxonomy_store.read(path=runtime, seed=seed) == _SAMPLE
     # 兩者皆無 → 空殼
     assert event_taxonomy_store.read(path=tmp_path / "x.json", seed=tmp_path / "y.json") == {
-        "version": 1, "groups": [], "events": []
+        "version": 1,
+        "groups": [],
+        "events": [],
     }
 
 
@@ -96,38 +107,82 @@ def test_read_backfills_source_from_seed(tmp_path: Path):
     """舊 runtime 缺 source → 依 key 從 seed 回填（source 為 read-only 事實，#66）。"""
     seed = tmp_path / "seed.json"
     runtime = tmp_path / "runtime.json"
-    seed.write_text(json.dumps({
-        "version": 1, "groups": [{"key": "security", "label": "安全"}],
-        "events": [{"key": "explosive", "label": "爆", "group": "security",
-                    "severity": "critical", "cot_type": "a-h-G", "source": "napsg"}],
-    }))
-    runtime.write_text(json.dumps({  # runtime 無 source（舊版建立）
-        "version": 1, "groups": [{"key": "security", "label": "安全"}],
-        "events": [{"key": "explosive", "label": "爆改", "group": "security",
-                    "severity": "critical", "cot_type": "a-h-G"}],
-    }))
+    seed.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "groups": [{"key": "security", "label": "安全"}],
+                "events": [
+                    {
+                        "key": "explosive",
+                        "label": "爆",
+                        "group": "security",
+                        "severity": "critical",
+                        "cot_type": "a-h-G",
+                        "source": "napsg",
+                    }
+                ],
+            }
+        )
+    )
+    runtime.write_text(
+        json.dumps(
+            {  # runtime 無 source（舊版建立）
+                "version": 1,
+                "groups": [{"key": "security", "label": "安全"}],
+                "events": [
+                    {
+                        "key": "explosive",
+                        "label": "爆改",
+                        "group": "security",
+                        "severity": "critical",
+                        "cot_type": "a-h-G",
+                    }
+                ],
+            }
+        )
+    )
     got = event_taxonomy_store.read(path=runtime, seed=seed)
-    assert got["events"][0]["source"] == "napsg"   # 回填
-    assert got["events"][0]["label"] == "爆改"      # runtime 其他值不被覆蓋
+    assert got["events"][0]["source"] == "napsg"  # 回填
+    assert got["events"][0]["label"] == "爆改"  # runtime 其他值不被覆蓋
 
 
 def test_read_backfills_regime_from_seed(tmp_path: Path):
     """舊 runtime 缺 regime → 依 key 從 seed 回填（regime 為 seed-authoritative 事實，#241）。"""
     seed = tmp_path / "seed.json"
     runtime = tmp_path / "runtime.json"
-    seed.write_text(json.dumps({
-        "version": 1, "groups": [{"key": "security", "label": "安全"}],
-        "events": [{"key": "drone", "label": "機", "group": "security",
-                    "severity": "critical", "cot_type": "a-h-A", "regime": "military"}],
-    }))
-    runtime.write_text(json.dumps({  # runtime 無 regime（regime 欄加入前建立）
-        "version": 1, "groups": [{"key": "security", "label": "安全"}],
-        "events": [{"key": "drone", "label": "機改", "group": "security",
-                    "severity": "critical", "cot_type": "a-h-A"}],
-    }))
+    seed.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "groups": [{"key": "security", "label": "安全"}],
+                "events": [
+                    {
+                        "key": "drone",
+                        "label": "機",
+                        "group": "security",
+                        "severity": "critical",
+                        "cot_type": "a-h-A",
+                        "regime": "military",
+                    }
+                ],
+            }
+        )
+    )
+    runtime.write_text(
+        json.dumps(
+            {  # runtime 無 regime（regime 欄加入前建立）
+                "version": 1,
+                "groups": [{"key": "security", "label": "安全"}],
+                "events": [
+                    {"key": "drone", "label": "機改", "group": "security", "severity": "critical", "cot_type": "a-h-A"}
+                ],
+            }
+        )
+    )
     got = event_taxonomy_store.read(path=runtime, seed=seed)
     assert got["events"][0]["regime"] == "military"  # 回填
-    assert got["events"][0]["label"] == "機改"        # runtime 其他值不被覆蓋
+    assert got["events"][0]["label"] == "機改"  # runtime 其他值不被覆蓋
 
 
 def test_read_backfill_does_not_override_existing_source(tmp_path: Path):
@@ -149,6 +204,7 @@ def test_read_backfill_does_not_override_existing_regime(tmp_path: Path):
 
 # ── write_atomic() ──────────────────────────────────────────
 
+
 def test_write_atomic_creates_and_replaces_no_tmp(tmp_path: Path):
     runtime = tmp_path / "data" / "event_taxonomy.json"
     event_taxonomy_store.write_atomic(_SAMPLE, path=runtime)
@@ -157,6 +213,7 @@ def test_write_atomic_creates_and_replaces_no_tmp(tmp_path: Path):
 
 
 # ── factory seed 完整性 ─────────────────────────────────────
+
 
 def test_factory_seed_is_valid_and_complete():
     """釘住 factory seed：22 事件 / 6 群組 / 必要欄位齊 / severity 合法 / group 參照存在。"""
@@ -175,6 +232,4 @@ def test_factory_seed_is_valid_and_complete():
         keys.add(ev["key"])
         assert ev.get("source") in {"napsg", "ics"}, f"{ev['key']} source 非法：{ev.get('source')}"
         # 2026-06-12 regime 軸（#241）：每事件必帶合法 regime（civil/alert/military）。
-        assert ev.get("regime") in {"civil", "alert", "military"}, (
-            f"{ev['key']} regime 非法：{ev.get('regime')}"
-        )
+        assert ev.get("regime") in {"civil", "alert", "military"}, f"{ev['key']} regime 非法：{ev.get('regime')}"

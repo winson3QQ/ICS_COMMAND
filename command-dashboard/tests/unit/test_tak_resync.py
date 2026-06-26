@@ -248,9 +248,7 @@ def test_reconcile_outbound_noop_when_downlink_unconfigured(monkeypatch):
     """TAK 出向未配置 → no-op：連 entity 都不查、不送，回 0（不每筆 raise 洗 log）。"""
     _set_downlink_configured(monkeypatch, configured=False)
     called = []
-    monkeypatch.setattr(
-        tak_resync.cop_entity_repo, "list_shared_tak_entities", lambda **k: called.append(1) or []
-    )
+    monkeypatch.setattr(tak_resync.cop_entity_repo, "list_shared_tak_entities", lambda **k: called.append(1) or [])
     pushed = _run(tak_resync.reconcile_shared_outbound())
     assert pushed == 0
     assert called == []
@@ -262,9 +260,7 @@ def test_reconcile_outbound_noop_when_toggle_disabled_even_if_configured(monkeyp
     monkeypatch.setattr("services.tak_runtime.effective_enabled", lambda: False)
     monkeypatch.setattr("services.tak_runtime.is_configured", lambda: True)  # cert 仍在
     called = []
-    monkeypatch.setattr(
-        tak_resync.cop_entity_repo, "list_shared_tak_entities", lambda **k: called.append(1) or []
-    )
+    monkeypatch.setattr(tak_resync.cop_entity_repo, "list_shared_tak_entities", lambda **k: called.append(1) or [])
     pushed = _run(tak_resync.reconcile_shared_outbound())
     assert pushed == 0
     assert called == []  # gate 早於查詢 → 開關關了連查都不查

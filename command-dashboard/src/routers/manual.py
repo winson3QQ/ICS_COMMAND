@@ -1,4 +1,3 @@
-
 from fastapi import APIRouter, Request
 
 from repositories.manual_repo import create_manual_record, get_manual_records, mark_manual_record_synced
@@ -8,29 +7,28 @@ from services.exercise_service import current_exercise_id, resolve_scope
 router = APIRouter(prefix="/api/manual_records", tags=["手動輸入"])
 
 FORM_TARGET_MAP = {
-    "shelter-intake":  ("S1_入站登記",  "PERSON+SHELTER_PROFILE"),
-    "shelter-srt":     ("S2_SRT評估",   "SHELTER_PROFILE"),
-    "shelter-cmist":   ("S3_CMIST評估", "CMIST"),
-    "shelter-exit":    ("S4_離站記錄",  "SHELTER_PROFILE"),
-    "med-patient":     ("M2_傷患接收",  "MEDICAL_PROFILE"),
-    "intel-vehicle":   ("V1_車輛狀態",  "VEHICLE"),
-    "intel-situation": ("C1_局勢摘要",  "COMMAND_SUMMARY"),
+    "shelter-intake": ("S1_入站登記", "PERSON+SHELTER_PROFILE"),
+    "shelter-srt": ("S2_SRT評估", "SHELTER_PROFILE"),
+    "shelter-cmist": ("S3_CMIST評估", "CMIST"),
+    "shelter-exit": ("S4_離站記錄", "SHELTER_PROFILE"),
+    "med-patient": ("M2_傷患接收", "MEDICAL_PROFILE"),
+    "intel-vehicle": ("V1_車輛狀態", "VEHICLE"),
+    "intel-situation": ("C1_局勢摘要", "COMMAND_SUMMARY"),
 }
 
 
 @router.post("")
 def post_manual(body: ManualRecordIn):
-    meta   = FORM_TARGET_MAP.get(body.form_id, ("手動輸入", "未知"))
-    data   = body.model_dump()
-    data["form_type"]    = meta[0]
+    meta = FORM_TARGET_MAP.get(body.form_id, ("手動輸入", "未知"))
+    data = body.model_dump()
+    data["form_type"] = meta[0]
     data["target_table"] = meta[1]
     # P1-14：exercise_id 由 server active 場決定，不信任 client（含 PII，需嚴格 scoping）。
     return create_manual_record(data, current_exercise_id())
 
 
 @router.get("")
-def get_manual(request: Request, sync_status: str | None = None, limit: int = 100,
-               exercise_id: int | None = None):
+def get_manual(request: Request, sync_status: str | None = None, limit: int = 100, exercise_id: int | None = None):
     # P1-14：manual_records 含 PII → 預設只回當前 active 場；commander 顯式帶才看歷史。
     return get_manual_records(sync_status, limit, resolve_scope(request.state.session, exercise_id))
 

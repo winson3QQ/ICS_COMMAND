@@ -7,12 +7,18 @@ from schemas.snapshot import SnapshotIn
 router = APIRouter(prefix="/api/snapshots", tags=["快照"])
 
 _TYPE_MAP = {
-    "snapshot_shelter": "shelter", "snapshot_medical": "medical",
-    "snapshot_forward": "forward", "snapshot_security": "security",
-    "snapshot_ccp": "ccp",         "snapshot_evac": "evac",
-    "shelter": "shelter",          "medical": "medical",
-    "forward": "forward",          "security": "security",
-    "ccp": "ccp",                  "evac": "evac",
+    "snapshot_shelter": "shelter",
+    "snapshot_medical": "medical",
+    "snapshot_forward": "forward",
+    "snapshot_security": "security",
+    "snapshot_ccp": "ccp",
+    "snapshot_evac": "evac",
+    "shelter": "shelter",
+    "medical": "medical",
+    "forward": "forward",
+    "security": "security",
+    "ccp": "ccp",
+    "evac": "evac",
 }
 
 

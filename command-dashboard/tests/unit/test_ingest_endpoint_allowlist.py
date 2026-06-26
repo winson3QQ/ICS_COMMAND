@@ -17,29 +17,29 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 def test_all_ingest_endpoints_require_hmac():
     """AC-14：PROTECTED_INGEST 所有端點均掛 Depends(verify_hmac)。"""
     from fastapi.routing import APIRoute
-    from middleware.trusted_ingest import verify_hmac
+
     from main import app
+    from middleware.trusted_ingest import verify_hmac
 
     # 已知需要 HMAC 保護的端點白名單（新增 ingest endpoint 時一起更新此清單）
     PROTECTED_INGEST = {
         ("POST", "/api/snapshots"),
         ("POST", "/api/sync/push"),
-        ("POST", "/api/ingress/pi-node/{unit_id}"),   # P1-02：新主路徑（canonical）
-        ("POST", "/api/pi-push/{unit_id}"),           # P1-02：舊別名（向後相容，雙裝飾器同 handler）
+        ("POST", "/api/ingress/pi-node/{unit_id}"),  # P1-02：新主路徑（canonical）
+        ("POST", "/api/pi-push/{unit_id}"),  # P1-02：舊別名（向後相容，雙裝飾器同 handler）
     }
 
     # 建立 route map：(method, path) → route
     route_map: dict[tuple[str, str], APIRoute] = {}
     for route in app.routes:
         if isinstance(route, APIRoute):
-            for method in (route.methods or []):
+            for method in route.methods or []:
                 route_map[(method.upper(), route.path)] = route
 
     for method, path in PROTECTED_INGEST:
         route = route_map.get((method, path))
         assert route is not None, (
-            f"Route {method} {path} 未在 app 中找到。"
-            f"請確認 router prefix 正確，或從 PROTECTED_INGEST 移除已廢棄端點。"
+            f"Route {method} {path} 未在 app 中找到。請確認 router prefix 正確，或從 PROTECTED_INGEST 移除已廢棄端點。"
         )
         # 收集 route.dependencies 的依賴函式集合
         dep_fns = {d.dependency for d in (route.dependencies or [])}

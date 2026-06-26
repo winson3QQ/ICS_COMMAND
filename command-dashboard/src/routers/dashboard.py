@@ -1,4 +1,3 @@
-
 import os
 import shutil
 import time
@@ -7,16 +6,20 @@ from pathlib import Path
 
 from fastapi import APIRouter, Request
 
+from auth.service import check_session
 from core.config import (
-    APP_VERSION, BUILD_ID, CMD_VERSION, DB_PATH,
-    HEALTH_DISK_DEGRADED_PCT_THRESHOLD, HEALTH_DB_LATENCY_DEGRADED_MS,
+    APP_VERSION,
+    BUILD_ID,
+    CMD_VERSION,
+    DB_PATH,
+    HEALTH_DB_LATENCY_DEGRADED_MS,
+    HEALTH_DISK_DEGRADED_PCT_THRESHOLD,
 )
 from core.database import get_health_schema_version, open_readonly_live
 from repositories.audit_repo import get_audit_log
 from repositories.snapshot_repo import get_latest_snapshot
 from services.dashboard_service import build_dashboard
 from services.exercise_service import resolve_scope
-from auth.service import check_session
 
 router = APIRouter(tags=["儀表板"])
 
@@ -36,7 +39,7 @@ def get_staff():
         if snap:
             extra = snap.get("extra") or {}
             result[node_type] = {
-                "staff":         extra.get("staff_list", []),
+                "staff": extra.get("staff_list", []),
                 "staff_on_duty": snap.get("staff_on_duty"),
                 "snapshot_time": snap.get("snapshot_time"),
             }
@@ -60,9 +63,9 @@ def version():
     無需認證（版號非敏感資訊）。
     """
     return {
-        "cmd_version":    CMD_VERSION,
+        "cmd_version": CMD_VERSION,
         "server_version": APP_VERSION,
-        "build":          BUILD_ID,
+        "build": BUILD_ID,
     }
 
 
@@ -101,13 +104,15 @@ def health(request: Request):
     if token:
         sess, failure = check_session(token, touch=False)
         if sess and not failure:
-            resp.update({
-                "db_path":       str(db_path),
-                "schema_version": None if first_run_required else _schema_version(db_path),
-                "disk_free_mb":  _disk_free_mb(db_path.parent),
-                "disk_free_pct": disk_free_pct,
-                "db_latency_ms": db_lat_ms,
-            })
+            resp.update(
+                {
+                    "db_path": str(db_path),
+                    "schema_version": None if first_run_required else _schema_version(db_path),
+                    "disk_free_mb": _disk_free_mb(db_path.parent),
+                    "disk_free_pct": disk_free_pct,
+                    "db_latency_ms": db_lat_ms,
+                }
+            )
     return resp
 
 
@@ -173,6 +178,7 @@ def _schema_version(path: Path) -> int | None:
 def _first_run_required() -> bool:
     try:
         from repositories.account_repo import is_first_run_required
+
         return is_first_run_required()
     except Exception:
         return False

@@ -20,8 +20,8 @@ from fastapi.responses import JSONResponse
 import core.config as config
 
 # ── 參數 ──────────────────────────────────────────────────────────
-RATE_LIMIT_WINDOW_SEC = 60       # 觀察窗 60 秒
-RATE_LIMIT_MAX_REQ    = 10       # 同一 IP 60 秒內最多 10 次
+RATE_LIMIT_WINDOW_SEC = 60  # 觀察窗 60 秒
+RATE_LIMIT_MAX_REQ = 10  # 同一 IP 60 秒內最多 10 次
 
 # ── State（單機 in-memory）──────────────────────────────────────────
 _buckets: dict[str, deque[float]] = defaultdict(deque)

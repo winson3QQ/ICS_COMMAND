@@ -1,4 +1,3 @@
-
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from middleware.trusted_ingest import verify_hmac

@@ -94,7 +94,8 @@ def read(
                     return data
                 log.warning(
                     "[map_config_store] %s 非 dict（%s），續 fallback",
-                    label, type(data).__name__,
+                    label,
+                    type(data).__name__,
                 )
         except (OSError, json.JSONDecodeError) as e:
             log.warning(

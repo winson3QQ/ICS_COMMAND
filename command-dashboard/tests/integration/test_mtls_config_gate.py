@@ -5,8 +5,9 @@ ICS_MTLS_REQUIRED=true 但 ICS_PROXY_SHARED_SECRET 未設時，_proxy_trusted() 
 測試直接驗 main._assert_safe_mtls_config（lifespan 啟動時呼叫）。
 """
 
-import main
 import pytest
+
+import main
 
 
 def _set(monkeypatch, prod, mtls, secret):

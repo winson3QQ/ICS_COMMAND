@@ -25,6 +25,7 @@ def _mk_exercise(name="EX"):
     """建一筆 exercise 滿足 cop_entities.exercise_id FK，回傳 id。"""
     return create_exercise({"name": name, "type": "ttx"})["id"]
 
+
 _FUTURE = "2099-01-01T00:00:00Z"  # 遠未來 → online
 _PAST = "2000-01-01T00:00:00Z"  # 已過期 → offline
 
