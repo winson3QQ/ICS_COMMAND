@@ -290,3 +290,52 @@ def test_strip_anon_success_passes_fingerprint(client, auth, monkeypatch):
     assert r.status_code == 200 and r.json()["strip_anon"] == "stripped"
     # 端點須把 reconcile 取到的 fingerprint 傳給 strip（usermod -r 需 -f 不動憑證）。
     assert captured == {"cs": "ics-cot", "fp": "A2:10:7F"}
+
+
+# ── #318 Slice 3：撤銷 backfill（把既有 ICS-已撤+有 fp 的證一次推進 TAK）──────────────
+def test_backfill_pushes_revoked_with_fingerprint(client, auth, monkeypatch):
+    """已撤+有 fp → 推；infra 跳過；無 fp 計 skipped；冪等靠 revoke_in_tak。"""
+    from repositories.tak_device_cert_repo import mark_revoked
+    from services import tak_revocation
+
+    monkeypatch.setattr(tak_revocation, "is_configured", lambda: True)
+    pushed: list = []
+
+    def _fake(fp, callsign=None):
+        pushed.append(callsign)
+        return {"ok": True, "reason": "revoked-in-tak"}
+
+    monkeypatch.setattr(tak_revocation, "revoke_in_tak", _fake)
+    for cs, fp in [("bf-a", "FP:A"), ("bf-b", "FP:B"), ("ics-cot", "FP:INFRA")]:
+        rec = record_issued(cs, "S", "atak", "admin", fingerprint=fp, enroll_status="ok")
+        mark_revoked(rec["id"], "admin")
+    nofp = record_issued("bf-nofp", "S", "atak", "admin", fingerprint=None, enroll_status="ok")
+    mark_revoked(nofp["id"], "admin")
+
+    body = client.post("/api/admin/tak/revocations/backfill", headers=auth).json()
+    assert body["ok"] is True
+    assert body["pushed"] == 2  # bf-a, bf-b（infra 跳過、nofp 不在有-fp 清單）
+    assert body["total_with_fingerprint"] == 3  # a, b, infra
+    assert body["skipped_no_fingerprint"] == 1  # bf-nofp
+    assert set(pushed) == {"bf-a", "bf-b"} and "ics-cot" not in pushed  # infra 絕不推
+
+
+def test_backfill_not_configured_skips_write(client, auth, monkeypatch):
+    """TAK DB 未配置 → 不寫、回 tak-db-not-configured，仍誠實報 skipped_no_fingerprint。"""
+    from repositories.tak_device_cert_repo import mark_revoked
+    from services import tak_revocation
+
+    monkeypatch.setattr(tak_revocation, "is_configured", lambda: False)
+    monkeypatch.setattr(tak_revocation, "revoke_in_tak", lambda *a, **k: pytest.fail("未配置不該寫 TAK"))
+    rec = record_issued("bf-x", "S", "atak", "admin", fingerprint=None, enroll_status="ok")
+    mark_revoked(rec["id"], "admin")
+
+    body = client.post("/api/admin/tak/revocations/backfill", headers=auth).json()
+    assert body["ok"] is False and body["reason"] == "tak-db-not-configured"
+    assert body["pushed"] == 0 and body["skipped_no_fingerprint"] == 1
+
+
+def test_backfill_requires_sysadmin(client):
+    """sysadmin only（/api/admin/* → SYSADMIN_ONLY）。"""
+    create_account("op_bf", "1234", ROLE_OPERATOR_ZH, "Op BF", "operator")
+    assert client.post("/api/admin/tak/revocations/backfill", headers=_login(client, "op_bf")).status_code == 403

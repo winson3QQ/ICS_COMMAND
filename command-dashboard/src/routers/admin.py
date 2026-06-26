@@ -794,6 +794,57 @@ def revoke_tak_device_cert(cert_id: int, request: Request):
     return {**result, "deregister": deregister.get("reason"), "tak_revoke": tak_revoke.get("reason")}
 
 
+@router.post("/tak/revocations/backfill", tags=["account-admin"])
+def backfill_tak_revocations(request: Request):
+    """#318 Slice 3：把所有 ICS 已撤 + 有 fingerprint 的證一次推進 TAK `certificate` 表。
+
+    補洞——#318 / Slice 2 上線前撤的證當時只設 ICS 帳面 flag、沒寫 TAK，故 TAK 端從不擋（dogfood 揭露）。
+    冪等（`revoke_in_tak` exists→UPDATE/else INSERT）。sysadmin only + 強制 audit。
+    無 fingerprint 的證無 hash 可撤 → 回 `skipped_no_fingerprint` 計數（需重發，UI 另標示）。
+    ⚠ 對已快取（在線/近期認證）的證，撤銷實際生效仍需重啟 TAK（reality check 定案，§8.3）。
+    """
+    sess = _check_system_admin(request)
+    from repositories.tak_device_cert_repo import count_revoked_null_fingerprint, list_revoked_with_fingerprint
+    from services.tak_revocation import is_configured, revoke_in_tak
+
+    skipped_no_fp = count_revoked_null_fingerprint()
+    if not is_configured():
+        return {"ok": False, "reason": "tak-db-not-configured", "pushed": 0, "skipped_no_fingerprint": skipped_no_fp}
+
+    rows = list_revoked_with_fingerprint()
+    pushed, errors = 0, []
+    for r in rows:
+        callsign = r.get("callsign")
+        if _is_infra_callsign(callsign):  # infra 證絕不撤（毀 ICS 自身 TAK 控制面）
+            continue
+        res = revoke_in_tak(r.get("fingerprint"), callsign)
+        if res.get("ok"):
+            pushed += 1
+        else:
+            errors.append({"callsign": callsign, "reason": res.get("reason")})
+    result = {
+        "ok": True,
+        "pushed": pushed,
+        "total_with_fingerprint": len(rows),
+        "skipped_no_fingerprint": skipped_no_fp,
+        "errors": errors,
+    }
+    audit(
+        sess["username"],
+        None,
+        "tak_revocations_backfill",
+        "tak",
+        "*",
+        {
+            "pushed": pushed,
+            "total_with_fingerprint": len(rows),
+            "skipped_no_fingerprint": skipped_no_fp,
+            "errors": len(errors),
+        },
+    )
+    return result
+
+
 @router.get("/tak/device-certs/reconcile", tags=["account-admin"])
 def reconcile_tak_device_certs(request: Request):
     """#398 B：對帳 ICS 紀錄 vs TAK 實際 managed users（registrar 讀 UserAuthenticationFile）。sysadmin only。

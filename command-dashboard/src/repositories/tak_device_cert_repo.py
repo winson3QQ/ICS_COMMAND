@@ -56,6 +56,30 @@ def list_device_certs() -> list[dict]:
     return [dict(r) for r in rows]
 
 
+def list_revoked_with_fingerprint() -> list[dict]:
+    """#318 Slice 3 backfill：列已撤銷**且有 fingerprint** 的證（hash 可推進 TAK `certificate` 表）。
+
+    補 #318 前/Slice 2 上線前撤的證——當時撤銷只設 ICS 帳面 flag、沒寫 TAK，故 TAK 端從不擋。
+    無 fingerprint 的（#398 前發、升級前 NULL）無 hash 可撤、不在此列（見 count_revoked_null_fingerprint）。
+    """
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT id, callsign, fingerprint FROM tak_device_certs "
+            "WHERE status='revoked' AND fingerprint IS NOT NULL AND fingerprint != ''"
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def count_revoked_null_fingerprint() -> int:
+    """#318 Slice 3：已撤銷但**無 fingerprint** 的證數（TAK 端撤不掉、需重發；供 UI 誠實標示）。"""
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT count(*) AS n FROM tak_device_certs "
+            "WHERE status='revoked' AND (fingerprint IS NULL OR fingerprint='')"
+        ).fetchone()
+    return row["n"]
+
+
 def has_other_active_cert(callsign: str, cert_id: int) -> bool:
     """#398 A：同 callsign 是否還有**其他** active 證（id 不同）。
 
@@ -73,7 +97,7 @@ def has_other_active_cert(callsign: str, cert_id: int) -> bool:
 
 
 def mark_revoked(cert_id: int, operator: str) -> dict | None:
-    """標記為已撤銷（**帳面 flag，不阻擋連線**——真撤銷見 #318 CRL）。
+    """標記為已撤銷（ICS 帳面）。真 enforce = #318 寫 TAK `certificate` 表（在撤銷端點連動，非此函式）。
 
     回傳被標記列；不存在 / 已撤回 None。
     """

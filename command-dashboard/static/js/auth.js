@@ -1048,6 +1048,7 @@ export function admShowTak() {
       <div style="display:flex;align-items:center;gap:8px;margin-top:16px;margin-bottom:4px;">
         <span style="font-size:12px;font-weight:600;color:var(--text);">TAK Server 帳號</span>
         <button class="adm-btn" data-action="adm-reconcile-tak-refresh" title="重新向 TAK server 查實際帳號">↻ 重整</button>
+        <button class="adm-btn" data-action="adm-backfill-tak-revocations" title="#318 Slice 3：把所有 ICS 已撤+有 fingerprint 的證一次補寫進 TAK 撤銷名單（補 #318 前撤的證沒寫 TAK 的洞）">↑ 撤銷補登 TAK</button>
       </div>
       <div style="font-size:11px;color:var(--text3);margin-bottom:6px;line-height:1.5;max-width:460px;">
         #401：此面板以 <b>TAK Server 為準</b>，列出 TAK 上**所有** managed user（不只 ICS 發的）。「撤銷」/「從 TAK 移除」會<b>真</b>從 TAK 刪該帳號。⚙ 基礎設施（ics-cot/ics-tak-admin）鎖死保護。reconcile 未配置時退回 ICS 盤點清單。
@@ -1075,7 +1076,16 @@ export async function admLoadTakDeviceCerts() {
   const rec = await authFetch(API_BASE + '/api/admin/tak/device-certs/reconcile');
   if (rec.ok) {
     const data = await rec.json();
-    if (data.ok) { _renderTakDriven(box, data); return; }
+    if (data.ok) {
+      // #318 Slice 3：TAK-driven 視圖不含 ICS 盤點 → 另抓「已撤但無 fingerprint」的證（TAK 撤不掉），補誠實標示段。
+      let nullFpRevoked = [];
+      try {
+        const dc = await authFetch(API_BASE + '/api/admin/tak/device-certs');
+        if (dc.ok) nullFpRevoked = (await dc.json()).filter(c => c.status === 'revoked' && !c.fingerprint);
+      } catch (e) { /* best-effort，不擋主視圖 */ }
+      _renderTakDriven(box, data, nullFpRevoked);
+      return;
+    }
   }
   // fallback：reconcile 未配置 / 不可用 → ICS 盤點清單。
   const resp = await authFetch(API_BASE + '/api/admin/tak/device-certs');
@@ -1092,7 +1102,7 @@ const _RECON_ST = {
 };
 
 /** #401：TAK 為主的清單——TAK 上每個 managed user + ICS 未同步段。 */
-function _renderTakDriven(box, data) {
+function _renderTakDriven(box, data, nullFpRevoked = []) {
   _lastTakCallsigns = new Set([...data.tak_users.map(u => u.callsign), ...data.ics_unsynced.map(c => c.callsign)]);
   let html = '<div style="font-size:11px;color:var(--text3);margin:2px 0 4px;">TAK Server 帳號（' + data.tak_users.length + '）— 此面板以 TAK 為準：</div>';
   // #404：卡 __ANON__ 隔離破口面板級示警——producer 落匿名群 = 與任何 CA 信任的證同頻（不明證可注入/竊聽 COP）。
@@ -1150,6 +1160,12 @@ function _renderTakDriven(box, data) {
         '</div>';
     }
   }
+  // #318 Slice 3：ICS 已撤但無 fingerprint → TAK 撤不掉（此 TAK-driven 視圖不含 ICS 盤點，補誠實標示，免誤以為全已 enforce）。
+  if (nullFpRevoked && nullFpRevoked.length) {
+    html += '<div style="font-size:11px;color:var(--red);margin:8px 0 4px;border:1px solid var(--red);border-radius:4px;padding:4px 6px;">' +
+      '⚠ ' + nullFpRevoked.length + ' 張 ICS 已撤但 <b>TAK 撤不掉</b>（無 fingerprint，#398 前發 → 需重發證 / 等過期）：' +
+      nullFpRevoked.map(c => _escAudit(c.callsign)).join('、') + '</div>';
+  }
   box.innerHTML = html;
 }
 
@@ -1176,9 +1192,13 @@ function _renderIcsOnlyList(box, certs) {
       else sync = '<span title="已註冊為 TAK managed user" style="color:var(--green);font-size:10px;">✓ 同步 TAK</span>';
     }
     const fp = c.fingerprint ? '<span title="' + _escAudit('SHA-256：' + c.fingerprint) + '" style="font-family:monospace;color:var(--text3);font-size:9px;">' + _escAudit(_fpShort(c.fingerprint)) + '</span>' : '';
+    // #318 Slice 3：已撤但無 fingerprint → ICS 無 hash 可寫 TAK 撤銷名單 = TAK 端撤不掉（誠實標示，非帳面）。
+    const tukWarn = (!active && !c.fingerprint)
+      ? '<span title="無 fingerprint 紀錄（#398 前發）→ ICS 無 hash 可寫 TAK 撤銷名單；TAK 端撤不掉，需重發證 / 等憑證過期" style="color:var(--red);font-size:10px;">⚠ TAK 撤不掉</span>'
+      : '';
     rows += '<div style="display:flex;align-items:center;gap:6px;padding:4px 0;border-bottom:1px solid var(--border,#222);font-size:12px;flex-wrap:wrap;">' +
         '<span style="font-family:monospace;flex:1;min-width:80px;' + (active ? '' : 'text-decoration:line-through;color:var(--text3);') + '">' + _escAudit(c.callsign) + '</span>' +
-        '<span style="color:var(--text3);">' + plat + '</span>' + sync + fp +
+        '<span style="color:var(--text3);">' + plat + '</span>' + sync + fp + tukWarn +
         '<span style="color:var(--text3);font-size:10px;">' + _escAudit((c.issued_at || '').replace('T', ' ').replace('Z', '')) + '</span>' +
         '<span class="adm-badge ' + (active ? 'active' : 'suspended') + '">' + (active ? '有效' : '已撤銷') + '</span>' +
         (active
@@ -1231,6 +1251,21 @@ export async function admDeleteTakDevice(certId) {
   if (!confirm('刪除此已撤銷的裝置證盤點紀錄？\n（僅刪 ICS 盤點紀錄，不影響憑證本身——真撤銷 = 寫 TAK 撤銷名單，見「撤銷」鈕，#318。）')) return;
   const resp = await authFetch(API_BASE + '/api/admin/tak/device-certs/' + certId, { method: 'DELETE' });
   if (!resp.ok) { alert('刪除失敗（' + resp.status + '）'); return; }
+  admLoadTakDeviceCerts();
+}
+
+// #318 Slice 3：把所有 ICS 已撤+有 fingerprint 的證一次補寫進 TAK 撤銷名單（補 #318 前撤的證沒寫 TAK 的洞）。
+export async function admBackfillTakRevocations() {
+  if (!confirm('把所有「ICS 已撤、有 fingerprint」的證一次補寫進 TAK 撤銷名單？\n\n補洞:#318 上線前撤的證當時只設 ICS 帳面、沒寫 TAK,故 TAK 端從不擋。\n· 無 fingerprint 的舊證補不了(需重發)。\n· ⚠ 對已在線/快取的證,撤銷實際生效仍需重啟 TAK。')) return;
+  const resp = await authFetch(API_BASE + '/api/admin/tak/revocations/backfill', { method: 'POST' });
+  if (!resp.ok) { alert('backfill 失敗（' + resp.status + '）'); return; }
+  const b = await resp.json();
+  if (!b.ok && b.reason === 'tak-db-not-configured') { alert('TAK DB 未配置 → 無法 backfill（撤銷僅 ICS 帳面，未真 enforce）。'); return; }
+  let msg = '已推進 ' + b.pushed + ' / ' + b.total_with_fingerprint + ' 張（有 fingerprint）到 TAK 撤銷名單。';
+  if (b.skipped_no_fingerprint) msg += '\n⚠ ' + b.skipped_no_fingerprint + ' 張無 fingerprint → TAK 撤不掉（需重發）。';
+  if (b.errors && b.errors.length) msg += '\n⚠ ' + b.errors.length + ' 張寫入失敗（查 TAK DB）。';
+  msg += '\n（在線/快取證需重啟 TAK 才即時生效。）';
+  alert(msg);
   admLoadTakDeviceCerts();
 }
 
