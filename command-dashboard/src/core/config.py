@@ -116,6 +116,10 @@ WARNING_THRESHOLD_SECONDS: int = int(os.getenv("ICS_WARNING_THRESHOLD_SECONDS", 
 #               存它們，供清單顯示 TAK 同步狀態/比對混用。schema 加欄位、無 API 破壞。
 # MINOR 2.18.0：#398 Slice 2——撤銷連動 TAK deregister（usermod -D）+ 對帳端點（reconcile，讀
 #               UserAuthenticationFile 比對 ICS vs TAK：殭屍/混用/未同步）。registrar 協定加 op。
+# MINOR 2.22.0：#318 Slice 3（[#408](https://github.com/winson3QQ/ICS_COMMAND/issues/408)）——撤銷 backfill：
+#               POST /tak/revocations/backfill 把所有 ICS 已撤+有 fingerprint 的證一次推進 TAK certificate
+#               表（補 #318/Slice 2 上線前撤的證只設帳面、沒寫 TAK 的洞，dogfood 揭露）。infra 跳過、冪等、
+#               無 fp 回 skipped 計數（TAK 撤不掉、需重發）。repo list_revoked_with_fingerprint/count_null。
 # MINOR 2.21.0：#318 Slice 2——層2 真撤銷 live enforce：CoreConfig x509checkRevocation=true +
 #               TAK_DB_* env 接通 → revoke_in_tak 直寫 TAK certificate 表在 :8089 連線層擋撤銷證。
 #               reality check 定案：撤銷=降 __ANON__（非硬斷線，+#404 隔離）；新認證即時、在線已認證
@@ -126,7 +130,7 @@ WARNING_THRESHOLD_SECONDS: int = int(os.getenv("ICS_WARNING_THRESHOLD_SECONDS", 
 #               源碼定讞 TAK 永不拒 CA 證，存取控制=group 隔離。
 # MINOR 2.19.0：#401——cert 面板以 TAK server 為 SoT：reconcile enrich（per-row ics_cert_id）+
 #               新端點 deregister 任一 TAK callsign（infra 大小寫不敏感擋）。管理非 dashboard 發的殭屍。
-APP_VERSION = "2.21.0"
+APP_VERSION = "2.22.0"
 
 # CMD_VERSION：前端 UI 功能版本（不同於後端 SemVer APP_VERSION；規則見 CLAUDE.md 版號規則）
 # 兩軌版本命名，不可混用。由 /api/version 提供給前端，是唯一 source-of-truth；release 時更新此值。
@@ -134,7 +138,8 @@ APP_VERSION = "2.21.0"
 #         + 演習/放置/稽核 UI P1-13/14/16/#93 + 分類編輯器 #66）→ 0.x 畢業為 MAJOR 紀元。
 CMD_VERSION: str = os.getenv(
     "CMD_VERSION",
-    "v1.16.1",  # PATCH：#318——撤銷文案誠實化（降 __ANON__ 隔離、非硬斷線、在線證需重啟）+ 回饋 tak_revoke 結果
+    "v1.16.2",  # PATCH：#318 Slice 3——TAK 面板「↑ 撤銷補登 TAK」鈕（backfill）+ 已撤無 fp 證標「⚠ TAK 撤不掉」
+    # PATCH v1.16.1：#318——撤銷文案誠實化（降 __ANON__ 隔離、非硬斷線、在線證需重啟）+ 回饋 tak_revoke 結果
     # MINOR v1.16.0：#404——TAK 面板示警卡 __ANON__（面板級+per-row ⚠）+ 一鍵「移出匿名群」+「在線匿名連線」段
 )  # MINOR v1.15.0：#401——TAK 裝置證面板改以 TAK server 為準（列全部帳號）+ 直接移除殭屍/從 TAK 刪
 # PATCH v1.13.2：#398 Slice 1——清單顯示同步狀態/fingerprint + 發證前防呆（同名重發/中文 callsign）。
