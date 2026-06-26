@@ -6,6 +6,8 @@ not-configured；本檔驗 RBAC、回應結構、撤銷的 deregister 連動 + �
 
 from __future__ import annotations
 
+import pytest
+
 from auth.role_enum import ROLE_OPERATOR_ZH
 from repositories.account_repo import create_account
 from repositories.tak_device_cert_repo import record_issued
@@ -35,6 +37,44 @@ def test_revoke_returns_deregister_field(client, auth):
     assert body["status"] == "revoked"
     # 撤現行證 → 嘗試 deregister（測試環境無 queue → enroll-not-configured），帶回結果欄。
     assert body["deregister"] == "enroll-not-configured"
+
+
+def test_revoke_writes_tak_revocation_with_fingerprint(client, auth, monkeypatch):
+    """#318：撤銷現行證 → 呼叫 revoke_in_tak(fingerprint, callsign)，結果進回應 + audit。"""
+    from services import tak_revocation
+
+    captured: dict = {}
+
+    def _fake(fp, callsign=None):
+        captured["fp"], captured["cs"] = fp, callsign
+        return {"ok": True, "reason": "revoked-in-tak"}
+
+    monkeypatch.setattr(tak_revocation, "revoke_in_tak", _fake)
+    rec = record_issued("rev-318", "S1", "atak", "admin", fingerprint="FP:318", enroll_status="ok")
+    r = client.post(f"/api/admin/tak/device-certs/{rec['id']}/revoke", headers=auth)
+    assert r.status_code == 200
+    assert r.json()["tak_revoke"] == "revoked-in-tak"
+    assert captured == {"fp": "FP:318", "cs": "rev-318"}  # 按 fingerprint 精準 + 帶 callsign 當 subject
+
+
+def test_revoke_infra_skips_tak_revocation(client, auth, monkeypatch):
+    """#318：infra（ics-cot）絕不寫 TAK DB 撤銷（毀 ICS 自身 TAK 控制面）。"""
+    from services import tak_revocation
+
+    monkeypatch.setattr(tak_revocation, "revoke_in_tak", lambda *a, **k: pytest.fail("infra 不該真撤"))
+    rec = record_issued("ics-cot", "S1", "atak", "admin", fingerprint="X", enroll_status="ok")
+    r = client.post(f"/api/admin/tak/device-certs/{rec['id']}/revoke", headers=auth)
+    assert r.status_code == 200 and r.json()["tak_revoke"] == "skipped-infra"
+
+
+def test_revoke_no_fingerprint_skips_tak_revocation(client, auth, monkeypatch):
+    """#318：升級前 NULL fingerprint → 無 hash 可撤，跳過（不呼叫 revoke_in_tak）。"""
+    from services import tak_revocation
+
+    monkeypatch.setattr(tak_revocation, "revoke_in_tak", lambda *a, **k: pytest.fail("無 fp 不該真撤"))
+    rec = record_issued("nofp-318", "S1", "atak", "admin", fingerprint=None, enroll_status="ok")
+    r = client.post(f"/api/admin/tak/device-certs/{rec['id']}/revoke", headers=auth)
+    assert r.status_code == 200 and r.json()["tak_revoke"] == "no-fingerprint"
 
 
 def test_revoke_ambiguous_multi_active_skips_deregister(client, auth):

@@ -24,3 +24,8 @@ fido2==2.2.0
 # ⚠ Windows 無 wheel（已實測）→ platform marker 排除，本機跑明文模式；Linux/CI（ubuntu）才裝、
 # 跑加密整合測試（tests/integration/test_db_encryption.py，sqlcipher3 缺則 importorskip）。
 sqlcipher3-binary==0.6.0; sys_platform != "win32"
+# #318 — 層2 真撤銷：ICS 直連 TAK Server postgres 寫 certificate 表（hash+revocation_date）→
+# TAK x509checkRevocation 在 :8089 串流層踢掉撤銷證（reality check 證 CRL 只擋 :8443 不擋串流）。
+# 維護者 Tony Locke（英國），BSD-3-Clause，**純 Python、無 C extension/libpq 系統依賴**，非中國。
+# 僅 services/tak_revocation 用（admin 撤銷時一次性 INSERT/UPDATE，低頻）；未配置 TAK_DB_* 則不 import。
+pg8000==1.31.2

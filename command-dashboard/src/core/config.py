@@ -337,6 +337,18 @@ TAK_ENROLL_QUEUE_DIR: str = os.getenv("TAK_ENROLL_QUEUE_DIR", "")  # 與 registr
 TAK_ENROLL_DEFAULT_GROUP: str = os.getenv("TAK_ENROLL_DEFAULT_GROUP", "neutral")  # 初始群（fail-closed，未分類即孤立）
 TAK_ENROLL_TIMEOUT_S: float = float(os.getenv("TAK_ENROLL_TIMEOUT_S", "8.0"))  # 等 registrar 結果逾時（best-effort）
 
+# ── #318 層2 真撤銷：ICS 直連 TAK Server postgres ──────────────────────────────
+# reality check（2026-06-26，#318）：TAK 對 CA 信任的證 TLS 不拒、deregister 只降匿名(__ANON__)；
+# 唯一「連都連不進」= 撤銷＝`certificate` 表有該證 hash+revocation_date + CoreConfig x509checkRevocation=true
+# → X509Authenticator findOneByHash 命中 RevokedException（**CRL 只擋 :8443 不擋 :8089 串流**，故走 DB）。
+# certadmin REST 無「補登 offline 證」端點 → 只能直寫 postgres（ICS 與 tak-database 同 docker net 可達 :5432）。
+# 空 TAK_DB_HOST/PASSWORD → 撤銷僅 ICS 帳面 + deregister（不寫 TAK，#318 enforce 停用）。
+TAK_DB_HOST: str = os.getenv("TAK_DB_HOST", "")  # 如 tak-database
+TAK_DB_PORT: int = int(os.getenv("TAK_DB_PORT", "5432"))
+TAK_DB_NAME: str = os.getenv("TAK_DB_NAME", "cot")
+TAK_DB_USER: str = os.getenv("TAK_DB_USER", "martiuser")
+TAK_DB_PASSWORD: str = os.getenv("TAK_DB_PASSWORD", "")  # ⚠ 汰 dev `takdevpass123`（threat_model §8.4 at-rest）
+
 # ── Marti 權威 resync（P2-14 (C) / #194 / #173）────────────────────────────────
 # :8089 串流不對重連者重播既有靜態標記 → ICS 重啟/斷線會漏 server 已持久化的 marker。
 # 解法：拉 Marti `GET /cot/sa?start=&end=` 權威快照逐筆補進 cop_entities（只 upsert 不刪）。
