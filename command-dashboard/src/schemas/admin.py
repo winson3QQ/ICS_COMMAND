@@ -71,3 +71,10 @@ class RetentionToggleIn(BaseModel):
     """#207：軌跡 PII TTL 清理 runtime 開關。"""
 
     enabled: bool
+
+
+class TakRevokeByFingerprintIn(BaseModel):
+    """#318 Slice 3 part③：按 SHA-256 fingerprint 直接撤盤點外/非 dashboard 發的證。"""
+
+    fingerprint: str
+    callsign: str | None = None
