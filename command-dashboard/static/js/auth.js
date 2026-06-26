@@ -1206,19 +1206,29 @@ export async function admStripAnonTakUser(callsign) {
 }
 
 export async function admRevokeTakDevice(certId) {
-  // #398 A：撤現行證會從 TAK 真移除 managed user（該 callsign 連不上）；被取代的舊列只標撤銷。
-  if (!confirm('撤銷此 TAK 裝置證？\n⚠ 若為現行證 → 會從 TAK 移除該 callsign 的 managed user，該 callsign 將連不上（含同名其他證）。被新證取代的舊列只標撤銷、不動 TAK。')) return;
+  // #318 層2 真撤銷：寫 TAK certificate 表（x509checkRevocation）→ 該證失去身分、降為隔離匿名（__ANON__，
+  // 經 #404 隔離後看不到/送不出 ICS 資料），**非硬斷線**。reality check 實證：對「之後才連線」的證即時生效；
+  // 對「在線、近期已認證」的證因 TAK 快取，需快取過期或重啟 TAK 才即時踢除。同時 #398 A 從 TAK 移除 managed user。
+  if (!confirm('撤銷此 TAK 裝置證？\n\n⚠ 撤銷 = 寫進 TAK 撤銷名單 + 移除 managed user。該證會失去身分、降為隔離匿名（看不到／送不出 ICS 資料）。\n· 之後才連線的證：即時生效。\n· 目前在線、近期已認證的證：因 TAK 快取，需快取過期或重啟 TAK 才即時踢除。\n（被新證取代的舊列只標撤銷、不動 TAK。）')) return;
   const resp = await authFetch(API_BASE + '/api/admin/tak/device-certs/' + certId + '/revoke', { method: 'POST' });
   if (!resp.ok) { alert('撤銷失敗（' + resp.status + '）'); return; }
-  const d = (await resp.json()).deregister;
-  // 連動結果回饋：真移除 / 被取代跳過 / registrar 未配置或失敗。
-  if (d && d !== 'deregistered' && d !== 'skipped-superseded') alert('已撤銷（ICS 帳面）。但從 TAK 移除未成功：' + d + '\n（registrar 未配置或逾時——該 callsign 可能仍能連 TAK，請確認 registrar）');
+  const body = await resp.json();
+  const d = body.deregister, t = body.tak_revoke;
+  // 撤銷名單寫入結果（#318）：只在「非乾淨成功」時提示，避免每次都跳框。
+  let warn = '';
+  if (t === 'tak-db-not-configured') warn += '\n⚠ TAK DB 未配置 → 未寫撤銷名單（僅 ICS 帳面，未真 enforce）。';
+  else if (t === 'no-fingerprint') warn += '\n⚠ 此證無 fingerprint（升級前）→ 無法寫撤銷名單（需重發證）。';
+  else if (t && t.indexOf('tak-db-error') === 0) warn += '\n⚠ 寫 TAK 撤銷名單失敗：' + t + '（ICS 帳面已撤，請查 TAK DB）。';
+  // 從 TAK 移除 managed user 的失敗（registrar 未配置/逾時）。
+  const dOk = ['deregistered', 'skipped-superseded', 'skipped-infra', 'skipped-ambiguous'].indexOf(d) >= 0;
+  if (d && !dOk) warn += '\n· 從 TAK 移除 managed user 未成功：' + d + '（registrar 未配置或逾時）。';
+  if (warn) alert('已撤銷（ICS 帳面）。' + warn);
   admLoadTakDeviceCerts();
 }
 
 // #325：刪除已撤銷的盤點紀錄（清理累積 revoked；刪紀錄 ≠ 撤證）。
 export async function admDeleteTakDevice(certId) {
-  if (!confirm('刪除此已撤銷的裝置證盤點紀錄？\n（僅刪 ICS 盤點紀錄，不影響憑證本身——真撤銷需 CRL，#318。）')) return;
+  if (!confirm('刪除此已撤銷的裝置證盤點紀錄？\n（僅刪 ICS 盤點紀錄，不影響憑證本身——真撤銷 = 寫 TAK 撤銷名單，見「撤銷」鈕，#318。）')) return;
   const resp = await authFetch(API_BASE + '/api/admin/tak/device-certs/' + certId, { method: 'DELETE' });
   if (!resp.ok) { alert('刪除失敗（' + resp.status + '）'); return; }
   admLoadTakDeviceCerts();

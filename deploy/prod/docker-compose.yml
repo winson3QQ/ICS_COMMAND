@@ -101,6 +101,13 @@ services:
       - TAK_ENROLL_QUEUE_DIR=${TAK_ENROLL_QUEUE_DIR:-/registrar-queue}
       - TAK_ENROLL_DEFAULT_GROUP=${TAK_ENROLL_DEFAULT_GROUP:-neutral}   # 初始群（fail-closed）
       - TAK_ENROLL_TIMEOUT_S=${TAK_ENROLL_TIMEOUT_S:-8}
+      # #318 層2 真撤銷：ICS 直連 TAK postgres 寫 certificate 表（hash+revocation_date）→ x509checkRevocation
+      # 在 :8089 連線層擋撤銷證。空 TAK_DB_HOST/PASSWORD → revoke 僅 ICS 帳面，不寫 TAK（未真 enforce）。
+      - TAK_DB_HOST=${TAK_DB_HOST:-}              # 如 tak-database（同 icsnet）
+      - TAK_DB_PORT=${TAK_DB_PORT:-5432}
+      - TAK_DB_NAME=${TAK_DB_NAME:-cot}
+      - TAK_DB_USER=${TAK_DB_USER:-martiuser}
+      - TAK_DB_PASSWORD=${TAK_DB_PASSWORD:-}     # ⚠ 汰 dev takdevpass123（threat_model §8.4 at-rest）
     volumes:
       - ics-data:/app/data
       - ics-tiles:/app/static/tiles:ro
