@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """ICS_Command doc-sync checker
 
 驗證 CLAUDE.md / docs/ROADMAP.md / docs/PROCESS.md 引用的程式路徑真實存在，
@@ -50,9 +52,7 @@ def warn(msg: str):
 # Markdown 路徑提取：matches `path/to/file.py`、(path/to/file.md)、[label](path)
 PATH_PATTERNS = [
     re.compile(r"`([a-zA-Z0-9_\-./]+\.(?:py|js|md|html|css|json|yml|yaml|sh|toml))`"),
-    re.compile(
-        r"\[[^\]]+\]\(([a-zA-Z0-9_\-./]+\.(?:py|js|md|html|css|json|yml|yaml|sh|toml))\)"
-    ),
+    re.compile(r"\[[^\]]+\]\(([a-zA-Z0-9_\-./]+\.(?:py|js|md|html|css|json|yml|yaml|sh|toml))\)"),
 ]
 
 # 不檢查這些（外部 URL、placeholder、模板示意）
@@ -120,9 +120,7 @@ def check_doc(doc_path: Path):
 # 2. ROADMAP 點名的具體 router / service / repo 檔案要存在
 # ─────────────────────────────────────────────────────────────
 # 例如 ROADMAP 寫 `routers/pi_push.py` 應對應 command-dashboard/src/routers/pi_push.py
-ROADMAP_CODE_REF = re.compile(
-    r"`(routers/[a-z_]+\.py|services/[a-z_]+\.py|repositories/[a-z_]+\.py)`"
-)
+ROADMAP_CODE_REF = re.compile(r"`(routers/[a-z_]+\.py|services/[a-z_]+\.py|repositories/[a-z_]+\.py)`")
 SRC_ROOT = BASE / "command-dashboard" / "src"
 
 

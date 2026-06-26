@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """
 unit/test_account_cert_repo.py — #275 wave 3：per-device 裝置憑證綁定 + App 層撤銷
 

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """
 unit/test_tak_device_cert.py — #315 P2-26 L2：TAK 裝置證 data package 組裝（純 Python）。
 

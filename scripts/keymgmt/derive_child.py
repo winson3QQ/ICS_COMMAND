@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """
 derive_child.py — HKDF-SHA256 label-based child key 衍生（P1-12a，#227）
 

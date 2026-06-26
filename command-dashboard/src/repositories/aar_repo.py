@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 from core.database import get_conn
 
 from ._helpers import iso_to_dt, iso_utc, now_utc, row_to_dict

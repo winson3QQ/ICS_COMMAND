@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """facilities_store — P1-17 永久設施唯讀讀取（issue #88）。
 
 驗：有效 seed → 原樣回；缺檔 / 非 dict / 壞 JSON → 最小空殼（不 raise）；快取以 (path,mtime) 鍵。

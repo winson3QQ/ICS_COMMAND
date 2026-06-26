@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """#318 services/tak_revocation — ICS 直寫 TAK postgres 真撤銷的單元測試。
 
 不碰真 postgres / pg8000：monkeypatch `_connect` 回 fake 連線（記 SQL + 控 exists/raise），驗：

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """
 api/test_tracks_query.py — P2-06b 軌跡查詢 endpoint（issue #123）
 

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """#296 RBAC 端到端強制：低權角色打高權端點 → middleware 回 403。
 
 與 test_rbac_route_matrix（鎖 allowed_roles_for 分類表）互補：本檔證明 middleware **實際

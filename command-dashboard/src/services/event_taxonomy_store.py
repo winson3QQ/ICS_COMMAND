@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """event_taxonomy_store.py — `event_taxonomy.json` runtime 檔的讀寫 + seed fallback。
 
 P1-10d 地基（issue #60 / #66）：把事件分類（NAPSG_EVENTS / NAPSG_GROUPS）從寫死的

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """
 tak_service.py — TAK（Team Awareness Kit）CoT 解析 + 訂閱（ROADMAP P2-02 / issue #102）
 

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """
 user_data_backup_service.py — P1-12b 整個 data/ 邊界的加密備份 / 還原（#228）
 

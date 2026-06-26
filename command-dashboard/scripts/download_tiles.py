@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """下載新竹地區 OSM raster tiles 並打包成 MBTiles（SQLite）。
 用法：python3 download_tiles.py [--zoom-min 10] [--zoom-max 16]
 """

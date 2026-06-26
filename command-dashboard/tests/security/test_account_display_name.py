@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """帳號 display_name 編輯 + XSS 防護。
 
 Bug：admin 改不了已建帳號的顯示名稱 —— 前端 admSaveEdit 讀了輸入框卻沒送出，

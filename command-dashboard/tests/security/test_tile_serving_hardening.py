@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """tile 服務硬化（#64-1 dead exempt 移除 / #64-2 路徑穿越縱深）。
 
 來源：P1-10c review（#62）的 pre-existing LOW。tile 路由在 /tiles/...（非 /api/），

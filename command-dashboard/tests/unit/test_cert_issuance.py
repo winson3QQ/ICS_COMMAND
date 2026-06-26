@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """
 unit/test_cert_issuance.py — #275 wave B-2：線上發證服務守門（純邏輯分支）
 

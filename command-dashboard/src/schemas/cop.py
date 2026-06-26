@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """
 schemas/cop.py — COP（Common Operational Picture）正規化層 Pydantic 模型 v1
 

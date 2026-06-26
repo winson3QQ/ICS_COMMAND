@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """#275 wave 3 — per-device 裝置憑證綁定（mTLS 第二因子）。
 
 撤銷採 App 層綁定撤銷：status='active' → 'revoked'，login + check_session 查本表，

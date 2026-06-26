@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """P2-03（#107）+ P2-24（#164）— TAK 訂閱背景 task 的 runtime 控制器（services/tak_runtime）。
 
 驗證：effective_enabled gate（start_if_enabled）、config 無效不擋啟動（回 False、不 raise）、

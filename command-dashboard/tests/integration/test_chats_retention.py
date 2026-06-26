@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """integration/test_chats_retention.py — #348-F10 通聯（chats）PII TTL retention
 
 驗證（鏡像 test_track_retention，軸用 received_at）：

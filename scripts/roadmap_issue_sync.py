@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """ICS_Command ROADMAP ↔ GitHub Issue 同步檢查 + 狀態報告
 
 兩段輸出：
@@ -38,10 +40,10 @@ STATUS_MARKERS: dict[str, str] = {
     "🚧": "blocked",
 }
 STATUS_ICON: dict[str, str] = {
-    "done":        "✅",
+    "done": "✅",
     "in-progress": "⏳",
-    "blocked":     "🚧",
-    "pending":     "  ",
+    "blocked": "🚧",
+    "pending": "  ",
 }
 
 
@@ -53,10 +55,10 @@ _CROSSREF_BEFORE = ("延", "依賴", "解鎖", "取代", "替代")  # e.g. 「�
 
 def _is_crossref(text: str, start: int, end: int) -> bool:
     """text[start:end] 的 item ID 是否為交叉引用（相鄰 context 詞）。"""
-    after = text[end:end + 10].lstrip(" :：,，)")
+    after = text[end : end + 10].lstrip(" :：,，)")
     if any(after.startswith(w) for w in _CROSSREF_AFTER):
         return True
-    before = text[max(0, start - 6):start]
+    before = text[max(0, start - 6) : start]
     return any(w in before for w in _CROSSREF_BEFORE)
 
 
@@ -99,13 +101,14 @@ def gh_issues() -> list[dict]:
     """gh issue list — 拿所有 open + recently closed"""
     try:
         out = subprocess.run(
-            ["gh", "issue", "list",
-             "--state", "all",
-             "--limit", "200",
-             "--json", "number,title,state,labels"],
+            ["gh", "issue", "list", "--state", "all", "--limit", "200", "--json", "number,title,state,labels"],
             # encoding 明指 UTF-8：gh 輸出含中文 issue 標題，Windows 預設 cp950 解碼會
             # UnicodeDecodeError → out.stdout=None → json.loads 炸（#148 status.sh 崩根因）。
-            capture_output=True, text=True, encoding="utf-8", check=True, timeout=15,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            check=True,
+            timeout=15,
         )
         return json.loads(out.stdout)
     except FileNotFoundError:
@@ -125,7 +128,7 @@ def parse_roadmap_status() -> dict[str, str]:
         return statuses
     for item_id, cells, m in _iter_item_rows(ROADMAP.read_text(encoding="utf-8")):
         # marker 只看**首格** item ID 之前的字（不讀散文 / 其他 cell 的交叉引用，#155）
-        prefix = cells[1][:m.start()]
+        prefix = cells[1][: m.start()]
         status = "pending"
         for marker, label in STATUS_MARKERS.items():
             if marker in prefix:
@@ -139,9 +142,7 @@ def phase_of(item_id: str) -> str:
     return item_id.split("-")[0]  # "P1-01" → "P1"
 
 
-def print_status_report(roadmap_items: dict[str, str],
-                        statuses: dict[str, str],
-                        issue_by_id: dict[str, dict]) -> int:
+def print_status_report(roadmap_items: dict[str, str], statuses: dict[str, str], issue_by_id: dict[str, dict]) -> int:
     """印 status report，回傳 drift 數量（0 = 無 drift）"""
     by_phase: dict[str, list[tuple[str, str, str]]] = {}
     for item_id, title in sorted(roadmap_items.items()):
@@ -152,17 +153,17 @@ def print_status_report(roadmap_items: dict[str, str],
     print("=== ROADMAP Status Report ===\n")
     for phase in sorted(by_phase):
         items = by_phase[phase]
-        counts = {k: sum(1 for _, s, _ in items if s == k)
-                  for k in ("done", "in-progress", "blocked", "pending")}
-        print(f"{phase}: {counts['done']}/{len(items)} done"
-              f"  ·  {counts['in-progress']} in-progress"
-              f"  ·  {counts['blocked']} blocked"
-              f"  ·  {counts['pending']} pending")
+        counts = {k: sum(1 for _, s, _ in items if s == k) for k in ("done", "in-progress", "blocked", "pending")}
+        print(
+            f"{phase}: {counts['done']}/{len(items)} done"
+            f"  ·  {counts['in-progress']} in-progress"
+            f"  ·  {counts['blocked']} blocked"
+            f"  ·  {counts['pending']} pending"
+        )
         for item_id, status, title in items:
             icon = STATUS_ICON[status]
             iss = issue_by_id.get(item_id)
-            iss_str = (f"(#{iss['number']} {iss['state']})" if iss
-                       else "(no issue)")
+            iss_str = f"(#{iss['number']} {iss['state']})" if iss else "(no issue)"
             print(f"  {icon} {item_id:<8} {title[:48]:<48} {iss_str}")
         print()
 
@@ -176,8 +177,7 @@ def print_status_report(roadmap_items: dict[str, str],
         if st == "done" and iss and iss.get("state") != "CLOSED":
             drift.append(f"  - {item_id}: ROADMAP ✅ 但 issue {iss['state']}（未關閉）")
         elif st != "done" and iss and iss.get("state") == "CLOSED":
-            drift.append(f"  - {item_id}: issue CLOSED 但 ROADMAP 未 ✅"
-                         f"（PROCESS step 8.5 漏勾）")
+            drift.append(f"  - {item_id}: issue CLOSED 但 ROADMAP 未 ✅（PROCESS step 8.5 漏勾）")
     if drift:
         print(f"⚠  狀態 drift（{len(drift)}）：")
         for d in drift:
@@ -206,8 +206,7 @@ def issue_item_ids(issue: dict) -> list[str]:
 
 def main() -> int:
     p = argparse.ArgumentParser()
-    p.add_argument("--create-missing", action="store_true",
-                   help="互動建立缺漏的 issue（預設只報告）")
+    p.add_argument("--create-missing", action="store_true", help="互動建立缺漏的 issue（預設只報告）")
     args = p.parse_args()
 
     roadmap_items = parse_roadmap_items()
@@ -255,7 +254,7 @@ def main() -> int:
         print(f"⚠  ROADMAP item 沒對應 issue（{len(missing)}）：")
         for item_id, title in missing:
             print(f"  - {item_id}: {title}")
-            print(f"    建議：gh issue create --title \"{item_id}: {title[:50]}\" \\")
+            print(f'    建議：gh issue create --title "{item_id}: {title[:50]}" \\')
             print('             --body "見 docs/ROADMAP.md 該段落"')
         print()
 
@@ -264,7 +263,7 @@ def main() -> int:
         for iss in orphan_issues[:10]:
             print(f"  - #{iss['number']} [{iss['state']}] {iss['title'][:70]}")
         if len(orphan_issues) > 10:
-            print(f"  ... +{len(orphan_issues)-10} 更多")
+            print(f"  ... +{len(orphan_issues) - 10} 更多")
         print()
 
     if closed_not_ticked:

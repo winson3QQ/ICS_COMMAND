@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """
 ttx.py — TTX inject 管理（C0：綁定 exercise_id，取代舊 session_id）
 

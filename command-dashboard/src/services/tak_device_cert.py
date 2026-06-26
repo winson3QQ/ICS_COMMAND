@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """#315 P2-26 L2 — TAK 裝置證自助發放（data package）。
 
 dashboard 線上發 ATAK/iTAK 的 TAK data package（取代 deploy-time CLI gen-device-pkg.sh）。

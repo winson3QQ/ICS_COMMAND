@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """
 exercise_service.py — 演練場次業務邏輯
 C5 前向相容：set_active() 含 mutex 防護

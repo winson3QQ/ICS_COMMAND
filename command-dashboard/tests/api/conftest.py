@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """tests/api/conftest.py — api 層共用 fixtures。
 
 角色 auth fixtures（operator/observer/commander）原本在 test_exercise_scoping.py 與

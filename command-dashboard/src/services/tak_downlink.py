@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """
 tak_downlink.py — P2-13(A) TAK 下行指令：建 CoT + 寫進 :8089 streaming → server 廣播現場端。
 

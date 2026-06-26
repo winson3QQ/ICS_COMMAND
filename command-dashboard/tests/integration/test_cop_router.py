@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """
 tests/integration/test_cop_router.py — issue #29 PR-B：/api/cop/* CRUD + 樂觀鎖 HTTP 層
 

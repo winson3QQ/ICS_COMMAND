@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """
 dashboard_service.py — 組裝儀表板回應資料
 前端每 10 秒呼叫 /api/dashboard，此 service 負責聚合所有資料。

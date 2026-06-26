@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """services/tak_user_enroll.py — #344 發證即註冊 TAK managed user（enrollment）。
 
 機制（2026-06-23 PoC 實證，見 GitHub #344 / memory tak-faction-group-identifier）：

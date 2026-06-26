@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """integration/test_track_retention.py — P2-20 收尾（#207）軌跡 PII TTL retention
 
 驗證：

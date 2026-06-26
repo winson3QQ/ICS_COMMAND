@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """
 routers/cop.py — COP entity per-entity CRUD + 樂觀鎖 HTTP 層（issue #29 PR-B）
 

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """
 integration/test_account_cert_api.py — #275 wave 3：裝置憑證綁定管理 API
 

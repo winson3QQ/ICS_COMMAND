@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """retention_service — PII retention TTL（P2-20 收尾 / #207 + #348-F10，threat_model §8.4 政策乙案）。
 
 政策：個資表 = **exercise 刪除 cascade ＋ N 天 TTL 自動清理（本檔）**。TTL 防「沒人刪演習

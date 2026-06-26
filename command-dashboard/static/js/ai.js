@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: LicenseRef-Proprietary
+// Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 /**
  * ai.js — AI 推薦層 frozen stub（C1-F, v3.1.0 接入點）
  *

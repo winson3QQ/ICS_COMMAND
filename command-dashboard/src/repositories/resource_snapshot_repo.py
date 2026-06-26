@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """
 resource_snapshot_repo.py — 正規化 Pi push 資源快照（時間序列）
 C0：供跨場次比較、AI 訓練用

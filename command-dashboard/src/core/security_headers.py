@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """
 core/security_headers.py — 安全 HTTP 標頭 middleware（C1-B + C1-F）
 

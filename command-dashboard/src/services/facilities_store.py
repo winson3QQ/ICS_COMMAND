@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """facilities_store.py — P1-17 永久設施公開資料底圖層的唯讀讀取（issue #88）。
 
 與 event_taxonomy_store / map_config_store **不同**：本層是**純唯讀基準資料**，

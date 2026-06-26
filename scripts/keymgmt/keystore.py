@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """
 keystore.py — master key 的 per-token wrap 檔（master-key.enc，P1-12a #227）
 
@@ -80,9 +82,7 @@ def unwrap_master(entry: TokenEntry, wrap_key: bytes) -> bytes:
     try:
         return AESGCM(wrap_key).decrypt(entry.nonce, entry.wrapped, entry.credential_id)
     except (InvalidTag, ValueError) as e:
-        raise KeyStoreError(
-            f"entry「{entry.label}」解鎖失敗 — wrap key 不符、欄位損毀或檔案被竄改"
-        ) from e
+        raise KeyStoreError(f"entry「{entry.label}」解鎖失敗 — wrap key 不符、欄位損毀或檔案被竄改") from e
 
 
 def build_store(master: bytes, entries: list[TokenEntry], rp_id: str) -> dict:

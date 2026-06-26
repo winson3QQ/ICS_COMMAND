@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """P2-02 Wave 2（#106）— tak_service.subscribe() / _consume_cot 單元測試。
 
 不碰真實網路：`subscribe` 的 pytak.protocol_factory 用 monkeypatch 換成 fake reader。

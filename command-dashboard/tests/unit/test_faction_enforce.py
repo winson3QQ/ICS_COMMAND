@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """
 tests/unit/test_faction_enforce.py — #343 PR-3/PR-4：角色→可見 faction 映射 + 三層強制點核心邏輯
 

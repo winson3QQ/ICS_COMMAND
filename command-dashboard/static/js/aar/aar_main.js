@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: LicenseRef-Proprietary
+// Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 // aar_main.js — AAR 回放頁進入點（P2-20(B)，issue #201）
 //
 // B1：Step mode——側欄事件流列表（40%）點選/↑↓ → T 跳該筆 → 地圖（60%）折疊 tracks ≤T。

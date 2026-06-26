@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """import_facilities adapters — P1-17 匯入正規化（issue #88）。
 
 驗紅線/易錯邏輯（不碰網路）：

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """
 repositories/cop_entity_repo.py — COP entity 資料存取層（P1-03 v1）
 

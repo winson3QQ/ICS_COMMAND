@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: LicenseRef-Proprietary
+// Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 /**
  * label_markers.js — MapLibre 透明 HTML drag handle，搭配 SDF symbol layer label
  *

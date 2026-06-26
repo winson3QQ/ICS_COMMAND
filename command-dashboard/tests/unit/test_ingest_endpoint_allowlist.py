@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """
 tests/unit/test_ingest_endpoint_allowlist.py — Ingest 端點 HMAC Depends 白名單（AC-14）
 

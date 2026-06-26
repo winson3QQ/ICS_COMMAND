@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """
 tak_rest_client.py — TAK Server Marti REST API 抽象層（P2-11，#138）
 

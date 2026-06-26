@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """services/tak_revocation.py — #318 層2 真撤銷：ICS 直連 TAK Server postgres 寫 `certificate` 表。
 
 reality check（2026-06-26，GitHub #318，活機端到端實證）：

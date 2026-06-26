@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """
 routers/backup_restore.py — P1-12b 整包 data/ 加密備份 + GUI 還原（#228）
 

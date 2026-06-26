@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """kpi_service — 演習指標聚合（P2-21 子集 / #204）。
 
 唯讀聚合既有表，**不寫** `exercise_kpis`（該表為 C0 沉睡 stub、零 writer；即時算即可，

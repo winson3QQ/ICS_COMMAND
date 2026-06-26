@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """tests/unit/test_tak_group_sync.py — #344 faction 分類 → TAK group 同步。
 
 鎖住 sync_client_faction：

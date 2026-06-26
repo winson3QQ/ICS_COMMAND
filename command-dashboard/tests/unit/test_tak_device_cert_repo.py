@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """
 unit/test_tak_device_cert_repo.py — #317：TAK 裝置證盤點表（record / list / mark_revoked）。
 """

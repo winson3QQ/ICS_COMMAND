@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """integration/test_tak_connection_toggle.py — P2-24（#164）runtime TAK 連線開關
 
 驗證：

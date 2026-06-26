@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """P2-14 (C)（#194/#173）— routers/tak.py `POST /api/tak/resync` 權威 resync 端點。
 
 驗 RBAC（COMMAND_ROLES）+ audit-first + 未配置 → 422 + 拉取失敗 → 503 + 配線。

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: LicenseRef-Proprietary
+// Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 /**
  * facilities_layer.js — P1-17 永久設施公開資料底圖層（issue #88）。
  *

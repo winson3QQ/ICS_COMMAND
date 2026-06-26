@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """tak_resync.py — Marti 權威 resync（P2-14 (C)，#194 / #173）
 
 問題：TAK :8089 串流**不對重連者重播**既有靜態標記（`<latestSA>` 只對新連線補發、

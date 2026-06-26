@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """tests/unit/test_roadmap_sync.py — scripts/roadmap_issue_sync.py drift parser（#155）。
 
 鎖住的不變式：

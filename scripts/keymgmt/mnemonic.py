@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """
 mnemonic.py — BIP-39 助記詞編解碼（rescue 紙本 SOP 用，P1-12a #227）
 
@@ -29,8 +31,7 @@ def _load_wordlist() -> list[str]:
         digest = hashlib.sha256(raw).hexdigest()
         if digest != WORDLIST_SHA256:
             raise RuntimeError(
-                f"wordlist 完整性檢查失敗（期望 {WORDLIST_SHA256[:16]}…，"
-                f"實際 {digest[:16]}…）— 檔案可能被竄改"
+                f"wordlist 完整性檢查失敗（期望 {WORDLIST_SHA256[:16]}…，實際 {digest[:16]}…）— 檔案可能被竄改"
             )
         _words_cache = raw.decode("ascii").split()
         if len(_words_cache) != 2048:

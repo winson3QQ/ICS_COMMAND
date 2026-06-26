@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """timeline_service — AAR 統一時間軸（P2-20(A) / #199）。
 
 把一場演習散在四張表的「發生過的事」合併成**按時間排序的單一事件流**（唯讀投影，

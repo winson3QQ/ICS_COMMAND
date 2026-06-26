@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """P2-13(A)（#176）— tak_downlink.build_command_cot 純建構 unit 測試。
 
 純字串建構 + XML 解析驗證，不碰網路 / DB。送出（send_cot）走真連線，於 API 測試 mock。

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """tests/unit/test_tak_resync.py — P2-14 (C) Marti 權威 resync（#194/#173）
 
 鎖住的不變式：

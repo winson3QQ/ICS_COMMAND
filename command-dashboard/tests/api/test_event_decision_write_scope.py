@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """#288 H3：events / decisions 寫入端點 scope 回歸測試。
 
 原漏洞：讀取（get_ev/get_chain/get_dec）有 resolve_scope，寫入（patch/status/notes/

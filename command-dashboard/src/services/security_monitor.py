@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """#280 H — 安全監控告警。
 
 把高訊號的鑑權異常（帳號鎖定 = 持續爆破、第二因子失敗 = 盜 PIN/裝置不符、撤銷證再用）
