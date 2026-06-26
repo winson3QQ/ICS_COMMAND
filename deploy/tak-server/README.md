@@ -131,7 +131,10 @@ nc -zv localhost 8089 2>&1            # 期望 succeeded
   #   docker exec takserver sh -c 'cd /opt/tak && java -jar utils/UserManager.jar usermod -f <FP> -r -g __ANON__ ics-cot'
   #   （usermod -r -g __ANON__ = 移除 __ANON__，保留其餘群，live 生效免 restart）
   ```
-- **撤銷（點名封殺特定證）= 層2**：見 `docs/compliance/threat_model.md` §8.3 與 [#318](https://github.com/winson3QQ/ICS_COMMAND/issues/318)——ICS 離線簽的證 TAK 帳本查無 → 須發證後補登 TAK `certificate` 表 + 開 `x509checkRevocation` 才撤得掉。
+- **撤銷（點名封殺特定證）= 層2**（[#318](https://github.com/winson3QQ/ICS_COMMAND/issues/318)，**Slice 2 已 live**）：見 `docs/compliance/threat_model.md` §8.3。ICS 離線簽的證 TAK 帳本查無 → 須**把證補登進 TAK `certificate` 表 + 開 `x509checkRevocation`** 才撤得掉。**Provisioning（兩處，缺一不 enforce）**：
+  1. **TAK 端**：`CoreConfig.xml` 的 `<auth x509checkRevocation="true">`（本 repo `deploy/tak-server/release/tak/CoreConfig.xml` 已設；改後須 `docker restart takserver` 載入）。
+  2. **ICS 端**：`deploy/prod/.env` 設 `TAK_DB_HOST=tak-database` + `TAK_DB_PASSWORD=<TAK postgres 密碼>`（與 CoreConfig `<repository>` 同庫帳密）→ dashboard 撤銷時 `services/tak_revocation` 直寫 `certificate` 表。空則只 ICS 帳面、不 enforce。
+  - **運作真相（reality check 實證）**：撤銷 = 該證**降 `__ANON__`**（非硬斷線，靠層1 隔離達 recv 0）；對**之後才連線**的證即時生效，對**在線、近期已認證**的證因 TAK 快取需**重啟 TAK 清快取**才即時踢除（當網路不穩定處理）。`certificate` 表空時開旗標**不會誤鎖**合法證（fail-open）。
 - 例外：`ics-tak-admin`（REST-only、不訂閱 :8089）仍在 `__ANON__` 無 streaming 洩漏，且移除其唯一群會 bounce 回 `__ANON__`，暫不動。
 
 ## 範圍與注意
