@@ -18,11 +18,14 @@
 # 協定（無外部依賴、injection-safe；不用 JSON，bash 解純文字行）：
 #   請求：$QUEUE/requests/<id>.req  內容＝callsign / fingerprint / group / op（#398：第 4 行 op
 #         選用，預設 register，向後相容既有三行請求）。dashboard 先寫 .tmp 再 rename，避免讀半寫。
-#   op（#398 Slice 2）：
+#   op（#398 Slice 2 / #404）：
 #     · register   ＝ usermod -f <fp> -g <group> <callsign>（建/改 cert-user）。
 #     · deregister ＝ usermod -D <callsign>（從 TAK 移除 managed user；刪/撤連動，facet A）。
 #     · reconcile  ＝ 讀 UserAuthenticationFile.xml 回 TAK 端真相（facet B；無使用者輸入、不碰 usermod）。
-#   結果：$QUEUE/results/<id>.res   首 token＝OK|ERR，其後為訊息 / reconcile 的 callsign<TAB>fp 列。
+#     · strip-anon ＝ usermod -f <fp> -r -g __ANON__ <callsign>（#404：移出匿名群、保留其餘群
+#                    → 修 producer 卡 __ANON__ 與任何 CA 證同頻的隔離破口）。
+#   結果：$QUEUE/results/<id>.res   首 token＝OK|ERR，其後為訊息 / reconcile 的
+#         callsign<TAB>fp<TAB>group1,group2,... 列（#404：reconcile 第 3 欄群清單，舊式兩欄 client 忽略即相容）。
 #   watcher 處理後刪請求檔；dashboard 輪詢結果檔（逾時 = best-effort 跳過）。
 #
 # 安全：fingerprint / callsign / group 一律格式驗證後才餵 usermod（defense-in-depth，
@@ -116,21 +119,65 @@ while true; do
         fi
         ;;
       reconcile)
-        # #398 B：回 TAK 端真相——讀 UserAuthenticationFile.xml 取每個 cert-user 的 fingerprint（無使用者
-        # 輸入、不碰 usermod）。輸出首行 'OK reconcile <count>'，其後每行 callsign<TAB>fingerprint。
-        # review：取整個 <User …> 元素（含兩屬性的才要），再各自抽 identifier/fingerprint——**不依賴
-        # 屬性相鄰或順序**（usermod marshaller / register-tak-fingerprint.sh 會插 role= 在中間，
-        # 舊「相鄰」pattern 會漏抓 → reconcile 誤報全未同步）。grep -F 過濾兩屬性都在。
-        mapfile -t USERS < <(grep -oE '<User [^>]*>' "$AUTH_FILE" 2>/dev/null | grep -F 'identifier=' | grep -F 'fingerprint=' || true)
+        # #398 B + #404：回 TAK 端真相——讀 UserAuthenticationFile.xml 取每個 cert-user 的
+        # fingerprint + groupList（無使用者輸入、不碰 usermod）。輸出首行 'OK reconcile <count>'，
+        # 其後每行 callsign<TAB>fingerprint<TAB>group1,group2,...（#404：第 3 欄群清單，供 ICS
+        # 偵測 producer 卡 __ANON__ 隔離破口；舊式兩欄 client 忽略第 3 欄即向後相容）。
+        # awk 逐行 walk，**兼容單行與多行** User（usermod marshal=多行；register-tak-fingerprint.sh=單行）：
+        # <User …> 起 → 抽同一行所有 inline <groupList>（單行格式）→ 同行 </User>/自閉即收尾；否則
+        # 續收後續 <groupList> 行直到 </User>。只 emit identifier+fingerprint 皆在的（無 fp 的 --help 略過）。
+        # 進新 <User> 前先收尾上一個未閉合的（防跨行 back-to-back 漏抓）。屬性不依賴相鄰/順序。
+        # 假設**一行至多一個 User**（usermod marshal 與 register-tak-fingerprint.sh 皆如此）；兩 User
+        # 擠同一行屬理論 malformed、不處理（inline group while-loop 會把兩者群併入前者，極罕見不 over-engineer）。
+        out_rows="$(awk '
+          function emit() { if (id != "" && fp != "") print id "\t" fp "\t" grp }
+          /<User / {
+            if (inu) emit()                                  # 收尾上一個未閉合的（back-to-back 防漏）
+            id=""; fp=""; grp=""; inu=1
+            if (match($0, /identifier="[^"]*"/)) id=substr($0,RSTART+12,RLENGTH-13)
+            if (match($0, /fingerprint="[^"]*"/)) fp=substr($0,RSTART+13,RLENGTH-14)
+            line=$0                                          # 抽同一行 inline <groupList>（單行格式）
+            while (match(line, /<groupList>[^<]*<\/groupList>/)) {
+              g=substr(line,RSTART,RLENGTH); sub(/^<groupList>/,"",g); sub(/<\/groupList>$/,"",g)
+              grp=(grp==""?g:grp","g); line=substr(line,RSTART+RLENGTH)
+            }
+            if ($0 ~ /\/>/ || $0 ~ /<\/User>/) { emit(); inu=0 }   # 單行收尾（自閉或同行 </User>）
+            next
+          }
+          inu && /<groupList>/ {
+            g=$0; sub(/.*<groupList>/,"",g); sub(/<\/groupList>.*/,"",g)
+            grp=(grp==""?g:grp","g); next
+          }
+          inu && /<\/User>/ { emit(); inu=0; next }
+          END { if (inu) emit() }                            # 檔尾未閉合的也收尾
+        ' "$AUTH_FILE" 2>/dev/null)"
+        n="$(printf '%s' "$out_rows" | grep -c . || true)"
         {
-          printf 'OK reconcile %s\n' "${#USERS[@]}"
-          for u in "${USERS[@]}"; do
-            uid_="$(printf '%s' "$u" | sed -E 's/.*identifier="([^"]+)".*/\1/')"
-            ufp="$(printf '%s' "$u" | sed -E 's/.*fingerprint="([0-9A-Fa-f:]+)".*/\1/')"
-            printf '%s\t%s\n' "$uid_" "$ufp"
-          done
+          printf 'OK reconcile %s\n' "$n"
+          [ -n "$out_rows" ] && printf '%s\n' "$out_rows"
         } >"$RES_DIR/$id.res.tmp" && mv "$RES_DIR/$id.res.tmp" "$RES_DIR/$id.res"
-        log "reconcile -> ${#USERS[@]} users"
+        log "reconcile -> $n users"
+        ;;
+      strip-anon)
+        # #404：移出 __ANON__ 匿名群（usermod -f <fp> -r -g __ANON__ <callsign>），保留其餘群 →
+        # 修「producer 卡 __ANON__ = 與任何 CA 證同頻」隔離破口。需 callsign+fp（與 register 同驗、-f 確保
+        # 不動憑證）。**不套 infra denylist**：ics-cot 正是要修的對象；ics-tak-admin 僅 __ANON__ → -r 後
+        # 無群會 bounce 回 __ANON__（usermod 行為），等同 no-op、無害。
+        if ! [[ "$callsign" =~ $CN_RE ]] || ! [[ "$fp" =~ $FP_RE ]]; then
+          log "reject $id: bad-input (strip-anon callsign/fp 格式不符)"
+          echo "ERR bad-input" >"$RES_DIR/$id.res.tmp" && mv "$RES_DIR/$id.res.tmp" "$RES_DIR/$id.res"
+        else
+          out="$(cd /opt/tak && java -jar "$JAR" usermod -f "$fp" -r -g __ANON__ "$callsign" 2>&1)"
+          rc=$?
+          if [ "$rc" -eq 0 ]; then
+            log "stripped __ANON__ from $callsign"
+            echo "OK stripped" >"$RES_DIR/$id.res.tmp" && mv "$RES_DIR/$id.res.tmp" "$RES_DIR/$id.res"
+          else
+            msg="${out//$'\n'/ }"
+            log "usermod -r __ANON__ FAIL $callsign rc=$rc: $msg"
+            printf 'ERR rc=%s %s\n' "$rc" "$msg" >"$RES_DIR/$id.res.tmp" && mv "$RES_DIR/$id.res.tmp" "$RES_DIR/$id.res"
+          fi
+        fi
         ;;
       *)
         log "reject $id: unknown-op '$op'"

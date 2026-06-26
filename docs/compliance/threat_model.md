@@ -201,6 +201,12 @@ Command **信任 TAK Server 轉發的所有 CoT** —— 即使傳輸加密（§
 
 **緩解（皆已落地）**：(1) 端點 **sysadmin-only**（`_check_system_admin`）；(2) **每張強制 audit**（`tak_device_cert_issue`，不得 best-effort）——誰發了哪個 callsign 留痕，事後可究責/撤；(3) device 私鑰隨 package **即產即交、不落 DB**（守 #255 紅線，cert/key 內容入 DB 仍卡 P1-12）；(4) CA 隔離：ICS 登入證（step-ca）即使外洩也**連不上 TAK**（TAK 不信 step-ca），反之亦然。**殘餘**：(a) 發證是 sysadmin 蓄意決定，無法防「被盜 sysadmin session」濫發——與其他 sysadmin 破壞性動作同級，靠 audit + mTLS 第二因子 + PIN 緩解；(b) **offline ICS-TAK-SVC-CA 私鑰落地檔案系統**（同 §8.4 at-rest 邊界，偷碟可冒充發 TAK 裝置證）→ 緩解走 LUKS [#231](https://github.com/winson3QQ/ICS_COMMAND/issues/231)；(c) **發出的 TAK 裝置證無 app 層撤銷**（不像 ICS 登入證可即時撤）——撤銷須走 step-ca/TAK CRL 或重簽 CA，P2-26 cert lifecycle 未做。推翻 #255 原「UI 不簽證」對裝置證的部分，理由見 [#315](https://github.com/winson3QQ/ICS_COMMAND/issues/315)。
 
+**[2026-06-26 #403/#404 — TAK 存取控制機制定讞（源碼 + 對活機端到端實證）]**：釐清「ICS 如何真正管控誰能連進 TAK」。**源碼定讞**（官方 `X509Authenticator.java`，`TAK-Product-Center/Server`）：TAK 對 **CA 信任的證架構上永不拒絕**——非名冊證無群即無條件落 `__ANON__`（`doAnonAssignment`）；我們翻過的 `x509addAnonymous="false"` 只在 LDAP 分支生效、對 file-auth 是死碼（對活機實測非名冊證仍落 `__ANON__`）。**唯一 TLS/auth 層真拒絕 = 撤銷**（`x509checkRevocation` + cert 在 TAK `certificate` 表有 `revocationDate` → `RevokedException`）。故「改 CoreConfig 白名單擋連」與 TAK 架構衝突、**死路**；存取控制只能靠 **group membership**，落為兩層：
+- **層1（地基）= `__ANON__` 死群隔離**（[#404](https://github.com/winson3QQ/ICS_COMMAND/issues/404)）：非名冊證落 `__ANON__` 擋不掉，但只要**所有 ICS producer（含 `ics-cot`）不掛 `__ANON__`**（走 red/blue/neutral），`__ANON__` 即無資料 → 不明證落進去看不到、也注不進。**端到端實證**：`ics-cot` 在 `__ANON__` 時非名冊證注入 → ICS `cop_entities` 真 ingest（漏洞）；`usermod -r -g __ANON__ ics-cot` 移除後同注入 → ICS 收不到（關閉）。`register-tak-fingerprint.sh` 改為**不再預設 `__ANON__`**（須顯式 named group，`__ANON__` 須 `--allow-anon`）。`ics-tak-admin` 仍 `__ANON__`（REST-only 不 stream、無 streaming 洩漏；移除其唯一群會 bounce 回 `__ANON__`）。
+- **層2（點名封殺）= 撤銷**（[#318](https://github.com/winson3QQ/ICS_COMMAND/issues/318)）：ICS **離線簽**的證 TAK `certificate` 表**查無** → 預設**撤不掉**（`findOneByHash` 撲空）；須 ICS 發證後**把證補登進 TAK DB** + 開 `x509checkRevocation`。**實證**：手插 `certificate`(hash+revocation_date) + 開旗標 + restart → 該證連 :8089 立刻被踢（recv 0）、REST 500，未撤的 `ics-cot` 正常。
+
+> **架構含義**：離線簽＝握發證權，但「繞過 TAK 不登記」正是撤不掉的根源；**補登 TAK DB 可兼得發證權與撤銷力**。**更新本節 §8.3(c) 殘餘**「發出的 TAK 裝置證無 app 層撤銷」→ 路徑已明（層2，#318），非無解。
+
 ### 8.4 同機部署的 at-rest 與統一金鑰託管（缺口）
 
 **事實**：TAK Server 與 ICS Command **部署在同一台主機**。同一顆碟上同時有：ICS `cop_entities`（SQLite）、**TAK Server 的 PostgreSQL repository**（存每個 uid 最新 CoT、mission、GeoChat）、step-ca / TAK 憑證與**私鑰**、log、map_config、上傳檔。

@@ -138,10 +138,12 @@ def test_deregister_not_configured(monkeypatch):
     assert tak_user_enroll.deregister_device("x") == {"ok": False, "reason": "enroll-not-configured"}
 
 
-def test_reconcile_parses_user_list(queue):
+def test_reconcile_parses_groups(queue):
+    """#404：reconcile 第 3 欄 = 逗號分隔群清單，解析成 list；空群 → []。"""
     cap: list = []
     stop = threading.Event()
-    result = "OK reconcile 2\nred-01\t42:26:5E\nblue-01\t6F:E9:75\n"
+    rows = "ics-cot\tA2:10:7F\tred,blue,neutral\nics-tak-admin\t61:F8:E3\t__ANON__\nselfclosed\tDD:EE\t"
+    result = "OK reconcile 3\n" + rows + "\n"
     t = threading.Thread(target=_fake_registrar, args=(queue, result, cap, stop))
     t.start()
     try:
@@ -151,13 +153,72 @@ def test_reconcile_parses_user_list(queue):
         t.join()
     assert out["ok"] is True
     assert out["users"] == [
-        {"callsign": "red-01", "fingerprint": "42:26:5E"},
-        {"callsign": "blue-01", "fingerprint": "6F:E9:75"},
+        {"callsign": "ics-cot", "fingerprint": "A2:10:7F", "groups": ["red", "blue", "neutral"]},
+        {"callsign": "ics-tak-admin", "fingerprint": "61:F8:E3", "groups": ["__ANON__"]},
+        {"callsign": "selfclosed", "fingerprint": "DD:EE", "groups": []},  # 無顯式群 → runtime __ANON__
     ]
     assert cap[0].splitlines()[3] == "reconcile"  # op
+
+
+def test_reconcile_backward_compat_two_field(queue):
+    """#404 向後相容：舊式 registrar 只回兩欄 → groups=None（未知，不誤判隔離破口）。"""
+    cap: list = []
+    stop = threading.Event()
+    result = "OK reconcile 1\nred-01\t42:26:5E\n"
+    t = threading.Thread(target=_fake_registrar, args=(queue, result, cap, stop))
+    t.start()
+    try:
+        out = tak_user_enroll.reconcile_tak_users()
+    finally:
+        stop.set()
+        t.join()
+    assert out["users"] == [{"callsign": "red-01", "fingerprint": "42:26:5E", "groups": None}]
 
 
 def test_reconcile_timeout(queue, monkeypatch):
     monkeypatch.setattr(config, "TAK_ENROLL_TIMEOUT_S", 0.5)
     out = tak_user_enroll.reconcile_tak_users()
     assert out["ok"] is False and out["reason"] == "timeout" and out["users"] == []
+
+
+# ── #404：strip-anon（移出 __ANON__ 隔離破口修復）──────────────────────────────
+
+
+def test_strip_anon_writes_op_and_succeeds(queue):
+    cap: list = []
+    stop = threading.Event()
+    t = threading.Thread(target=_fake_registrar, args=(queue, "OK stripped", cap, stop))
+    t.start()
+    try:
+        out = tak_user_enroll.strip_anon_group("ics-cot", "A2:10:7F")
+    finally:
+        stop.set()
+        t.join()
+    assert out == {"ok": True, "reason": "stripped"}
+    # 請求協定：callsign / fingerprint / group(placeholder) / op=strip-anon
+    lines = cap[0].splitlines()
+    assert lines[0] == "ics-cot" and lines[1] == "A2:10:7F" and lines[3] == "strip-anon"
+
+
+def test_strip_anon_non_ascii_skips_without_request(queue):
+    out = tak_user_enroll.strip_anon_group("主教", "A2:10:7F")
+    assert out == {"ok": False, "reason": "non-ascii-callsign"}
+    assert glob.glob(os.path.join(queue, "requests", "*.req")) == []
+
+
+def test_strip_anon_not_configured(monkeypatch):
+    monkeypatch.setattr(config, "TAK_ENROLL_QUEUE_DIR", "")
+    assert tak_user_enroll.strip_anon_group("x", "FP") == {"ok": False, "reason": "enroll-not-configured"}
+
+
+def test_strip_anon_registrar_error_best_effort(queue):
+    cap: list = []
+    stop = threading.Event()
+    t = threading.Thread(target=_fake_registrar, args=(queue, "ERR rc=1 usermod boom", cap, stop))
+    t.start()
+    try:
+        out = tak_user_enroll.strip_anon_group("ics-cot", "A2:10:7F")
+    finally:
+        stop.set()
+        t.join()
+    assert out["ok"] is False and out["reason"].startswith("registrar-error:")

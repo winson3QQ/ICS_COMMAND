@@ -1095,6 +1095,12 @@ const _RECON_ST = {
 function _renderTakDriven(box, data) {
   _lastTakCallsigns = new Set([...data.tak_users.map(u => u.callsign), ...data.ics_unsynced.map(c => c.callsign)]);
   let html = '<div style="font-size:11px;color:var(--text3);margin:2px 0 4px;">TAK Server 帳號（' + data.tak_users.length + '）— 此面板以 TAK 為準：</div>';
+  // #404：卡 __ANON__ 隔離破口面板級示警——producer 落匿名群 = 與任何 CA 信任的證同頻（不明證可注入/竊聽 COP）。
+  const anonList = data.anon_users || [];
+  if (anonList.length) {
+    html += '<div style="font-size:11px;color:var(--red);margin:2px 0 6px;border:1px solid var(--red);border-radius:4px;padding:4px 6px;">' +
+      '⚠ ' + anonList.length + ' 個身分在匿名群 <b>__ANON__</b>（隔離破口，應移出）：' + anonList.map(_escAudit).join('、') + '</div>';
+  }
   for (const u of data.tak_users) {
     const m = _RECON_ST[u.status] || ['var(--text3)', _escAudit(u.status)];
     const plat = u.mode === 'aware' ? 'iTAK' : (u.mode ? 'ATAK' : '');
@@ -1103,13 +1109,21 @@ function _renderTakDriven(box, data) {
     if (u.status === 'infra') action = '<span title="ICS 自身/管理身分，鎖死保護（動了 ICS 連不上 TAK）" style="color:var(--text3);font-size:10px;">🔒 保護</span>';
     else if (u.ics_cert_id != null) action = '<button class="adm-btn" data-action="adm-revoke-tak-device" data-cert-id="' + u.ics_cert_id + '">撤銷</button>';
     else action = '<button class="adm-btn" data-action="adm-deregister-tak-user" data-callsign="' + _escAudit(u.callsign) + '">從 TAK 移除</button>';
+    // #404：真破口（in_anon 且非豁免）→ 紅字 + 一鍵移出；REST-only infra（anon_exempt）→ 灰字良性、不給鈕
+    // （它只有 __ANON__、移掉會 bounce 回，且不 stream 不洩漏）。strip 只移 __ANON__、保留其餘群，對 producer 安全。
+    const isAnonGap = u.in_anon && !u.anon_exempt;
+    const anonWarn = isAnonGap
+      ? '<span title="在 __ANON__ 匿名群——與任何 CA 信任的證同頻，不明證可注入/竊聽。應移出。" style="color:var(--red);font-size:10px;">⚠ __ANON__</span>'
+      : (u.anon_exempt ? '<span title="REST-only（只打 Marti API、不訂閱 :8089 串流）→ __ANON__ 不洩漏串流資料，良性；移除唯一群會 bounce 回。" style="color:var(--text3);font-size:10px;">__ANON__·REST-only（無害）</span>' : '');
+    const anonBtn = isAnonGap ? '<button class="adm-btn" data-action="adm-strip-anon-tak-user" data-callsign="' + _escAudit(u.callsign) + '">移出匿名群</button>' : '';
     html += '<div style="display:flex;align-items:center;gap:6px;padding:4px 0;border-bottom:1px solid var(--border,#222);font-size:12px;flex-wrap:wrap;">' +
       '<span style="font-family:monospace;flex:1;min-width:80px;">' + _escAudit(u.callsign) + '</span>' +
       (plat ? '<span style="color:var(--text3);">' + plat + '</span>' : '') +
       '<span title="' + _escAudit('SHA-256：' + u.fingerprint) + '" style="font-family:monospace;color:var(--text3);font-size:9px;">' + _escAudit(_fpShort(u.fingerprint)) + '</span>' +
       '<span style="color:' + m[0] + ';font-size:10px;">' + m[1] + '</span>' +
+      anonWarn +
       (when ? '<span style="color:var(--text3);font-size:10px;">' + when + '</span>' : '') +
-      action +
+      action + anonBtn +
       '</div>';
   }
   if (data.ics_unsynced.length) {
@@ -1119,6 +1133,20 @@ function _renderTakDriven(box, data) {
         '<span style="font-family:monospace;flex:1;">' + _escAudit(c.callsign) + '</span>' +
         (c.non_ascii ? '<span title="中文 callsign 無法註冊 TAK managed user" style="color:var(--red);font-size:10px;">中文·連不上</span>' : '<span style="color:var(--red);font-size:10px;">未同步</span>') +
         '<button class="adm-btn" data-action="adm-revoke-tak-device" data-cert-id="' + c.cert_id + '">撤銷</button>' +
+        '</div>';
+    }
+  }
+  // #404：在線匿名連線（CA 信任但不在名冊）——reconcile 只看名冊看不到，這裡補在線視圖。最該盯的對象
+  // （被刪帳號/未授權仍掛著）；隔離後它看不到/送不出 ICS 資料，但仍佔連線——真踢除＝撤銷（#318）。
+  const onlineAnon = data.online_anon || [];
+  if (onlineAnon.length) {
+    html += '<div style="font-size:11px;color:var(--red);margin:8px 0 4px;">🔴 在線匿名連線（CA 信任、不在名冊——已踢除/未授權仍連著；已隔離看不到 ICS 資料，真踢除須撤銷 #318）：</div>';
+    for (const o of onlineAnon) {
+      const name = o.username || '(無 callsign)';
+      html += '<div style="display:flex;align-items:center;gap:6px;padding:3px 0;border-bottom:1px solid var(--border,#222);font-size:12px;flex-wrap:wrap;">' +
+        '<span style="font-family:monospace;flex:1;min-width:80px;">' + _escAudit(name) + '</span>' +
+        '<span title="' + _escAudit('CoT uid：' + (o.client_uid || '')) + '" style="font-family:monospace;color:var(--text3);font-size:9px;">' + _escAudit((o.client_uid || '').slice(0, 8)) + '</span>' +
+        '<span style="color:var(--red);font-size:10px;">⚠ 匿名在線</span>' +
         '</div>';
     }
   }
@@ -1166,6 +1194,14 @@ export async function admDeregisterTakUser(callsign) {
   if (!confirm('從 TAK Server 移除帳號「' + callsign + '」？\n⚠ 該 callsign 將無法連 TAK。此為 TAK 端真移除（usermod -D）。')) return;
   const resp = await authFetch(API_BASE + '/api/admin/tak/users/' + encodeURIComponent(callsign) + '/deregister', { method: 'POST' });
   if (!resp.ok) { alert('移除失敗（' + resp.status + '）：' + (await resp.text()).slice(0, 200)); return; }
+  admLoadTakDeviceCerts();
+}
+
+/** #404：把 TAK managed user 移出 __ANON__ 匿名群（修「與任何 CA 證同頻」隔離破口；保留其餘群）。 */
+export async function admStripAnonTakUser(callsign) {
+  if (!confirm('把「' + callsign + '」移出 __ANON__ 匿名群？\n保留其餘群（紅/藍/中立）。修正「與任何 CA 信任的證同頻、不明證可注入/竊聽」隔離破口。')) return;
+  const resp = await authFetch(API_BASE + '/api/admin/tak/users/' + encodeURIComponent(callsign) + '/strip-anon', { method: 'POST' });
+  if (!resp.ok) { alert('移出失敗（' + resp.status + '）：' + (await resp.text()).slice(0, 200)); return; }
   admLoadTakDeviceCerts();
 }
 

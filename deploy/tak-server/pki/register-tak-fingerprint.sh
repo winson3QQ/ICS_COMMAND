@@ -15,15 +15,17 @@
 #   另：docker/Mac **不 hot-reload** 本檔，--apply 後**須 restart** TAK 才生效。
 #
 # 用法：
-#   register-tak-fingerprint.sh <cert.pem> <identifier> [group1 group2 ...]
-#   register-tak-fingerprint.sh --apply <cert.pem> <identifier> [groups...]   # 真寫入
+#   register-tak-fingerprint.sh [--apply] [--allow-anon] <cert.pem> <identifier> <group1> [group2 ...]
 #
 #   預設 **dry-run**（只印將寫入的 <User> 元素 + 算出的 fingerprint，不動檔）。
 #   確認格式無誤後加 --apply 才落地。RBAC 寫入不容默默出錯，故預設不寫。
 #
-# 範例（兩張 mission 服務 cert）：
-#   register-tak-fingerprint.sh ../../step-ca/certs/ics-mission-read/client.crt  ics-mission-read  __ANON__
-#   register-tak-fingerprint.sh ../../step-ca/certs/ics-mission-write/client.crt ics-mission-write __ANON__
+#   ⚠ **必須指定至少一個 named group**（red/blue/neutral…）。
+#   #404/#403 定讞：producer 落 `__ANON__` = 與任何 CA 證同頻（不明證可注入/竊聽 ICS COP）。
+#   故本腳本**不再預設 __ANON__**；要刻意註冊進 __ANON__ 須加 `--allow-anon`（極少數情境，三思）。
+#
+# 範例（producer 走 named group，不掛 __ANON__）：
+#   register-tak-fingerprint.sh ../../step-ca/certs/ics-cot/client.crt ics-cot red blue neutral
 #
 # 目標檔：$TAK_AUTH_FILE（預設 deploy/tak-server/release/tak/UserAuthenticationFile.xml；
 #   release/ 是 bind-mount 進容器 /opt/tak 的同一份，改 host 檔即改容器檔（套用須 restart TAK）。
@@ -31,7 +33,7 @@
 # ✅ 格式已對活 TAK 5.7-RELEASE-43 確認（2026-06-09，比對 admin 既有 entry）：
 #   (a) fingerprint = **冒號分隔大寫**（openssl -fingerprint -sha256 原樣）→ FP_FORMAT=raw（預設正確）
 #   (b) <User> 需 identifier 屬性（admin entry 實證）
-#   (c) groupList 預設 __ANON__（admin entry 實證）
+#   (c) groupList 須顯式指定 named group（#404：不再預設 __ANON__；producer 隔離地基）
 #   註：role="ROLE_USER" 為預設值，TAK 重啟 re-marshal 時會省略——非 bug。
 
 set -euo pipefail
@@ -48,13 +50,32 @@ FP_FORMAT="${FP_FORMAT:-raw}"
 
 command -v openssl >/dev/null || { echo "✗ 缺 openssl" >&2; exit 1; }
 
-APPLY=0
-if [[ "${1:-}" == "--apply" ]]; then APPLY=1; shift; fi
-[[ $# -ge 2 ]] || { echo "用法：$0 [--apply] <cert.pem> <identifier> [groups...]" >&2; exit 1; }
+APPLY=0; ALLOW_ANON=0
+# flag 可在位置參數前任意順序出現（--apply / --allow-anon）。group 名不以 -- 起頭，不會誤吞。
+while [[ "${1:-}" == --* ]]; do
+  case "$1" in
+    --apply)      APPLY=1; shift ;;
+    --allow-anon) ALLOW_ANON=1; shift ;;
+    *) echo "✗ 未知 flag：$1（支援 --apply / --allow-anon）" >&2; exit 1 ;;
+  esac
+done
+[[ $# -ge 3 ]] || {
+  echo "用法：$0 [--apply] [--allow-anon] <cert.pem> <identifier> <group1> [group2 ...]" >&2
+  echo "  ⚠ 必須指定至少一個 named group；producer 不得落 __ANON__（#404/#403）" >&2
+  exit 1
+}
 
 CERT="$1"; IDENTIFIER="$2"; shift 2
 # ★ 勿用 GROUPS：那是 bash 內建唯讀陣列（當前使用者的 OS group id），賦值不生效。
-GROUP_LIST=("$@"); [[ ${#GROUP_LIST[@]} -gt 0 ]] || GROUP_LIST=(__ANON__)
+GROUP_LIST=("$@")
+# #404：producer 落 __ANON__ = 與任何 CA 信任的證同頻（隔離破口）。預設拒絕，須 --allow-anon 明確放行。
+for g in "${GROUP_LIST[@]}"; do
+  if [[ "$g" == "__ANON__" && $ALLOW_ANON -eq 0 ]]; then
+    echo "✗ 拒絕把 '$IDENTIFIER' 註冊進 __ANON__（producer 隔離地基，#404/#403）。" >&2
+    echo "  確需匿名群請加 --allow-anon（極少數情境，三思）。" >&2
+    exit 1
+  fi
+done
 [[ -f "$CERT" ]] || { echo "✗ 找不到 cert：$CERT" >&2; exit 1; }
 
 # ── 算 SHA-256 fingerprint ──────────────────────────────────────────────────
