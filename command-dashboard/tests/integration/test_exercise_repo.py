@@ -10,6 +10,7 @@ pytestmark = pytest.mark.integration
 class TestCreateExercise:
     def test_basic_create(self, tmp_db):
         from repositories.exercise_repo import create_exercise
+
         ex = create_exercise({"name": "測試演練", "type": "ttx"})
         assert ex["id"] is not None
         assert ex["name"] == "測試演練"
@@ -17,18 +18,21 @@ class TestCreateExercise:
 
     def test_defaults(self, tmp_db):
         from repositories.exercise_repo import create_exercise
+
         ex = create_exercise({"name": "X", "type": "real"})
         assert ex["mutex_locked"] == 0
         assert ex["ended_at"] is None
 
     def test_get_exercise(self, tmp_db):
         from repositories.exercise_repo import create_exercise, get_exercise
+
         ex = create_exercise({"name": "get-test", "type": "ttx"})
         found = get_exercise(ex["id"])
         assert found["name"] == "get-test"
 
     def test_list_exercises(self, tmp_db):
         from repositories.exercise_repo import create_exercise, list_exercises
+
         create_exercise({"name": "A", "type": "ttx"})
         create_exercise({"name": "B", "type": "ttx"})
         exercises = list_exercises()
@@ -37,9 +41,8 @@ class TestCreateExercise:
 
 class TestActivateExercise:
     def test_activate_sets_status(self, tmp_db):
-        from repositories.exercise_repo import (
-            create_exercise, update_exercise_status, get_exercise
-        )
+        from repositories.exercise_repo import create_exercise, get_exercise, update_exercise_status
+
         ex = create_exercise({"name": "E1", "type": "ttx"})
         update_exercise_status(ex["id"], "active", operator="admin")
         updated = get_exercise(ex["id"])
@@ -48,9 +51,8 @@ class TestActivateExercise:
         assert updated["started_at"] is not None
 
     def test_only_one_active_allowed(self, tmp_db):
-        from repositories.exercise_repo import (
-            create_exercise, update_exercise_status
-        )
+        from repositories.exercise_repo import create_exercise, update_exercise_status
+
         ex1 = create_exercise({"name": "E1", "type": "ttx"})
         ex2 = create_exercise({"name": "E2", "type": "ttx"})
         update_exercise_status(ex1["id"], "active", operator="admin")
@@ -58,9 +60,8 @@ class TestActivateExercise:
             update_exercise_status(ex2["id"], "active", operator="admin")
 
     def test_get_active_exercise(self, tmp_db):
-        from repositories.exercise_repo import (
-            create_exercise, update_exercise_status, get_active_exercise
-        )
+        from repositories.exercise_repo import create_exercise, get_active_exercise, update_exercise_status
+
         assert get_active_exercise() is None
         ex = create_exercise({"name": "E1", "type": "ttx"})
         update_exercise_status(ex["id"], "active", operator="admin")
@@ -71,9 +72,8 @@ class TestActivateExercise:
 
 class TestArchiveExercise:
     def test_archive_releases_mutex(self, tmp_db):
-        from repositories.exercise_repo import (
-            create_exercise, update_exercise_status, get_exercise
-        )
+        from repositories.exercise_repo import create_exercise, get_exercise, update_exercise_status
+
         ex = create_exercise({"name": "E1", "type": "ttx"})
         update_exercise_status(ex["id"], "active", operator="admin")
         update_exercise_status(ex["id"], "archived", operator="admin")
@@ -83,9 +83,8 @@ class TestArchiveExercise:
         assert updated["ended_at"] is not None
 
     def test_can_activate_new_after_archive(self, tmp_db):
-        from repositories.exercise_repo import (
-            create_exercise, update_exercise_status
-        )
+        from repositories.exercise_repo import create_exercise, update_exercise_status
+
         ex1 = create_exercise({"name": "E1", "type": "ttx"})
         ex2 = create_exercise({"name": "E2", "type": "ttx"})
         update_exercise_status(ex1["id"], "active", operator="admin")
@@ -93,4 +92,5 @@ class TestArchiveExercise:
         # 歸檔後可以啟動新演練，不應拋出例外
         update_exercise_status(ex2["id"], "active", operator="admin")
         from repositories.exercise_repo import get_active_exercise
+
         assert get_active_exercise()["id"] == ex2["id"]

@@ -11,10 +11,16 @@ from core.database import get_conn
 from ._helpers import audit, now_utc
 
 
-def create_ttx_inject(exercise_id: int, seq: int, target_unit: str,
-                      inject_type: str, title: str, payload: dict,
-                      description: str | None = None,
-                      scheduled_offset_min: int | None = None) -> dict:
+def create_ttx_inject(
+    exercise_id: int,
+    seq: int,
+    target_unit: str,
+    inject_type: str,
+    title: str,
+    payload: dict,
+    description: str | None = None,
+    scheduled_offset_min: int | None = None,
+) -> dict:
     iid = str(uuid.uuid4())
     now = now_utc()
     with get_conn() as conn:
@@ -23,12 +29,30 @@ def create_ttx_inject(exercise_id: int, seq: int, target_unit: str,
                (id, exercise_id, inject_seq, target_unit, inject_type, title,
                 description, payload, scheduled_offset_min, status, created_at)
                VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
-            (iid, exercise_id, seq, target_unit, inject_type, title,
-             description, json.dumps(payload, ensure_ascii=False),
-             scheduled_offset_min, "pending", now))
-    return {"id": iid, "exercise_id": exercise_id, "inject_seq": seq,
-            "target_unit": target_unit, "inject_type": inject_type,
-            "title": title, "status": "pending", "created_at": now}
+            (
+                iid,
+                exercise_id,
+                seq,
+                target_unit,
+                inject_type,
+                title,
+                description,
+                json.dumps(payload, ensure_ascii=False),
+                scheduled_offset_min,
+                "pending",
+                now,
+            ),
+        )
+    return {
+        "id": iid,
+        "exercise_id": exercise_id,
+        "inject_seq": seq,
+        "target_unit": target_unit,
+        "inject_type": inject_type,
+        "title": title,
+        "status": "pending",
+        "created_at": now,
+    }
 
 
 def bulk_create_ttx_injects(exercise_id: int, injects: list[dict]) -> int:
@@ -51,8 +75,8 @@ def bulk_create_ttx_injects(exercise_id: int, injects: list[dict]) -> int:
 def get_ttx_injects(exercise_id: int) -> list[dict]:
     with get_conn() as conn:
         rows = conn.execute(
-            "SELECT * FROM ttx_injects WHERE exercise_id=? ORDER BY inject_seq",
-            (exercise_id,)).fetchall()
+            "SELECT * FROM ttx_injects WHERE exercise_id=? ORDER BY inject_seq", (exercise_id,)
+        ).fetchall()
     result = []
     for r in rows:
         d = dict(r)
@@ -69,8 +93,8 @@ def mark_ttx_inject_done(inject_id: str, facilitator: str) -> bool:
     now = now_utc()
     with get_conn() as conn:
         cur = conn.execute(
-            "UPDATE ttx_injects SET status='injected', injected_at=? WHERE id=? AND status='pending'",
-            (now, inject_id))
+            "UPDATE ttx_injects SET status='injected', injected_at=? WHERE id=? AND status='pending'", (now, inject_id)
+        )
     if cur.rowcount:
         audit(facilitator, None, "ttx_inject_fired", "ttx_injects", inject_id, {})
     return cur.rowcount > 0

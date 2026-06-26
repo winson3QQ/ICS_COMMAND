@@ -8,6 +8,7 @@
 """
 
 import pytest
+
 from auth.role_enum import ROLE_OPERATOR_ZH, SYSADMIN_ONLY, allowed_roles_for
 from core.database import get_conn
 from repositories.account_repo import create_account
@@ -29,7 +30,8 @@ class TestToggleGate:
     def test_operator_gets_403(self, client):
         create_account("op_user", "5678", ROLE_OPERATOR_ZH, "Operator", "operator")
         r = client.post(
-            "/api/tak/connection", json={"enabled": True},
+            "/api/tak/connection",
+            json={"enabled": True},
             headers=_login(client, "op_user", "5678"),
         )
         assert r.status_code == 403
@@ -47,9 +49,7 @@ class TestTogglePersistAndAudit:
         assert s["enabled"] is True
         # audit-first 留痕
         with get_conn() as conn:
-            n = conn.execute(
-                "SELECT COUNT(*) FROM audit_log WHERE action_type='TAK_CONNECTION_TOGGLE'"
-            ).fetchone()[0]
+            n = conn.execute("SELECT COUNT(*) FROM audit_log WHERE action_type='TAK_CONNECTION_TOGGLE'").fetchone()[0]
         assert n >= 1
 
     def test_disable_persists_and_status_off(self, client, auth):

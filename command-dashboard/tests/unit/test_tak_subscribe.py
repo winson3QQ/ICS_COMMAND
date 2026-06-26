@@ -292,8 +292,12 @@ def test_subscribe_calls_on_connect_each_connect(monkeypatch):
         cfg = build_subscribe_config(cot_url="tls://h:8089", client_cert="/c", client_key="/k", allow_insecure_tls=True)
         task = asyncio.create_task(
             tak_service.subscribe(
-                cfg, ingest=lambda e: None, stop_event=stop,
-                backoff_initial=0.01, backoff_max=0.01, on_connect=on_connect,
+                cfg,
+                ingest=lambda e: None,
+                stop_event=stop,
+                backoff_initial=0.01,
+                backoff_max=0.01,
+                on_connect=on_connect,
             )
         )
         await asyncio.sleep(0.12)  # 多輪 連上→EOF→重連

@@ -14,8 +14,6 @@ tests/security/test_sync_extended.py — /api/sync/push 三 Pass 同步測試
   Pass 1 對已存在 snapshot_id 執行 UPDATE（不同於 /api/snapshots 的 INSERT OR IGNORE）。
 """
 
-import pytest
-
 _SYNC_URL = "/api/sync/push"
 
 
@@ -25,8 +23,7 @@ def _signed_post(c, sign, url, body_dict):
     return c.post(url, content=body_bytes, headers=hdrs)
 
 
-def _make_sync_payload(source_unit: str, snapshots: list = None,
-                       events: list = None) -> dict:
+def _make_sync_payload(source_unit: str, snapshots: list = None, events: list = None) -> dict:
     return {
         "source_unit": source_unit,
         "sync_start_ts": "2026-04-24T06:00:00Z",
@@ -37,8 +34,7 @@ def _make_sync_payload(source_unit: str, snapshots: list = None,
     }
 
 
-def _base_snap(snap_id: str, t: str = "2026-04-24T08:00:00Z",
-               bed_used: int = 10) -> dict:
+def _base_snap(snap_id: str, t: str = "2026-04-24T08:00:00Z", bed_used: int = 10) -> dict:
     return {
         "snapshot_id": snap_id,
         "node_type": "shelter",
@@ -53,6 +49,7 @@ def _base_snap(snap_id: str, t: str = "2026-04-24T08:00:00Z",
 # 空 Payload
 # ─────────────────────────────────────────────────────────────────
 
+
 class TestSyncEmptyPayload:
     def test_empty_sync_push_returns_200(self, hmac_client):
         """空 payload（無 snapshots/events）→ 200，不崩潰"""
@@ -63,6 +60,7 @@ class TestSyncEmptyPayload:
     def test_empty_sync_does_not_change_db(self, hmac_client, tmp_db):
         """空 payload 不增加任何 snapshots"""
         from core.database import get_conn
+
         c, sign = hmac_client
         _signed_post(c, sign, _SYNC_URL, _make_sync_payload("shelter"))
         with get_conn() as conn:
@@ -74,14 +72,14 @@ class TestSyncEmptyPayload:
 # Idempotency
 # ─────────────────────────────────────────────────────────────────
 
+
 class TestSyncIdempotency:
     def test_same_payload_twice_idempotent(self, hmac_client, tmp_db):
         """相同 sync payload 推兩次 → 快照數量不變（Pass 1 UPDATE，不新增）"""
         from core.database import get_conn
+
         c, sign = hmac_client
-        payload = _make_sync_payload("shelter", snapshots=[
-            _base_snap("idem-001"), _base_snap("idem-002")
-        ])
+        payload = _make_sync_payload("shelter", snapshots=[_base_snap("idem-001"), _base_snap("idem-002")])
         _signed_post(c, sign, _SYNC_URL, payload)
         _signed_post(c, sign, _SYNC_URL, payload)
         with get_conn() as conn:
@@ -93,18 +91,24 @@ class TestSyncIdempotency:
         Pass 1：已存在的 snapshot_id → UPDATE（資料更新）。
         不同於 /api/snapshots 的 INSERT OR IGNORE（保留原始）。
         """
-        from repositories.snapshot_repo import upsert_snapshot, get_snapshots
+        from repositories.snapshot_repo import get_snapshots, upsert_snapshot
+
         c, sign = hmac_client
         # 先用 /api/snapshots 插入（bed_used=5）
-        upsert_snapshot({
-            "v": 3, "type": "shelter", "snapshot_id": "sync-update-001",
-            "t": "2026-04-24T08:00:00Z", "src": "test",
-            "node_type": "shelter", "bed_used": 5, "bed_total": 50,
-        })
+        upsert_snapshot(
+            {
+                "v": 3,
+                "type": "shelter",
+                "snapshot_id": "sync-update-001",
+                "t": "2026-04-24T08:00:00Z",
+                "src": "test",
+                "node_type": "shelter",
+                "bed_used": 5,
+                "bed_total": 50,
+            }
+        )
         # 再用 sync push 推送相同 snapshot_id（bed_used=30）
-        payload = _make_sync_payload("shelter", snapshots=[
-            _base_snap("sync-update-001", bed_used=30)
-        ])
+        payload = _make_sync_payload("shelter", snapshots=[_base_snap("sync-update-001", bed_used=30)])
         r = _signed_post(c, sign, _SYNC_URL, payload)
         assert r.status_code == 200
         # Pass 1 應 UPDATE → bed_used 變 30
@@ -115,6 +119,7 @@ class TestSyncIdempotency:
     def test_sync_result_consistent_on_retry(self, hmac_client, tmp_db):
         """sync push 失敗後重試（模擬網路重送）→ 結果與第一次相同"""
         from core.database import get_conn
+
         c, sign = hmac_client
         payload = _make_sync_payload("shelter", snapshots=[_base_snap("retry-001")])
         r1 = _signed_post(c, sign, _SYNC_URL, payload)
@@ -130,6 +135,7 @@ class TestSyncIdempotency:
 # Out-of-Order Sync
 # ─────────────────────────────────────────────────────────────────
 
+
 class TestSyncOutOfOrder:
     def test_old_timestamp_via_sync_does_not_displace_latest(self, hmac_client, tmp_db):
         """
@@ -137,21 +143,29 @@ class TestSyncOutOfOrder:
         get_latest_snapshot 仍回傳 10:00 那筆。
         """
         from repositories.snapshot_repo import get_latest_snapshot
+
         c, sign = hmac_client
         # 先推新的
-        _signed_post(c, sign, _SYNC_URL, _make_sync_payload("shelter", snapshots=[
-            _base_snap("order-new", t="2026-04-24T10:00:00Z", bed_used=40)
-        ]))
+        _signed_post(
+            c,
+            sign,
+            _SYNC_URL,
+            _make_sync_payload("shelter", snapshots=[_base_snap("order-new", t="2026-04-24T10:00:00Z", bed_used=40)]),
+        )
         # 後推舊的（亂序）
-        _signed_post(c, sign, _SYNC_URL, _make_sync_payload("shelter", snapshots=[
-            _base_snap("order-old", t="2026-04-20T08:00:00Z", bed_used=1)
-        ]))
+        _signed_post(
+            c,
+            sign,
+            _SYNC_URL,
+            _make_sync_payload("shelter", snapshots=[_base_snap("order-old", t="2026-04-20T08:00:00Z", bed_used=1)]),
+        )
         latest = get_latest_snapshot("shelter")
         assert latest["snapshot_id"] == "order-new"
 
     def test_mixed_timestamps_all_stored(self, hmac_client, tmp_db):
         """亂序的多筆快照都應存入 DB（不丟棄舊時間戳）"""
         from core.database import get_conn
+
         c, sign = hmac_client
         snaps = [
             _base_snap("mix-003", t="2026-04-24T10:00:00Z"),
@@ -168,13 +182,12 @@ class TestSyncOutOfOrder:
 # 未知 Unit 容錯
 # ─────────────────────────────────────────────────────────────────
 
+
 class TestSyncUnknownUnit:
     def test_unknown_source_unit_accepted(self, hmac_client):
         """未知 source_unit → 仍 200（sync 容錯設計，_unit_to_node fallback）"""
         c, sign = hmac_client
-        r = _signed_post(c, sign, _SYNC_URL, _make_sync_payload("unknown_unit", snapshots=[
-            _base_snap("unknown-001")
-        ]))
+        r = _signed_post(c, sign, _SYNC_URL, _make_sync_payload("unknown_unit", snapshots=[_base_snap("unknown-001")]))
         assert r.status_code == 200
 
     def test_sync_without_snapshots_key(self, hmac_client):

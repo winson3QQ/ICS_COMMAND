@@ -63,34 +63,25 @@ class TestListEvents:
 
 class TestPatchEventStatus:
     def test_in_progress(self, client, auth):
-        ev_id = client.post("/api/events", json=_VALID_EVENT,
-                            headers=auth).json()["id"]
-        r = client.patch(f"/api/events/{ev_id}/status?status=in_progress&operator=admin",
-                         headers=auth)
+        ev_id = client.post("/api/events", json=_VALID_EVENT, headers=auth).json()["id"]
+        r = client.patch(f"/api/events/{ev_id}/status?status=in_progress&operator=admin", headers=auth)
         assert r.status_code == 200
 
     def test_resolve(self, client, auth):
-        ev_id = client.post("/api/events", json=_VALID_EVENT,
-                            headers=auth).json()["id"]
-        client.patch(f"/api/events/{ev_id}/status?status=in_progress&operator=admin",
-                     headers=auth)
-        r = client.patch(f"/api/events/{ev_id}/status?status=resolved&operator=admin",
-                         headers=auth)
+        ev_id = client.post("/api/events", json=_VALID_EVENT, headers=auth).json()["id"]
+        client.patch(f"/api/events/{ev_id}/status?status=in_progress&operator=admin", headers=auth)
+        r = client.patch(f"/api/events/{ev_id}/status?status=resolved&operator=admin", headers=auth)
         assert r.status_code == 200
 
     def test_nonexistent_event_returns_4xx(self, client, auth):
-        r = client.patch("/api/events/nonexistent/status?status=in_progress&operator=admin",
-                         headers=auth)
+        r = client.patch("/api/events/nonexistent/status?status=in_progress&operator=admin", headers=auth)
         assert r.status_code in (400, 404)
 
 
 class TestAddNote:
     def test_add_note(self, client, auth):
-        ev_id = client.post("/api/events", json=_VALID_EVENT,
-                            headers=auth).json()["id"]
-        r = client.post(f"/api/events/{ev_id}/notes",
-                        json={"text": "現場確認完成", "operator": "admin"},
-                        headers=auth)
+        ev_id = client.post("/api/events", json=_VALID_EVENT, headers=auth).json()["id"]
+        r = client.post(f"/api/events/{ev_id}/notes", json={"text": "現場確認完成", "operator": "admin"}, headers=auth)
         assert r.status_code == 200
 
 

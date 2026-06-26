@@ -17,11 +17,11 @@ tests/security/test_payload_fuzzing.py — 惡意/畸形 Payload Fuzzing 測試
   XSS 防護是前端責任，後端儲存原始字串為正確行為。
 """
 
-import pytest
 
 # ─────────────────────────────────────────────────────────────────
 # Login Payload 異常
 # ─────────────────────────────────────────────────────────────────
+
 
 class TestLoginFuzzing:
     def test_integer_pin_coerced_or_422(self, client):
@@ -34,18 +34,12 @@ class TestLoginFuzzing:
 
     def test_sql_injection_in_username(self, client):
         """SQL 注入字串作為 username → 401（不崩潰、DB 不受影響）"""
-        r = client.post("/api/auth/login", json={
-            "username": "' OR '1'='1",
-            "pin": "1234"
-        })
+        r = client.post("/api/auth/login", json={"username": "' OR '1'='1", "pin": "1234"})
         assert r.status_code == 401
 
     def test_sql_injection_in_pin(self, client):
         """SQL 注入字串作為 pin → 401（不崩潰）"""
-        r = client.post("/api/auth/login", json={
-            "username": "admin",
-            "pin": "' OR '1'='1'; --"
-        })
+        r = client.post("/api/auth/login", json={"username": "admin", "pin": "' OR '1'='1'; --"})
         assert r.status_code == 401
 
     def test_missing_username_returns_422(self, client):
@@ -68,6 +62,7 @@ class TestLoginFuzzing:
 # Event Payload 異常
 # ─────────────────────────────────────────────────────────────────
 
+
 class TestEventFuzzing:
     def _login(self, client):
         r = client.post("/api/auth/login", json={"username": "admin", "pin": "1234"})
@@ -79,26 +74,34 @@ class TestEventFuzzing:
     def test_invalid_severity_returns_422(self, client):
         """severity='critical_9999'（不在枚舉內）→ 422"""
         token = self._login(client)
-        r = client.post("/api/events", headers=self._headers(token), json={
-            "reported_by_unit": "shelter",
-            "event_type": "capacity_warning",
-            "severity": "critical_9999",
-            "description": "test",
-            "operator_name": "測試員",
-        })
+        r = client.post(
+            "/api/events",
+            headers=self._headers(token),
+            json={
+                "reported_by_unit": "shelter",
+                "event_type": "capacity_warning",
+                "severity": "critical_9999",
+                "description": "test",
+                "operator_name": "測試員",
+            },
+        )
         assert r.status_code == 422
 
     def test_xss_in_description_stored_safely(self, client):
         """XSS payload 存入 description → 原樣存入（後端不 escape，前端責任）"""
         token = self._login(client)
         xss = '<script>alert("xss")</script>'
-        r = client.post("/api/events", headers=self._headers(token), json={
-            "reported_by_unit": "shelter",
-            "event_type": "capacity_warning",
-            "severity": "info",
-            "description": xss,
-            "operator_name": "測試員",
-        })
+        r = client.post(
+            "/api/events",
+            headers=self._headers(token),
+            json={
+                "reported_by_unit": "shelter",
+                "event_type": "capacity_warning",
+                "severity": "info",
+                "description": xss,
+                "operator_name": "測試員",
+            },
+        )
         assert r.status_code == 200
         # 取回確認原樣存入（DB 未執行 script）
         events = client.get("/api/events", headers=self._headers(token)).json()
@@ -109,13 +112,17 @@ class TestEventFuzzing:
         """SQL 注入字串存入 description → 原樣存入，DB 不受影響"""
         token = self._login(client)
         sql_payload = "'; DROP TABLE events; --"
-        r = client.post("/api/events", headers=self._headers(token), json={
-            "reported_by_unit": "shelter",
-            "event_type": "capacity_warning",
-            "severity": "info",
-            "description": sql_payload,
-            "operator_name": "測試員",
-        })
+        r = client.post(
+            "/api/events",
+            headers=self._headers(token),
+            json={
+                "reported_by_unit": "shelter",
+                "event_type": "capacity_warning",
+                "severity": "info",
+                "description": sql_payload,
+                "operator_name": "測試員",
+            },
+        )
         assert r.status_code == 200
         # events 表還在（沒被 DROP）
         events = client.get("/api/events", headers=self._headers(token))
@@ -124,31 +131,40 @@ class TestEventFuzzing:
     def test_oversized_description(self, client):
         """50,000 字元 description → 接受或回 422，不崩潰"""
         token = self._login(client)
-        r = client.post("/api/events", headers=self._headers(token), json={
-            "reported_by_unit": "shelter",
-            "event_type": "capacity_warning",
-            "severity": "info",
-            "description": "A" * 50_000,
-            "operator_name": "測試員",
-        })
+        r = client.post(
+            "/api/events",
+            headers=self._headers(token),
+            json={
+                "reported_by_unit": "shelter",
+                "event_type": "capacity_warning",
+                "severity": "info",
+                "description": "A" * 50_000,
+                "operator_name": "測試員",
+            },
+        )
         assert r.status_code in (200, 422), f"應接受或拒絕，不應崩潰：{r.status_code}"
 
     def test_unicode_and_emoji_in_description(self, client):
         """Unicode + emoji → 正常處理"""
         token = self._login(client)
-        r = client.post("/api/events", headers=self._headers(token), json={
-            "reported_by_unit": "shelter",
-            "event_type": "capacity_warning",
-            "severity": "info",
-            "description": "緊急！🚨 傷患湧入 ≥ 50 人",
-            "operator_name": "王大明",
-        })
+        r = client.post(
+            "/api/events",
+            headers=self._headers(token),
+            json={
+                "reported_by_unit": "shelter",
+                "event_type": "capacity_warning",
+                "severity": "info",
+                "description": "緊急！🚨 傷患湧入 ≥ 50 人",
+                "operator_name": "王大明",
+            },
+        )
         assert r.status_code == 200
 
 
 # ─────────────────────────────────────────────────────────────────
 # Snapshot Payload 異常
 # ─────────────────────────────────────────────────────────────────
+
 
 class TestSnapshotFuzzing:
     """TI-01 後 POST /api/snapshots 需要 HMAC，改用 hmac_client fixture。"""
@@ -165,9 +181,11 @@ class TestSnapshotFuzzing:
         """未知的 type='unknown_node' → 400（HMAC 通過後，router 驗證失敗）"""
         c, sign = hmac_client
         body = {
-            "v": 3, "type": "unknown_node",
+            "v": 3,
+            "type": "unknown_node",
             "snapshot_id": "fuzz-001",
-            "t": "2026-04-24T10:00:00Z", "src": "test",
+            "t": "2026-04-24T10:00:00Z",
+            "src": "test",
         }
         body_bytes, hdrs = sign("POST", "/api/snapshots", body)
         r = c.post("/api/snapshots", content=body_bytes, headers=hdrs)
@@ -177,9 +195,11 @@ class TestSnapshotFuzzing:
         """SnapshotIn 設定 extra='allow'，額外欄位不拋錯"""
         c, sign = hmac_client
         body = {
-            "v": 3, "type": "shelter",
+            "v": 3,
+            "type": "shelter",
             "snapshot_id": "fuzz-extra-001",
-            "t": "2026-04-24T10:00:00Z", "src": "test",
+            "t": "2026-04-24T10:00:00Z",
+            "src": "test",
             "totally_unknown_field": "should_be_ignored",
         }
         body_bytes, hdrs = sign("POST", "/api/snapshots", body)
@@ -193,10 +213,13 @@ class TestSnapshotFuzzing:
         """
         c, sign = hmac_client
         body = {
-            "v": 3, "type": "shelter",
+            "v": 3,
+            "type": "shelter",
             "snapshot_id": "fuzz-neg-001",
-            "t": "2026-04-24T10:00:00Z", "src": "test",
-            "bed_used": -1, "bed_total": 50,
+            "t": "2026-04-24T10:00:00Z",
+            "src": "test",
+            "bed_used": -1,
+            "bed_total": 50,
         }
         body_bytes, hdrs = sign("POST", "/api/snapshots", body)
         r = c.post("/api/snapshots", content=body_bytes, headers=hdrs)

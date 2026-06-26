@@ -17,7 +17,8 @@ import pytest
 
 pytestmark = pytest.mark.api
 
-# operator_auth / observer_auth / commander_auth 在 tests/api/conftest.py；client/auth/active_exercise 在 tests/conftest.py
+# operator_auth / observer_auth / commander_auth 在 tests/api/conftest.py；
+# client/auth/active_exercise 在 tests/conftest.py
 
 
 def _push_chat(client, auth, uid, message, t, group=None, callsign=None):
@@ -27,8 +28,14 @@ def _push_chat(client, auth, uid, message, t, group=None, callsign=None):
     故不 assert response status 字串，只確認 HTTP 200。
     """
     body = {
-        "uid": uid, "type": "b-t-f", "time": t, "start": t,
-        "stale": "2099-01-01T00:00:00Z", "how": "h-g-i-g-o", "lat": 24.1, "lon": 120.6,
+        "uid": uid,
+        "type": "b-t-f",
+        "time": t,
+        "start": t,
+        "stale": "2099-01-01T00:00:00Z",
+        "how": "h-g-i-g-o",
+        "lat": 24.1,
+        "lon": 120.6,
         "remarks": message,
     }
     if callsign:

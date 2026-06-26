@@ -120,10 +120,14 @@ def test_pipeline_from_fixture_valid_minimal():
 
 
 def test_squad_fields_extracted():
-    ent = normalize_cot(_event(detail={
-        "__group": {"name": "Cyan", "role": "Team Member"},
-        "status": {"battery": "78"},
-    }))
+    ent = normalize_cot(
+        _event(
+            detail={
+                "__group": {"name": "Cyan", "role": "Team Member"},
+                "status": {"battery": "78"},
+            }
+        )
+    )
     assert ent.team_color == "Cyan"
     assert ent.role == "Team Member"
     assert ent.battery == 78
@@ -165,11 +169,23 @@ def test_real_fixture_squad_extracted():
 
 def test_medevac_extracted_and_severity_critical():
     """<_medevac_> 屬性（混大小寫）→ attributes["medevac"] 乾淨摘要 + severity critical。"""
-    ent = normalize_cot(_event(type="b-a-o-tbl-medevac", detail={
-        "_medevac_": {"Title": "觸雷", "freq": "38.90", "urgent": "2", "Priority": "1",
-                      "routine": "0", "casevac": "false", "Security": "N",
-                      "hlz_marking": "Smoke - Green"},
-    }))
+    ent = normalize_cot(
+        _event(
+            type="b-a-o-tbl-medevac",
+            detail={
+                "_medevac_": {
+                    "Title": "觸雷",
+                    "freq": "38.90",
+                    "urgent": "2",
+                    "Priority": "1",
+                    "routine": "0",
+                    "casevac": "false",
+                    "Security": "N",
+                    "hlz_marking": "Smoke - Green",
+                },
+            },
+        )
+    )
     mv = ent.attributes["medevac"]
     assert mv["title"] == "觸雷"
     assert mv["freq"] == "38.90"
@@ -203,9 +219,13 @@ def test_medevac_raw_preserved():
 
 def test_medevac_garbage_precedence_yields_none():
     """precedence 非數 / 空 / 越界（>9999）→ None（防 garbage，不炸 ingest）。"""
-    mv = normalize_cot(_event(detail={
-        "_medevac_": {"urgent": "??", "priority": "", "routine": "99999"},
-    })).attributes["medevac"]
+    mv = normalize_cot(
+        _event(
+            detail={
+                "_medevac_": {"urgent": "??", "priority": "", "routine": "99999"},
+            }
+        )
+    ).attributes["medevac"]
     assert mv["precedence"] == {"urgent": None, "priority": None, "routine": None}
 
 

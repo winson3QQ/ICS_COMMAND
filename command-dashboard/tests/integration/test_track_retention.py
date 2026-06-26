@@ -8,6 +8,7 @@
 """
 
 import pytest
+
 from auth.role_enum import ROLE_OPERATOR_ZH
 from core.database import get_conn
 from repositories.account_repo import create_account
@@ -21,16 +22,26 @@ pytestmark = pytest.mark.integration
 
 def _seed_tracks(exid):
     """一筆過期（200 天前）+ 一筆新（現在）軌跡。"""
-    insert_cop_entity(CoPEntity(
-        uid="ret-u1", type="a-f-G-U-C", time="2026-01-01T00:00:00Z",
-        start="2026-01-01T00:00:00Z", stale="2099-01-01T00:00:00Z", how="m-g",
-        lat=24.0, lon=120.0, source="tak", exercise_id=exid,
-    ))
+    insert_cop_entity(
+        CoPEntity(
+            uid="ret-u1",
+            type="a-f-G-U-C",
+            time="2026-01-01T00:00:00Z",
+            start="2026-01-01T00:00:00Z",
+            stale="2099-01-01T00:00:00Z",
+            how="m-g",
+            lat=24.0,
+            lon=120.0,
+            source="tak",
+            exercise_id=exid,
+        )
+    )
     with get_conn() as conn:
         conn.execute(
             "INSERT INTO cop_entity_tracks (uid,t,lat,lon,hae) VALUES "
             "('ret-u1', strftime('%Y-%m-%dT%H:%M:%SZ','now','-200 days'), 24.0, 120.0, 0),"
-            "('ret-u1', strftime('%Y-%m-%dT%H:%M:%SZ','now'), 24.1, 120.1, 0)")
+            "('ret-u1', strftime('%Y-%m-%dT%H:%M:%SZ','now'), 24.1, 120.1, 0)"
+        )
 
 
 def _track_count():
@@ -46,9 +57,7 @@ class TestCleanup:
         deleted = retention_service.cleanup_expired_tracks()
         assert deleted == 1 and _track_count() == 1  # 過期刪、新留
         with get_conn() as conn:
-            n = conn.execute(
-                "SELECT COUNT(*) FROM audit_log WHERE action_type='RETENTION_CLEANUP'"
-            ).fetchone()[0]
+            n = conn.execute("SELECT COUNT(*) FROM audit_log WHERE action_type='RETENTION_CLEANUP'").fetchone()[0]
         assert n == 1  # 個資刪除留痕
 
     def test_disabled_is_noop(self, tmp_db):
@@ -61,6 +70,7 @@ class TestCleanup:
     def test_ttl_days_floor_guard(self, tmp_db, monkeypatch):
         """TTL 誤設 0/負值 → 夾到 ≥1 天，拒絕「全清」誤設。"""
         from core import config
+
         exid = create_exercise({"name": "R", "type": "ttx"})["id"]
         _seed_tracks(exid)
         monkeypatch.setattr(config, "TRACKS_TTL_DAYS", 0)
@@ -77,9 +87,7 @@ class TestEndpoint:
         assert r.status_code == 200 and r.json()["enabled"] is False
         assert retention_service.ttl_enabled() is False  # 持久化
         with get_conn() as conn:
-            n = conn.execute(
-                "SELECT COUNT(*) FROM audit_log WHERE action_type='RETENTION_TOGGLE'"
-            ).fetchone()[0]
+            n = conn.execute("SELECT COUNT(*) FROM audit_log WHERE action_type='RETENTION_TOGGLE'").fetchone()[0]
         assert n == 1
 
     def test_non_sysadmin_403(self, client):
@@ -87,8 +95,7 @@ class TestEndpoint:
         login = client.post("/api/auth/login", json={"username": "op_ret", "pin": "5678"})
         headers = {"X-Session-Token": login.json()["session_id"]}
         assert client.get("/api/admin/retention", headers=headers).status_code == 403
-        assert client.post("/api/admin/retention", json={"enabled": False},
-                           headers=headers).status_code == 403
+        assert client.post("/api/admin/retention", json={"enabled": False}, headers=headers).status_code == 403
 
 
 class TestSystemScopeAudit:
@@ -104,7 +111,5 @@ class TestSystemScopeAudit:
         retention_service.cleanup_expired_tracks()  # → RETENTION_CLEANUP audit
         retention_service.set_ttl_enabled(True)
         with get_conn() as conn:
-            rows = conn.execute(
-                "SELECT exercise_id FROM audit_log WHERE action_type LIKE 'RETENTION_%'"
-            ).fetchall()
+            rows = conn.execute("SELECT exercise_id FROM audit_log WHERE action_type LIKE 'RETENTION_%'").fetchall()
         assert rows and all(r[0] is None for r in rows)  # 全 NULL（系統層、不綁場）

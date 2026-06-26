@@ -2,10 +2,7 @@ def test_csp_violations_table_schema(tmp_db):
     from core.database import get_conn
 
     with get_conn() as conn:
-        columns = {
-            row["name"]: row["type"]
-            for row in conn.execute("PRAGMA table_info(csp_violations)").fetchall()
-        }
+        columns = {row["name"]: row["type"] for row in conn.execute("PRAGMA table_info(csp_violations)").fetchall()}
 
     assert columns["id"].upper().startswith("INTEGER")
     assert columns["reported_at"].upper().startswith("TEXT")

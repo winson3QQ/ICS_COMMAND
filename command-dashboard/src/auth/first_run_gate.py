@@ -18,20 +18,22 @@ from fastapi import Request
 from fastapi.responses import JSONResponse
 
 # 即使 first-setup 未完成也允許的 path（完整匹配）
-_WHITELIST_EXACT = frozenset({
-    ("POST", "/api/auth/login"),
-    ("POST", "/api/auth/logout"),
-    ("POST", "/api/auth/change-initial-pin"),  # first-run 改 PIN，不需 admin PIN
-    ("GET",  "/api/auth/me"),
-    ("GET",  "/api/auth/heartbeat"),
-    ("GET",  "/api/session/status"),
-    ("GET",  "/api/health"),
-    ("GET",  "/api/status"),
-    ("GET",  "/api/version"),   # 前端啟動時 fetch，first-run 期間也需可讀
-    ("GET",  "/docs"),
-    ("GET",  "/openapi.json"),
-    ("GET",  "/"),
-})
+_WHITELIST_EXACT = frozenset(
+    {
+        ("POST", "/api/auth/login"),
+        ("POST", "/api/auth/logout"),
+        ("POST", "/api/auth/change-initial-pin"),  # first-run 改 PIN，不需 admin PIN
+        ("GET", "/api/auth/me"),
+        ("GET", "/api/auth/heartbeat"),
+        ("GET", "/api/session/status"),
+        ("GET", "/api/health"),
+        ("GET", "/api/status"),
+        ("GET", "/api/version"),  # 前端啟動時 fetch，first-run 期間也需可讀
+        ("GET", "/docs"),
+        ("GET", "/openapi.json"),
+        ("GET", "/"),
+    }
+)
 
 # Path 前綴白名單
 _WHITELIST_PREFIXES = (
@@ -61,6 +63,7 @@ async def first_run_gate_middleware(request: Request, call_next):
     # lazy import：避免測試環境啟動時 DB 未就緒
     try:
         from repositories.account_repo import is_first_run_required
+
         if is_first_run_required():
             if not _is_whitelisted(request.method, request.url.path):
                 return JSONResponse(

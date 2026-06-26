@@ -43,7 +43,7 @@ class FixedWindowLimiter:
         window_sec: int,
         on_throttle: Callable[[str, int], None] | None = None,
     ) -> None:
-        self._limit      = limit
+        self._limit = limit
         self._window_sec = window_sec
         self._on_throttle = on_throttle
         # { key: (window_start_ts, count) }

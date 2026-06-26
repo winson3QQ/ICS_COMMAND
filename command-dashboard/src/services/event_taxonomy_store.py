@@ -45,9 +45,7 @@ def ensure(path: Path | None = None, seed: Path | None = None) -> Path:
         shutil.copyfile(seed, path)
         log.info("[event_taxonomy_store] copied seed → runtime: %s → %s", seed, path)
     else:
-        path.write_text(
-            json.dumps(_EMPTY_SHELL, ensure_ascii=False, indent=2), encoding="utf-8"
-        )
+        path.write_text(json.dumps(_EMPTY_SHELL, ensure_ascii=False, indent=2), encoding="utf-8")
         log.warning(
             "[event_taxonomy_store] seed 不存在（%s），寫最小空殼到 %s — 正式部署應有 seed",
             seed,
@@ -72,11 +70,7 @@ def _backfill_seed_facts(data: dict[str, Any], seed: Path) -> dict[str, Any]:
         if not seed.exists():
             return data
         seed_data = json.loads(seed.read_text(encoding="utf-8"))
-        seed_by_key = {
-            e["key"]: e
-            for e in seed_data.get("events", [])
-            if isinstance(e, dict) and e.get("key")
-        }
+        seed_by_key = {e["key"]: e for e in seed_data.get("events", []) if isinstance(e, dict) and e.get("key")}
     except (OSError, json.JSONDecodeError):
         return data
     for e in data.get("events", []):
@@ -109,7 +103,8 @@ def read(path: Path | None = None, seed: Path | None = None) -> dict[str, Any]:
                     return data
                 log.warning(
                     "[event_taxonomy_store] %s 非 dict（%s），續 fallback",
-                    label, type(data).__name__,
+                    label,
+                    type(data).__name__,
                 )
         except (OSError, json.JSONDecodeError) as e:
             log.warning(

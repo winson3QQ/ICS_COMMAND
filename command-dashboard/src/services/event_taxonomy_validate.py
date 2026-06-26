@@ -94,10 +94,7 @@ def validate_taxonomy(body: Any, previous: Any = None) -> None:
         if not isinstance(e.get("label"), str) or not e["label"].strip():
             raise ValueError(f"event {k} 缺 label")
         if e.get("severity") not in SEVERITIES:
-            raise ValueError(
-                f"event {k} severity 非法：{e.get('severity')!r}"
-                "（固定 3 級：critical/warning/info）"
-            )
+            raise ValueError(f"event {k} severity 非法：{e.get('severity')!r}（固定 3 級：critical/warning/info）")
         if e.get("group") not in group_keys:
             raise ValueError(f"event {k} 的 group 不存在：{e.get('group')!r}")
         ct = e.get("cot_type")
@@ -106,9 +103,7 @@ def validate_taxonomy(body: Any, previous: Any = None) -> None:
         if "source" in e and e["source"] not in SOURCES:
             raise ValueError(f"event {k} 的 source 非法：{e.get('source')!r}（限 napsg / ics）")
         if "regime" in e and e["regime"] not in REGIMES:
-            raise ValueError(
-                f"event {k} 的 regime 非法：{e.get('regime')!r}（限 civil / alert / military）"
-            )
+            raise ValueError(f"event {k} 的 regime 非法：{e.get('regime')!r}（限 civil / alert / military）")
         if "deleted" in e and not isinstance(e["deleted"], bool):
             raise ValueError(f"event {k} 的 deleted 需為 bool")
 
@@ -117,22 +112,16 @@ def validate_taxonomy(body: Any, previous: Any = None) -> None:
         missing_ev = _keys_of(previous.get("events", [])) - event_keys
         if missing_ev:
             raise ValueError(
-                "不可移除或改名既有 event key（保參照完整性，刪除請用 deleted soft-delete）："
-                f"{sorted(missing_ev)}"
+                f"不可移除或改名既有 event key（保參照完整性，刪除請用 deleted soft-delete）：{sorted(missing_ev)}"
             )
         missing_grp = _keys_of(previous.get("groups", [])) - group_keys
         if missing_grp:
-            raise ValueError(
-                f"不可移除或改名既有 group key（刪除請用 deleted soft-delete）：{sorted(missing_grp)}"
-            )
+            raise ValueError(f"不可移除或改名既有 group key（刪除請用 deleted soft-delete）：{sorted(missing_grp)}")
 
     # ── 禁刪非空 group：被 soft-delete 的 group 下不可有未刪除 event ──
-    deleted_groups = {
-        g["key"] for g in groups if isinstance(g, dict) and g.get("deleted") is True
-    }
+    deleted_groups = {g["key"] for g in groups if isinstance(g, dict) and g.get("deleted") is True}
     for e in events:
         if e.get("deleted") is not True and e.get("group") in deleted_groups:
             raise ValueError(
-                f"group {e.get('group')!r} 已標記刪除，但其下仍有未刪除 event "
-                f"{e.get('key')!r}（請先搬移或一併刪除）"
+                f"group {e.get('group')!r} 已標記刪除，但其下仍有未刪除 event {e.get('key')!r}（請先搬移或一併刪除）"
             )

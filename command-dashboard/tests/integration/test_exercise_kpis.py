@@ -9,6 +9,7 @@
 """
 
 import pytest
+
 from auth.role_enum import ROLE_OPERATOR_ZH
 from core.database import get_conn
 from repositories.aar_repo import create_aar_entry, get_aar_entries
@@ -22,10 +23,21 @@ from services.kpi_service import build_kpis
 
 pytestmark = pytest.mark.integration
 
-_EV = {"reported_by_unit": "shelter", "event_type": "fire", "severity": "critical",
-       "description": "x", "operator_name": "admin"}
-_DEC = {"decision_type": "evac", "severity": "high", "decision_title": "撤離",
-        "impact_description": "i", "suggested_action_a": "a", "created_by": "admin"}
+_EV = {
+    "reported_by_unit": "shelter",
+    "event_type": "fire",
+    "severity": "critical",
+    "description": "x",
+    "operator_name": "admin",
+}
+_DEC = {
+    "decision_type": "evac",
+    "severity": "high",
+    "decision_title": "撤離",
+    "impact_description": "i",
+    "suggested_action_a": "a",
+    "created_by": "admin",
+}
 
 
 def _mk(name="KPI 測試"):
@@ -96,8 +108,7 @@ class TestKpisEndpoint:
         assert client.get("/api/exercises/99999/kpis", headers=auth).status_code == 404
         create_account("op_kpi", "5678", ROLE_OPERATOR_ZH, "Op", "operator")
         login = client.post("/api/auth/login", json={"username": "op_kpi", "pin": "5678"})
-        r = client.get(f"/api/exercises/{exid}/kpis",
-                       headers={"X-Session-Token": login.json()["session_id"]})
+        r = client.get(f"/api/exercises/{exid}/kpis", headers={"X-Session-Token": login.json()["session_id"]})
         assert r.status_code == 403  # 統計不暴露 public / 非指揮層
 
 
@@ -107,9 +118,14 @@ class TestAarExportAudit:
         assert client.get(f"/api/ai/report/{exid}", headers=auth).status_code == 200
         assert client.get(f"/api/ai/export/{exid}", headers=auth).status_code == 200
         with get_conn() as conn:
-            kinds = [r[0] for r in conn.execute(
-                "SELECT json_extract(detail,'$.kind') FROM audit_log "
-                "WHERE action_type='AAR_EXPORT' AND target_id=?", (str(exid),))]
+            kinds = [
+                r[0]
+                for r in conn.execute(
+                    "SELECT json_extract(detail,'$.kind') FROM audit_log "
+                    "WHERE action_type='AAR_EXPORT' AND target_id=?",
+                    (str(exid),),
+                )
+            ]
         assert sorted(kinds) == ["ml_export", "report"]
 
 
@@ -120,8 +136,11 @@ class TestReviewFixes:
         with get_conn() as conn:
             for sev in (None, "", "critical"):
                 conn.execute(
-                    "INSERT INTO events (id, reported_by_unit, event_type, severity, description, operator_name, exercise_id) "
-                    "VALUES (hex(randomblob(8)), 'u', 'fire', ?, 'x', 'admin', ?)", (sev, exid))
+                    "INSERT INTO events (id, reported_by_unit, event_type, severity, "
+                    "description, operator_name, exercise_id) "
+                    "VALUES (hex(randomblob(8)), 'u', 'fire', ?, 'x', 'admin', ?)",
+                    (sev, exid),
+                )
         k = build_kpis(exid)
         assert k["events"]["by_severity"] == {"（未分類）": 2, "critical": 1}
 

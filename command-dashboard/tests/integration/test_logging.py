@@ -33,10 +33,7 @@ class TestJsonFields:
             log.info("test_required_fields", msg="AC-1 驗證事件")
 
         # capture_logs 回傳的 dict 直接是 event_dict（不含 JSON 序列化後的欄位）
-        assert any(
-            rec.get("event") == "test_required_fields"
-            for rec in cap
-        )
+        assert any(rec.get("event") == "test_required_fields" for rec in cap)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -107,6 +104,7 @@ class TestPiiMasking:
     def test_prod_masks_user(self, monkeypatch):
         """PROD 模式：user 遮罩為前 2 char + **"""
         import core.logging as clog
+
         monkeypatch.setattr(clog, "IS_PROD", True)
 
         event_dict = {"user": "admin_user", "log_level": "info", "event": "test"}
@@ -116,6 +114,7 @@ class TestPiiMasking:
     def test_prod_masks_short_user(self, monkeypatch):
         """PROD 模式：user 長度 ≤ 2 → 遮罩為 **"""
         import core.logging as clog
+
         monkeypatch.setattr(clog, "IS_PROD", True)
 
         event_dict = {"user": "ab", "log_level": "info", "event": "test"}
@@ -125,6 +124,7 @@ class TestPiiMasking:
     def test_prod_masks_session_id(self, monkeypatch):
         """PROD 模式：session_id 遮罩為前 4 char + ..."""
         import core.logging as clog
+
         monkeypatch.setattr(clog, "IS_PROD", True)
 
         event_dict = {"session_id": "abc123456789", "log_level": "info", "event": "test"}
@@ -134,11 +134,13 @@ class TestPiiMasking:
     def test_prod_masks_ip_to_subnet(self, monkeypatch):
         """PROD 模式：detail.ip → /24 subnet"""
         import core.logging as clog
+
         monkeypatch.setattr(clog, "IS_PROD", True)
 
         event_dict = {
             "detail": {"ip": "192.168.1.55"},
-            "log_level": "info", "event": "test",
+            "log_level": "info",
+            "event": "test",
         }
         result = clog._mask_pii(None, None, event_dict)
         assert result["detail"]["ip"] == "192.168.1.x"
@@ -146,15 +148,18 @@ class TestPiiMasking:
     def test_dev_no_mask(self, monkeypatch):
         """DEV 模式：不做 PII 遮罩"""
         import core.logging as clog
+
         monkeypatch.setattr(clog, "IS_PROD", False)
 
         event_dict = {
-            "user": "admin_user", "session_id": "abc123",
+            "user": "admin_user",
+            "session_id": "abc123",
             "detail": {"ip": "10.0.0.1"},
-            "log_level": "info", "event": "test",
+            "log_level": "info",
+            "event": "test",
         }
         result = clog._mask_pii(None, None, event_dict)
-        assert result["user"]       == "admin_user"
+        assert result["user"] == "admin_user"
         assert result["session_id"] == "abc123"
         assert result["detail"]["ip"] == "10.0.0.1"
 
@@ -184,6 +189,7 @@ class TestFallbackNoCrash:
         monkeypatch.setattr(clog, "_fallback_warned_at", -61.0)
 
         import io
+
         captured = io.StringIO()
         monkeypatch.setattr("sys.stderr", captured)
 
@@ -203,8 +209,7 @@ class TestLoginEvents:
     def test_login_success_emits_log(self, client):
         """成功登入 → 捕捉到 login_success event"""
         with structlog.testing.capture_logs() as cap:
-            r = client.post("/api/auth/login",
-                            json={"username": "admin", "pin": "1234"})
+            r = client.post("/api/auth/login", json={"username": "admin", "pin": "1234"})
         assert r.status_code == 200
         events = [rec.get("event") for rec in cap]
         assert "login_success" in events
@@ -212,8 +217,7 @@ class TestLoginEvents:
     def test_login_failed_emits_log(self, client):
         """PIN 錯誤 → 捕捉到 login_failed event"""
         with structlog.testing.capture_logs() as cap:
-            r = client.post("/api/auth/login",
-                            json={"username": "admin", "pin": "wrong_pin"})
+            r = client.post("/api/auth/login", json={"username": "admin", "pin": "wrong_pin"})
         assert r.status_code in (401, 403, 422, 423)
         events = [rec.get("event") for rec in cap]
         assert "login_failed" in events
@@ -227,31 +231,30 @@ class TestDualTrack:
         """成功登入後 audit_log 表仍有 action_type='login' 記錄"""
         from core.database import get_conn
 
-        r = client.post("/api/auth/login",
-                        json={"username": "admin", "pin": "1234"})
+        r = client.post("/api/auth/login", json={"username": "admin", "pin": "1234"})
         assert r.status_code == 200
 
         with get_conn() as conn:
-            row = conn.execute(
-                "SELECT COUNT(*) AS cnt FROM audit_log WHERE action_type='login'"
-            ).fetchone()
+            row = conn.execute("SELECT COUNT(*) AS cnt FROM audit_log WHERE action_type='login'").fetchone()
         assert row["cnt"] >= 1
 
     def test_audit_log_written_on_event_create(self, client, auth, tmp_db):
         """建立事件後 audit_log 表仍有 action_type='event_created' 記錄"""
         from core.database import get_conn
 
-        r = client.post("/api/events", json={
-            "reported_by_unit": "shelter",
-            "event_type":    "drill",
-            "severity":      "info",
-            "description":   "AC-14 dual-track 驗證",
-            "operator_name": "admin",
-        }, headers=auth)
+        r = client.post(
+            "/api/events",
+            json={
+                "reported_by_unit": "shelter",
+                "event_type": "drill",
+                "severity": "info",
+                "description": "AC-14 dual-track 驗證",
+                "operator_name": "admin",
+            },
+            headers=auth,
+        )
         assert r.status_code == 200
 
         with get_conn() as conn:
-            row = conn.execute(
-                "SELECT COUNT(*) AS cnt FROM audit_log WHERE action_type='event_created'"
-            ).fetchone()
+            row = conn.execute("SELECT COUNT(*) AS cnt FROM audit_log WHERE action_type='event_created'").fetchone()
         assert row["cnt"] >= 1

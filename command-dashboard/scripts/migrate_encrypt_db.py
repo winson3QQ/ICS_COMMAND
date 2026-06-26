@@ -126,9 +126,7 @@ def _verify_encrypted(enc_path: Path, log: logging.Logger) -> None:
     conn = sqlcipher3.connect(str(enc_path))
     try:
         _apply_key(conn, _db_key())
-        row = conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='schema_migrations'"
-        ).fetchone()
+        row = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='schema_migrations'").fetchone()
         if row is None:
             raise RuntimeError("加密暫存缺 schema_migrations 表 — 轉換不完整")
         ver = conn.execute("SELECT COALESCE(MAX(version), 0) FROM schema_migrations").fetchone()[0]

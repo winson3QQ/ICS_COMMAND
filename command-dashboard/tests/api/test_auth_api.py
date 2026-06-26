@@ -37,8 +37,7 @@ class TestProtectedEndpoints:
         assert r.status_code == 401
 
     def test_invalid_token_returns_401(self, client):
-        r = client.get("/api/exercises",
-                        headers={"X-Session-Token": "not-a-real-token"})
+        r = client.get("/api/exercises", headers={"X-Session-Token": "not-a-real-token"})
         assert r.status_code == 401
 
     def test_valid_token_passes(self, client, auth):
@@ -73,8 +72,7 @@ class TestMe:
 
 class TestLogout:
     def test_logout_invalidates_session(self, client, session_token, auth):
-        r = client.post("/api/auth/logout",
-                        headers={"X-Session-Token": session_token})
+        r = client.post("/api/auth/logout", headers={"X-Session-Token": session_token})
         assert r.status_code == 200
         # logout 後同一 token 應無效
         r2 = client.get("/api/exercises", headers=auth)

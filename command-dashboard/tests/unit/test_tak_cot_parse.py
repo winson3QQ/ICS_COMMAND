@@ -161,15 +161,18 @@ def test_callsign_apostrophe_allowed():
     assert CoTEventIn(**{**_BASE, "callsign": "O'Brien-1"}).callsign == "O'Brien-1"
 
 
-@pytest.mark.parametrize("dirty,clean", [
-    ("<script>", "script"),
-    ('a"b', "ab"),
-    ("a&b", "ab"),
-    ("a`b", "ab"),
-    ("a\x00b", "ab"),
-    ("a;b", "ab"),
-    ("a<b>c", "abc"),
-])
+@pytest.mark.parametrize(
+    "dirty,clean",
+    [
+        ("<script>", "script"),
+        ('a"b', "ab"),
+        ("a&b", "ab"),
+        ("a`b", "ab"),
+        ("a\x00b", "ab"),
+        ("a;b", "ab"),
+        ("a<b>c", "abc"),
+    ],
+)
 def test_dirty_callsign_sanitized_not_dropped(dirty, clean):
     # #236：髒 callsign **淨化非丟棄**——危險字元 strip 掉、單位仍進 COP（不隱形）。
     assert CoTEventIn(**{**_BASE, "callsign": dirty}).callsign == clean

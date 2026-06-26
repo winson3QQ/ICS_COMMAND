@@ -57,7 +57,11 @@ def trigger_user_data_backup(request: Request):
         audit(sess["username"], None, "user_data_backup_failed", "system", "data", {"error": str(e)})
         raise HTTPException(500, f"備份失敗：{e}") from e
     audit(
-        sess["username"], None, "user_data_backup_created", "system", res.path.name,
+        sess["username"],
+        None,
+        "user_data_backup_created",
+        "system",
+        res.path.name,
         {"size_bytes": res.size_bytes, "sha256": res.sha256, "trigger": "manual", "files": len(res.manifest["files"])},
     )
     # 滾動保留已移入 create_backup（單一點，涵蓋全部觸發路徑，非只手動）
@@ -132,9 +136,7 @@ def _require_no_active_exercise() -> None:
     """還原防呆：有進行中演習 → 409（避免覆寫進行中場次，須先歸檔）。"""
     active = get_active_exercise()
     if active is not None:
-        raise HTTPException(
-            409, f"有進行中演習「{active.get('name')}」（id={active.get('id')}）— 還原前請先歸檔"
-        )
+        raise HTTPException(409, f"有進行中演習「{active.get('name')}」（id={active.get('id')}）— 還原前請先歸檔")
 
 
 def _restore_from_path(path: Path, sess: dict, label: str) -> dict:
@@ -148,7 +150,11 @@ def _restore_from_path(path: Path, sess: dict, label: str) -> dict:
         audit(sess["username"], None, "user_data_restore_interrupted", "system", label, {"error": str(e)})
         raise HTTPException(500, str(e)) from e
     audit(
-        sess["username"], None, "user_data_restored", "system", label,
+        sess["username"],
+        None,
+        "user_data_restored",
+        "system",
+        label,
         {"pre_restore": result["pre_restore"], "manifest_created_at": result["manifest"].get("created_at")},
     )
     return {

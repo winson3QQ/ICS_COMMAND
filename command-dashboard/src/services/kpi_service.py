@@ -34,9 +34,11 @@ def build_kpis(exercise_id: int) -> dict:
         # ── 事件 ────────────────────────────────────────────────────────
         ev_total = _rows(conn, "SELECT COUNT(*) FROM events WHERE exercise_id=?", exercise_id)[0][0]
         ev_by_severity = _group_count(
-            conn, "SELECT severity, COUNT(*) FROM events WHERE exercise_id=? GROUP BY severity", exercise_id)
+            conn, "SELECT severity, COUNT(*) FROM events WHERE exercise_id=? GROUP BY severity", exercise_id
+        )
         ev_by_status = _group_count(
-            conn, "SELECT status, COUNT(*) FROM events WHERE exercise_id=? GROUP BY status", exercise_id)
+            conn, "SELECT status, COUNT(*) FROM events WHERE exercise_id=? GROUP BY status", exercise_id
+        )
         # 處置時長：occurred_at → resolved_at（只算已結案；julianday 差 × 24×60 = 分鐘）
         res = _rows(
             conn,
@@ -54,7 +56,8 @@ def build_kpis(exercise_id: int) -> dict:
         # ── 通聯（GeoChat）─────────────────────────────────────────────
         chat_total = _rows(conn, "SELECT COUNT(*) FROM chats WHERE exercise_id=?", exercise_id)[0][0]
         chat_by_group = _group_count(
-            conn, 'SELECT "group", COUNT(*) FROM chats WHERE exercise_id=? GROUP BY "group"', exercise_id)
+            conn, 'SELECT "group", COUNT(*) FROM chats WHERE exercise_id=? GROUP BY "group"', exercise_id
+        )
 
         # ── 決策 ────────────────────────────────────────────────────────
         dec = _rows(
@@ -81,7 +84,8 @@ def build_kpis(exercise_id: int) -> dict:
 
         # ── AAR 條目（含 bookmark；P2-22 gate「每場 ≥5 條課程標記」的對帳數字）──
         aar_by_category = _group_count(
-            conn, "SELECT category, COUNT(*) FROM aar_entries WHERE exercise_id=? GROUP BY category", exercise_id)
+            conn, "SELECT category, COUNT(*) FROM aar_entries WHERE exercise_id=? GROUP BY category", exercise_id
+        )
 
     return {
         "exercise_id": exercise_id,
