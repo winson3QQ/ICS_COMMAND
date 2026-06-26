@@ -719,11 +719,22 @@ def issue_tak_device_cert(request: Request, callsign: str, mode: str = "atak"):
 # #398 B：TAK 上非 dashboard-發的 cert-user（ICS 自身連線 / 管理 cert）——對帳時標 infra 非殭屍。
 _TAK_INFRA_USERS = frozenset({"ics-cot", "ics-tak-admin"})
 
+# #404：REST-only infra——只打 Marti REST（subscriptions/all、update-groups…，ROLE_ADMIN gate）、
+# **不訂閱 :8089 串流**，故其 __ANON__ 群**不洩漏串流資料 = 良性**，且移除唯一群會 bounce 回（usermod
+# 行為）→ 不列為隔離破口、不給 strip 鈕。⚠ ics-cot 雖也是 infra 但**是 streaming producer**，其 __ANON__
+# 仍是真破口，**不在此豁免**（差別＝會不會 stream，非 infra 與否）。
+_TAK_REST_ONLY_INFRA = frozenset({"ics-tak-admin"})
+
 
 def _is_infra_callsign(cn: str | None) -> bool:
     """是否為 ICS 保留身分（不可發/撤/移除）。**大小寫不敏感**——review 硬化：若 TAK usermod 視
     `ICS-COT`==`ics-cot`，精確比對會被大小寫變體繞過去刪掉 ics-cot；統一 lower 比對堵死。"""
     return (cn or "").strip().lower() in _TAK_INFRA_USERS
+
+
+def _is_rest_only_infra(cn: str | None) -> bool:
+    """#404：REST-only infra（admin cert）—— __ANON__ 良性、不算破口（見 _TAK_REST_ONLY_INFRA）。"""
+    return (cn or "").strip().lower() in _TAK_REST_ONLY_INFRA
 
 
 @router.get("/tak/device-certs", tags=["account-admin"])
@@ -820,8 +831,10 @@ def reconcile_tak_device_certs(request: Request):
         m = _ics_match(cs, fp)
         # #404：per-user 群清單 + in_anon 旗標。groups=None（舊式 registrar 未回群）→ False（不誤判）；
         # 含 __ANON__ 或空群（runtime 落 __ANON__）→ True（producer 與任何 CA 證同頻＝隔離破口）。
+        # anon_exempt＝在 __ANON__ 但屬 REST-only infra（admin，不 stream）→ 良性、不算破口、不給 strip 鈕。
         groups = u.get("groups")
         in_anon = groups is not None and ("__ANON__" in groups or len(groups) == 0)
+        anon_exempt = in_anon and _is_rest_only_infra(cs)
         annotated.append(
             {
                 "callsign": cs,
@@ -829,6 +842,7 @@ def reconcile_tak_device_certs(request: Request):
                 "status": status,
                 "groups": groups,
                 "in_anon": in_anon,
+                "anon_exempt": anon_exempt,
                 # ICS 對應（供前端撤銷；殭屍/infra 無 → None）：
                 "ics_cert_id": (m or {}).get("id"),
                 "mode": (m or {}).get("mode"),
@@ -843,10 +857,10 @@ def reconcile_tak_device_certs(request: Request):
         for c in rows
     ]
     ics_unsynced.sort(key=lambda x: x["callsign"])
-    # #404：卡 __ANON__ 的 managed user（隔離破口）——producer 落匿名群 = 與任何 CA 信任的證同頻，
-    # 不明證可注入/竊聽。供前端示警 + 一鍵 strip-anon。ics-tak-admin（REST-only 不 stream）會列入但
-    # 移除唯一群會 bounce 回 → 前端可標示為已知例外；ICS 不替它隱藏（誠實呈現）。
-    anon_users = sorted(u["callsign"] for u in annotated if u["in_anon"])
+    # #404：卡 __ANON__ 的**真破口** managed user（producer 落匿名群 = 與任何 CA 證同頻，可注入/竊聽）。
+    # 排除 anon_exempt（REST-only infra admin，__ANON__ 良性）→ 面板警示只算該修的；ics-tak-admin 仍
+    # 在 tak_users 列出（in_anon=True/anon_exempt=True），前端標良性、不紅、不給鈕（誠實但不誤導）。
+    anon_users = sorted(u["callsign"] for u in annotated if u["in_anon"] and not u["anon_exempt"])
     # #404：在線**匿名**連線（CA 信任但不在名冊）——reconcile 只讀名冊，看不到匿名連入的裝置（被刪
     # 帳號/未授權仍掛著的最該盯對象）。補查在線視圖 subscriptions/all，篩出 __ANON__ 且非名冊 user。
     # best-effort：未配置 admin cert / 查錯 → []。sync route 在 threadpool（無 running loop）→ asyncio.run 安全

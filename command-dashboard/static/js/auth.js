@@ -1109,9 +1109,13 @@ function _renderTakDriven(box, data) {
     if (u.status === 'infra') action = '<span title="ICS 自身/管理身分，鎖死保護（動了 ICS 連不上 TAK）" style="color:var(--text3);font-size:10px;">🔒 保護</span>';
     else if (u.ics_cert_id != null) action = '<button class="adm-btn" data-action="adm-revoke-tak-device" data-cert-id="' + u.ics_cert_id + '">撤銷</button>';
     else action = '<button class="adm-btn" data-action="adm-deregister-tak-user" data-callsign="' + _escAudit(u.callsign) + '">從 TAK 移除</button>';
-    // #404：in_anon → 紅字示警 + 一鍵移出匿名群（含 infra ics-cot；strip 只移 __ANON__、保留其餘群，對它安全）。
-    const anonWarn = u.in_anon ? '<span title="在 __ANON__ 匿名群——與任何 CA 信任的證同頻，不明證可注入/竊聽。應移出。" style="color:var(--red);font-size:10px;">⚠ __ANON__</span>' : '';
-    const anonBtn = u.in_anon ? '<button class="adm-btn" data-action="adm-strip-anon-tak-user" data-callsign="' + _escAudit(u.callsign) + '">移出匿名群</button>' : '';
+    // #404：真破口（in_anon 且非豁免）→ 紅字 + 一鍵移出；REST-only infra（anon_exempt）→ 灰字良性、不給鈕
+    // （它只有 __ANON__、移掉會 bounce 回，且不 stream 不洩漏）。strip 只移 __ANON__、保留其餘群，對 producer 安全。
+    const isAnonGap = u.in_anon && !u.anon_exempt;
+    const anonWarn = isAnonGap
+      ? '<span title="在 __ANON__ 匿名群——與任何 CA 信任的證同頻，不明證可注入/竊聽。應移出。" style="color:var(--red);font-size:10px;">⚠ __ANON__</span>'
+      : (u.anon_exempt ? '<span title="REST-only（只打 Marti API、不訂閱 :8089 串流）→ __ANON__ 不洩漏串流資料，良性；移除唯一群會 bounce 回。" style="color:var(--text3);font-size:10px;">__ANON__·REST-only（無害）</span>' : '');
+    const anonBtn = isAnonGap ? '<button class="adm-btn" data-action="adm-strip-anon-tak-user" data-callsign="' + _escAudit(u.callsign) + '">移出匿名群</button>' : '';
     html += '<div style="display:flex;align-items:center;gap:6px;padding:4px 0;border-bottom:1px solid var(--border,#222);font-size:12px;flex-wrap:wrap;">' +
       '<span style="font-family:monospace;flex:1;min-width:80px;">' + _escAudit(u.callsign) + '</span>' +
       (plat ? '<span style="color:var(--text3);">' + plat + '</span>' : '') +

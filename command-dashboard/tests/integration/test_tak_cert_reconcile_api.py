@@ -162,7 +162,11 @@ def test_reconcile_flags_in_anon_isolation_gap(client, auth, monkeypatch):
     assert rows["ics-tak-admin"]["in_anon"] is True
     assert rows["selfclosed"]["in_anon"] is True
     assert rows["legacy"]["in_anon"] is False
-    assert body["anon_users"] == ["ics-tak-admin", "selfclosed"]  # 排序、只列破口
+    # #404：ics-tak-admin（REST-only infra）在 __ANON__ 但**良性豁免**——in_anon=True 但 anon_exempt=True，
+    # 不列入 anon_users（真破口）；selfclosed 非 infra → 真破口、不豁免。
+    assert rows["ics-tak-admin"]["anon_exempt"] is True
+    assert rows["selfclosed"]["anon_exempt"] is False
+    assert body["anon_users"] == ["selfclosed"]  # 排序、只列**該修的**破口（admin 豁免）
 
 
 def test_reconcile_surfaces_online_anon(client, auth, monkeypatch):
