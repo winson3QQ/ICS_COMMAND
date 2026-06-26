@@ -135,6 +135,8 @@ nc -zv localhost 8089 2>&1            # 期望 succeeded
   1. **TAK 端**：`CoreConfig.xml` 的 `<auth x509checkRevocation="true">`（本 repo `deploy/tak-server/release/tak/CoreConfig.xml` 已設；改後須 `docker restart takserver` 載入）。
   2. **ICS 端**：`deploy/prod/.env` 設 `TAK_DB_HOST=tak-database` + `TAK_DB_PASSWORD=<TAK postgres 密碼>`（與 CoreConfig `<repository>` 同庫帳密）→ dashboard 撤銷時 `services/tak_revocation` 直寫 `certificate` 表。空則只 ICS 帳面、不 enforce。
   - **運作真相（reality check 實證）**：撤銷 = 該證**降 `__ANON__`**（非硬斷線，靠層1 隔離達 recv 0）；對**之後才連線**的證即時生效，對**在線、近期已認證**的證因 TAK 快取需**重啟 TAK 清快取**才即時踢除（當網路不穩定處理）。`certificate` 表空時開旗標**不會誤鎖**合法證（fail-open）。
+  - **撤在線證 SOP（Slice 3 part④）**：dashboard 撤銷後若該證在線/近期連過 → 在部署機跑 `docker restart takserver`（~95s，全員自動重連）清快取使其即時生效。**無安全的容器內自動觸發路徑**（ics-command 無 docker.sock、registrar 獨立容器）→ 刻意走手動，不引入 docker.sock 攻擊面。
+  - **撤盤點外/非 dashboard 發的證（Slice 3 part③）**：TAK API 不吐連線證 hash → 操作員自取 fingerprint（`openssl x509 -in cert.pem -noout -fingerprint -sha256`）貼進 TAK 面板「撤銷盤點外的證」輸入框（`POST /tak/revocations/by-fingerprint`，禁撤 infra）。**拿不到證的不明連線證 per-cert 撤不掉**（TAK 限制）；`fingerprint=NULL` 的升級前證亦撤不掉（UI 標「⚠ TAK 撤不掉」，需重發）。
 - 例外：`ics-tak-admin`（REST-only、不訂閱 :8089）仍在 `__ANON__` 無 streaming 洩漏，且移除其唯一群會 bounce 回 `__ANON__`，暫不動。
 
 ## 範圍與注意

@@ -339,3 +339,62 @@ def test_backfill_requires_sysadmin(client):
     """sysadmin only（/api/admin/* → SYSADMIN_ONLY）。"""
     create_account("op_bf", "1234", ROLE_OPERATOR_ZH, "Op BF", "operator")
     assert client.post("/api/admin/tak/revocations/backfill", headers=_login(client, "op_bf")).status_code == 403
+
+
+# ── #318 Slice 3 part③：按 fingerprint 撤盤點外/非 dashboard 發的證 ──────────────
+_FP32 = ":".join(["AB"] * 32)  # 合法 SHA-256 冒號分隔大寫（32 段）
+
+
+def test_revoke_by_fingerprint_writes_tak(client, auth, monkeypatch):
+    from services import tak_revocation
+
+    monkeypatch.setattr(tak_revocation, "is_configured", lambda: True)
+    monkeypatch.setattr(tak_revocation, "infra_fingerprints", lambda: set())
+    cap: dict = {}
+
+    def _fake(fp, callsign=None):
+        cap["fp"], cap["cs"] = fp, callsign
+        return {"ok": True, "reason": "revoked-in-tak"}
+
+    monkeypatch.setattr(tak_revocation, "revoke_in_tak", _fake)
+    r = client.post(
+        "/api/admin/tak/revocations/by-fingerprint", headers=auth, json={"fingerprint": _FP32, "callsign": "rogue-1"}
+    )
+    assert r.status_code == 200
+    assert r.json()["ok"] is True and r.json()["fingerprint"] == _FP32
+    assert cap == {"fp": _FP32, "cs": "rogue-1"}
+
+
+def test_revoke_by_fingerprint_bad_format_422(client, auth):
+    r = client.post(
+        "/api/admin/tak/revocations/by-fingerprint", headers=auth, json={"fingerprint": "not-a-fingerprint"}
+    )
+    assert r.status_code == 422
+
+
+def test_revoke_by_fingerprint_blocks_infra(client, auth, monkeypatch):
+    """禁撤 infra（按 hash 比對）——純 fingerprint 撤銷躲不過 callsign 閘，故按 hash 擋。"""
+    from services import tak_revocation
+
+    monkeypatch.setattr(tak_revocation, "infra_fingerprints", lambda: {_FP32})
+    monkeypatch.setattr(tak_revocation, "revoke_in_tak", lambda *a, **k: pytest.fail("infra 不該撤"))
+    r = client.post("/api/admin/tak/revocations/by-fingerprint", headers=auth, json={"fingerprint": _FP32})
+    assert r.status_code == 403
+
+
+def test_revoke_by_fingerprint_not_configured(client, auth, monkeypatch):
+    from services import tak_revocation
+
+    monkeypatch.setattr(tak_revocation, "infra_fingerprints", lambda: set())
+    monkeypatch.setattr(tak_revocation, "is_configured", lambda: False)
+    monkeypatch.setattr(tak_revocation, "revoke_in_tak", lambda *a, **k: pytest.fail("未配置不該寫"))
+    r = client.post("/api/admin/tak/revocations/by-fingerprint", headers=auth, json={"fingerprint": _FP32})
+    assert r.status_code == 200 and r.json() == {"ok": False, "reason": "tak-db-not-configured", "fingerprint": _FP32}
+
+
+def test_revoke_by_fingerprint_requires_sysadmin(client):
+    create_account("op_rbf", "1234", ROLE_OPERATOR_ZH, "Op RBF", "operator")
+    r = client.post(
+        "/api/admin/tak/revocations/by-fingerprint", headers=_login(client, "op_rbf"), json={"fingerprint": _FP32}
+    )
+    assert r.status_code == 403

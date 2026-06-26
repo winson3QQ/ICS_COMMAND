@@ -29,6 +29,39 @@ def is_configured() -> bool:
     return bool(config.TAK_DB_HOST and config.TAK_DB_PASSWORD)
 
 
+def _cert_sha256_fingerprint(pem_path: str) -> str | None:
+    """算 PEM 證 leaf 的 SHA-256 fingerprint（冒號分隔大寫）= `openssl -fingerprint -sha256` = TAK
+    `certificate.hash` 鍵。純 stdlib（`ssl.PEM_cert_to_DER_cert` 取首證 DER + `hashlib`），讀不到回 None。"""
+    import hashlib
+    import ssl
+
+    try:
+        with open(pem_path) as f:
+            der = ssl.PEM_cert_to_DER_cert(f.read())
+        h = hashlib.sha256(der).hexdigest().upper()
+        return ":".join(h[i : i + 2] for i in range(0, len(h), 2))
+    except Exception:
+        return None
+
+
+def infra_fingerprints() -> set[str]:
+    """ICS 自身 infra 證（ics-cot/admin/read/write）的 fingerprint 集——**禁撤**：撤這些會毀 ICS 對 TAK
+    的控制面（feed 斷、Marti 管理斷）。#318 Slice 3 part③ by-fingerprint 撤銷的安全閘（callsign 比對擋不到
+    純 fingerprint 撤銷，故此處按 hash 擋）。讀不到的證略過（best-effort）。"""
+    out: set[str] = set()
+    for p in (
+        config.TAK_CLIENT_CERT,
+        config.TAK_MARTI_ADMIN_CERT,
+        config.TAK_MARTI_READ_CERT,
+        config.TAK_MARTI_WRITE_CERT,
+    ):
+        if p:
+            fp = _cert_sha256_fingerprint(p)
+            if fp:
+                out.add(fp)
+    return out
+
+
 def _connect():
     """建 pg8000 連線（lazy import；caller 負責 close）。"""
     import pg8000.native  # lazy：未配置 TAK_DB_* 的部署不需此套件

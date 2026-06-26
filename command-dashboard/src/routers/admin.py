@@ -59,6 +59,7 @@ from schemas.admin import (
     RetentionToggleIn,
     RoleUpdateIn,
     SuspendAllIn,
+    TakRevokeByFingerprintIn,
 )
 from services import faction_service  # #343 紅藍隔離 admin 分類
 from services.realtime_hub import cop_hub  # issue #29 PR-G1b：reset 後廣播 resync
@@ -843,6 +844,42 @@ def backfill_tak_revocations(request: Request):
         },
     )
     return result
+
+
+@router.post("/tak/revocations/by-fingerprint", tags=["account-admin"])
+def revoke_tak_by_fingerprint(body: TakRevokeByFingerprintIn, request: Request):
+    """#318 Slice 3 part③：按 SHA-256 fingerprint 直接撤**盤點外/非 dashboard 發**的證。
+
+    緣由：TAK API 不吐連線證的 hash（`clientEndPoints`/`contacts`/`certadmin` 皆無）→ ICS 無法自動發現
+    不明連線證。操作員自行從裝置證取 fingerprint（`openssl x509 -in cert.pem -noout -fingerprint -sha256`）
+    或從留存包，貼進來 → 寫 TAK `certificate` 表。sysadmin only + 強制 audit。
+    **安全閘**：格式驗證（冒號分隔大寫 32 段）+ **禁撤 infra**（按 hash 比對 ics-cot/admin/read/write，
+    純 fingerprint 撤銷躲不過 callsign 閘，故按 hash 擋——撤這些會毀 ICS 對 TAK 控制面）。
+    ⚠ 在線/快取證需重啟 TAK 才即時生效（part④ SOP）。
+    """
+    import re
+
+    sess = _check_system_admin(request)
+    fp = (body.fingerprint or "").strip().upper()
+    if not re.fullmatch(r"([0-9A-F]{2}:){31}[0-9A-F]{2}", fp):
+        raise HTTPException(422, "fingerprint 須為 SHA-256 冒號分隔大寫（32 段，如 AB:CD:…:EF）")
+    from services.tak_revocation import infra_fingerprints, is_configured, revoke_in_tak
+
+    if fp in infra_fingerprints():
+        raise HTTPException(403, "禁撤基礎設施證（ics-cot/admin）—— 會毀 ICS 對 TAK 的控制面")
+    if not is_configured():
+        return {"ok": False, "reason": "tak-db-not-configured", "fingerprint": fp}
+    callsign = (body.callsign or "").strip() or None
+    res = revoke_in_tak(fp, callsign)
+    audit(
+        sess["username"],
+        None,
+        "tak_revoke_by_fingerprint",
+        "tak",
+        fp,
+        {"callsign": callsign, "reason": res.get("reason")},
+    )
+    return {"ok": res.get("ok"), "reason": res.get("reason"), "fingerprint": fp}
 
 
 @router.get("/tak/device-certs/reconcile", tags=["account-admin"])

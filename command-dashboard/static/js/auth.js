@@ -1054,6 +1054,20 @@ export function admShowTak() {
         #401：此面板以 <b>TAK Server 為準</b>，列出 TAK 上**所有** managed user（不只 ICS 發的）。「撤銷」/「從 TAK 移除」會<b>真</b>從 TAK 刪該帳號。⚙ 基礎設施（ics-cot/ics-tak-admin）鎖死保護。reconcile 未配置時退回 ICS 盤點清單。
       </div>
       <div id="adm-tak-device-list" style="max-width:480px;"></div>
+      <div style="margin-top:14px;max-width:480px;border-top:1px solid var(--border,#222);padding-top:10px;">
+        <div style="font-size:12px;font-weight:600;color:var(--text);margin-bottom:2px;">撤銷盤點外的證（按 fingerprint）</div>
+        <div style="font-size:11px;color:var(--text3);margin-bottom:6px;line-height:1.5;">
+          非 dashboard 發、或 ICS 沒紀錄的證（如 CLI 發的），TAK 不吐它的 hash → 自行從裝置證取：
+          <code style="font-size:10px;">openssl x509 -in cert.pem -noout -fingerprint -sha256</code>，貼進來撤。
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;">
+          <input id="adm-tak-revoke-fp" type="text" placeholder="AB:CD:…:EF（SHA-256 冒號分隔大寫）" style="flex:1;min-width:200px;font-family:monospace;font-size:11px;" />
+          <button class="adm-btn" data-action="adm-revoke-by-fingerprint">撤銷此 fingerprint</button>
+        </div>
+      </div>
+      <div style="margin-top:10px;max-width:480px;font-size:11px;color:#d9a441;border:1px solid #d9a441;border-radius:4px;padding:4px 6px;line-height:1.5;">
+        ⚠ <b>撤「在線」證的 SOP</b>：TAK 把連過的證快取成有效 → 撤銷對在線/近期連過的證<b>不即時</b>。要立刻踢掉，在部署機重啟 TAK 清快取：<code style="font-size:10px;">docker restart takserver</code>（~95s，全員自動重連）。「先撤再連」的新證則即時生效、免重啟。
+      </div>
     </div>`;
   _admLoadTakConn();
   admLoadTakDeviceCerts();
@@ -1266,6 +1280,26 @@ export async function admBackfillTakRevocations() {
   if (b.errors && b.errors.length) msg += '\n⚠ ' + b.errors.length + ' 張寫入失敗（查 TAK DB）。';
   msg += '\n（在線/快取證需重啟 TAK 才即時生效。）';
   alert(msg);
+  admLoadTakDeviceCerts();
+}
+
+// #318 Slice 3 part③：按 SHA-256 fingerprint 直接撤盤點外/非 dashboard 發的證。
+export async function admRevokeByFingerprint() {
+  const inp = el('adm-tak-revoke-fp');
+  const fp = (inp?.value || '').trim().toUpperCase();
+  if (!fp) { alert('請貼上 SHA-256 fingerprint（冒號分隔大寫）。'); return; }
+  if (!/^([0-9A-F]{2}:){31}[0-9A-F]{2}$/.test(fp)) { alert('格式須為 SHA-256 冒號分隔大寫（32 段，如 AB:CD:…:EF）。'); return; }
+  if (!confirm('撤銷此 fingerprint 的證？\n' + fp + '\n\n會寫進 TAK 撤銷名單。⚠ 對在線/快取證需重啟 TAK 才即時生效。')) return;
+  const resp = await authFetch(API_BASE + '/api/admin/tak/revocations/by-fingerprint', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fingerprint: fp }),
+  });
+  if (resp.status === 403) { alert('禁撤基礎設施證（ics-cot/ics-tak-admin）—— 會毀 ICS 對 TAK 的控制面。'); return; }
+  if (resp.status === 422) { alert('fingerprint 格式錯誤（須 SHA-256 冒號分隔大寫 32 段）。'); return; }
+  if (!resp.ok) { alert('撤銷失敗（' + resp.status + '）。'); return; }
+  const b = await resp.json();
+  if (b.ok) { alert('已寫入 TAK 撤銷名單。\n（在線/快取證需重啟 TAK 才即時生效。）'); if (inp) inp.value = ''; }
+  else if (b.reason === 'tak-db-not-configured') alert('TAK DB 未配置 → 無法撤銷（撤銷僅 ICS 帳面，未真 enforce）。');
+  else alert('撤銷未成功：' + (b.reason || '?'));
   admLoadTakDeviceCerts();
 }
 
