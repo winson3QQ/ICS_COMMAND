@@ -225,6 +225,38 @@ class TakRestClient:
                 await _backoff_sleep(attempt)
         raise TakRestError(f"Marti PUT {path} 重試 {self._max_retries} 次耗盡") from last_exc
 
+    async def post_json(self, path: str, body: dict):
+        """POST path（JSON body）→ 回應 JSON（或空 body→None）。語意同 put_json，差在動詞。
+
+        #429：建帳號（`/user-management/api/new-user`）用。raise TakRestError：4xx（不重試）/ 重試耗盡。
+        """
+        last_exc: Exception | None = None
+        url = _join_url(self._base_url, path)
+        for attempt in range(self._max_retries):
+            await self._rate_limit()
+            try:
+                session = await self._ensure_session()
+                async with session.post(url, json=body) as resp:
+                    status, text = resp.status, await resp.text()
+            except (TimeoutError, aiohttp.ClientError) as exc:
+                last_exc = exc
+                if attempt < self._max_retries - 1:
+                    await _backoff_sleep(attempt)
+                continue
+            if status < 300:
+                if not text.strip():
+                    return None
+                try:
+                    return json.loads(text)
+                except json.JSONDecodeError:
+                    return None  # 2xx 但非 JSON → 視為成功無內容
+            if 400 <= status < 500:
+                raise TakRestError(f"Marti POST {path} HTTP {status}（用戶端錯，不重試）：{text[:200]}")
+            last_exc = TakRestError(f"Marti POST {path} HTTP {status}：{text[:200]}")
+            if attempt < self._max_retries - 1:
+                await _backoff_sleep(attempt)
+        raise TakRestError(f"Marti POST {path} 重試 {self._max_retries} 次耗盡") from last_exc
+
     async def poll(
         self,
         path: str,

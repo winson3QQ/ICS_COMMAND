@@ -360,6 +360,10 @@ TAK_ENROLL_QUEUE_DIR: str = os.getenv("TAK_ENROLL_QUEUE_DIR", "")  # 與 registr
 TAK_ENROLL_DEFAULT_GROUP: str = os.getenv("TAK_ENROLL_DEFAULT_GROUP", "neutral")  # 初始群（fail-closed，未分類即孤立）
 TAK_ENROLL_TIMEOUT_S: float = float(os.getenv("TAK_ENROLL_TIMEOUT_S", "8.0"))  # 等 registrar 結果逾時（best-effort）
 
+# #429 ICS 代理 enrollment（dashboard signClient 發證）：TAK 憑證註冊埠 :8446 的對內 URL。
+# 空 → 代理發證停用（dashboard 回退 offline 簽 / 或回 503）。容器內網用 https://takserver:8446。
+TAK_ENROLL_URL: str = os.getenv("TAK_ENROLL_URL", "")
+
 # ── #318 層2 真撤銷：ICS 直連 TAK Server postgres ──────────────────────────────
 # reality check（2026-06-26，#318）：TAK 對 CA 信任的證 TLS 不拒、deregister 只降匿名(__ANON__)；
 # 唯一「連都連不進」= 撤銷＝`certificate` 表有該證 hash+revocation_date + CoreConfig x509checkRevocation=true

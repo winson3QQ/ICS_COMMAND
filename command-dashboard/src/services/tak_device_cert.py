@@ -324,14 +324,26 @@ def assemble_package(
 
 
 def build_device_package(
-    callsign: str, mode: str, connect_host: str, connect_port: int, tak_ca_dir: str
+    callsign: str,
+    mode: str,
+    connect_host: str,
+    connect_port: int,
+    tak_ca_dir: str,
+    *,
+    use_enrollment: bool = False,
+    group: str | None = None,
 ) -> tuple[bytes, str, str]:
-    """端到端：用 ICS-TAK-SVC-CA（offline，tak_ca_dir）簽 device 證 → 組 client p12 + truststore
-    → 組 data package zip bytes。回 (zip_bytes, serial, fingerprint)。
+    """端到端：簽 device 證 → 組 client p12 + truststore → 組 data package zip bytes。
+    回 (zip_bytes, serial, fingerprint)。
 
-    serial 供 #317 盤點 / #318 CRL；fingerprint（SHA-256）供 #344 enrollment（usermod -f 註冊 managed user）。
-    tak_ca_dir＝含 tak-ca.pem + tak-ca.key 的目錄（TAK 自己的 CA；TAK 只信它）。
-    raise CertIssuanceError（CA 不全 / 簽發失敗 / openssl 打包失敗）；ValueError（mode 非法 / host 空）。
+    證源（同一把 ICS-TAK-SVC-CA，truststore 不變）：
+    - `use_enrollment=False`（#315）：offline `_sign_with_tak_ca`（tak_ca_dir 的 tak-ca.key 直簽）。
+    - `use_enrollment=True`（#429）：ICS 代理 TAK :8446 signClient（建 managed user → CSR → 簽）
+      → **證進 TAK 帳本**（對齊 #401/#318）。`group`＝初始群（預設 neutral fail-closed）。
+
+    serial 供 #317 盤點 / #318；fingerprint（SHA-256）供盤點/比對。tak_ca_dir 的 **tak-ca.pem** 兩模式
+    都要（組 truststore）；enrollment 模式不用 tak-ca.key。
+    raise CertIssuanceError（簽發失敗 / openssl 打包失敗）；ValueError（mode 非法 / host 空）。
     """
     if mode not in ("atak", "aware"):
         raise ValueError("mode 須為 atak 或 aware")
@@ -343,9 +355,17 @@ def build_device_package(
     host = (connect_host or "").strip()
     if not host:
         raise ValueError("connect_host 不可為空（對外 TAK 位址未設）")
-    # 先簽（_sign_with_tak_ca 驗 tak-ca.pem + .key 兩檔皆在 → CertIssuanceError），再讀 .pem 作 truststore
-    # （此時確定存在，不會 FileNotFoundError 漏出 500；code-review #315）。
-    cert_pem, key_pem, serial, fingerprint = _sign_with_tak_ca(callsign, tak_ca_dir)
+    if use_enrollment:
+        # #429 代理 enrollment：建 managed user + signClient（async）→ 證進 TAK 帳本。
+        import asyncio
+
+        from services.tak_enrollment import issue_via_enrollment
+
+        cert_pem, key_pem, serial, fingerprint = asyncio.run(issue_via_enrollment(callsign, group))
+    else:
+        # 先簽（_sign_with_tak_ca 驗 tak-ca.pem + .key 兩檔皆在 → CertIssuanceError），再讀 .pem 作 truststore
+        # （此時確定存在，不會 FileNotFoundError 漏出 500；code-review #315）。
+        cert_pem, key_pem, serial, fingerprint = _sign_with_tak_ca(callsign, tak_ca_dir)
     with open(os.path.join(tak_ca_dir, "tak-ca.pem"), encoding="ascii") as f:
         tak_ca_pem = f.read()
     client_p12, truststore_p12 = _make_p12_materials(cert_pem, key_pem, tak_ca_pem, callsign)

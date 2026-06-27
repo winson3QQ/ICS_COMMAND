@@ -667,23 +667,38 @@ def issue_tak_device_cert(request: Request, callsign: str, mode: str = "atak"):
     ca_dir = config.TAK_DEVICE_CA_DIR
     if not ca_dir or not os.path.isfile(os.path.join(ca_dir, "tak-ca.key")):
         raise HTTPException(503, "TAK 裝置 CA 未備（部署層設 TAK_DEVICE_CA_DIR，含 tak-ca.pem/key）")
+    # #429：配置代理 enrollment（TAK_ENROLL_URL + admin cert）→ 證走 TAK :8446 signClient（進帳本、
+    # 對齊 #401/#318）；未配置 → 回退 #315 offline 簽（裝置體驗相同，差在證源/帳本）。
+    from services import tak_enrollment
     from services.cert_issuance import CertIssuanceError
     from services.tak_device_cert import build_device_package
 
+    use_enroll = tak_enrollment.is_configured()
     try:
         pkg, serial, fingerprint = build_device_package(
-            cn, mode, config.TAK_DEVICE_CONNECT_HOST, config.TAK_DEVICE_CONNECT_PORT, ca_dir
+            cn,
+            mode,
+            config.TAK_DEVICE_CONNECT_HOST,
+            config.TAK_DEVICE_CONNECT_PORT,
+            ca_dir,
+            use_enrollment=use_enroll,
         )
     except CertIssuanceError as e:
         raise HTTPException(502, f"發證失敗：{e}") from e
-    # #344：發證即註冊 TAK managed user + 初始群 neutral（fail-closed）→ 之後紅藍分類走 REST update-groups。
-    # best-effort：registrar 未配置/沒跑/逾時 → 跳過、不擋發證（裝置仍拿到證、落匿名待補；reason 進 audit + header）。
-    # #398：先 enroll 拿結果，盤點才存得了 enroll_status（清單顯示有沒有同步上 TAK）→ enroll 在 record 前。
-    from services.tak_user_enroll import enroll_device
+    if use_enroll:
+        # #429 enrollment 模式：signClient 已透過 new-user 建 managed user（初始群 neutral）+ 證進帳本，
+        # 不需 #344 registrar usermod -f。enroll_status="ok"（前端認的成功值，非 "enrolled" 否則誤報未同步）。
+        enroll = {"enrolled": True, "reason": "signClient", "group": config.TAK_ENROLL_DEFAULT_GROUP}
+        enroll_status = "ok"
+    else:
+        # #344 offline 模式：發證即註冊 TAK managed user + 初始群 neutral（fail-closed）→ 紅藍分類走 REST。
+        # best-effort：registrar 未配置/沒跑/逾時 → 跳過、不擋發證（裝置仍拿證、落匿名待補；reason 進 audit）。
+        # #398：先 enroll 拿結果，盤點才存得了 enroll_status（清單顯示有沒有同步上 TAK）。
+        from services.tak_user_enroll import enroll_device
 
-    enroll = enroll_device(cn, fingerprint)
-    enroll_status = "ok" if enroll.get("enrolled") else (enroll.get("reason") or "skipped")
-    enroll_status = "".join(c for c in enroll_status if c.isascii() and c.isprintable())[:200] or "skipped"
+        enroll = enroll_device(cn, fingerprint)
+        enroll_status = "ok" if enroll.get("enrolled") else (enroll.get("reason") or "skipped")
+        enroll_status = "".join(c for c in enroll_status if c.isascii() and c.isprintable())[:200] or "skipped"
     # #317 盤點 + #398：記 fingerprint（= TAK managed-user 鍵，供比對混用）+ enroll_status（同步結果）。
     from repositories.tak_device_cert_repo import record_issued
 
