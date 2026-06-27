@@ -86,3 +86,17 @@ working repo + 並行 session **完全不動**。代價:runtime bind-mount(如 T
 > 並行 session 顧慮:**用方案 A(同路徑)或方案 B(不動 Desktop)**,都不會讓其他 session 找不到 repo。
 > 唯有「永久搬到 `C:\dev`」才會改變路徑——那需同步更新所有 session 的 repo 根,非必要不做。
 > 相關:此問題擋住「prod image 本機 build 驗證」(#294 docker 實證、`deploy/prod/` 合併棧驗證)。
+
+
+---
+
+## SBOM 工具（release 9.5 產物料清單，#351）
+
+`scripts/gen_release_sbom.sh` 對 build 出的映像產 CycloneDX SBOM，需下列其一（皆非中國）：
+
+- **syft**（Anchore，US）— https://github.com/anchore/syft
+  - Linux/Mac：`curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin`
+  - Windows：`scoop install syft` 或自 release 下載 binary。
+- **trivy**（Aqua）— 替代；`trivy image --format cyclonedx ...`。
+
+裝好後流程見 `docs/PROCESS.md` 步驟 9.5。產物 `sbom/releases/backend-v<APP_VERSION>.cdx.json` 隨 release commit 進 main、由 `backend-v*` tag 釘版。

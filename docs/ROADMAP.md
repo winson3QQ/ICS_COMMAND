@@ -613,6 +613,7 @@ P3 整合的前提是 WaveInk 採以下五原則設計訓練 / 運行資料平�
 | [#302](https://github.com/winson3QQ/ICS_COMMAND/issues/302) 前端 IP 保護 | 交付 container 內前端值錢邏輯保護 | ⏳ layer-1 merged |
 | [#255](https://github.com/winson3QQ/ICS_COMMAND/issues/255) TAK 連線設定 DB 化 | 業主可配置連線（key 卡 P1-12）| pending |
 | [#323](https://github.com/winson3QQ/ICS_COMMAND/issues/323) CA 同機 / 密封盒決策 | 架構決策記錄（CA 同機於密封盒可接受）| 決策已記 |
+| [#351](https://github.com/winson3QQ/ICS_COMMAND/issues/351) 授權宣告 + SBOM | 商用交付的智財邊界（LICENSE/NOTICE/SPDX）+ 物料清單（投標/盡職調查）| ✅ LICENSE/COPYRIGHT/NOTICE + licenses/ 全文（[#352](https://github.com/winson3QQ/ICS_COMMAND/pull/352)）、SPDX 檔頭 + 根 ruff.toml（[#413](https://github.com/winson3QQ/ICS_COMMAND/pull/413)）、著作權人對齊（[#414](https://github.com/winson3QQ/ICS_COMMAND/pull/414)）、SBOM CycloneDX（[#415](https://github.com/winson3QQ/ICS_COMMAND/pull/415)）、release SBOM 流程（`scripts/gen_release_sbom.sh` + PROCESS 9.5）；⏳ 地址/email/管轄欄、鎖 3 個 `>=` 版、IP 律師覆核 pending |
 
 ### 缺口（密封盒當「可交付產品」的封裝層，**目前無單**，待開）
 - **G1 封盒工序**：build 產物 → 可交付的「Linux LUKS 碟 image + FIDO2 enroll + 封存」end-to-end 工序（#231 是加密機制、#230 是硬體驗收，但「產出一個密封盒」沒人追）。
