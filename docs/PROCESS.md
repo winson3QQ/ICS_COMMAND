@@ -20,7 +20,7 @@
 | 8. Merge + push main | （Code ask）「merge + push main ok?」→ 你回 `ok` | `gh pr merge --squash` 即可；Codeberg mirror 由 `.github/workflows/mirror-to-codeberg.yml` 自動補（需先設 `CODEBERG_TOKEN` secret） |
 | **8.5 ROADMAP tick** | （Code 自動）merge 完同一輪內動作 | `docs/ROADMAP.md` 該 item row 開頭加 ✅ + 寫入 `(#PR, commit hash)`；**不是事後想到才補** — 漏勾就違反本步驟。狀態 marker 約定見 [ROADMAP 開頭](ROADMAP.md#狀態-marker-約定) |
 | 9. Tag（若版號升） | （Code ask）「tag command-vX.Y.Z ok?」→ 你回 `ok` | `git tag` + `git push --tags` |
-| **9.5 Release 重部署** | （Code ask）「乾淨 build 上線 ok?」→ 你回 `ok` | merge 後用**乾淨 merge sha** 重 build（`ICS_BUILD_ID=release-<sha>-<time>`，去掉 dirty 標記）+ force-recreate，讓 prod 跑 main 的正式 build（見〈部署〉）。 |
+| **9.5 Release 重部署** | （Code ask）「乾淨 build 上線 ok?」→ 你回 `ok` | merge 後用**乾淨 merge sha** 重 build（`ICS_BUILD_ID=release-<sha>-<time>`，去掉 dirty 標記）+ force-recreate，讓 prod 跑 main 的正式 build（見〈部署〉）。**後端版升者順帶產 release SBOM**（見〈部署〉規矩）。 |
 | 10. Memory（若有非顯而易見決策）| （Code ask）「memory 寫 X，ok?」→ 你回 `ok` | 寫 `.claude/memory/<slug>.md` + commit |
 
 **Human 真正打的字**：6 個核心 `ok` + 3 個 `/skill` + 部署 `ok`（4.5 dogfood / 9.5 release，視改動需不需要）。其餘 Code 自為。`doc_sync_check` 由 Arch 在步驟 7.5 自動把關，**不需要你動手**。
@@ -48,6 +48,7 @@ docker compose --env-file .env up -d --force-recreate ics-command
 - 上線後**驗證 live build**：`docker exec … /api/version` 的 `build` 欄＝你剛注入的 marker；`State.Health.Status=healthy`。
 - **動 auth / RBAC / 憑證的改動，部署前先查 prod 狀態**（例：#306 bootstrap 放行 → 先確認 prod `accounts>1` 或 `account_certs` 非空，確保不會在 live prod 誤開 bootstrap 窗口）。
 - **無法在現役 prod 驗的改動**（如 fresh-deploy bootstrap）→ 用**隔離測試棧**（`docker compose -p <name>` + 獨立卷/port），驗完 `down -v`，不碰 live。
+- **（僅 release 9.5，後端版升才做）產 SBOM**：build 完跑 `./scripts/gen_release_sbom.sh ics-command:dev` → `sbom/releases/backend-v<APP_VERSION>.cdx.json`（對映像產，含 transitive + 實際版本 + OS 套件）。**隨 release commit 進 main，由步驟 9 的 `backend-v*` tag 釘版**（SBOM 綁後端軌；純前端版升不產）。供投標 / 資安盡職調查 / 漏洞·授權偵測（#351）。需先裝 syft 或 trivy（見 [`deploy/build-env.md`](../deploy/build-env.md)）。
 
 ---
 
