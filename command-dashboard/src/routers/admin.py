@@ -685,20 +685,17 @@ def issue_tak_device_cert(request: Request, callsign: str, mode: str = "atak"):
         )
     except CertIssuanceError as e:
         raise HTTPException(502, f"發證失敗：{e}") from e
-    if use_enroll:
-        # #429 enrollment 模式：signClient 已透過 new-user 建 managed user（初始群 neutral）+ 證進帳本，
-        # 不需 #344 registrar usermod -f。enroll_status="ok"（前端認的成功值，非 "enrolled" 否則誤報未同步）。
-        enroll = {"enrolled": True, "reason": "signClient", "group": config.TAK_ENROLL_DEFAULT_GROUP}
-        enroll_status = "ok"
-    else:
-        # #344 offline 模式：發證即註冊 TAK managed user + 初始群 neutral（fail-closed）→ 紅藍分類走 REST。
-        # best-effort：registrar 未配置/沒跑/逾時 → 跳過、不擋發證（裝置仍拿證、落匿名待補；reason 進 audit）。
-        # #398：先 enroll 拿結果，盤點才存得了 enroll_status（清單顯示有沒有同步上 TAK）。
-        from services.tak_user_enroll import enroll_device
+    # #431：兩種發證模式都須把證 fingerprint 綁進 TAK 名冊（registrar `usermod -f`），與證源無關。
+    # enrollment 模式（#429）的 signClient 只「發證」、**不會把 fingerprint 寫回 user entry**——漏綁則帳號
+    # 停在密碼認證（非證綁定）、reconcile 對不上帳本 fingerprint（顯示「未同步」）、且證不可撤（#318
+    # 撤銷需 cert hash）。offline 模式（#344）本就靠 enroll_device 綁；故統一在此呼叫，不再依 use_enroll 分流。
+    # best-effort：registrar 未配置/沒跑/逾時 → 跳過、不擋發證（裝置仍拿證、落待補；reason 進 audit）。
+    # #398：先 enroll 拿結果，盤點才存得了 enroll_status（清單顯示有沒有同步上 TAK）。
+    from services.tak_user_enroll import enroll_device
 
-        enroll = enroll_device(cn, fingerprint)
-        enroll_status = "ok" if enroll.get("enrolled") else (enroll.get("reason") or "skipped")
-        enroll_status = "".join(c for c in enroll_status if c.isascii() and c.isprintable())[:200] or "skipped"
+    enroll = enroll_device(cn, fingerprint, config.TAK_ENROLL_DEFAULT_GROUP)
+    enroll_status = "ok" if enroll.get("enrolled") else (enroll.get("reason") or "skipped")
+    enroll_status = "".join(c for c in enroll_status if c.isascii() and c.isprintable())[:200] or "skipped"
     # #317 盤點 + #398：記 fingerprint（= TAK managed-user 鍵，供比對混用）+ enroll_status（同步結果）。
     from repositories.tak_device_cert_repo import record_issued
 

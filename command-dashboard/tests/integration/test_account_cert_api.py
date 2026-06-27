@@ -228,9 +228,7 @@ class TestTakDeviceCert:
         (tmp_path / "tak-ca.pem").write_text("PEM", encoding="ascii")
         monkeypatch.setattr(config, "TAK_DEVICE_CONNECT_HOST", "1.2.3.4")
         monkeypatch.setattr(config, "TAK_DEVICE_CA_DIR", str(tmp_path))
-        monkeypatch.setattr(
-            tdc, "build_device_package", lambda cn, mode, host, port, ca_dir: (b"ZIP-DP-BYTES", "S3R1AL", "FP:00")
-        )
+        monkeypatch.setattr(tdc, "build_device_package", lambda *a, **k: (b"ZIP-DP-BYTES", "S3R1AL", "FP:00"))
         r = client.post("/api/admin/tak/device-cert?callsign=atak-01&mode=atak", headers=auth)
         assert r.status_code == 200, r.text
         assert r.headers["content-type"] == "application/zip"
@@ -239,6 +237,33 @@ class TestTakDeviceCert:
         # #317：發證後進盤點表（serial 記下）
         listing = client.get("/api/admin/tak/device-certs", headers=auth).json()
         assert any(x["callsign"] == "atak-01" and x["serial"] == "S3R1AL" and x["status"] == "active" for x in listing)
+
+    def test_issue_enrollment_mode_binds_fingerprint(self, client, auth, monkeypatch, tmp_path):
+        """#431：enrollment 模式（#429 signClient）發證後**仍須**呼叫 enroll_device 把 fingerprint
+        綁進 TAK 名冊——signClient 只發證、不寫回 fingerprint，漏綁則帳號停密碼認證、reconcile
+        未同步、證不可撤（#318 需 hash）。迴歸：use_enroll=True 不得跳過 enroll_device、不得硬寫 'ok'。"""
+        import core.config as config
+        import services.tak_device_cert as tdc
+        import services.tak_enrollment as te
+        import services.tak_user_enroll as tue
+
+        (tmp_path / "tak-ca.key").write_text("KEY", encoding="ascii")
+        (tmp_path / "tak-ca.pem").write_text("PEM", encoding="ascii")
+        monkeypatch.setattr(config, "TAK_DEVICE_CONNECT_HOST", "1.2.3.4")
+        monkeypatch.setattr(config, "TAK_DEVICE_CA_DIR", str(tmp_path))
+        monkeypatch.setattr(tdc, "build_device_package", lambda *a, **k: (b"DP", "SER-ENR", "FP:EN:RO:LL"))
+        monkeypatch.setattr(te, "is_configured", lambda: True)  # → use_enroll=True（enrollment 模式）
+        calls = []
+        monkeypatch.setattr(
+            tue,
+            "enroll_device",
+            lambda cn, fp, grp=None: (calls.append((cn, fp, grp)) or {"enrolled": True, "reason": "ok", "group": grp}),
+        )
+        r = client.post("/api/admin/tak/device-cert?callsign=enr-01&mode=aware", headers=auth)
+        assert r.status_code == 200, r.text
+        # 核心斷言：enrollment 模式也以「發證 fingerprint」呼叫 enroll_device 綁定（初始群 = 預設群）
+        assert calls == [("enr-01", "FP:EN:RO:LL", config.TAK_ENROLL_DEFAULT_GROUP)]
+        assert r.headers["X-TAK-Enroll-Status"] == "ok"
 
     def test_list_and_revoke_flag(self, client, auth, monkeypatch, tmp_path):
         """#317：列管 + 撤銷-flag（帳面，不 enforce）。"""
@@ -249,7 +274,7 @@ class TestTakDeviceCert:
         (tmp_path / "tak-ca.pem").write_text("PEM", encoding="ascii")
         monkeypatch.setattr(config, "TAK_DEVICE_CONNECT_HOST", "1.2.3.4")
         monkeypatch.setattr(config, "TAK_DEVICE_CA_DIR", str(tmp_path))
-        monkeypatch.setattr(tdc, "build_device_package", lambda *a: (b"Z", "SER-X", "FP:00"))
+        monkeypatch.setattr(tdc, "build_device_package", lambda *a, **k: (b"Z", "SER-X", "FP:00"))
         client.post("/api/admin/tak/device-cert?callsign=itak-rev&mode=aware", headers=auth)
         rec = next(
             x for x in client.get("/api/admin/tak/device-certs", headers=auth).json() if x["callsign"] == "itak-rev"
@@ -272,7 +297,7 @@ class TestTakDeviceCert:
         (tmp_path / "tak-ca.pem").write_text("PEM", encoding="ascii")
         monkeypatch.setattr(config, "TAK_DEVICE_CONNECT_HOST", "1.2.3.4")
         monkeypatch.setattr(config, "TAK_DEVICE_CA_DIR", str(tmp_path))
-        monkeypatch.setattr(tdc, "build_device_package", lambda *a: (b"ZIP", "SER-CJK", "FP:00"))
+        monkeypatch.setattr(tdc, "build_device_package", lambda *a, **k: (b"ZIP", "SER-CJK", "FP:00"))
         r = client.post("/api/admin/tak/device-cert", params={"callsign": "主教", "mode": "aware"}, headers=auth)
         assert r.status_code == 200, r.text  # 關鍵：不是 500
         cd = r.headers.get("content-disposition", "")
@@ -294,7 +319,7 @@ class TestTakDeviceCert:
         (tmp_path / "tak-ca.pem").write_text("PEM", encoding="ascii")
         monkeypatch.setattr(config, "TAK_DEVICE_CONNECT_HOST", "1.2.3.4")
         monkeypatch.setattr(config, "TAK_DEVICE_CA_DIR", str(tmp_path))
-        monkeypatch.setattr(tdc, "build_device_package", lambda *a: (b"Z", "SER-D", "FP:00"))
+        monkeypatch.setattr(tdc, "build_device_package", lambda *a, **k: (b"Z", "SER-D", "FP:00"))
         client.post("/api/admin/tak/device-cert?callsign=itak-del&mode=aware", headers=auth)
         rec = next(
             x for x in client.get("/api/admin/tak/device-certs", headers=auth).json() if x["callsign"] == "itak-del"
