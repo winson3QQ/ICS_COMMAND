@@ -31,7 +31,7 @@ from core.config import (
     IS_PROD,
     STATIC_DIR,
 )
-from core.database import init_db
+from core.database import ensure_audit_append_only, init_db
 from core.logging import correlation_middleware, init_logging
 from core.security_headers import security_headers_middleware
 from repositories.account_repo import ensure_initial_admin_token
@@ -136,6 +136,7 @@ def _verify_audit_chain_on_boot() -> None:
 async def lifespan(app: FastAPI):
     _assert_safe_mtls_config()
     init_db()
+    ensure_audit_append_only(IS_PROD)  # #348 GAP2：prod 下 audit_log 引擎層 append-only（dev 可 reset）
     _verify_audit_chain_on_boot()  # #372：開機驗一次稽核鏈（NIST AU-9(3)）
     # C1-A：首次啟動產生隨機 PIN（取代舊的預設 1234），印 console + 寫 ~/.ics/first_run_token
     ensure_initial_admin_token()
