@@ -142,7 +142,9 @@ WARNING_THRESHOLD_SECONDS: int = int(os.getenv("ICS_WARNING_THRESHOLD_SECONDS", 
 #               源碼定讞 TAK 永不拒 CA 證，存取控制=group 隔離。
 # MINOR 2.19.0：#401——cert 面板以 TAK server 為 SoT：reconcile enrich（per-row ics_cert_id）+
 #               新端點 deregister 任一 TAK callsign（infra 大小寫不敏感擋）。管理非 dashboard 發的殭屍。
-APP_VERSION = "2.23.0"
+# PATCH 2.23.1：#431——enrollment 模式發證補綁 cert fingerprint（usermod -f）→ 修「reconcile 未同步 /
+#               證不可撤」；行為改變故 PATCH+1。
+APP_VERSION = "2.23.1"
 
 # CMD_VERSION：前端 UI 功能版本（不同於後端 SemVer APP_VERSION；規則見 CLAUDE.md 版號規則）
 # 兩軌版本命名，不可混用。由 /api/version 提供給前端，是唯一 source-of-truth；release 時更新此值。
