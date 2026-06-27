@@ -59,7 +59,7 @@
 | HA / DR 演練 | ❌ | — | 單機、無 DR 演練 #348-F9 |
 
 ### 治理 / ISMS（ISO 27001 / 資安管理法）
-| ISMS 政策文件 | ❌ | `security_policies.md`（骨架）| 多為佔位、引用不存在的 matrix.md → #348-F11 |
+| ISMS 政策文件 | 🟡 | `security_policies.md`（§1–6 + 附錄 A 內文補實，self-attestation）| 第三方(ISO 27001) 驗證待 auditor；技術缺口見各列 → #348-F11 |
 | 威脅模型 | ✅ | `threat_model.md`（誠實、與 code 相符）| — |
 | 持續監控 / SOC | ❌ | — | 無 |
 
@@ -75,7 +75,7 @@
 - NIST 800-53：AC ✅(default-deny)、**AU-9(3) ❌**、SC-28 🟡、**SC-12 ❌(CA 同機)**、CP 🟡。
 - OWASP ASVS：V4 ✅、V5/13/14 多 ✅、V2/V3/V7 🟡。
 - FIPS 140：未跑 validated 模組 ❌。
-- ISO 27001 ISMS：文件層 ❌。
+- ISO 27001 ISMS：文件層 🟡（政策內文已補實=self-attestation；第三方驗證待 auditor）。
 - 供應鏈 SBOM（EO/CRA/NTIA）：🟡→大致就緒（差 cosign 簽章）。
 
 ## 3. 最新掃描基線
