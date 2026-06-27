@@ -7,6 +7,8 @@ ICS_DMAS 的 memory（行為規則、架構決策、HTTPS 決策、Remote SoT、
 
 - [precommit-ruff-config-cwd](precommit-ruff-config-cwd.md) — pre-commit cd 進 command-dashboard/，root-level 腳本須 line-length=120（ruff 0.11.7）否則 commit 中止（stash 衝突回滾）
 - [tak-cert-access-control](tak-cert-access-control.md) — TAK 存取控制兩層解：源碼定讞 TAK 對 CA 信任證**永不拒絕**(無群落 __ANON__)→CoreConfig 白名單擋連死路。**層1 group 隔離**(producer 不掛 __ANON__；#404 已 merge：偵測 in_anon/anon_users/online_anon + 一鍵 strip + admin REST-only 豁免；backend-v2.20.0/frontend-v1.16.0)。**層2 撤銷**(#318：**CRL 只擋:8443 不擋:8089 串流**→推翻 issue 規劃；**DB 撤銷=INSERT certificate(hash+revocation_date)+x509checkRevocation 唯一覆蓋:8089+live 免重啟**=定案，代價 ICS 直寫 TAK postgres)。刪 managed user≠擋(仍匿名連)、auth=file 打死憑證 client、ics-tak-admin 恆 __ANON__ 但 REST-only 良性
+- [tak-enrollment-working](tak-enrollment-working.md) — TAK Certificate Enrollment(:8446)端到端 + #429 面板主導發證：VPN 先關公網→CA 上線→CoreConfig <certificateSigning>+UserManager bcrypt 帳號；面板代理 enrollment(new-user→CSR→signClient 解 JSON signedCert)。坑：手寫明文密碼 401/Invalid salt、密碼≥15特殊符、CSR 須含 O/OU、new-user 三 group 欄、signClient/v2 回 JSON 非 PEM、connectString 用 WG IP
+- [test-artifacts-reversible](test-artifacts-reversible.md) — **feedback**：測試產生物全要可滾回；動 live 前備份；正式實作不留測試殘渣
 - [P2 TAK 部署 / #101](p2-tak-deploy-issue101.md) — P2-01 官方 TAK Server 部署 merged；#101 已關（RSA 憑證 + fed-truststore 兩根因皆解）；本機 dev env（docker + ~/.ics/dev cert）保留可快速重起
 - [Boris 路線工作流](process-workflow-boris-route.md) — Claude Code 內建 skill + 兩個自寫 quality gate；3 角色不形式化 handoff
 - [事件符號 / 分類體系決策](event-symbology-classification.md) — NAPSG/CoT/台灣 四軸對照、視覺 affiliation-aware（敵我=2525框/類型=NAPSG象形/severity=halo）、type-first 建立流程、字典擴充模型；#66 編輯器(剩 C2) / #64 硬化(剩 #3→P1-10h) 狀態 + 環境 quirk
