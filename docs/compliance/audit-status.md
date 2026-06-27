@@ -26,7 +26,7 @@
 
 ### 稽核日誌（NIST AU / ASVS V7）
 | 寫入覆蓋（含 login/RBAC-deny/session-fail、correlation/exercise scope）| ✅ | `repositories/_helpers.audit`；82 處 | — |
-| **完整性（防竄改）** | ❌ | `core/audit_chain.py`（hash chain）| `verify_audit_chain` **從未被呼叫** + 無金鑰可偽造 → #348 GAP2 |
+| **完整性（防竄改）** | 🟡 | hash chain + **boot/endpoint 驗證（#372）** + **prod `audit_log` 引擎層 append-only 觸發器 + reset 不清 audit（GAP2）** | 剩 keyless 鏈可 recompute 偽造 → audit-v1 HMAC（需金鑰來源決策）；host-compromise 可 DROP 觸發器（§8.8 殘留）|
 | 異常偵測（成功動作）| 🟡 | `security_monitor.py`（僅認證類、in-memory）| 位置跳變/大量刪除未做 #285 |
 
 ### 資料保護（NIST SC-28 / MP / ISO A.8）
@@ -73,7 +73,7 @@
 
 ## 2. 標準對照（彙整判定）
 - NIST 800-63B：配置後 AAL2 possession ✅ / 知識因子(PIN) ❌ / 預設退 AAL1。
-- NIST 800-53：AC ✅(default-deny)、**AU-9(3) ❌**、SC-28 🟡、**SC-12 ❌(CA 同機)**、CP 🟡。
+- NIST 800-53：AC ✅(default-deny)、AU-9(3) 🟡（驗證接線 #372 + prod append-only；keyless HMAC 待）、SC-28 🟡、**SC-12 ❌(CA 同機)**、CP 🟡。
 - OWASP ASVS：V4 ✅、V5/13/14 多 ✅、V2/V3/V7 🟡。
 - FIPS 140：未跑 validated 模組 ❌。
 - ISO 27001 ISMS：文件層 🟡（政策內文已補實=self-attestation；第三方驗證待 auditor）。

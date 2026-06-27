@@ -1588,3 +1588,28 @@ def get_health_schema_version(conn: sqlite3.Connection) -> int | None:
         return row[0] if row and row[0] is not None else None
     except Exception:
         return None
+
+
+def ensure_audit_append_only(prod: bool) -> None:
+    """#348 GAP2：prod 下 audit_log 引擎層 append-only（BEFORE UPDATE/DELETE → RAISE(ABORT)）；
+    dev 下移除觸發器（開發期可自由 reset/改試——使用者拍板：prod 不能清稽核軌、dev 可以）。
+
+    audit_log 設計為 INSERT-only；prod 唯一會「清」它的 reset-db 已顯式排除 audit_log
+    （routers/admin.reset_db）→ 觸發器與 reset 不衝突。boot 時依 ICS_ENV 呼叫（main.py），
+    切換環境即同步建/移除觸發器（idempotent）。
+    殘留：具 DB 檔寫權者可 DROP 觸發器（host-compromise，threat_model §8.8 接受）；keyless 鏈
+    可 recompute 偽造另見 audit-v1 HMAC（#348 GAP2 後續，需金鑰來源決策）。
+    """
+    with get_conn() as conn:
+        if prod:
+            conn.execute(
+                "CREATE TRIGGER IF NOT EXISTS audit_log_no_update BEFORE UPDATE ON audit_log "
+                "BEGIN SELECT RAISE(ABORT, 'audit_log is append-only in prod (#348 GAP2)'); END"
+            )
+            conn.execute(
+                "CREATE TRIGGER IF NOT EXISTS audit_log_no_delete BEFORE DELETE ON audit_log "
+                "BEGIN SELECT RAISE(ABORT, 'audit_log is append-only in prod (#348 GAP2)'); END"
+            )
+        else:
+            conn.execute("DROP TRIGGER IF EXISTS audit_log_no_update")
+            conn.execute("DROP TRIGGER IF EXISTS audit_log_no_delete")

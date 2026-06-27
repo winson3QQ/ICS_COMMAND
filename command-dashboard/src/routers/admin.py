@@ -328,6 +328,10 @@ async def reset_db(request: Request):
         # #343：紅藍 client 分類（per-exercise）—— reset 須清，否則新場沿用舊分類。
         "client_faction",
     ]
+    # #348 GAP2：prod 下 audit_log 為 append-only（不隨 reset 清，保課責軌；引擎層觸發器亦擋）；
+    # dev 仍清，便於開發期反覆 reset/改試（使用者拍板）。
+    if config.IS_PROD:
+        tables = [t for t in tables if t != "audit_log"]
     with get_conn() as conn:
         for table in tables:
             try:
