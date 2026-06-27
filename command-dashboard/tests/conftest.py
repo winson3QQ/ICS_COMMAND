@@ -89,6 +89,22 @@ def _clear_sessions():
     _delete_all_sessions()
 
 
+# ── 測試加速：降 PBKDF2 迭代（autouse）──────────────────────────────────────
+# prod 用 600k 迭代（抗爆破，#275）；測試只需驗 hash/verify 往返正確，不需該計算量。
+# 不降的話每個建帳號+登入 ~300ms，全套累積數分鐘（本機 + CI 分鐘都燒）。降到 1000：
+# 建帳號（hash_pin 預設）+ 登入 verify（讀 stored 1000）+ pin_needs_rehash（1000<1000
+# =False，不觸發 rehash）全快。標 @pytest.mark.real_pbkdf2 的測試（驗 600k 安全屬性，
+# 如 test_wave4_hardening）保留真實值、不受影響。function-scoped monkeypatch 自動還原。
+@pytest.fixture(autouse=True)
+def _fast_pbkdf2(request, monkeypatch):
+    if request.node.get_closest_marker("real_pbkdf2"):
+        return
+    import repositories._helpers as h
+
+    monkeypatch.setattr(h, "_PBKDF2_ITERATIONS", 1000)
+    monkeypatch.setattr(h.hash_pin, "__defaults__", (None, 1000))
+
+
 # ── #367：auth.service 快取常數隔離（autouse）──────────────────────────────
 # auth.service 於 import 時把 SESSION_TIMEOUT / IDLE_TIMEOUT / WARNING_THRESHOLD_SECONDS
 # 快取成模組級常數（service.py 頂端 `X = config.X`）。若某測試先 monkeypatch core.config.X

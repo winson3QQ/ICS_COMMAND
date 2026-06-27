@@ -5,8 +5,26 @@ name: Test
 
 on:
   pull_request:
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'sbom/**'
+      - 'licenses/**'
+      - 'LICENSE'
+      - 'COPYRIGHT'
+      - 'NOTICE'
+      - '.gitignore'
   push:
     branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'sbom/**'
+      - 'licenses/**'
+      - 'LICENSE'
+      - 'COPYRIGHT'
+      - 'NOTICE'
+      - '.gitignore'
 
 concurrency:
   group: test-${{ github.ref }}

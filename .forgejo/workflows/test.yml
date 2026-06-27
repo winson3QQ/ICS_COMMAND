@@ -6,6 +6,15 @@ name: Test
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'sbom/**'
+      - 'licenses/**'
+      - 'LICENSE'
+      - 'COPYRIGHT'
+      - 'NOTICE'
+      - '.gitignore'
 
 jobs:
   test:

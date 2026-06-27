@@ -12,7 +12,8 @@ from types import SimpleNamespace
 import pytest
 from starlette.datastructures import Headers
 
-pytestmark = pytest.mark.unit
+# real_pbkdf2：本檔斷言 600k 安全屬性，須用真實迭代數（不受 conftest _fast_pbkdf2 加速影響）
+pytestmark = [pytest.mark.unit, pytest.mark.real_pbkdf2]
 
 
 def _req(headers=None, host="9.9.9.9"):
