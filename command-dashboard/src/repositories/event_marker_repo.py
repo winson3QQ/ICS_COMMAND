@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """event_marker_repo — 事件↔感知標記 junction 關聯（P2-27）。
 
 取代 `cop_entities.attributes.kind='event' + event_id` 的 JSON glue：

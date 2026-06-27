@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """
 test_db_encryption.py — P1-12c SQLCipher at-rest 加密整合測試（#229）
 

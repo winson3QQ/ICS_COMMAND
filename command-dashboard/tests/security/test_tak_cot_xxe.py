@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """P2-02（#102）— CoT XML 解析的 XXE / 實體展開防護（ROADMAP P2-08 接點）。
 
 CoT 來自外部不可信。parse_cot_xml 走 defusedxml（forbid_dtd / forbid_entities /

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """
 services/geometry_service.py — CoT <shape> + DataSync GeoJSON 幾何統一解析（P2-08，#132）
 

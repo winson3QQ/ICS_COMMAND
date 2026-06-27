@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """
 integration/test_logging.py — C1-D 結構化日誌整合測試
 規格：logging_architecture_decision_v1.1.md

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """event_taxonomy API + RBAC（P1-10d 地基，issue #60/#66）。
 
 - GET /api/event_taxonomy：READ_ROLES（observer 也能讀，前端渲染事件需要）

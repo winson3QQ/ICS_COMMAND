@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: LicenseRef-Proprietary
+// Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 /**
  * maplibre_core.js — MapLibre GL JS 地圖實例 lifecycle + 互動事件 wiring
  *

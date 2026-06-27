@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: LicenseRef-Proprietary
+// Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 /**
  * tak_light_state.js — TAK 連線燈狀態機（P2-23 #163 / P2-24 #164）。
  *

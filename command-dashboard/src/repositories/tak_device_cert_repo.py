@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """#317 — dashboard 發出的 TAK 裝置證盤點（ICS 自建 SoT；TAK 不記 offline 證）。
 
 `status='revoked'` = **帳面 flag，不 enforce**（裝置仍能連 TAK，真撤銷見 #318 CRL）。

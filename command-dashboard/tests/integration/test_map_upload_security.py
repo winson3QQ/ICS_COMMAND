@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """#286 H1：upload_map_image path traversal / 任意檔案寫入 回歸測試。
 
 原漏洞：client 給的 file.filename 直接拼進 STATIC_DIR → 可用 `../` / 絕對路徑

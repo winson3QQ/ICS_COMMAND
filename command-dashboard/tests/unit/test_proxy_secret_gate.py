@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """
 unit/test_proxy_secret_gate.py — #280 紅隊修補：nginx↔後端共享密鑰
 

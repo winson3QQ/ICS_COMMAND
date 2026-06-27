@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """
 tests/test_audit_hash_chain.py — Audit Hash Chain (Codeberg Issue #1, GAP-AUDIT-04)
 

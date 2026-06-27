@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: LicenseRef-Proprietary
+// Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 #!/usr/bin/env node
 /**
  * HOTFIX-WS-01 Human Verification Script

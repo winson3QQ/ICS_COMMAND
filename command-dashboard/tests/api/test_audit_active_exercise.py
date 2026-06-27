@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """稽核日誌 — active exercise 綁定 + COP 操作 audit（issue #93）。
 
 驗：

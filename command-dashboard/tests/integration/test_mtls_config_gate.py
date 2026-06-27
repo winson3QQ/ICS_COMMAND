@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """#290 M1：prod mTLS 組態 fail-fast 安全閘測試。
 
 ICS_MTLS_REQUIRED=true 但 ICS_PROXY_SHARED_SECRET 未設時，_proxy_trusted() 會 fail-open

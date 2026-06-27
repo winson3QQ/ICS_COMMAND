@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """
 tests/security/test_payload_fuzzing.py — 惡意/畸形 Payload Fuzzing 測試
 

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """
 integration/test_events_drop_location_zone.py — P2-32（#186）砍 events.location_zone_id 死欄
 

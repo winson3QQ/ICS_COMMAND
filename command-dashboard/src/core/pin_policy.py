@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """core/pin_policy.py — #348-F5 P1：PIN/密語強度策略（NIST 800-63B 對齊）。
 
 定位（見 security_policies §2.8.1）：本系統 PIN 是 mTLS 裝置憑證的 **activation secret**

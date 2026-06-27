@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 from __future__ import annotations
 
 from auth.role_enum import ROLE_OPERATOR_ZH, ROLE_SYSADMIN_ZH

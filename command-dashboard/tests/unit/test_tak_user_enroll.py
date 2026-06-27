@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """#344 services/tak_user_enroll — 發證即註冊 TAK managed user（共享卷檔佇列）的單元測試。
 
 不碰真 takserver / registrar；用 tmp 佇列 + 背景執行緒模擬 registrar 寫結果檔，驗：

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """tests/unit/test_event_markers.py — P2-27 event↔marker junction 關聯
 
 鎖住的不變式：

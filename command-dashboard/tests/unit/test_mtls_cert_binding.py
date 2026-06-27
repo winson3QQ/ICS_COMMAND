@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """
 unit/test_mtls_cert_binding.py — #275 mTLS cert-bound session（後端 wave 1）
 

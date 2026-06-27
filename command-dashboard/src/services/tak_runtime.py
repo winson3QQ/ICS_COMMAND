@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """tak_runtime — TAK :8089 訂閱背景 task 的 runtime 控制器（P2-24 / #164）。
 
 把訂閱 task 生命週期從 main.py lifespan 區域變數**升成模組級控制器**，讓

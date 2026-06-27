@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """
 schemas/tak.py — TAK CoT（Cursor on Target）事件 Pydantic 模型
 

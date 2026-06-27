@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """services/faction_service.py — #343 紅藍隔離 admin 分類層（PR-5）。
 
 admin 對「連線 client（裝置）」指派陣營：

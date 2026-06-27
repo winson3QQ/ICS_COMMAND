@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """
 enroll_fido2.py — FIDO2 token 註冊 CLI（P1-12a #227）
 
@@ -38,9 +40,7 @@ def enroll_tokens(master: bytes, backend, labels: list[str], pin: str | None) ->
         wrap_key = backend.hmac_secret(credential_id, salt, pin)
         nonce, wrapped = keystore.wrap_master(master, wrap_key, credential_id)
         entries.append(
-            keystore.TokenEntry(
-                label=label, credential_id=credential_id, salt=salt, nonce=nonce, wrapped=wrapped
-            )
+            keystore.TokenEntry(label=label, credential_id=credential_id, salt=salt, nonce=nonce, wrapped=wrapped)
         )
     return entries
 

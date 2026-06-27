@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: LicenseRef-Proprietary
+// Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 /**
  * draw_tools.js — MapLibre 繪製模式 preview（polygon / route）
  *

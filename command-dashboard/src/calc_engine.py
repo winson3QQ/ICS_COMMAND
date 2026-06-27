@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """
 calc_engine.py — ICS 計算引擎
 實作規格第六部分（6.2～6.5）

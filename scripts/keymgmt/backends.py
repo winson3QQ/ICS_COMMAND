@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """
 backends.py — FIDO2 backend 介面與真實裝置實作（P1-12a #227）
 
@@ -37,8 +39,7 @@ class RealFido2Backend:
             from fido2.hid import CtapHidDevice
         except ImportError as e:
             raise KeyBackendError(
-                "需要 python-fido2 套件（pip install fido2）— "
-                "dev / 測試場景請改用 ICS_MASTER_KEY env fallback"
+                "需要 python-fido2 套件（pip install fido2）— dev / 測試場景請改用 ICS_MASTER_KEY env fallback"
             ) from e
         self._Fido2Client = Fido2Client
         self._CtapHidDevice = CtapHidDevice

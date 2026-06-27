@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """#296 RBAC 路由分類矩陣（golden snapshot）+ #370 default-deny 完整性守門。
 
 防 #287 類「新 router 沒在 allowed_roles_for 登記 → 靜默 broken access control」。

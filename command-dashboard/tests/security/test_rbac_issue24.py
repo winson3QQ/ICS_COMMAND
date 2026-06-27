@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """Issue #24 alpha: map_config RBAC widen — operator 可寫 map_config，upload-image 仍限 COMMAND_ROLES。
 
 源於 dogfood 撞牆：operator 畫 zone/route 後 refresh 消失。Root cause = backend 把

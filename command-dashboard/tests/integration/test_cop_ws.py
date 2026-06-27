@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """
 tests/integration/test_cop_ws.py — issue #29 PR-D：/api/cop/ws/updates WebSocket 推播
 

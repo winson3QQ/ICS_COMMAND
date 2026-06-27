@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """
 tests/unit/test_cop_ingest.py — P2-04（#105）：ingest_cot_event 接縫
 

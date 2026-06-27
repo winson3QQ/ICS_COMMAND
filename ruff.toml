@@ -1,0 +1,35 @@
+# 根層 ruff 設定 —— 與 command-dashboard/pyproject.toml [tool.ruff] 對齊（line-length=120）。
+#
+# 為何需要：repo 根的 scripts/、scripts/keymgmt/ 等 Python 在 command-dashboard 之外，
+# 原本 ruff 沿目錄上溯找不到 config，會退回預設 line-length=88。pre-commit hook
+# （.githooks/pre-commit 會 cd 進 command-dashboard 再跑）格式化這些 root 檔時用 88，
+# 與專案意圖的 120 衝突 → 「files were modified by this hook」+ stash 回滾，commit 中止
+# （見 memory: precommit-ruff-config-cwd）。本檔讓全 repo 格式定義一致，根治此 gotcha。
+#
+# command-dashboard/ 仍用自己的 pyproject.toml（ruff 就近原則：最近的 config 生效，不合併）。
+
+target-version = "py313"
+line-length = 120
+
+exclude = [
+    "venv",
+    "__pycache__",
+    "node_modules",
+]
+
+[lint]
+# E：pycodestyle；F：pyflakes；I：isort；UP：pyupgrade；B：bugbear（對齊 command-dashboard）
+select = ["E", "F", "I", "UP", "B"]
+ignore = [
+    # B008：FastAPI 的 Depends() 在函式預設值是慣用寫法
+    "B008",
+]
+
+[lint.per-file-ignores]
+# __init__.py re-export：F401 豁免
+"**/__init__.py" = ["F401"]
+
+[format]
+# 與 black 相容：雙引號、空白縮排
+quote-style = "double"
+indent-style = "space"

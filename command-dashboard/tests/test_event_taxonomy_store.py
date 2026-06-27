@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """event_taxonomy_store unit tests（P1-10d 地基，issue #60/#66）。
 
 涵蓋：seed→runtime ensure、read fallback、atomic write、idempotent，

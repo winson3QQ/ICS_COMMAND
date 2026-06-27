@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """
 tests/unit/test_geochat_routing.py — P2-07（#129）：GeoChat b-t-f 分流到 chats 表
 

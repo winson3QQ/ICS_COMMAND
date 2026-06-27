@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """integration/test_timeline_api.py — P2-20(A)（#199）AAR 統一時間軸
 
 驗證：

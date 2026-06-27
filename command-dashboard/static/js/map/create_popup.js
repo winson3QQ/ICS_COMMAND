@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: LicenseRef-Proprietary
+// Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 /**
  * create_popup.js — 長按地圖 → 統一「建立」contextual 對話框（P2-34 / #220）
  *

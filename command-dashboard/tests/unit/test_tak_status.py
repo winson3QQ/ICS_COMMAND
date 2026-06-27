@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """
 tests/unit/test_tak_status.py — P2-23（#163）：TAK 連線健康狀態追蹤 + /api/tak/status 連線健康欄位。
 

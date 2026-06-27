@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """
 migrate_encrypt_db.py — 明文 SQLite → SQLCipher 加密 DB 一次性轉換（P1-12c #229）
 

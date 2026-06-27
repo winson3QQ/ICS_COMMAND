@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """P2-13(A)（#176）— routers/tak.py `POST /api/tak/downlink` 下行指令端點。
 
 驗 RBAC（COMMAND_ROLES）+ **強制 audit（audit-first）** + send_cot 配線。

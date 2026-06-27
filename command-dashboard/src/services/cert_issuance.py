@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """#275 wave B-2 — 線上發證（選項 i 安全版）。
 
 後端**不持 CA 鑰**：以 `step` CLI 向 step-ca **daemon**（provisioner token）請它簽一張

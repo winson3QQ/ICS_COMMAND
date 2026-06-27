@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """P1-17 永久設施公開資料匯入（維護者用，離線優先）。
 
 把台灣政府開放資料的永久公共設施（避難收容處所 / 消防 / 警政 / 醫療）匯入成

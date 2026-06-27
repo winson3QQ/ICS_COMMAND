@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """#343 — admin 對連線 TAK client（裝置 self-SA uid = client_key）的紅藍陣營分類（SoT）。
 
 faction ∈ blue/red/neutral，server-authoritative（不信 client 自宣告的 CoT type/__group）。

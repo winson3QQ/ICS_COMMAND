@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """map_config_store.py — `map_config.json` runtime 檔的讀寫 + seed fallback。
 
 P1-13（issue #27）：把 `map_config.json` 從 tracked + runtime-mutated 改為

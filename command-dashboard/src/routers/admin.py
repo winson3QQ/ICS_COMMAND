@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 import asyncio  # noqa: E402 — P1-12b L3 pre-destructive backup
 import os  # noqa: E402 — #315 TAK_DEVICE_CA_DIR 路徑檢查
 import threading  # noqa: E402 — #369 最後 sysadmin 守門並發序列化

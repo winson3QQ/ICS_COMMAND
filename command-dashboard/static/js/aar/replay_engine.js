@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: LicenseRef-Proprietary
+// Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 // replay_engine.js — AAR 回放核心（P2-20(B) B1，issue #201）
 //
 // 純函式、零 DOM：吃 /api/exercises/{id}/timeline 的 items（已按 t 排序的事件流），

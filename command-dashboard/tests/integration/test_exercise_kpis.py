@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """integration/test_exercise_kpis.py — P2-21 子集（#204）KPI API + bookmark ref_t + AAR_EXPORT audit
 
 驗證：

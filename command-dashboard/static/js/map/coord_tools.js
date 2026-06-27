@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: LicenseRef-Proprietary
+// Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 /**
  * coord_tools.js — MGRS / WGS84 / UTM 座標工具 + MapLibre MGRS grid 渲染
  *

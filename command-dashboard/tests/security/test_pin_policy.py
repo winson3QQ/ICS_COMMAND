@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """tests/security/test_pin_policy.py — #348-F5 P1 PIN/密語強度策略
 
 鎖 validate_pin_strength（NIST 800-63B 對齊）：min6/max128、拒全同/連續/常見/==帳號名、

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: LicenseRef-Proprietary
+// Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 // aar_map.js — AAR 回放頁的地圖層（P2-20(B)，issue #201 / #4）
 //
 // 自帶 map 實例：直接 import maplibre_core（initMaplibre 建獨立實例 + pmtiles 底圖）。

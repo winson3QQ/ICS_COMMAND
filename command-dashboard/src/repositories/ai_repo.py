@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """
 ai_repo.py — AI 建議紀錄（法律稽核 + 訓練資料）
 C0：stub，Wave 5 由 ai_service 填入實際 LLM 呼叫

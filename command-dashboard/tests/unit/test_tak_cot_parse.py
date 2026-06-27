@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """P2-02（#102）— tak_service.parse_cot_xml CoT 解析 unit 測試。
 
 純解析，不碰 DB / app。fixtures 在 tests/fixtures/cot/。

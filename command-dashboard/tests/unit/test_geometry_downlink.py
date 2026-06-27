@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """P2-30 / #180 — 線/區出向幾何序列化（vertices → CoT `<link>` + 樣式）+ build_geometry_cot。
 
 格式 **#211 ATAK dogfood 修正**：出向改 ATAK 原生 `<link point=...>` 序列 + strokeColor/fillColor/

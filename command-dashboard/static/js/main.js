@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: LicenseRef-Proprietary
+// Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 /**
  * main.js — 指揮部前端入口點（C1-F CSP 模組化，v3.0.0）
  *

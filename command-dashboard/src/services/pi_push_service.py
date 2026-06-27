@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """
 pi_push_service.py — Pi push 接收處理
 接收各組定時推送，寫入 pi_received_batches 並更新 resource_snapshots。

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """
 tests/unit/test_faction_chat_squads.py — #343 review 收尾：squads(A) + GeoChat(B) + 空集 guard(E)
 

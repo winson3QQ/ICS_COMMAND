@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """
 api/test_chat_read.py — GET /api/chat 通聯唯讀 API（#213 b1）
 

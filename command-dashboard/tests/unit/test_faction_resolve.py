@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """
 tests/unit/test_faction_resolve.py — #343 PR-2：producer 歸屬鏈 + ingest faction 落地
 

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """#398 Slice 2 — TAK cert 對帳 + 撤銷連動 deregister 端點。
 
 測試環境無 TAK_ENROLL_QUEUE_DIR（registrar 未配置）→ reconcile/deregister 回 best-effort

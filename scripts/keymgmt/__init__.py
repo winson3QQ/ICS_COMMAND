@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """
 keymgmt — P1-12a 統一 key management 基礎建設（issue #227，umbrella #226）
 

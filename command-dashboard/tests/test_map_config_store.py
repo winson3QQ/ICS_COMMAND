@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """map_config_store unit tests（P1-13 / issue #27）。
 
 涵蓋：seed→runtime ensure、read fallback、atomic write、idempotent、migration script。

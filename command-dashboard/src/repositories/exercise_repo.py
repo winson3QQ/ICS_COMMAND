@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """
 exercise_repo.py — 演練場次管理
 C0：exercises 表（合併原 ttx_sessions）

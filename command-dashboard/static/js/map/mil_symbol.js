@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: LicenseRef-Proprietary
+// Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 /**
  * mil_symbol.js — MIL-STD-2525 符號（milsymbol）整合層（P2-05 子塊 c / #110）
  *

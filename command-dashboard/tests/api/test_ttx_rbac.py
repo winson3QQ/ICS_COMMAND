@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """#287 H2：TTX router 授權回歸測試。
 
 原漏洞：`allowed_roles_for` 無 `/api/ttx/` case → 落預設（GET=READ/POST=WRITE），

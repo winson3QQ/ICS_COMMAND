@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """P2-03（#107）— routers/tak.py REST ingest endpoint。
 
 `POST /api/tak/events`（CoTEventIn）→ #105 接縫 `ingest_cot_event` → 落 cop_entities + 廣播。

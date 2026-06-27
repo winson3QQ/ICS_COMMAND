@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """
 test_backup_restore_api.py — P1-12b 整包備份 / 還原 API + 觸發 + OP-2（#228）
 

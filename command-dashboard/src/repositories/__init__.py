@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """repositories/ — DB CRUD layer
 
 明文 re-export 子模組，提供 `from repositories import xxx_repo` 介面。

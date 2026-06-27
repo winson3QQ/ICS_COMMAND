@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """event_taxonomy_validate.py — POST /api/event_taxonomy 的 schema + 參照完整性驗證。
 
 #66 編輯器地基（PR-A）：把原本「整包覆蓋、幾乎不驗」的 POST 收緊，避免 admin（或惡意/

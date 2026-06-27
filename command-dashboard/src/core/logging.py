@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """
 core/logging.py — ICS_DMAS Command 結構化日誌 — C1-D
 規格：logging_architecture_decision_v1.1.md

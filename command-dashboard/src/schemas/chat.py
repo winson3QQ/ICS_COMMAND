@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """
 schemas/chat.py — GeoChat（CoT b-t-f）通聯記錄（P2-07，#129）
 

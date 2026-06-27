@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """tests/security/test_forced_pin_change.py — #348-F5 P2a 新帳號首登強制改初始 PIN
 
 驗證：

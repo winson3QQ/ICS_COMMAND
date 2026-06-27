@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """routers/chat.py — GeoChat 通聯唯讀 API（#213 b1）。
 
 P2-07（#129）入向 b-t-f 只做「存進 chats 表」沒做「送」→ 主 dashboard 看不到現場通聯

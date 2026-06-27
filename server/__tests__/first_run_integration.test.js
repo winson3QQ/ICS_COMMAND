@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: LicenseRef-Proprietary
+// Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 'use strict';
 
 // Layer 2 — Integration test for HOTFIX-PI-01 first-run gate

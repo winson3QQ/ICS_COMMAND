@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """services/tak_group_sync.py — #344 ICS faction 分類 → TAK Server group 同步（現場層隔離第二支槓桿）。
 
 #343 的 admin 紅藍分類只控 ICS 視圖；本模組把同一個分類動作**推到 TAK group**，讓現場端

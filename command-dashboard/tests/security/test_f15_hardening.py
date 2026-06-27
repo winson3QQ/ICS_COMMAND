@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """tests/security/test_f15_hardening.py — #348-F15 雜項硬化
 
 - ① 登入計時旁路：帳號不存在時仍跑等量 PBKDF2（dummy hash_pin），消除帳號列舉 oracle。
