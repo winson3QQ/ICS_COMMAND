@@ -1,18 +1,18 @@
 # ICS_Command Security Policies（承自 ICS_DMAS）
 
-> # ⚠️ 狀態：未完稿骨架（DRAFT SKELETON）— 不得作為合規證據
-> 本文件多數小節仍為 `_Session X 填_` **未填佔位**（見下）。**請勿據此主張任何 control family
-> 的 compliance**——尤其 **AC-1 / AU-1 / IR-1 / CP-1 / PT** 對應的 policy 內文尚未撰寫，依本文件
-> 開頭「未寫 policy 等於該 family 不能主張 compliance」的自訂規則，這些 family **目前不可主張**。
-> 已落地的**技術控制**（RBAC default-deny、cert-bound session、PBKDF2 600k、audit hash chain +
-> runtime 驗證、PII TTL…）證據在 **code + 測試 + `threat_model.md` + ROADMAP《Compliance
-> touchpoints》**；本文件是「政策層」骨架，與技術落地有落差，補實前不等於 ISMS 合規。
-> （#348-F11 誠實化：移除「完稿」overclaim、修死連結、明示主張限制。補實 ISMS 內文為獨立大工。）
+> # 狀態：內文已補實（self-attestation；尚未經第三方驗證）
+> §1–§6 各政策章節 + 附錄 A 對照已撰寫**實質內文**，取自本系統實際落地之控制（#348-F11 補實）。
+> 本文件為**自我聲明（self-attestation）**——可作投標/自評/稽核前置之政策層證據；但通過
+> **ISO 27001 第三方驗證仍需認證 auditor 覆核並加厚程序細節**。
+> **仍有技術缺口（inline 誠實標註、不主張達標）**：at-rest 加密 prod 預設未開（#348 GAP1）、
+> 稽核完整性 AU-9(3) 驗證器未接（#348 GAP2）、events/chats/session PII 無 TTL（#348-F10）、
+> 無 HA / DR 演練未跑（§5.5–5.6）。**控制狀態總覽（✅/🟡/❌ + 證據 + owner）見
+> [`audit-status.md`](audit-status.md)**。
 
 > **依據**：NIST SP 800-53 每個 control family（xx-1）均要求對應 policy 文件；未寫 policy 等於該 family 不能主張 compliance。
 > **組織化**：6 份政策併一檔（原本分 6 檔會碎裂），各為獨立章節，各含 Purpose / Scope / Policy Statements / Procedures / References / Review。
-> **狀態**：**0.1 草稿骨架，未完稿**（多數小節為未填佔位；補實前不得引為合規證據）。
-> **最後更新**：2026-06-24（#348-F11 誠實化；內文骨架仍 2026-04-25）
+> **狀態**：**0.2 內文已補實（self-attestation）**；技術缺口 inline 標註，第三方驗證待 auditor。
+> **最後更新**：2026-06-27（#348-F11：§1–§6 + 附錄 A 補實內文）
 > **擁有者**：ICS_Command 專案（承自 ICS_DMAS）
 > **Review 週期**：每年一次，或重大架構變更時 re-review
 >
@@ -24,7 +24,7 @@
 
 | 項目 | 值 |
 |---|---|
-| 版本 | 0.1（草稿） |
+| 版本 | 0.2（內文補實，self-attestation） |
 | 生效日期 | 2026-04-25（草稿） |
 | 下次 review | 2027-04-25 |
 | 核准 | 待 |
@@ -36,23 +36,30 @@
 > 對應：NIST 800-53 PM-1 / PL-1；ISO 27001 5.2；附表十防護基準 §1
 
 ### 1.1 Purpose
-_Session D 填：說明組織對資訊安全的總原則承諾_
+本系統為民防/應變指揮的共同作戰圖（COP），承載人員位置、事件、決策與傷患等敏感資料，且對外經公網存取。本政策宣示專案對資訊安全的總原則承諾：在「韌性（可用性）優先於機密性」的民防定位下，以縱深防禦保護資料之機密性、完整性與可用性，使系統在實戰/演訓中可信賴運作、事後可課責。
 
 ### 1.2 Scope
-_Session D 填：涵蓋 ICS_DMAS 全系統（command + pi + pwa + 相關基礎設施）_
+涵蓋 ICS_Command 全系統：指揮儀表板後端（FastAPI + SQLite）、儀表板前端、Node.js relay（`server/`）、上游節點 ingress（Pi/PWA 回流介面）、TAK 整合層，及其部署基礎設施（nginx 反代、step-ca、容器/單機棧）。原 ICS_DMAS 三組件之共用元件亦適用。
 
 ### 1.3 Policy Statements
-_Session D 填。核心聲明草稿：_
-- 採 defense-in-depth
-- 最小權限
-- 失敗即關閉（fail-secure）
-- 依據 NIST SP 800-53 Moderate baseline 實作控制項
+- **縱深防禦（defense-in-depth）**：網路層（mTLS）、應用層（RBAC、輸入驗證）、資料層（at-rest 加密能力）、課責層（audit）多層獨立防線。
+- **最小權限**：角色（sysadmin/commander/operator/observer）按職責授予；未明確授權者一律拒絕。
+- **失敗即關閉（fail-secure）**：授權預設 deny（#370）；組態危險時 fail-fast 拒啟動（#290）。
+- **基準**：以 NIST SP 800-53 Moderate baseline 為目標控制集；對齊 OWASP ASVS L2、ISO 27001、台灣《資通安全管理法》與《個資法》。
+- **可課責**：寫入類操作留 audit 痕；安全事件可追溯。
+- **供應鏈紅線**：禁用任何與中國相關之軟體/函式庫/服務（見 CLAUDE.md）。
 
 ### 1.4 Roles and Responsibilities
-_Session D 填：系統管理員 / 指揮官 / 操作員 / 觀察員 各自資安責任_
+| 角色 | 資安責任 |
+|---|---|
+| **sysadmin** | 系統組態、帳號/憑證發放與撤銷、備份還原、安全事件處置；最高權限，操作全程強制 audit。 |
+| **commander** | 指揮決策、帳號管理（受限）；對其指揮範圍之資料正確性與保密負責。 |
+| **operator** | 前線感知標記/事件回報；對其輸入資料之真實性負責，不得越權跨演習場。 |
+| **observer** | 唯讀稽核/觀察；不得寫入；對所見敏感資料保密。 |
+| **專案維護者** | 維護本政策、執行 review、把關供應鏈紅線與 code-review 安全檢查點。 |
 
 ### 1.5 Compliance
-_Session D 填：對應法規 + 違反處置_
+適用法規：台灣《資通安全管理法》（責任等級對應之 ISMS/通報義務）、《個人資料保護法》（蒐集/處理/利用/通報）、《災害防救法》（應變場景）。違反處置：依嚴重度由專案維護者啟動 §4 事件應變；涉個資外洩觸發 §6.5 通報；涉人員違規依組織規章處理。
 
 ### 1.6 References
 - ~~compliance/matrix.md~~（**已廢**：不再維護獨立 matrix.md；Compliance 對照已 inline 於
@@ -69,13 +76,13 @@ _每年 / 重大事件後 re-review_
 > 對應：NIST 800-53 AC-1；ASVS V4；CIS Control 5/6
 
 ### 2.1 Purpose
-_Session A/D 填：規範身份識別、授權、最小權限實施_
+規範身份識別、鑑權、授權與最小權限之實施，確保僅經授權之主體能存取對應資源，並使越權嘗試被擋下且留痕。
 
 ### 2.2 Scope
-_全系統所有帳號與 API endpoint_
+全系統所有帳號、session 與 `/api/*` endpoint；含 WebSocket（`/ws/updates`）與上游 ingress（HMAC 機器對機器路徑）。
 
 ### 2.3 Policy Statements
-_Session A 填。草稿：_
+核心聲明：
 - 所有 API endpoint 預設拒絕，明確授權後才開放
 - 使用 RBAC：系統管理員 / 指揮官 / 操作員 / 觀察員
 - Admin PIN 為 break-glass，非日常使用
@@ -115,12 +122,17 @@ _Session A 填。草稿：_
 First-run token 在 Pi Server **首次啟動時**寫入 `~/.ics/first_run_token`（chmod 600）。此路徑位於 `/home/ics/` 目錄，屬 home partition，**不在 SD 卡系統分區**。SD 卡 clone 只複製系統分區映像，不含 home partition 內容，因此 clone 後的 Pi 不帶 token，無法通過 first-run gate，必須重新完成 setup 流程。
 
 ### 2.5 Procedures
-_Session A 填：建立 / 修改 / 停用帳號流程_
+- **建立帳號**：sysadmin/commander 建帳號 → 後端產系統隨機臨時 PIN（`pin_policy.generate_temp_pin`，不落明文）→ `is_default_pin=1` → 首次登入 `must_change_pin` 強制改（server-side 閘，§2.8.1 P2a）。
+- **發/綁裝置憑證**：mTLS 下，sysadmin 經面板線上發證（step-ca，後端不持 CA 鑰）或僅綁定既有 CN；一帳號可綁多裝置（`account_certs`）。
+- **修改角色/狀態**：經 `/api/admin/accounts/*`（ACCOUNT_MANAGER_ROLES）；變更即寫 audit（`account_role_updated`/`account_status_updated`）。
+- **停用/封存**：`status='suspended'/'archived'` → login 即拒（403）；憑證撤銷（`status='revoked'`）→ 下一個 request 即失效。
+- **PIN 重設**：產新臨時 PIN + 強制首登再改；不洩漏舊值。
 
 ### 2.6 Audit
-_每次 role 變更、帳號建立 / 刪除均寫 audit log_
+每次 role 變更、帳號建立/刪除/停用、憑證綁定/撤銷、登入（成功/失敗）、授權拒絕均寫 audit log（見 §3.4）。
 
 ### 2.7 Review
+每年或重大鑑權/授權架構變更（如 #275 mTLS、#370 default-deny）後 re-review；RBAC 路由分類由 `test_rbac_route_matrix`（golden + default-deny fallthrough）每次測試自動守門。
 
 ### 2.8 Authentication Assurance（鑑權強度分級 / NIST 800-63B AAL）
 
@@ -188,25 +200,36 @@ _每次 role 變更、帳號建立 / 刪除均寫 audit log_
 > 對應：NIST 800-53 AU-1；ASVS V7
 
 ### 3.1 Purpose
-_Session B/D 填：規範 log 內容、保存、存取、完整性保護_
+規範稽核日誌之內容（記錄哪些事件）、保存期限、存取控制與完整性保護，確保安全相關操作可事後追溯、課責（民防 AAR 之命脈），並支援安全事件調查（§4）。
 
 ### 3.2 Scope
 _所有 application log + audit log + access log_
 
 ### 3.3 Policy Statements
-_Session B 填。草稿：_
-- 寫入類操作必須 audit log
-- ✅ Audit log 有結構化 JSON + PII mask 6 類 + logrotate 7 天（C1-D PR#20 2026-04-28）
-- Audit log hash chain 防篡改：另立 task（Step A Q6 凍結，未含於 C1-D）
-- 保存期間 6 個月（一般）/ 依法規要求（個資存取 5 年）
-- Log 不得含明文 PII / 密碼 / token
+- 所有**寫入類/狀態變更**操作必須寫 audit log（`repositories/_helpers.audit`）。
+- Audit 結構化欄位：`operator`/`device_id`/`action_type`/`target_table`/`target_id`/`detail`/`correlation_id`/`exercise_id`/`created_at`/`hash_prev`；演習場自動戳記（Model B）。
+- Log 不得含明文 PII / 密碼 / token（PII mask；hash 只存雜湊）。
+- 保存期間：一般 6 個月；個資存取相關依《個資法》要求（目標 5 年）。
+- **完整性（AU-9(3)）— 已知缺口**：已具 SHA-256 hash chain（`core/audit_chain.py`），但 `verify_audit_chain` 尚未接入端點/排程，且為無金鑰鏈（有 DB 寫權者可重算偽造）→ **#348 GAP2**，補「驗證器接線 + HMAC 金鑰錨/簽章」前**不主張 AU-9(3) 達標**。
 
-### 3.4 Logged Events
-_未填（草稿）：完整 logged-events 清單（AU-2）。實際 audit action_type 清單見 code（`repositories`
-各 audit() 呼叫）+ `static/js/auth.js` `_AUDIT_BADGE`；本節待補成正式對照。原「matrix AU-2」對照已廢
-（matrix.md 不存在），改以 ROADMAP《Compliance touchpoints》＋ code 為準。_
+### 3.4 Logged Events（AU-2）
+實際記錄之 `action_type`（SoT = code 各 `audit()` 呼叫；前端 `_AUDIT_BADGE` 為顯示對照）：
+
+| 類別 | action_type |
+|---|---|
+| **鑑權/Session** | `login`、`logout`/`SESSION_LOGOUT`、`SESSION_EXPIRED`、`SESSION_REAPED`、`IDLE_KICKED`、`BINDING_MISMATCH_IP`、`BINDING_MISMATCH_UA`、`initial_pin_changed` |
+| **帳號** | `account_created`、`account_role_updated`、`account_status_updated`、`account_pin_reset`、`account_display_name_updated`、`account_locked`、`account_unlocked`、`ACCOUNT_ARCHIVED`、`all_accounts_suspended` |
+| **授權** | RBAC 拒絕（`ROLE_DENIED`，`auth/middleware.py`） |
+| **COP/事件/決策** | `cop_entity_created/updated/deleted`、`cop_entity_faction_override`、`event_created`、`event_status_updated`、`event_note_added`、`decision_created`、`decision_made` |
+| **演習/TTX** | `exercise_created/status_updated/deleted/reset`、`ttx_inject_fired` |
+| **TAK/憑證** | `cert_issue`、`cert_bind`、`cert_revoke`、`cert_purge_revoked`、`tak_device_cert_issue`、`tak_user_deregister`、`tak_user_strip_anon` |
+| **系統/資料** | `config_updated`、`db_reset`、`RETENTION_CLEANUP`、`three_pass_sync`、`conflict_resolved`、`manual_input`/`manual_record_synced`、`snapshot_received`、`pi_node_created/deleted/rekeyed` |
+| **備份/還原** | `user_data_backup_downloaded`、`user_data_backup_manifest_read`、`user_data_backup_failed`、`user_data_restore_failed`、`user_data_restore_interrupted` |
+
+> 新增寫入類端點時，須同步在此表登記其 action_type（與 §2.3 中央 gate 登記同為 code-review 檢查點）。
 
 ### 3.5 Review
+每年或新增重大寫入類功能後 re-review；完整性閉環（#348 GAP2）完成後更新本節 AU-9(3) 達標宣告。
 
 ---
 
@@ -215,24 +238,32 @@ _未填（草稿）：完整 logged-events 清單（AU-2）。實際 audit actio
 > 對應：NIST 800-53 IR-1；附表十 §7 事件通報
 
 ### 4.1 Purpose
-_Session C/D 填：資安事件偵測、分類、應變、通報流程_
+規範資安事件之偵測、分類、應變、復原與通報流程，使事件衝擊最小化並符合法定通報義務。
 
 ### 4.2 Scope
+涵蓋未授權存取、憑證/PIN 外洩、帳號爆破、資料外洩/竄改、勒索/主機失陷、服務中斷等；含 prod 單機棧與其資料/金鑰。
 
 ### 4.3 Incident Classification
-_Session C 填。草稿：_
-- Level 1：可疑活動（告警）
-- Level 2：有限資料外洩
-- Level 3：大規模外洩 / 服務中斷
-- Level 4：個資外洩（觸發 72h 通報義務）
+- **Level 1 可疑活動（告警）**：偵測訊號如帳號鎖定、cert 第二因子失敗、binding mismatch（`security_monitor` / audit）。
+- **Level 2 有限資料外洩**：單一帳號/裝置受限影響。
+- **Level 3 大規模外洩 / 服務中斷**：主機失陷、信任根（CA 鑰）疑洩、prod 不可用。
+- **Level 4 個資外洩**：涉傷患/人員個資 → 觸發《個資法》§12 通報義務。
 
-### 4.4 Response Steps
-_Session C 填：Detect → Contain → Eradicate → Recover → Lessons Learned_
+### 4.4 Response Steps（Detect → Contain → Eradicate → Recover → Lessons Learned）
+1. **Detect**：audit log（§3.4）+ `security_monitor`（認證異常）+ 健康/燈號；人工發現亦循此流程。
+2. **Contain**：撤銷受影響裝置憑證（`status='revoked'`，下一 request 即失效）；停用/封存帳號；必要時 `POST /api/tak/connection` 關 TAK；最嚴重者隔離主機/斷網。
+3. **Eradicate**：修補根因（patch/組態）；輪替受影響金鑰/secret（`ICS_PROXY_SHARED_SECRET`、憑證、`BACKUP_KEY`）；重簽憑證。
+4. **Recover**：由 §5 加密備份還原 `data/`；驗 `/api/version` + 登入 + COP；確認 audit 完整。
+5. **Lessons Learned**：事後 AAR；finding 留痕 Issue/PR（對齊 PROCESS〈Post Findings〉），更新本政策與 audit-status 頁。
 
 ### 4.5 Notification
-_Session C 填：內部 / PDPC / 司法機關（若涉及犯罪）_
+- **內部**：第一時間通知專案維護者 / sysadmin。
+- **個資外洩（Level 4）**：依《個資法》§12 於知悉後**適當方式通知當事人**並向主管機關通報（PDPC/目的事業主管機關），72 小時為作業目標。
+- **資安事件**：依《資通安全管理法》責任等級之通報時限向上級/主管機關通報。
+- **涉及犯罪**：報請司法/警察機關。
 
 ### 4.6 Review
+每次 Level ≥2 事件後 re-review 本流程；每年定期演練（含通報路徑）。
 
 ---
 
@@ -292,37 +323,55 @@ _Session C 填：內部 / PDPC / 司法機關（若涉及犯罪）_
 > 對應：個資法 PDPA；NIST Privacy Framework；NIST 800-53 PT family
 
 ### 6.1 Purpose
-_Session B/D 填：個人資料的蒐集、處理、利用原則_
+規範系統內個人資料之蒐集、處理、利用與刪除原則，符合《個資法》並落實資料最小化。
 
-### 6.2 Scope
-_傷患姓名 / 年齡 / 症狀 / 過敏史；志工帳號；演練參與者資料_
+### 6.2 Scope（本系統實際 PII 盤點）
+- **人員/傷患**：`events`（`related_person_name`、`location_desc`、`operator_name`、`reported_by_unit`、`description`、`notes`）。
+- **位置軌跡**：`cop_entity_tracks`（lat/lon 時序）、`cop_entities`（callsign、座標）。
+- **通聯**：`chats.message`。
+- **帳號/連線**：accounts、`sessions`（IP、user-agent、cert CN）。
 
 ### 6.3 Principles
-_Session B 填：_
-- Purpose limitation（蒐集目的明確）
-- Data minimization（必要資料才蒐集）
-- Storage limitation（超過保存期刪除）
-- Integrity（加密儲存、存取稽核）
-- Transparency（告知當事人）
+- **目的限定**：僅為應變指揮/演訓蒐集。
+- **資料最小化**：必要欄位才蒐集。
+- **保存限定**：軌跡 PII 90 天 TTL（`retention_service`，預設開、sysadmin 可調、TTL=0 防呆）。⚠ **缺口（#348-F10）**：`events`/`chats`/`sessions.ip` 目前**無 TTL**，待補保存期限。
+- **完整性/機密性**：存取經 RBAC + scope 隔離 + audit；at-rest 加密能力具備（#229，prod 啟用為 #348 GAP1）。
+- **透明**：對演訓參與者/當事人告知蒐集。
 
 ### 6.4 Data Subject Rights
-_Session B 填：查閱 / 更正 / 停止利用 / 刪除 的程序_
+當事人查閱/更正/停止利用/刪除之請求，經 sysadmin/commander 於系統內處理：查閱（依場次/人員撈）、更正（編輯對應記錄）、刪除（刪 cop_entity/事件/通聯，受 archived/propagate 限制）。reset/exercise-delete 級聯清資料（含 chats，PII 衛生）。
 
 ### 6.5 Breach Notification
-_Session B 填：72h PDPC 通報流程（個資法 §12）_
+個資外洩依《個資法》§12：知悉後以適當方式通知當事人並向主管機關通報（72h 作業目標）。與 §4.5 一致。
 
 ### 6.6 Cross-Border Transfer
-_Session B 填：演練資料不出境；雲端 AI 僅用匿名化資料_
+演訓/實戰資料**不出境**、不上公有雲。AI 推論若用外部模型，僅以**匿名化/去識別**資料；本系統 AI 路徑現為本地（無雲端 PII 傳輸）。
 
 ### 6.7 Review
+每年或新增 PII 欄位/資料流時 re-review；補齊 §6.3 缺口（events/chats/session TTL）後更新。
 
 ---
 
 ## 附錄 A：Policy 與程式碼 / 設定的對應
 
-_未填（草稿）：每個 policy statement → 實作檔案 / 設定的對照表。原規劃的 `matrix.md` control
-對照已廢；現行 compliance↔實作對照 inline 於 [`docs/ROADMAP.md`](../ROADMAP.md) 各 phase 的
-《Compliance touchpoints》。本附錄待補成 policy-statement 粒度的對照。_
+Policy statement → 實作/設定 → 證據對照（控制狀態總覽見 [`audit-status.md`](audit-status.md)）：
+
+| Policy | 控制 | 實作 / 設定 | 證據 |
+|---|---|---|---|
+| §1.3 fail-secure | default-deny 授權 | `auth/role_enum.allowed_roles_for` | #370；`test_rbac_route_matrix` |
+| §2.3 每 endpoint 預設拒絕 | 中央 RBAC gate | `auth/middleware.py` | #287/#370 |
+| §2.3 讀寫授權對稱 | scope 隔離 | `services/exercise_service.resolve_scope` | #288 |
+| §2.8 AAL2 | mTLS + PIN 雙因子 | nginx `ssl_verify_client`；`account_certs` | #275 |
+| §2.8 proxy 信任 | 共享密鑰 fail-fast | `ICS_PROXY_SHARED_SECRET`；`main.py:95` | #290 |
+| §2.8 PIN KDF | PBKDF2 600k + rehash | `repositories/_helpers.py` | wave4 |
+| §3.3 寫入留痕 | audit() | `repositories/_helpers.audit` | §3.4 |
+| §3.3 完整性 | hash chain（⚠ 驗證未接）| `core/audit_chain.py` | #348 GAP2 |
+| §5.3 加密備份 | Fernet `data/` 整包 | `services/user_data_backup_service.py` | #228 |
+| §6.3 保存限定 | 軌跡 90d TTL | `services/retention_service.py` | #207 |
+| §6 at-rest | SQLCipher（⚠ 預設未開）| `core/database.py` `_connect` | #229；#348 GAP1 |
+| §1.3 供應鏈紅線 | 無中國元件 | `requirements.txt` 維護者註記 | CLAUDE.md |
+
+> 控制狀態（✅/🟡/❌）+ 標準對照 + 缺口 owner：見 [`audit-status.md`](audit-status.md)（single-pane）。
 
 ---
 
@@ -333,3 +382,4 @@ _未填（草稿）：每個 policy statement → 實作檔案 / 設定的對照
 | 2026-04-25 | 0.1 | 骨架建立（多數小節未填佔位） |
 | 2026-06-24 | 0.1.1 | #348-F11 誠實化：加未完稿/不可作合規證據警語、明示 AC-1/AU-1/IR-1/CP-1/PT 暫不可主張、修死連結 `matrix.md`（已廢→指 ROADMAP Compliance touchpoints）、擁有者改 ICS_Command |
 | 2026-06-24 | 0.1.2 | #348-F5：§2.8.1 PIN 熵「已評估接受風險」doctrine（PIN=mTLS 後本地次因子，前提/殘留界定，不主張達 800-63B 強度）。#348-F9：§5 Contingency Plan 補真實機制 runbook（加密 data/ 備份 + 應用層/卷層還原 + 金鑰前提），誠實標註 DR 演練未跑、無 HA = 已記錄缺口（不主張 BC/DR 達標） |
+| 2026-06-27 | 0.2 | #348-F11 補實內文：§1（資安總政策 purpose/scope/statements/roles/compliance）、§2.1/2.2/2.5–2.7、§3.1/3.3/§3.4（AU-2 logged-events 實際清單）/3.5、§4（事件應變全節 detect→notify）、§6（個資全節 + 實際 PII 盤點）、附錄 A（policy↔code 對照）；header 改 self-attestation；GAP1/GAP2/F10/DR 缺口 inline 標註、不主張達標 |
