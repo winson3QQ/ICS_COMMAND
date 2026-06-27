@@ -134,13 +134,17 @@ async def sign_client_csr(username: str, password: str, csr_pem: str) -> str:
     **回 200 + JSON `{"signedCert": "<base64 DER>"}`**（非裸 PEM！dogfood 實證）→ 本函式解 JSON
     抽 signedCert（base64 DER）包成 PEM。非 200 / 無 signedCert → CertIssuanceError。
     """
+    # TLS：對齊 tak_rest_client.build_marti_ssl_context 的 fail-closed 語意（無 cafile 又非 insecure → raise，
+    # 不默默裸奔）。**不直接複用該 helper**：它強制 load_cert_chain（mTLS client 證），但 signClient 走 :8446
+    # clientAuth=false + HTTP Basic、無 client 證 → 自建 server-only 驗證 context。
     ssl_ctx: ssl.SSLContext | bool
-    if config.TAK_ALLOW_INSECURE_TLS:
-        ssl_ctx = False
-    elif config.TAK_CAFILE:
+    if config.TAK_CAFILE:
         ssl_ctx = ssl.create_default_context(cafile=config.TAK_CAFILE)
+    elif config.TAK_ALLOW_INSECURE_TLS:
+        log.warning("[tak-enroll] allow_insecure_tls：signClient 不驗 server 憑證（MITM 風險，僅 dev）")
+        ssl_ctx = False
     else:
-        ssl_ctx = ssl.create_default_context()
+        raise CertIssuanceError("signClient TLS 須 TAK_CAFILE 驗 server 憑證；dev 須顯式 TAK_ALLOW_INSECURE_TLS=True")
     url = config.TAK_ENROLL_URL.rstrip("/") + "/Marti/api/tls/signClient/v2"
     params = {"clientUid": f"ics-{uuid.uuid4().hex[:12]}", "version": "1.8"}
     auth = aiohttp.BasicAuth(username, password)
@@ -173,11 +177,14 @@ def _parse_signed_cert(body: str) -> str:
         data = json.loads(body)
     except json.JSONDecodeError:
         data = None
-    if isinstance(data, dict):
-        b64 = (data.get("signedCert") or "").strip()
-        if not b64:
-            raise CertIssuanceError("signClient 回應 JSON 無 signedCert")
-        return "-----BEGIN CERTIFICATE-----\n" + b64 + "\n-----END CERTIFICATE-----\n"
+    if data is not None:
+        # v2 正常回 dict {signedCert}；JSON 解析成功但非該形狀 = 非預期回應（給清楚錯誤，不誤導成「解析不出」）。
+        if isinstance(data, dict):
+            b64 = (data.get("signedCert") or "").strip()
+            if b64:
+                return "-----BEGIN CERTIFICATE-----\n" + b64 + "\n-----END CERTIFICATE-----\n"
+        raise CertIssuanceError("signClient 回應 JSON 無 signedCert（非預期格式）")
+    # 非 JSON → 保險：裸 PEM（v1 / 其他版本）取第一張 CERTIFICATE
     m = re.search(r"-----BEGIN CERTIFICATE-----.*?-----END CERTIFICATE-----", body, re.S)
     if not m:
         raise CertIssuanceError("signClient 回應解析不出憑證")
