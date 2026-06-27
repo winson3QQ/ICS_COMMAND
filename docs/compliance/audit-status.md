@@ -42,6 +42,7 @@
 ### 周邊 / AppSec（ASVS V5/13/14 / OWASP Top10）
 | TLS 1.2/1.3 + 安全標頭 + CSP | 🟡 | #289；`deploy/nginx/` | 次要頁 CSP report-only #348-F14 |
 | 注入（SQL 參數化 / 路徑遍歷）| ✅ | 全參數化 | tile 路由殘留(低)#348 |
+| 程式 SAST（bandit）| ✅ | **0 HIGH / 0 actionable**（2026-06-27）| 10 MEDIUM B608 全 false-positive（參數化 SQL，f-string 僅含 `?` placeholder/欄位名/常數 scope，值經 bind——逐一驗）；B105 `'ics.session.'`=WS 子協定前綴非密碼；24 LOW=try/except-pass 等慣例 |
 | CSRF（custom header 非 cookie）| ✅ | `auth/middleware.py` | — |
 | proxy 信任 fail-fast | ✅ | #290；`main.py:95` | — |
 | 黑箱滲測 | ❌ | — | 未做 #301 |
@@ -79,8 +80,9 @@
 - 供應鏈 SBOM（EO/CRA/NTIA）：🟡→大致就緒（差 cosign 簽章）。
 
 ## 3. 最新掃描基線
-- **grype（2026-06-27，image `release-ea86203`）**：Critical 0 / High 0 / Medium 0 / Low 0；Unknown 39 + Negligible 9（全 Debian base-OS，非 ICS 相依）。詳 [`sbom/VEX-README.md`](../../sbom/VEX-README.md) §3。
-- 每 release 須重掃（漏洞 DB 每日更新）。
+- **grype SCA（2026-06-27，image `release-ea86203`）**：Critical 0 / High 0 / Medium 0 / Low 0；Unknown 39 + Negligible 9（全 Debian base-OS，非 ICS 相依）。詳 [`sbom/VEX-README.md`](../../sbom/VEX-README.md) §3。
+- **bandit SAST（2026-06-27，`src/`，bandit 1.9.4）**：0 HIGH；10 MEDIUM（B608 SQL）+ 24 LOW **經 triage 全為 false-positive / 慣例**（SQL 全參數化、B105 為子協定前綴、B110 try/except-pass 刻意）→ **0 actionable**。
+- 每 release 須重掃（grype 漏洞 DB 每日更新；SAST 隨 code 變動）。
 
 ## 4. 待補缺口（owner）
 | 缺口 | 單 | owner |
