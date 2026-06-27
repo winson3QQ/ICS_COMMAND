@@ -630,6 +630,27 @@ export function exportDashboardJSON(data) {
   URL.revokeObjectURL(a.href);
 }
 
+// #419：下載產品 SBOM（CycloneDX）。READ_ROLES（所有登入角色可達）；非 release build → 後端 404。
+export async function downloadSBOM() {
+  let resp;
+  try { resp = await authFetch(API_BASE + '/api/sbom'); }
+  catch (e) { alert('SBOM 下載失敗（連線錯誤）'); return; }
+  if (resp.status === 404) { alert('此 build 未附 SBOM（僅正式 release build 提供）'); return; }
+  if (!resp.ok) { alert('SBOM 下載失敗（' + resp.status + '）'); return; }
+  const data = await resp.json().catch(() => null);
+  if (!data) { alert('SBOM 內容無法解析'); return; }
+  const blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'ics-sbom-' + (document.body.dataset.cmdVersion || 'current') + '.cdx.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
+  // 元件數回饋（#419）
+  const n = Array.isArray(data.components) ? data.components.length : null;
+  const sub = el('si-sbom-sub');
+  if (sub && n != null) sub.textContent = '已下載 · ' + n + ' 個元件';
+}
+
 export async function showAuditLog(existingLogs = null, activeFilter = 'all') {
   if (Array.isArray(existingLogs)) {
     _auditRenderModal(existingLogs, activeFilter);

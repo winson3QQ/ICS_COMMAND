@@ -6,7 +6,8 @@ import time
 from datetime import UTC, datetime
 from pathlib import Path
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import FileResponse
 
 from auth.service import check_session
 from core.config import (
@@ -16,6 +17,7 @@ from core.config import (
     DB_PATH,
     HEALTH_DB_LATENCY_DEGRADED_MS,
     HEALTH_DISK_DEGRADED_PCT_THRESHOLD,
+    SBOM_PATH,
 )
 from core.database import get_health_schema_version, open_readonly_live
 from repositories.audit_repo import get_audit_log
@@ -69,6 +71,26 @@ def version():
         "server_version": APP_VERSION,
         "build": BUILD_ID,
     }
+
+
+@router.get("/api/sbom", tags=["系統"])
+def sbom():
+    """產品 SBOM（CycloneDX）下載（#419）。
+
+    RBAC：READ_ROLES（observer 以上，需登入）——由 auth_middleware 經 allowed_roles_for
+    閘控。**不入未認證 allowlist**（不同於 /api/version）：SBOM 列確切相依版本＝對匿名訪客
+    的 CVE 偵察面，公網 prod 不主動公布（縱深防禦）。供關於頁下載 / 客戶資安盡職調查。
+
+    檔案於 release build 由 gen_release_sbom.sh 產 + Dockerfile 烤入；dev / 非 release
+    build 無此檔 → 404（graceful，非錯誤）。
+    """
+    if not SBOM_PATH.exists():
+        raise HTTPException(404, "此 build 未附 SBOM（僅正式 release build 提供）")
+    return FileResponse(
+        SBOM_PATH,
+        media_type="application/vnd.cyclonedx+json",
+        filename=SBOM_PATH.name,
+    )
 
 
 @router.get("/api/health", tags=["系統"])

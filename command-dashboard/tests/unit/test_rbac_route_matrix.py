@@ -154,6 +154,7 @@ COMMAND  POST   /api/ttx/exercises/{exercise_id}/injects
 COMMAND  POST   /api/ttx/exercises/{exercise_id}/injects/{inject_id}/push
 COMMAND  GET    /api/ttx/scenarios
 COMMAND  POST   /api/ttx/scenarios/{scenario_id}/load
+READ     GET    /api/sbom
 READ     GET    /api/version
 """
 

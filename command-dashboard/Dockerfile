@@ -31,6 +31,9 @@ COPY src/ ./src/
 COPY static/ ./static/
 # #302：用 minified JS 覆蓋 raw（同檔名，import 路徑/dynamic import 不變）。HTML/CSS/seed 不動。
 COPY --from=jsmin /jsmin/min/ ./static/js/
+# #419：SBOM 烤入 /app/sbom/（release build 由 gen_release_sbom.sh 產 current.cdx.json；
+# dev build 僅 .gitkeep → GET /api/sbom 回 404）。非 static（不走 nginx，經 app RBAC）。
+COPY sbom/ ./sbom/
 
 # runtime 資料夾（DATA_DIR = BASE_DIR/data）。掛 named volume；先建好並交給 ics 使用者，
 # 新 named volume 首次使用會繼承此目錄 owner，確保非 root 可寫。

@@ -38,6 +38,12 @@ MAP_CONFIG_PATH: Path = DATA_DIR / "map_config.json"
 EVENT_TAXONOMY_SEED: Path = STATIC_DIR / "event_taxonomy.seed.json"
 EVENT_TAXONOMY_PATH: Path = DATA_DIR / "event_taxonomy.json"
 
+# #419：產品 SBOM（CycloneDX）。release build 由 scripts/gen_release_sbom.sh 產
+# command-dashboard/sbom/current.cdx.json + Dockerfile 烤入 /app/sbom/（BASE_DIR=/app）。
+# 非 release（dev）build 無此檔 → GET /api/sbom 回 404。不放 static/（prod nginx 服務 static
+# 會繞過 RBAC）；走 /api/sbom 經 auth_middleware（READ_ROLES）。
+SBOM_PATH: Path = BASE_DIR / "sbom" / "current.cdx.json"
+
 # P1-17（issue #88）永久設施公開資料底圖層：唯讀基準層，**只讀 static seed**，
 # 無 runtime/data 副本、非 user-data、不受 exercise scoping / reset 影響。
 # 資料由維護者腳本 scripts/import_facilities.py 從台灣政府開放資料產生（非中國）。

@@ -41,5 +41,12 @@ if new and not new.endswith(b"\n"):
 open(f, "wb").write(new)
 PY
 
+# #419：另落 docker build context 內固定路徑，供 Dockerfile 烤入 → GET /api/sbom 服務。
+# （gitignored build artifact；committed 的版本化紀錄為 repo 根 sbom/releases/。）
+CTX_SBOM="$REPO/command-dashboard/sbom/current.cdx.json"
+mkdir -p "$(dirname "$CTX_SBOM")"
+cp "$OUT" "$CTX_SBOM"
+
 echo "✅ SBOM → ${OUT#"$REPO"/}"
+echo "   烤入用副本 → ${CTX_SBOM#"$REPO"/}（Dockerfile COPY → /app/sbom/ → GET /api/sbom）"
 echo "   下一步：隨 release commit 一起 git add（步驟 9 打 backend-v${VER} tag 即釘版）。"

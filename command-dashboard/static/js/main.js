@@ -18,7 +18,7 @@
 import {
   authInit, cmdLogout, PinLock,
   openSettings, closeSettings,
-  exportDashboardJSON, showAuditLog,
+  exportDashboardJSON, showAuditLog, downloadSBOM,
   openAdminPanel, closeAdminPanel,
   admShowTab,
   admBackupNow, admRefreshBackups, admToggleDetail, admToggleBackupList, admRestore, admDownloadBackup, admRestoreFromList,
@@ -202,6 +202,7 @@ document.addEventListener('click', function (e) {
       break;
     }
     case 'showAuditLog':   showAuditLog(); break;
+    case 'downloadSBOM':   downloadSBOM(); break;   // #419 SBOM 下載（READ_ROLES）
     // #334：AAR 回放——同分頁導航（token 存 sessionStorage，新分頁拿不到登入態；aar.html 有「← 返回指揮台」）。
     case 'openAar':        window.location.href = '/static/aar.html'; break;
     case 'openAdminPanel': openAdminPanel(); break;
