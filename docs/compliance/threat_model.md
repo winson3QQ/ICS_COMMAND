@@ -208,6 +208,8 @@ Command **信任 TAK Server 轉發的所有 CoT** —— 即使傳輸加密（§
 
 > **架構含義**：離線簽＝握發證權，但「繞過 TAK 不登記」正是撤不掉的根源；**補登 TAK DB 可兼得發證權與撤銷力**。**更新本節 §8.3(c) 殘餘**「發出的 TAK 裝置證無 app 層撤銷」→ 路徑已明（層2，#318），非無解。
 
+> **[2026-06-27 enrollment 落地 — CA 上線進 TAK + VPN 配套（#411 / #420 Phase B）]**：場端裝置改走 **TAK Certificate Enrollment（:8446 signClient）** 取代 offline 簽 + data package（TAK Aware 1.8.1 data-package import 確認為 app 缺陷 `-25300`：登記 server、存 server truststore，但**不存 client identity** → 連線不出示證 → 死路；enrollment 走 `CSRRequestor` 才正確存證。實機 `3QQ-takaware` 連上實證）。**新暴露（升級 §8.3 殘餘 b）**：enrollment 需 TAK 自簽 → **`ICS-TAK-SVC-CA` 私鑰須上線進跑著的 TAK process**（`signing-ca.jks` @ `/opt/tak/certs/files/` + CoreConfig `<certificateSigning>`），從「offline CA 鑰落檔案系統」升級為「**CA 鑰在 live TAK 內**」——TAK 被打穿 = 可簽任意受信裝置證（blast radius ↑，連動 §8.4 / #323）。**緩解（已落地）**：(1) **VPN 前置收公網**（#280 WireGuard：TAK :8089/:8446 對公網零入口、只走隧道/內網 → 攻擊者須先進 VPN 才碰得到 TAK）—— CA 上線**嚴格排在公網 cutover 之後**（A→B 順序，實機驗證 :8089 外部不可達**才**上 CA；分類器二度擋下「公網未關即上 CA」、確認 gate 後放行）；(2) enrollment 帳號走 UserManager **bcrypt**（非匿名簽，密碼複雜度強制）；(3) 簽出證仍進 `certificate` 帳本 → 對齊 §8.3 層2 撤銷（#318）、reconcile 成權威，**消除 offline 簽「TAK 不記帳」的撤銷盲區**。**殘餘**：CA-online 放大 TAK-host 被攻陷後果（§8.4 at-rest + #323 live-host）→ LUKS（#231）緩解冷碟、live-host 仍靠 VPN + host 硬化；enrollment 帳號 `aware1` 目前為**測試級**（明文密碼留痕，正式須換 + 接 RBAC）。設定可重現步驟見 `deploy/tak-server/ENROLLMENT.md`。
+
 ### 8.4 同機部署的 at-rest 與統一金鑰託管（缺口）
 
 **事實**：TAK Server 與 ICS Command **部署在同一台主機**。同一顆碟上同時有：ICS `cop_entities`（SQLite）、**TAK Server 的 PostgreSQL repository**（存每個 uid 最新 CoT、mission、GeoChat）、step-ca / TAK 憑證與**私鑰**、log、map_config、上傳檔。
