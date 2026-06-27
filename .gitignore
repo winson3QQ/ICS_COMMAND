@@ -65,6 +65,10 @@ command-dashboard/.coverage
 command-dashboard/.pytest_cache/
 command-dashboard/tests/reports/
 
+# #419：release SBOM 烤入用副本（build artifact；gen_release_sbom.sh 於 release 產、
+# Dockerfile COPY 進映像）。版本化紀錄走 repo 根 sbom/releases/（committed），此副本不入 git。
+command-dashboard/sbom/current.cdx.json
+
 # 截圖（badge 資產除外）
 command-dashboard/static/*.png
 !command-dashboard/static/badge.png

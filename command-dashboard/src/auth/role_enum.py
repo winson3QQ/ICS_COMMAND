@@ -158,6 +158,10 @@ def allowed_roles_for(method: str, path: str) -> frozenset[str] | None:
     # 編輯（POST）限 sysadmin（admin 編輯器 #66 決策）。
     if path == "/api/event_taxonomy":
         return READ_ROLES if method == "GET" else SYSADMIN_ONLY
+    # #419 SBOM 下載：READ_ROLES（observer 以上，需登入）。列確切相依版本＝偵察面，
+    # 故不入 config.py 未認證 allowlist（不同於 /api/version）；經 middleware 閘控。
+    if path == "/api/sbom":
+        return READ_ROLES
     if path == "/api/map/upload-image":
         return COMMAND_ROLES
     if path.startswith("/api/ai/recommendations/"):

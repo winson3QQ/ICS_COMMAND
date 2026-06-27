@@ -1,0 +1,3 @@
+# #419：保留此目錄存在，讓 Dockerfile `COPY sbom/ ./sbom/` 在「尚無 release SBOM」時也成立。
+# release build 由 scripts/gen_release_sbom.sh 在此產 current.cdx.json（gitignored），
+# Dockerfile 烤入 /app/sbom/ → GET /api/sbom 服務。dev build 僅此 .gitkeep → /api/sbom 回 404。
