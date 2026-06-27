@@ -2,7 +2,7 @@
   "components": [
     {
       "bom-ref": "requirements-L16",
-      "description": "requirements line 16: aiohttp>=3.9",
+      "description": "requirements line 16: aiohttp==3.14.1",
       "externalReferences": [
         {
           "comment": "implicit dist url",
@@ -11,12 +11,13 @@
         }
       ],
       "name": "aiohttp",
-      "purl": "pkg:pypi/aiohttp",
-      "type": "library"
+      "purl": "pkg:pypi/aiohttp@3.14.1",
+      "type": "library",
+      "version": "3.14.1"
     },
     {
       "bom-ref": "requirements-L6",
-      "description": "requirements line 6: cryptography>=43.0.0",
+      "description": "requirements line 6: cryptography==48.0.1",
       "externalReferences": [
         {
           "comment": "implicit dist url",
@@ -25,8 +26,9 @@
         }
       ],
       "name": "cryptography",
-      "purl": "pkg:pypi/cryptography",
-      "type": "library"
+      "purl": "pkg:pypi/cryptography@48.0.1",
+      "type": "library",
+      "version": "48.0.1"
     },
     {
       "bom-ref": "requirements-L9",
@@ -141,7 +143,7 @@
     },
     {
       "bom-ref": "requirements-L4",
-      "description": "requirements line 4: structlog>=24.1.0",
+      "description": "requirements line 4: structlog==26.1.0",
       "externalReferences": [
         {
           "comment": "implicit dist url",
@@ -150,8 +152,9 @@
         }
       ],
       "name": "structlog",
-      "purl": "pkg:pypi/structlog",
-      "type": "library"
+      "purl": "pkg:pypi/structlog@26.1.0",
+      "type": "library",
+      "version": "26.1.0"
     },
     {
       "bom-ref": "requirements-L2",

@@ -1,9 +1,9 @@
 fastapi==0.136.0
 uvicorn[standard]==0.30.0
 python-multipart==0.0.26
-structlog>=24.1.0
+structlog==26.1.0
 # Backup DR Drill (#41) — Fernet AES-128-CBC for encrypted backups (E-4 唯一允許新 dep)
-cryptography>=43.0.0
+cryptography==48.0.1
 # P2-02 (#102) — CoT XML XXE-safe 解析。維護者 Christian Heimes（CPython core），PSF/MIT，非中國。
 # 純 Python、無 C extension、無傳遞相依。Wave 2 訂閱層另加 pytak[with-takproto]。
 defusedxml==0.7.1
@@ -13,7 +13,7 @@ defusedxml==0.7.1
 pytak[with_takproto]==7.3.10
 # P2-11 (#138) — Marti REST HTTP client（aiohttp）。pytak 7.x 不再把 aiohttp 列為
 # 必填傳遞相依，需明確聲明。維護者 aio-libs（歐美開源社群），Apache-2.0，非中國。
-aiohttp>=3.9
+aiohttp==3.14.1
 # P1-12a (#227) — FIDO2/CTAP2 hmac-secret（scripts/keymgmt 用，app runtime 不 import）。
 # 維護者 Yubico AB（瑞典），BSD-2-Clause，非中國。lazy import：無金鑰的
 # dev / CI 場景走 ICS_MASTER_KEY fallback 或 mock，不觸發此套件。
