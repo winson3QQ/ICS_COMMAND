@@ -118,6 +118,20 @@ class TestRoundTrip:
         t.join(timeout=5)
         assert r["ok"] is False and "registrar:ERR bad-ip" in r["reason"]
 
+    def test_peer_handshakes_parses(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(config, "WG_QUEUE_DIR", str(tmp_path))
+        monkeypatch.setattr(config, "WG_PEER_TIMEOUT_S", 5.0)
+        os.makedirs(tmp_path / "requests", exist_ok=True)
+        pub2 = "QYmrHH0LAMWzAK+tWAfhYxJw5TizlgrSYyf0Lm+LTj1="
+        resp = f"OK\n{GOOD_PUB}\t1700000000\n{pub2}\t0\nbad-line-ignored\n"
+        captured: list[str] = []
+        t = threading.Thread(target=_fake_registrar, args=(str(tmp_path), resp, captured))
+        t.start()
+        hs = wg_provision.peer_handshakes()
+        t.join(timeout=5)
+        assert hs == {GOOD_PUB: 1700000000, pub2: 0}
+        assert captured == ["\n\nstatus\n\n"]  # status op：無 pubkey/ip，op=status
+
 
 class TestKeygen:
     def test_gen_keypair_format(self):

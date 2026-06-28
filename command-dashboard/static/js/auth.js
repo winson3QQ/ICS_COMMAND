@@ -1151,6 +1151,7 @@ async function _appendWgPeers(box) {
       html += '<div style="display:flex;align-items:center;gap:6px;padding:3px 0;border-bottom:1px solid var(--border);font-size:12px;">'
         + '<span style="font-family:monospace;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + _escAudit(p.callsign || '') + '">' + _escAudit(p.callsign || '—') + '</span>'
         + '<span style="font-family:monospace;color:var(--text2);font-size:11px;">' + _escAudit(p.address || '') + '</span>'
+        + '<span style="font-size:10px;" title="' + (p.online ? '近期有握手（≈在線）' : '久未握手（≈離線）') + '">' + (p.online ? '🟢' : '⚪') + '</span>'
         + '<span style="color:var(--green);font-size:10px;">active</span>'
         + '</div>';
     }
