@@ -65,7 +65,10 @@ def _seed(exid):
         },
         exercise_id=exid,
     )
-    cop_entity_repo.insert_cop_track(CoPEntityTrack(uid="u-alpha", t=_T.format(h=2), lat=24.1, lon=120.1))
+    # #267：軌跡自帶 exercise_id（denormalize，m038）；timeline 改查 t.exercise_id → seed 須帶。
+    cop_entity_repo.insert_cop_track(
+        CoPEntityTrack(uid="u-alpha", t=_T.format(h=2), lat=24.1, lon=120.1, exercise_id=exid)
+    )
     insert_chat(
         ChatIn(
             sender_uid="u-alpha", callsign="ALPHA", message="到位", group="ops", time=_T.format(h=1), exercise_id=exid
@@ -379,3 +382,15 @@ class TestReviewFixes:
         out = build_timeline(exid, limit=4)
         assert out["meta"]["count"] == 4
         assert out["meta"]["truncated"] is False
+
+    def test_timeline_track_survives_entity_rescope(self, tmp_db):
+        """#267 bug 修（review HIGH）：archive 後 entity 重 stamp 回 NULL，AAR timeline 仍須用軌跡自身
+        exercise_id 取到軌跡（修前用 e.exercise_id JOIN → 回 0、AAR 空白）。"""
+        exid = _mk_exercise()
+        _mk_entity("u-r", exid, callsign="R")
+        cop_entity_repo.insert_cop_track(
+            CoPEntityTrack(uid="u-r", t=_T.format(h=2), lat=24.1, lon=120.1, exercise_id=exid)
+        )
+        cop_entity_repo.set_exercise_for_uid("u-r", None)  # 模擬 archive→restamp（entity 回 NULL）
+        items = [it for it in build_timeline(exid)["items"] if it["type"] == "track"]
+        assert len(items) == 1 and items[0]["payload"]["uid"] == "u-r"  # 軌跡仍在 AAR

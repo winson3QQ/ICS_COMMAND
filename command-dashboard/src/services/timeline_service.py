@@ -58,9 +58,12 @@ def _tracks(conn, exercise_id: int, since, until, cap: int) -> list[dict]:
     rows = conn.execute(
         # #4：多帶 e.type（CoT type）→ AAR 前端據此衍生 2525 SIDC / 敵我態畫原符號。
         # 軌跡不存歷史敵我態 → 用 entity 現值（中途改敵我態 AAR 顯示最終態，v1 可接受）。
+        # #267 bug 修：filter 走**軌跡自身** t.exercise_id（denormalize，m038），不再 e.exercise_id——
+        # 演習結束後 entity 重 stamp 回 NULL，用 e.exercise_id 會查到 0 筆（AAR timeline 空白）。JOIN 仍留
+        # 但只為取顯示欄 e.callsign/e.type（軌跡不存歷史敵我態 → 用 entity 現值，v1 可接受；同下原註）。
         "SELECT t.id, t.uid, t.t, t.lat, t.lon, t.hae, t.heading_deg, t.speed_mps, e.callsign, e.type "
         "FROM cop_entity_tracks t JOIN cop_entities e ON t.uid = e.uid "
-        f"WHERE e.exercise_id = ?{frag} ORDER BY t.t, t.id LIMIT ?",  # nosec B608 — frag 為常數片段
+        f"WHERE t.exercise_id = ?{frag} ORDER BY t.t, t.id LIMIT ?",  # nosec B608 — frag 為常數片段
         params,
     ).fetchall()
     return [
