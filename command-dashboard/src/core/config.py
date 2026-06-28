@@ -371,6 +371,9 @@ TAK_ENROLL_URL: str = os.getenv("TAK_ENROLL_URL", "")
 WG_QUEUE_DIR: str = os.getenv("WG_QUEUE_DIR", "")  # 與 ics-wg 容器共享的卷掛載點，如 /wg-queue
 WG_SUBNET_PREFIX: str = os.getenv("WG_SUBNET_PREFIX", "10.13.13.")  # VPN 子網前綴（peer /32 須落此段，fail-closed）
 WG_PEER_TIMEOUT_S: float = float(os.getenv("WG_PEER_TIMEOUT_S", "8.0"))  # 等 ics-wg 容器結果逾時（best-effort）
+# 組裝裝置端 .conf 用：server 公鑰（ics-wg 容器開機產，寫在 /wg-queue/server.pub，部署時填此）+ 對外端點。
+WG_SERVER_PUBKEY: str = os.getenv("WG_SERVER_PUBKEY", "")  # ics-wg 的 server pubkey（裝置 .conf 的 [Peer] PublicKey）
+WG_ENDPOINT: str = os.getenv("WG_ENDPOINT", "")  # 對外 WG 端點 公網IP:port（裝置 .conf 的 Endpoint），如 1.2.3.4:51820
 
 # ── #318 層2 真撤銷：ICS 直連 TAK Server postgres ──────────────────────────────
 # reality check（2026-06-26，#318）：TAK 對 CA 信任的證 TLS 不拒、deregister 只降匿名(__ANON__)；

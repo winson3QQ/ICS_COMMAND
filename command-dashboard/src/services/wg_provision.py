@@ -184,3 +184,47 @@ def qr_png(text: str, scale: int = 6) -> bytes:
     buf = io.BytesIO()
     segno.make(text, error="m").save(buf, kind="png", scale=scale)
     return buf.getvalue()
+
+
+def provision_device(callsign: str, operator: str) -> dict:
+    """發裝置證連帶配 WG 的單一入口（方案 B）：產 keypair → 配 IP（帳本）→ 加 peer（容器）→ 組 .conf + QR。
+
+    回 {ok, reason, conf?, qr?, address?}。**best-effort 不 raise**：未配置 / 端點未設 / 池滿 / 加 peer 失敗
+    → ok=False（發證主流程照常出 TAK 證，WG 待補）。加 peer 失敗時**回滾帳本占號**，避免 IP 洩漏。
+    """
+    if not is_configured():
+        return {"ok": False, "reason": "wg-not-configured"}
+    server_pub = getattr(config, "WG_SERVER_PUBKEY", "")
+    endpoint = getattr(config, "WG_ENDPOINT", "")
+    if not (server_pub and endpoint):
+        return {"ok": False, "reason": "wg-endpoint-unset"}
+
+    from repositories import wg_peer_repo
+
+    priv, pub = gen_keypair()
+    address = wg_peer_repo.allocate_and_record(pub, callsign, operator)
+    if not address:
+        return {"ok": False, "reason": "pool-exhausted"}
+    res = add_peer(pub, address, label=callsign)
+    if not res.get("ok"):
+        wg_peer_repo.revoke_by_pubkey(pub, operator)  # 回滾占號（剛記的那筆作廢）
+        return {"ok": False, "reason": res.get("reason", "peer-failed")}
+    conf = build_device_conf(priv, address, server_pub, endpoint)
+    try:
+        qr = qr_png(conf)
+    except Exception as exc:  # noqa: BLE001 — QR 為加分項，segno 缺/壞不該擋發證
+        log.warning("[wg-provision] QR 產生失敗（best-effort 跳過）：%s", exc)
+        qr = b""
+    return {"ok": True, "reason": "ok", "conf": conf, "qr": qr, "address": address}
+
+
+def deprovision_device(callsign: str, operator: str) -> int:
+    """撤證連動撤 WG：撤該 callsign 的 active peer（帳本 + 容器）。回實際撤除的 peer 數。best-effort。"""
+    if not is_configured():
+        return 0
+    from repositories import wg_peer_repo
+
+    pubkeys = wg_peer_repo.revoke_by_callsign(callsign, operator)
+    for pk in pubkeys:
+        remove_peer(pk)  # best-effort，容器沒跑也不 raise
+    return len(pubkeys)

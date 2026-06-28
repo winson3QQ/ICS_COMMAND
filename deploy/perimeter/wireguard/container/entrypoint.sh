@@ -26,6 +26,10 @@ if [ ! -s "$KEY_FILE" ]; then
 else
   log "載入既有 server 私鑰（pubkey：$(wg pubkey <"$KEY_FILE")）"
 fi
+# 導出 server pubkey 到共享佇列卷，供部署者填 ICS 的 WG_SERVER_PUBKEY（裝置 .conf 的 [Peer] PublicKey）。
+WG_QUEUE="${WG_QUEUE:-/wg-queue}"
+mkdir -p "$WG_QUEUE" 2>/dev/null || true
+wg pubkey <"$KEY_FILE" >"$WG_QUEUE/server.pub" 2>/dev/null || log "server.pub 導出略過（佇列卷未掛?）"
 
 # ── 2. wg0：載入持久化的 peers（若有）＋套 interface 設定 ──
 ip link add dev "$IFACE" type wireguard 2>/dev/null || true

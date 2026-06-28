@@ -716,6 +716,17 @@ def issue_tak_device_cert(request: Request, callsign: str, mode: str = "atak"):
             "enroll_group": enroll.get("group"),
         },
     )
+    # #434：發證連帶配 WireGuard peer（方案 B：ICS 產 keypair）→ .conf + QR 外層 bundle 進交付包
+    # （一檔含 TAK 包 + WG）。best-effort：未配置 / 端點未設 / 容器沒跑 → 跳過、不擋發證（裝置仍拿 TAK 證）。
+    from services import wg_provision
+
+    wg_status = "skipped"
+    if wg_provision.is_configured():
+        wg = wg_provision.provision_device(cn, sess["username"])
+        wg_status = (wg.get("reason") or "failed") if not wg.get("ok") else "ok"
+        wg_status = "".join(c for c in wg_status if c.isascii() and c.isprintable())[:120] or "failed"
+        if wg.get("ok"):
+            pkg = _bundle_with_wg(pkg, cn, mode, wg["conf"], wg.get("qr") or b"")
     # #324：filename 須 latin-1 安全（HTTP header 限制）。Python `isalnum()` 對中文回 True，
     # 不能用來濾——非 ASCII 進 header → uvicorn UnicodeEncodeError → 500（且證已記/audit = 幽靈列）。
     # → ASCII-only fallback `filename=` + RFC5987 `filename*` 保留原（含中文）檔名給支援的 client。
@@ -731,8 +742,43 @@ def issue_tak_device_cert(request: Request, callsign: str, mode: str = "atak"):
         headers={
             "Content-Disposition": f"attachment; filename=\"{ascii_safe}-dp.zip\"; filename*=UTF-8''{encoded}",
             "X-TAK-Enroll-Status": enroll_status,
+            "X-WG-Status": wg_status,
         },
     )
+
+
+def _bundle_with_wg(tak_pkg: bytes, callsign: str, mode: str, wg_conf: str, wg_qr: bytes) -> bytes:
+    """#434：外層 bundle zip（一檔交付測試者）＝ TAK data package + wireguard.conf + QR + 安裝說明。
+
+    裝置包（TAK）給 iTAK/ATAK 匯入；WG conf/QR 給 WireGuard app。兩半分檔、附中文兩步說明（先 WG 再 TAK）。
+    """
+    import io
+    import zipfile
+
+    ascii_cs = "".join(c for c in callsign if c.isascii() and (c.isalnum() or c in "-_.")) or "device"
+    readme = (
+        f"ICS 裝置上手（{callsign}）\n====================\n\n"
+        "需兩步（缺一連不上）：\n\n"
+        "【1】WireGuard（VPN）\n"
+        "  - 手機裝官方 WireGuard app（App Store / Google Play）。\n"
+        "  - 掃 wireguard-qr.png，或匯入 wireguard.conf → 啟用隧道。\n\n"
+        f"【2】TAK（{mode}）\n"
+        f"  - 把 {ascii_cs}-TAK.zip 匯入 iTAK / ATAK（data package）。\n"
+        "  - 開 app 即自動連上指揮部。\n\n"
+        "順序：先開 WireGuard、再開 TAK。\n"
+    )
+    entries: dict[str, bytes] = {
+        f"{ascii_cs}-TAK.zip": tak_pkg,
+        "wireguard.conf": wg_conf.encode("utf-8"),
+        "安裝說明.txt": readme.encode("utf-8"),
+    }
+    if wg_qr:
+        entries["wireguard-qr.png"] = wg_qr
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        for name, data in entries.items():
+            z.writestr(name, data)
+    return buf.getvalue()
 
 
 # #398 B：TAK 上非 dashboard-發的 cert-user（ICS 自身連線 / 管理 cert）——對帳時標 infra 非殭屍。
@@ -802,15 +848,33 @@ def revoke_tak_device_cert(cert_id: int, request: Request):
         from services.tak_revocation import revoke_in_tak
 
         tak_revoke = revoke_in_tak(fp, callsign)
+    # #434：撤證連動撤 WG peer（best-effort）。同 callsign 還有其他 active 證 → 不撤（裝置仍需 VPN），
+    # 對齊上方 deregister 的 ambiguous 邏輯；infra 亦不撤。
+    from services import wg_provision
+
+    if _is_infra_callsign(callsign) or has_other_active_cert(callsign, cert_id):
+        wg_removed = 0
+    else:
+        wg_removed = wg_provision.deprovision_device(callsign, sess["username"])
     audit(
         sess["username"],
         None,
         "tak_device_cert_deregister",
         "tak",
         result["callsign"],
-        {"cert_id": cert_id, "deregister": deregister.get("reason"), "tak_revoke": tak_revoke.get("reason")},
+        {
+            "cert_id": cert_id,
+            "deregister": deregister.get("reason"),
+            "tak_revoke": tak_revoke.get("reason"),
+            "wg_peers_removed": wg_removed,
+        },
     )
-    return {**result, "deregister": deregister.get("reason"), "tak_revoke": tak_revoke.get("reason")}
+    return {
+        **result,
+        "deregister": deregister.get("reason"),
+        "tak_revoke": tak_revoke.get("reason"),
+        "wg_peers_removed": wg_removed,
+    }
 
 
 @router.post("/tak/revocations/backfill", tags=["account-admin"])
