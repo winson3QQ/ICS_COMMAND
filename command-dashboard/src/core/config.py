@@ -366,6 +366,12 @@ TAK_ENROLL_TIMEOUT_S: float = float(os.getenv("TAK_ENROLL_TIMEOUT_S", "8.0"))  #
 # 空 → 代理發證停用（dashboard 回退 offline 簽 / 或回 503）。容器內網用 https://takserver:8446。
 TAK_ENROLL_URL: str = os.getenv("TAK_ENROLL_URL", "")
 
+# #434 容器化 WireGuard：ICS 經共享卷檔佇列驅動 ics-wg 容器加/刪 peer（services/wg_provision）。
+# 空 queue dir → WG peer 控制停用（發證仍出 TAK 證、VPN peer 待手動/重試；不影響證流程）。
+WG_QUEUE_DIR: str = os.getenv("WG_QUEUE_DIR", "")  # 與 ics-wg 容器共享的卷掛載點，如 /wg-queue
+WG_SUBNET_PREFIX: str = os.getenv("WG_SUBNET_PREFIX", "10.13.13.")  # VPN 子網前綴（peer /32 須落此段，fail-closed）
+WG_PEER_TIMEOUT_S: float = float(os.getenv("WG_PEER_TIMEOUT_S", "8.0"))  # 等 ics-wg 容器結果逾時（best-effort）
+
 # ── #318 層2 真撤銷：ICS 直連 TAK Server postgres ──────────────────────────────
 # reality check（2026-06-26，#318）：TAK 對 CA 信任的證 TLS 不拒、deregister 只降匿名(__ANON__)；
 # 唯一「連都連不進」= 撤銷＝`certificate` 表有該證 hash+revocation_date + CoreConfig x509checkRevocation=true
