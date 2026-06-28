@@ -310,6 +310,29 @@ class TestTakDeviceCert:
         assert r.headers["X-WG-Status"] == "pool-exhausted"
         assert r.content == b"TAKZIP-ONLY"  # WG 失敗仍交付純 TAK 包
 
+    def test_issue_wg_exception_backstop(self, client, auth, monkeypatch, tmp_path):
+        """#434 review blocker：provision_device 拋例外（如並發 IntegrityError）不得擋發證
+        （證已發/已 audit）→ 仍 200 + 純 TAK 包 + X-WG-Status=error。"""
+        import core.config as config
+        import services.tak_device_cert as tdc
+        import services.wg_provision as wgp
+
+        (tmp_path / "tak-ca.key").write_text("KEY", encoding="ascii")
+        (tmp_path / "tak-ca.pem").write_text("PEM", encoding="ascii")
+        monkeypatch.setattr(config, "TAK_DEVICE_CONNECT_HOST", "1.2.3.4")
+        monkeypatch.setattr(config, "TAK_DEVICE_CA_DIR", str(tmp_path))
+        monkeypatch.setattr(tdc, "build_device_package", lambda *a, **k: (b"TAK-ONLY", "SER", "FP:00"))
+        monkeypatch.setattr(wgp, "is_configured", lambda: True)
+
+        def _boom(cs, op):
+            raise RuntimeError("boom")
+
+        monkeypatch.setattr(wgp, "provision_device", _boom)
+        r = client.post("/api/admin/tak/device-cert?callsign=wg-03&mode=aware", headers=auth)
+        assert r.status_code == 200
+        assert r.headers["X-WG-Status"] == "error"
+        assert r.content == b"TAK-ONLY"
+
     def test_list_and_revoke_flag(self, client, auth, monkeypatch, tmp_path):
         """#317：列管 + 撤銷-flag（帳面，不 enforce）。"""
         import core.config as config

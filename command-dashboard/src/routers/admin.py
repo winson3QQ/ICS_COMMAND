@@ -722,11 +722,15 @@ def issue_tak_device_cert(request: Request, callsign: str, mode: str = "atak"):
 
     wg_status = "skipped"
     if wg_provision.is_configured():
-        wg = wg_provision.provision_device(cn, sess["username"])
-        wg_status = (wg.get("reason") or "failed") if not wg.get("ok") else "ok"
-        wg_status = "".join(c for c in wg_status if c.isascii() and c.isprintable())[:120] or "failed"
-        if wg.get("ok"):
-            pkg = _bundle_with_wg(pkg, cn, mode, wg["conf"], wg.get("qr") or b"")
+        try:
+            wg = wg_provision.provision_device(cn, sess["username"])
+            wg_status = (wg.get("reason") or "failed") if not wg.get("ok") else "ok"
+            wg_status = "".join(c for c in wg_status if c.isascii() and c.isprintable())[:120] or "failed"
+            if wg.get("ok"):
+                pkg = _bundle_with_wg(pkg, cn, mode, wg["conf"], wg.get("qr") or b"")
+        except Exception:  # noqa: BLE001 — backstop：WG 任何例外不得擋發證（證已發/已 audit）→ 交付純 TAK 包
+            log.warning("wg_provision_failed", callsign=cn, exc_info=True)
+            wg_status = "error"
     # #324：filename 須 latin-1 安全（HTTP header 限制）。Python `isalnum()` 對中文回 True，
     # 不能用來濾——非 ASCII 進 header → uvicorn UnicodeEncodeError → 500（且證已記/audit = 幽靈列）。
     # → ASCII-only fallback `filename=` + RFC5987 `filename*` 保留原（含中文）檔名給支援的 client。

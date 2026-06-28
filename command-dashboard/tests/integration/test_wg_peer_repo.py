@@ -50,3 +50,18 @@ def test_list_peers_filter(tmp_db):
 
 def test_revoke_callsign_no_active_returns_empty(tmp_db):
     assert repo.revoke_by_callsign("ghost", "admin") == []
+
+
+def test_unique_active_address_enforced(tmp_db):
+    """配號 race 的最後防線：同一 active address 不可有兩列（m034 partial unique index）。
+    allocate_and_record 的重試正是靠捕捉此 IntegrityError。"""
+    import sqlite3
+
+    from core.database import get_conn
+
+    repo.allocate_and_record("P1", "d1", "admin")  # .2 active
+    with pytest.raises(sqlite3.IntegrityError), get_conn() as conn:
+        conn.execute(
+            "INSERT INTO wg_peers(pubkey,address,callsign,operator,status,created_at) "
+            "VALUES('P2','10.13.13.2/32','d2','admin','active','t')"
+        )
