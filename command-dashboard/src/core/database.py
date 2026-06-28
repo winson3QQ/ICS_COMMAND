@@ -1525,6 +1525,34 @@ def _m033_tak_device_cert_enroll_meta_down(conn: sqlite3.Connection) -> None:
             conn.execute(f"ALTER TABLE tak_device_certs DROP COLUMN {col}")  # nosec B608
 
 
+def _m034_wg_peers(conn: sqlite3.Connection) -> None:
+    """#434：容器化 WireGuard 的 peer 帳本（ICS 統管 VPN 那半）。
+
+    發裝置證連帶配 WG peer（方案 B：ICS 產 keypair）→ 記 pubkey + 指派的 /32 + operator。`status='revoked'`
+    時連動 remove_peer（撤證連動撤 VPN）。partial unique index 確保**同一 IP 不被兩個 active peer 重複配**
+    （配號 race 的最後防線）。對照 tak_device_certs 的盤點模式。
+    """
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS wg_peers (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            pubkey      TEXT NOT NULL,
+            address     TEXT NOT NULL,
+            callsign    TEXT,
+            operator    TEXT NOT NULL,
+            status      TEXT NOT NULL DEFAULT 'active',
+            created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+            revoked_at  TEXT,
+            revoked_by  TEXT
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_wg_peers_status ON wg_peers(status)")
+    conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_wg_peers_active_addr ON wg_peers(address) WHERE status='active'")
+
+
+def _m034_wg_peers_down(conn: sqlite3.Connection) -> None:
+    conn.execute("DROP TABLE IF EXISTS wg_peers")
+
+
 _MIGRATIONS: list[tuple[int, str, object]] = [
     (1, "events_columns", _m001_events_columns),
     (2, "decisions_columns", _m002_decisions_columns),
@@ -1559,6 +1587,7 @@ _MIGRATIONS: list[tuple[int, str, object]] = [
     (31, "faction_isolation", _m031_faction_isolation),
     (32, "chats_faction", _m032_chats_faction),
     (33, "tak_device_cert_enroll_meta", _m033_tak_device_cert_enroll_meta),
+    (34, "wg_peers", _m034_wg_peers),
 ]
 
 

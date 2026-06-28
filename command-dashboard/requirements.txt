@@ -29,3 +29,7 @@ sqlcipher3-binary==0.6.0; sys_platform != "win32"
 # 維護者 Tony Locke（英國），BSD-3-Clause，**純 Python、無 C extension/libpq 系統依賴**，非中國。
 # 僅 services/tak_revocation 用（admin 撤銷時一次性 INSERT/UPDATE，低頻）；未配置 TAK_DB_* 則不 import。
 pg8000==1.31.2
+# #434 — 容器化 WireGuard 裝置包的 WG .conf → QR PNG（測試者掃碼匯入 WireGuard app，免手打）。
+# 維護者 Lars Heuer（德國），BSD-3-Clause，**純 Python、零相依**，非中國。
+# 僅 services/wg_provision 發裝置證時產 QR（低頻）；lazy import，無此套件的 dev/CI 不受影響。
+segno==1.6.1

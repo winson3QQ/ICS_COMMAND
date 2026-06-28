@@ -170,3 +170,17 @@ def build_device_conf(
         f"AllowedIPs = {allowed_ips}\n"
         f"PersistentKeepalive = {keepalive}\n"
     )
+
+
+def qr_png(text: str, scale: int = 6) -> bytes:
+    """把 WG `.conf` 文字轉 QR PNG bytes（測試者掃碼匯入 WireGuard app，免手打私鑰）。
+
+    lazy import segno（純 Python、零相依）：無此套件的 dev/CI 走 ImportError → caller best-effort 跳過 QR。
+    """
+    import io
+
+    import segno
+
+    buf = io.BytesIO()
+    segno.make(text, error="m").save(buf, kind="png", scale=scale)
+    return buf.getvalue()

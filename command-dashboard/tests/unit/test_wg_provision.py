@@ -139,3 +139,8 @@ class TestKeygen:
         assert "Endpoint = 1.2.3.4:51820" in conf
         assert "AllowedIPs = 10.13.13.0/24" in conf  # 預設＝整個 VPN 子網
         assert "PersistentKeepalive = 25" in conf
+
+    def test_qr_png(self):
+        png = wg_provision.qr_png("[Interface]\nPrivateKey = x\n")
+        assert png[:8] == b"\x89PNG\r\n\x1a\n"  # PNG magic
+        assert len(png) > 100
