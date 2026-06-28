@@ -154,6 +154,30 @@ class TestKeygen:
         assert "AllowedIPs = 10.13.13.0/24" in conf  # 預設＝整個 VPN 子網
         assert "PersistentKeepalive = 25" in conf
 
+    def test_build_device_conf_extra_allowed_ips(self, monkeypatch):
+        # VPN-gate 儀表板：WG_EXTRA_ALLOWED_IPS（公網 IP/32）併在子網之後 → 瀏覽器經 tunnel 連儀表板。
+        monkeypatch.setattr(config, "WG_SUBNET_PREFIX", "10.13.13.")
+        monkeypatch.setattr(config, "WG_EXTRA_ALLOWED_IPS", "1.34.230.218/32")
+        priv, _ = wg_provision.gen_keypair()
+        conf = wg_provision.build_device_conf(priv, "10.13.13.50/32", GOOD_PUB, "1.2.3.4:51820")
+        assert "AllowedIPs = 10.13.13.0/24, 1.34.230.218/32" in conf
+
+    def test_build_device_conf_extra_ips_empty_unchanged(self, monkeypatch):
+        # 未設 extra → 行為不變（僅 VPN 子網）。
+        monkeypatch.setattr(config, "WG_SUBNET_PREFIX", "10.13.13.")
+        monkeypatch.setattr(config, "WG_EXTRA_ALLOWED_IPS", "")
+        priv, _ = wg_provision.gen_keypair()
+        conf = wg_provision.build_device_conf(priv, "10.13.13.50/32", GOOD_PUB, "1.2.3.4:51820")
+        assert "AllowedIPs = 10.13.13.0/24\n" in conf
+
+    def test_build_device_conf_extra_ips_multi_and_whitespace(self, monkeypatch):
+        # 多段 + 空白/空段正規化。
+        monkeypatch.setattr(config, "WG_SUBNET_PREFIX", "10.13.13.")
+        monkeypatch.setattr(config, "WG_EXTRA_ALLOWED_IPS", " 1.34.230.218/32 , ,10.99.0.0/24 ")
+        priv, _ = wg_provision.gen_keypair()
+        conf = wg_provision.build_device_conf(priv, "10.13.13.50/32", GOOD_PUB, "1.2.3.4:51820")
+        assert "AllowedIPs = 10.13.13.0/24, 1.34.230.218/32, 10.99.0.0/24" in conf
+
     def test_qr_png(self):
         png = wg_provision.qr_png("[Interface]\nPrivateKey = x\n")
         assert png[:8] == b"\x89PNG\r\n\x1a\n"  # PNG magic

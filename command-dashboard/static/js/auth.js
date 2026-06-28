@@ -1148,14 +1148,20 @@ async function _appendWgPeers(box) {
     html += '<div style="font-size:11px;color:var(--text3);">（無；發證時若配置 WG 會自動配 peer）</div>';
   } else {
     for (const p of active) {
+      // TAK 裝置的 peer → 隨撤證連動撤（此處唯讀，避免與撤證重複）；WG-only peer（callsign 不在 TAK 帳號集）
+      // → 給「撤除」鈕走 /wg/peers/revoke。fallback 視圖 _lastTakCallsigns 可能為空 → 一律當 WG-only（可撤）。
+      const takLinked = _lastTakCallsigns.has(p.callsign);
+      const tail = takLinked
+        ? '<span style="color:var(--text3);font-size:10px;" title="撤對應 TAK 裝置證會連動撤此 peer">隨證撤</span>'
+        : '<button class="adm-btn" data-action="adm-revoke-wg-peer" data-callsign="' + _escAudit(p.callsign || '') + '" title="撤除此 WG-only 設定（容器 peer + 帳本）">撤除</button>';
       html += '<div style="display:flex;align-items:center;gap:6px;padding:3px 0;border-bottom:1px solid var(--border);font-size:12px;">'
         + '<span style="font-family:monospace;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + _escAudit(p.callsign || '') + '">' + _escAudit(p.callsign || '—') + '</span>'
         + '<span style="font-family:monospace;color:var(--text2);font-size:11px;">' + _escAudit(p.address || '') + '</span>'
         + '<span style="font-size:10px;" title="' + (p.online ? '近期有握手（≈在線）' : '久未握手（≈離線）') + '">' + (p.online ? '🟢' : '⚪') + '</span>'
-        + '<span style="color:var(--green);font-size:10px;">active</span>'
+        + tail
         + '</div>';
     }
-    html += '<div style="font-size:10px;color:var(--text3);margin-top:4px;">撤對應裝置證會連動撤此 peer（唯讀）。</div>';
+    html += '<div style="font-size:10px;color:var(--text3);margin-top:4px;">TAK 裝置 peer 隨撤證連動撤（標「隨證撤」）；WG-only 設定按「撤除」。</div>';
   }
   const div = document.createElement('div');
   div.innerHTML = html;
@@ -1444,6 +1450,66 @@ function _showTakDeviceResult(callsign, mode, blob, blobUrl, enrollStatus, wgSta
   banner.appendChild(label);
   banner.appendChild(row);
   box.appendChild(banner);
+}
+
+// VPN-gate 儀表板：給帳號（單獨連 ICS 的人）發其 WireGuard VPN 設定（conf + QR），label = username。
+// 接在帳號管理的裝置憑證面板（與 mTLS 登入證同處、同身分）；TAK 裝置使用者的 VPN 隨發 TAK 證自動配。
+export async function admIssueVpn(username) {
+  if (!username) return;
+  const resp = await authFetch(API_BASE + '/api/admin/wg/issue?label=' + encodeURIComponent(username), { method: 'POST' });
+  if (resp.status === 503) { alert('WG 未配置（部署層設 WG_QUEUE_DIR / WG_SERVER_PUBKEY / WG_ENDPOINT）。'); return; }
+  if (resp.status === 422) { alert('帳號名不合法或為保留身分'); return; }
+  if (!resp.ok) { alert('WG 配置失敗（' + resp.status + '）：' + (await resp.text()).slice(0, 200)); return; }
+  const blob = await resp.blob();
+  const blobUrl = URL.createObjectURL(blob);
+  _showWgResult(username, blob, blobUrl);
+}
+
+function _showWgResult(label, blob, blobUrl) {
+  const box = el('adm-vpn-result-' + label);
+  if (!box) { URL.revokeObjectURL(blobUrl); return; }
+  box.innerHTML = '';
+  const banner = document.createElement('div');
+  banner.style.cssText = 'border:1px solid var(--green,#2ea043);border-radius:6px;padding:8px;margin-top:8px;font-size:12px;';
+  const lab = document.createElement('div');
+  lab.style.cssText = 'color:var(--text2);margin-bottom:6px;line-height:1.5;';
+  lab.textContent = '🔐 已配 ' + label + ' 的 WireGuard 設定。轉交給對方：掃 wireguard-qr.png（或匯 wireguard.conf）→ 啟用隧道 → 照原網址開儀表板登入。';
+  const row = document.createElement('div');
+  row.style.cssText = 'display:flex;align-items:center;gap:6px;flex-wrap:wrap;';
+  const dlBtn = document.createElement('button');
+  dlBtn.className = 'adm-btn';
+  dlBtn.textContent = '⬇ 下載 .zip';
+  dlBtn.addEventListener('click', () => {
+    const a = document.createElement('a');
+    a.href = blobUrl; a.download = label + '-wg.zip';
+    document.body.appendChild(a); a.click(); a.remove();
+  });
+  row.appendChild(dlBtn);
+  const file = _makeFile(label + '-wg.zip', blob, 'application/zip');
+  if (file && navigator.canShare?.({ files: [file] })) {
+    const shareBtn = document.createElement('button');
+    shareBtn.className = 'adm-btn';
+    shareBtn.textContent = '📤 分享 / 存檔';
+    shareBtn.addEventListener('click', async () => {
+      try { await navigator.share({ files: [file], title: label + '-wg.zip' }); }
+      catch (e) { if (e?.name === 'AbortError') return; dlBtn.click(); }
+    });
+    row.appendChild(shareBtn);
+  }
+  banner.appendChild(lab);
+  banner.appendChild(row);
+  box.appendChild(banner);
+}
+
+// 撤 WG-only peer（按 callsign/label）。TAK 裝置 peer 走撤證連動，不經此。
+export async function admRevokeWgPeer(callsign) {
+  if (!callsign) return;
+  if (!confirm('撤除 WG 設定「' + callsign + '」？\n該裝置會立即失去 VPN 連線（容器 peer + 帳本一併撤）。')) return;
+  const resp = await authFetch(API_BASE + '/api/admin/wg/peers/revoke?callsign=' + encodeURIComponent(callsign), { method: 'POST' });
+  if (resp.status === 404) { alert('無 active WG peer：' + callsign); return; }
+  if (resp.status === 422) { alert('callsign 不合法或為保留身分'); return; }
+  if (!resp.ok) { alert('撤除失敗（' + resp.status + '）'); return; }
+  admLoadTakDeviceCerts();  // 刷新帳本
 }
 
 // ── P1-12b（#228）「備份／重設」tab（in-dashboard，取代 orphaned admin_backups.html）──
@@ -1873,7 +1939,9 @@ export async function admLoadCerts(username) {
       '<button class="adm-btn" data-action="adm-issue-cert" data-username="' + username + '" title="線上向 step-ca 簽發並自動綁定">發憑證</button>' +
       '<button class="adm-btn" data-action="adm-bind-cert" data-username="' + username + '" title="已有離線簽好的憑證時，只綁定 CN">僅綁定</button>' +
       '<button class="adm-btn" data-action="adm-download-rootca" title="桌機信任 ICS server 憑證用（Windows/iMac 共用同一張 root CA）">下載 root CA</button>' +
+      '<button class="adm-btn" data-action="adm-issue-vpn" data-username="' + username + '" title="發此帳號的 WireGuard VPN 設定——VPN-gate 下，單獨連 ICS 的人需掛 VPN 才連得到儀表板">📶 發 VPN</button>' +
     '</div>' +
+    '<div id="adm-vpn-result-' + username + '"></div>' +
     '<div style="font-size:11px;color:var(--text3);margin-top:6px;line-height:1.5;"><b>發憑證</b>：線上向 step-ca 簽一張 + 自動綁定。<b>.p12</b>（Windows / iMac / Android，發證後顯示匯入密碼）或 <b>iOS 描述檔</b>（.mobileconfig，密碼內嵌→點開直接裝、免手打）。<b>僅綁定</b>：已離線簽好時只綁 CN ↔ 帳號。一帳號可綁多台，撤銷即時失效。<br><b>非 iOS 要連得進來</b>：另按「<b>下載 root CA</b>」信任 server——<b>iMac</b>：.p12 與 root CA 都匯入鑰匙圈「<b>登入</b>」（root CA <b>勿丟「系統根」</b>，那是唯讀），雙擊 root CA →「信任」設<b>永遠信任</b>；<b>Windows</b>：.p12 匯入個人憑證、root CA 匯入<b>受信任的根憑證授權單位</b>；<b>Android</b>：設定→安全性→安裝憑證，.p12 選「VPN 與 App 使用者憑證」、root CA 選「CA 憑證」。⚠ 桌機/Android 請用 .p12，<b>勿用 iOS 描述檔</b>（會一直跳「Configuration Profiles」提示）。憑證須<b>綁到本帳號</b>才登得進（cert-bound session）；<b>Mac/Chrome 換證後須完全重開 Chrome</b> 才會重新選憑證。</div>';
 }
 

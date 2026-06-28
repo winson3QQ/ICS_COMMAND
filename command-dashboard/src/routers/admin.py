@@ -838,6 +838,96 @@ def list_wg_peers(request: Request):
     return peers
 
 
+@router.post("/wg/issue", tags=["account-admin"])
+def issue_wg_config(request: Request, label: str):
+    """VPN-gate 儀表板：給「只用儀表板、無 TAK 裝置」的使用者發 WG-only 設定（conf + QR）。
+
+    與發 TAK 證解耦——純儀表板使用者（指揮幕僚）手上只有 mTLS 登入證、沒 WG config，儀表板收進 VPN 後
+    就連不到。本端點只配 WG peer（不簽 TAK 證）→ 回 .conf/QR bundle。sysadmin only + 強制 audit。peer 進
+    同一帳本（wg_peers），與 TAK 裝置 peer 並列、可在 WG 帳本撤除（POST /wg/peers/revoke）。
+    """
+    sess = _check_system_admin(request)
+    lbl = (label or "").strip()
+    validate_no_unsafe_strings(lbl, label="label")
+    if not is_valid_cert_cn(lbl):
+        raise HTTPException(422, "label 不合法（不可含逗號、不可 - 開頭，限字母/數字/空白/-_.@）")
+    if _is_infra_callsign(lbl):
+        raise HTTPException(422, f"label「{lbl}」為 ICS 保留身分，不可用")
+    from services import wg_provision
+
+    if not wg_provision.is_configured():
+        raise HTTPException(503, "WG 未配置（部署層設 WG_QUEUE_DIR）")
+    if not (config.WG_SERVER_PUBKEY and config.WG_ENDPOINT):
+        raise HTTPException(503, "WG 端點未設（部署層設 WG_SERVER_PUBKEY / WG_ENDPOINT）")
+    wg = wg_provision.provision_device(lbl, sess["username"])
+    if not wg.get("ok"):
+        raise HTTPException(502, f"WG 配置失敗：{wg.get('reason')}")
+    # 強制 audit（不得 best-effort）：誰給哪個 label 發了 WG 設定 + 配到的位址。私鑰不進 audit。
+    audit(sess["username"], None, "wg_config_issue", "wg", lbl, {"label": lbl, "address": wg.get("address")})
+    pkg = _bundle_wg_only(lbl, wg["conf"], wg.get("qr") or b"")
+    import urllib.parse
+
+    ascii_safe = "".join(c for c in lbl if c.isascii() and (c.isalnum() or c in "-_.")) or "device"
+    encoded = urllib.parse.quote(f"{lbl}-wg.zip")
+    return Response(
+        content=pkg,
+        media_type="application/zip",
+        headers={"Content-Disposition": f"attachment; filename=\"{ascii_safe}-wg.zip\"; filename*=UTF-8''{encoded}"},
+    )
+
+
+def _bundle_wg_only(label: str, wg_conf: str, wg_qr: bytes) -> bytes:
+    """WG-only bundle（純儀表板使用者）＝ wireguard.conf + QR + 中文說明（裝 WG → 掛隧道 → 開儀表板原網址）。"""
+    import io
+    import zipfile
+
+    readme = (
+        f"ICS 儀表板 VPN 上手（{label}）\n====================\n\n"
+        "儀表板需先掛 VPN 才連得到：\n\n"
+        "  1. 手機/電腦裝官方 WireGuard app。\n"
+        "  2. 掃 wireguard-qr.png，或匯入 wireguard.conf → 啟用隧道。\n"
+        "  3. 隧道啟用後，照原網址開 ICS 儀表板（用你的登入憑證）。\n\n"
+        "隧道關閉時連不到儀表板＝正常（VPN-gate）。\n"
+    )
+    entries: dict[str, bytes] = {
+        "wireguard.conf": wg_conf.encode("utf-8"),
+        "安裝說明.txt": readme.encode("utf-8"),
+    }
+    if wg_qr:
+        entries["wireguard-qr.png"] = wg_qr
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        for name, data in entries.items():
+            z.writestr(name, data)
+    return buf.getvalue()
+
+
+@router.post("/wg/peers/revoke", tags=["account-admin"])
+def revoke_wg_peer(request: Request, callsign: str):
+    """撤除 WG peer（按 callsign/label）——給 WG-only 設定的撤銷。
+
+    TAK 裝置的 peer 隨撤證連動撤（走 /tak/device-certs/{id}/revoke），此處專供 WG-only 設定。
+    sysadmin only + 強制 audit；best-effort 撤容器 peer + 帳本標 revoked；infra label 擋；無 active peer → 404。
+    """
+    sess = _check_system_admin(request)
+    cs = (callsign or "").strip()
+    validate_no_unsafe_strings(cs, label="callsign")
+    # 與 issue_wg_config 對稱用同一道嚴格驗證（review nit：原本只 validate_no_unsafe_strings/max512）。
+    if not is_valid_cert_cn(cs):
+        raise HTTPException(422, "callsign 不合法（不可含逗號、不可 - 開頭，限字母/數字/空白/-_.@）")
+    if _is_infra_callsign(cs):
+        raise HTTPException(422, f"callsign「{cs}」為 ICS 保留身分，不可撤")
+    from services import wg_provision
+
+    if not wg_provision.is_configured():
+        raise HTTPException(503, "WG 未配置（部署層設 WG_QUEUE_DIR）")
+    removed = wg_provision.deprovision_device(cs, sess["username"])
+    audit(sess["username"], None, "wg_peer_revoke", "wg", cs, {"callsign": cs, "peers_removed": removed})
+    if removed == 0:
+        raise HTTPException(404, f"無 active WG peer：{cs}")
+    return {"callsign": cs, "peers_removed": removed}
+
+
 @router.post("/tak/device-certs/{cert_id}/revoke", tags=["account-admin"])
 def revoke_tak_device_cert(cert_id: int, request: Request):
     """#317 標記已撤銷 + #398 A：撤銷現行證 → 從 TAK **真 deregister**（usermod -D，不再只是帳面 flag）。

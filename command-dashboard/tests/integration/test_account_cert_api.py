@@ -417,6 +417,78 @@ class TestTakDeviceCert:
     def test_wg_peers_requires_auth(self, client):
         assert client.get("/api/admin/wg/peers").status_code == 401
 
+    def test_wg_issue_only_config(self, client, auth, monkeypatch):
+        """VPN-gate：純 WG 發放（不發 TAK 證）→ bundle 含 wireguard.conf + QR + 說明、無 TAK 包。"""
+        import io
+        import zipfile
+
+        import core.config as config
+        import services.wg_provision as wgp
+
+        monkeypatch.setattr(wgp, "is_configured", lambda: True)
+        monkeypatch.setattr(config, "WG_SERVER_PUBKEY", "PUBSRV")
+        monkeypatch.setattr(config, "WG_ENDPOINT", "1.2.3.4:51820")
+        monkeypatch.setattr(
+            wgp,
+            "provision_device",
+            lambda cs, op: {
+                "ok": True,
+                "reason": "ok",
+                "conf": "[Interface]\nPrivateKey = x\n",
+                "qr": b"PNGX",
+                "address": "10.13.13.9/32",
+            },
+        )
+        r = client.post("/api/admin/wg/issue?label=cmd-staff-01", headers=auth)
+        assert r.status_code == 200, r.text
+        names = zipfile.ZipFile(io.BytesIO(r.content)).namelist()
+        assert "wireguard.conf" in names and "wireguard-qr.png" in names and "安裝說明.txt" in names
+        assert not any(n.endswith("-TAK.zip") for n in names)  # 純 WG，無 TAK 包
+
+    def test_wg_issue_503_when_unconfigured(self, client, auth, monkeypatch):
+        import services.wg_provision as wgp
+
+        monkeypatch.setattr(wgp, "is_configured", lambda: False)
+        assert client.post("/api/admin/wg/issue?label=x", headers=auth).status_code == 503
+
+    def test_wg_issue_422_infra_label(self, client, auth, monkeypatch):
+        import core.config as config
+        import services.wg_provision as wgp
+
+        monkeypatch.setattr(wgp, "is_configured", lambda: True)
+        monkeypatch.setattr(config, "WG_SERVER_PUBKEY", "P")
+        monkeypatch.setattr(config, "WG_ENDPOINT", "1.2.3.4:51820")
+        assert client.post("/api/admin/wg/issue?label=ics-cot", headers=auth).status_code == 422
+
+    def test_wg_issue_requires_auth(self, client):
+        assert client.post("/api/admin/wg/issue?label=x").status_code == 401
+
+    def test_wg_peer_revoke(self, client, auth, monkeypatch):
+        """撤 WG-only peer：deprovision → 帳本標 revoked；已撤再撤 → 404。"""
+        import services.wg_provision as wgp
+        from repositories import wg_peer_repo
+
+        monkeypatch.setattr(wgp, "is_configured", lambda: True)
+        # 容器層 remove 為 best-effort，mock 掉（不需真容器）。
+        monkeypatch.setattr(wgp, "remove_peer", lambda pk: {"ok": True, "reason": "removed"})
+        wg_peer_repo.allocate_and_record("PUBrevoke", "wg-only-1", "admin")
+        r = client.post("/api/admin/wg/peers/revoke?callsign=wg-only-1", headers=auth)
+        assert r.status_code == 200 and r.json()["peers_removed"] == 1
+        assert client.post("/api/admin/wg/peers/revoke?callsign=wg-only-1", headers=auth).status_code == 404
+
+    def test_wg_peer_revoke_infra_422(self, client, auth):
+        assert client.post("/api/admin/wg/peers/revoke?callsign=ics-cot", headers=auth).status_code == 422
+
+    def test_wg_peer_revoke_requires_auth(self, client):
+        assert client.post("/api/admin/wg/peers/revoke?callsign=x").status_code == 401
+
+    def test_wg_peer_revoke_503_when_unconfigured(self, client, auth, monkeypatch):
+        # review nit：WG 未配置時撤除應 503（與 issue 對稱），非 404。
+        import services.wg_provision as wgp
+
+        monkeypatch.setattr(wgp, "is_configured", lambda: False)
+        assert client.post("/api/admin/wg/peers/revoke?callsign=wg-x", headers=auth).status_code == 503
+
     def test_503_when_no_ca_dir(self, client, auth, monkeypatch):
         import core.config as config
 

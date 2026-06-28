@@ -116,6 +116,7 @@ services:
       - WG_PEER_TIMEOUT_S=${WG_PEER_TIMEOUT_S:-8}
       - WG_SERVER_PUBKEY=${WG_SERVER_PUBKEY:-}         # ics-wg 開機產（見 /wg-queue/server.pub）；填此組裝裝置 .conf
       - WG_ENDPOINT=${WG_ENDPOINT:-}                   # 對外 WG 端點 公網IP:port，如 1.34.230.218:51820
+      - WG_EXTRA_ALLOWED_IPS=${WG_EXTRA_ALLOWED_IPS:-}  # VPN-gate 儀表板：公網 IP/32 進裝置 AllowedIPs（瀏覽器走 tunnel）
     volumes:
       - ics-data:/app/data
       - ics-tiles:/app/static/tiles:ro

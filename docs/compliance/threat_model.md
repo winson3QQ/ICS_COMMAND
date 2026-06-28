@@ -375,6 +375,16 @@ Command **信任 TAK Server 轉發的所有 CoT** —— 即使傳輸加密（§
 - **Docker Desktop UDP NAT（Windows 部署）**：peer 經 host NAT 到達、source IP 為 NAT 位址 → per-peer IP 溯源弱。但 **WG 按 pubkey 認證、不靠 IP**，不影響准入；呼應 #280 真實IP還原議題（per-IP 限速/稽核才受影響，非認證）。
 - **公網僅存 51822/udp WG**：攻擊面從「:8089/:8446/:443 多埠直曝」縮到「單一 WG UDP 埠」，未握手者連 TAK 都觸不到 → 進一步收窄 §8.6 直曝面。
 
+#### 8.9.1 儀表板 VPN-gate（2026-06-28，#280 周界一致化）
+
+#434 把 TAK :8089 收進 VPN 後，**ICS 儀表板 :443 仍公網直曝（mTLS 守）**＝不對稱（§8.6 殘留）。本次把儀表板也納入同一 WG 周界：
+
+- **同網址、走 tunnel（避開 SAN 坑）**：device `.conf` 的 `AllowedIPs` 加儀表板公網 IP/32（`WG_EXTRA_ALLOWED_IPS`）→ 瀏覽器**照用原網址** `https://<公網IP>`，封包改走隧道 → 既有 DNAT（wg0 :443→nginx）→ server cert SAN 已含該公網 IP。**無需改 SAN／加 WG 私網 IP**（避開 #321「SAN 不含 RFC1918」衝突；TAK client 憑證 pin 方式不同、無此問題，但瀏覽器嚴格驗 TLS 主機名）。WG 自身 transport 封包（往 Endpoint:port）由 fwmark 排除在隧道外，不成迴圈（與 `0.0.0.0/0` full-tunnel 同機制）。
+- **WG-only 發放**：純儀表板使用者（無 TAK 裝置的指揮幕僚）原本只有 mTLS 登入證、無 WG config → 新 `POST /api/admin/wg/issue`（sysadmin + 強制 audit）發 WG-only bundle（conf+QR，不簽 TAK 證），peer 進同一 `wg_peers` 帳本、可 `POST /api/admin/wg/peers/revoke` 撤。
+- **周界收口（部署層、可逆）**：以上備齊後移除公網 :443 forward（router）→ 儀表板**僅 VPN 可達**，公網收斂到單一 51822/udp。**分階段紀律**：公測可維持 mTLS-公網（§8.8 記明可接受）；正式交付收進 VPN。
+- **不對稱消除**：ICS 與 TAK 同周界，§8.6「儀表板直曝」殘留（/static、version/health、TLS stack 面）隨 :443 收口而關。
+- **VPN-gate 不取代 mTLS，是疊加**：VPN 內仍須登入證（第二層），同「WG≠取代 TAK 准入」doctrine（§8.7.1 zero-trust）。
+
 ---
 
 ## 9. 審查歷程
@@ -392,3 +402,4 @@ Command **信任 TAK Server 轉發的所有 CoT** —— 即使傳輸加密（§
 | 2026-06-21 | 0.9 | §8.4 加「P1-12 動工前決議」拍板（2026-06-12；LUKS 主控 [#231](https://github.com/winson3QQ/ICS_COMMAND/issues/231) / SQLCipher 內層 [#229](https://github.com/winson3QQ/ICS_COMMAND/issues/229) / `disk-v1` child 入 12a [#227](https://github.com/winson3QQ/ICS_COMMAND/issues/227) / manned C2 形態）；§8.5 升優先開 [#232](https://github.com/winson3QQ/ICS_COMMAND/issues/232)（rebase 對齊：原 0.6 與安全批次撞號 → 改 0.9）|
 | 2026-06-22 | 1.0 | #301 公網黑箱（周邊強：mTLS 雙 port 強制、Marti/後端/DB 對外 filtered、header/cipher PASS）後新增 §8.8「Live-host vs at-rest 區分 + 安全交付 checklist」：釐清全碟加密只防冷竊、live-host 威脅；**使用者拍板交付形態＝manned C2 密封盒（加密碟 + 單 container + 實體 FIDO2 金鑰）**——用縮面 + 鑰閘取代「CA 離機」，CA 同機於密封盒可接受（[#323](https://github.com/winson3QQ/ICS_COMMAND/issues/323)）；前提＝PIN+touch / 碟鑰分離 / 閒置斷電 / 多鑰救援（#230）；唯一不可逆殘留＝開機運行中被實體奪取。公測 vs 正式交付分階段紀律（at-rest+FIDO2 / 真實IP #280 / 撤銷 #232 / SAN #321 為交付強制）|
 | 2026-06-28 | 1.1 | 新增 §8.9「容器化 WireGuard 周界」（[#434](https://github.com/winson3QQ/ICS_COMMAND/issues/434)，#280 VPN前置的容器化落地）：TAK :8089 入口收回 VPN（公網僅 51822/udp WG）、ICS 經共享卷檔案佇列統管 peer 生命週期。攻擊面＝特權容器 ics-wg（NET_ADMIN/root，escape 殘留同 §8.8 密封盒）+ 佇列控制面（不引 docker.sock、4 欄位正則閘門 injection-safe、`/security-review` clean）+ DNAT 信任邊界（握手＝持有效 peer 私鑰，WG 為網路層守門疊加於 TAK 准入）。縱深對照：撤證連動撤 peer（雙層撤，補 §8.5）、消除 WG 連線盲區（peer 入名冊 m034+audit）、WG≠取代准入（zero-trust 周界，呼應 §8.7.1）。2026-06-28 cutover 退役 Windows-native WG、容器轉正 |
+| 2026-06-28 | 1.2 | 新增 §8.9.1「儀表板 VPN-gate」（#280 周界一致化）：把 ICS 儀表板也納入 WG 周界，消除「TAK 收進 VPN 但儀表板 :443 仍公網直曝」不對稱。同網址走 tunnel（`AllowedIPs` 加公網 IP/32 → 既有 DNAT :443→nginx，SAN 已含公網 IP、避開 #321 RFC1918 衝突；fwmark 排除 transport 不成迴圈）+ WG-only 發放（`POST /wg/issue`/`/wg/peers/revoke`，sysadmin+audit，給無 TAK 裝置的純儀表板使用者）+ 周界收口（移除公網 :443 forward → 僅 VPN 可達，可逆、分階段）。VPN-gate 疊加非取代 mTLS |

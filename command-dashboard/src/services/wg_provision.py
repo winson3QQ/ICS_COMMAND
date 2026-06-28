@@ -155,11 +155,19 @@ def build_device_conf(
     """組裝裝置端 WireGuard `.conf`（夾進裝置包 / 轉 QR）。
 
     allowed_ips 預設＝整個 VPN 子網（WG_SUBNET_PREFIX + '0/24'），只把 ICS/TAK 私網導進隧道（非全流量）。
+    若設了 WG_EXTRA_ALLOWED_IPS（如儀表板公網 IP/32），併在子網之後 → 瀏覽器照用原網址經 tunnel 連儀表板
+    （VPN-gate 儀表板，SAN 不必含 WG 私網 IP；WG transport 封包由 fwmark 排除，不成迴圈）。
     keepalive=25 撐 cellular CGNAT 對應、保漫遊不斷。
     """
     if not allowed_ips:
         prefix = getattr(config, "WG_SUBNET_PREFIX", "10.13.13.")
         allowed_ips = f"{prefix}0/24"
+        extra = (getattr(config, "WG_EXTRA_ALLOWED_IPS", "") or "").strip()
+        if extra:
+            # 正規化逗號分隔（去空白/空段），併在子網後。
+            parts = [p.strip() for p in extra.split(",") if p.strip()]
+            if parts:
+                allowed_ips = ", ".join([allowed_ips, *parts])
     return (
         "[Interface]\n"
         f"PrivateKey = {private_key}\n"

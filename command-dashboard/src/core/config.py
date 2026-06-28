@@ -149,7 +149,10 @@ WARNING_THRESHOLD_SECONDS: int = int(os.getenv("ICS_WARNING_THRESHOLD_SECONDS", 
 # PATCH 2.24.1：#434 review fix——IP 配號並發 IntegrityError 重試 + admin WG backstop（WG 任何例外不擋發證）。
 # PATCH 2.24.2：#434 follow-up——GET /api/admin/wg/peers（WG peer 帳本，sysadmin 唯讀）供前端顯示。
 # PATCH 2.24.3：#434——WG peer 在線指示（registrar status op 回 wg latest-handshakes + peer_handshakes 合併）。
-APP_VERSION = "2.24.3"
+# MINOR 2.25.0：VPN-gate 儀表板——裝置 .conf 的 AllowedIPs 加公網 IP（WG_EXTRA_ALLOWED_IPS）使瀏覽器經
+#               tunnel 用原網址連儀表板（SAN 不變）+ POST /wg/issue（帳號發 WG VPN，label=username，給單獨
+#               連 ICS 的人）+ POST /wg/peers/revoke（撤 WG-only peer）。「ICS 也走 VPN」（公網收口待移 :443）。
+APP_VERSION = "2.25.0"
 
 # CMD_VERSION：前端 UI 功能版本（不同於後端 SemVer APP_VERSION；規則見 CLAUDE.md 版號規則）
 # 兩軌版本命名，不可混用。由 /api/version 提供給前端，是唯一 source-of-truth；release 時更新此值。
@@ -157,7 +160,8 @@ APP_VERSION = "2.24.3"
 #         + 演習/放置/稽核 UI P1-13/14/16/#93 + 分類編輯器 #66）→ 0.x 畢業為 MAJOR 紀元。
 CMD_VERSION: str = os.getenv(
     "CMD_VERSION",
-    "v1.17.1",  # PATCH：#434——WG peer 帳本段每列加 🟢/⚪ 在線指示（近期握手≈在線）
+    "v1.18.0",  # MINOR：VPN-gate 儀表板——帳號管理裝置憑證面板加「📶 發 VPN」（label=username）+ WG 帳本列加撤除鈕
+    # PATCH v1.17.1：#434——WG peer 帳本段每列加 🟢/⚪ 在線指示（近期握手≈在線）
     # MINOR v1.17.0：#434 follow-up——發證結果面板顯 WG 配置狀態（X-WG-Status）+ TAK 面板附 WG peer 帳本段
     # PATCH v1.16.3：#318 Slice 3 part③——TAK 面板「撤銷盤點外的證（按 fingerprint）」輸入 + 撤在線證重啟 SOP 提示
     # PATCH v1.16.2：#318 Slice 3——TAK 面板「↑ 撤銷補登 TAK」鈕（backfill）+ 已撤無 fp 證標「⚠ TAK 撤不掉」
@@ -381,6 +385,10 @@ WG_PEER_TIMEOUT_S: float = float(os.getenv("WG_PEER_TIMEOUT_S", "8.0"))  # 等 i
 # 組裝裝置端 .conf 用：server 公鑰（ics-wg 容器開機產，寫在 /wg-queue/server.pub，部署時填此）+ 對外端點。
 WG_SERVER_PUBKEY: str = os.getenv("WG_SERVER_PUBKEY", "")  # ics-wg 的 server pubkey（裝置 .conf 的 [Peer] PublicKey）
 WG_ENDPOINT: str = os.getenv("WG_ENDPOINT", "")  # 對外 WG 端點 公網IP:port（裝置 .conf 的 Endpoint），如 1.2.3.4:51820
+# 額外導進隧道的 AllowedIPs（逗號分隔 CIDR，併在 VPN 子網之後）。用途＝VPN-gate 儀表板：填儀表板公網 IP/32
+# （= WG_ENDPOINT 的 host）→ 瀏覽器照用原網址 https://公網IP，封包改走 tunnel → DNAT :443 → nginx（server
+# cert SAN 不必含 WG 私網 IP）。WG 自身 transport 封包(往 Endpoint:port)由 fwmark 排除在隧道外，不成迴圈。
+WG_EXTRA_ALLOWED_IPS: str = os.getenv("WG_EXTRA_ALLOWED_IPS", "")  # 如 "1.34.230.218/32"
 
 # ── #318 層2 真撤銷：ICS 直連 TAK Server postgres ──────────────────────────────
 # reality check（2026-06-26，#318）：TAK 對 CA 信任的證 TLS 不拒、deregister 只降匿名(__ANON__)；
