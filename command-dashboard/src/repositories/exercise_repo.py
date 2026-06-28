@@ -99,15 +99,54 @@ def update_exercise_status(exercise_id: int, status: str, operator: str) -> bool
                 ).fetchone()
                 if conflict:
                     raise ValueError("已有進行中的演練，請先封存後再啟動")
+            else:
+                # #267 Slice 1：成功 set active → 開一筆活躍區間（時間窗地基；重開即新一筆，構成多區間聯集）。
+                conn.execute(
+                    "INSERT INTO exercise_active_intervals (exercise_id, activated_at, activated_by) VALUES (?,?,?)",
+                    (exercise_id, now, operator),
+                )
         elif status == "archived":
             conn.execute(
                 "UPDATE exercises SET status=?, ended_at=?, mutex_locked=0 WHERE id=?", (status, now, exercise_id)
+            )
+            # #267 Slice 1：停用 → 關閉該場開放中的活躍區間（一場至多一筆 deactivated_at IS NULL）。
+            conn.execute(
+                "UPDATE exercise_active_intervals SET deactivated_at=? WHERE exercise_id=? AND deactivated_at IS NULL",
+                (now, exercise_id),
             )
         else:
             conn.execute("UPDATE exercises SET status=? WHERE id=?", (status, exercise_id))
 
     audit(operator, None, "exercise_status_updated", "exercises", str(exercise_id), {"status": status})
     return True
+
+
+def list_active_intervals(exercise_id: int) -> list[dict]:
+    """#267：某場的活躍時段區間（聯集；deactivated_at IS NULL = 仍活躍）。依 activated_at。"""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT activated_at, deactivated_at, activated_by FROM exercise_active_intervals "
+            "WHERE exercise_id=? ORDER BY activated_at",
+            (exercise_id,),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def ts_in_active_window(exercise_id: int, ts: str) -> bool:
+    """#267：ISO 時間戳 ts 是否落在某場任一活躍區間內（含開放區間：deactivated_at NULL 視為仍活躍）。
+
+    供 scope 解析（後刀）判「這筆 CoT 算不算這場」。SQL 端比較 ISO8601 UTC 字串（同格式可字典序比較，
+    與 cop/exercise 既有時間欄一致）。
+    """
+    if not ts:
+        return False
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT 1 FROM exercise_active_intervals WHERE exercise_id=? "
+            "AND activated_at <= ? AND (deactivated_at IS NULL OR deactivated_at >= ?) LIMIT 1",
+            (exercise_id, ts, ts),
+        ).fetchone()
+    return row is not None
 
 
 def get_active_exercise() -> dict | None:
@@ -134,6 +173,10 @@ _EXERCISE_SCOPED_TABLES = (
     # #348-F10：chats 原漏在此清單外 → 刪演習不清通聯 PII（message/callsign/lat-lon）。補回
     # 一致性；chats.exercise_id=NULL（實戰/未分場廣播）不受 WHERE exercise_id=? 影響、不誤刪。
     "chats",
+    # #267：新 FK 子表（REFERENCES exercises(id)，無 ON DELETE CASCADE + foreign_keys=ON）須先清，
+    # 否則 DELETE FROM exercises 撞 FK RESTRICT → 500（開場必寫 interval ⇒ 幾乎每場都刪不掉）。
+    "exercise_active_intervals",
+    "exercise_roster",
 )
 
 

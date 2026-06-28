@@ -24,6 +24,19 @@ class FactionOverrideIn(BaseModel):
     faction: _Faction
 
 
+class RosterMemberIn(BaseModel):
+    """#267：把 client（cert CN）加進演習 roster / 改其編制。"""
+
+    cn: str
+    unit: str | None = None
+
+
+class RosterRemoveIn(BaseModel):
+    """#267：把 client（cert CN）移出演習 roster。"""
+
+    cn: str
+
+
 class AccountCreateIn(BaseModel):
     # #348-F5 P2b：移除 pin 欄——admin 不再自設，由後端 generate_temp_pin 產生並一次性回傳。
     username: str
