@@ -96,8 +96,25 @@ async def _username_for_client_key(client, client_key: str) -> str | None:
     return None
 
 
-async def sync_client_faction(client_key: str, faction: str | None) -> dict:
-    """把 client_key 對應裝置的 TAK group 設成 faction 群。best-effort，回 {synced, reason, username}。
+async def online_uid_to_username() -> dict[str, str]:
+    """#344：在線訂閱的 {uid: username(=cert CN)} 對照，供 client_identity 快取批次寫入。
+
+    best-effort：未配置 / TAK 錯 → 回 {}（不拖垮面板）。後寫覆蓋（同 uid 多筆取最後一筆即可，
+    list_online_subscriptions 已是當前在線視圖，無歷史殭屍）。
+    """
+    out: dict[str, str] = {}
+    for s in await list_online_subscriptions():
+        u, n = s.get("client_uid"), s.get("username")
+        if u and n:
+            out[u] = n
+    return out
+
+
+async def sync_client_faction(client_key: str, faction: str | None, *, username: str | None = None) -> dict:
+    """把裝置的 TAK group 設成 faction 群。best-effort，回 {synced, reason, username}。
+
+    #344：username 已知（client_key 即 cert CN）時直接用，免再經 subscriptions 解 uid→username。
+    未給 username → 退回用 client_key（CoT uid）查在線訂閱解析（舊 #343 行為）。
 
     skip（synced=False）情形：未配置 admin cert / faction 無對應群 / 裝置離線（subscriptions/all 查無 clientUid）/
     TAK 寫入錯（log warning）。caller（faction_service.classify）不因本函式失敗而 raise。
@@ -112,7 +129,7 @@ async def sync_client_faction(client_key: str, faction: str | None) -> dict:
         # build 放 try 內：cert 檔缺/壞（env 設了但 issue-tak-certs 沒跑 / volume 掛錯）會拋
         # OSError/ssl.SSLError/ValueError，須一併吞掉走 best-effort，否則衝進 classify → 500（破壞契約）。
         client = _build_admin_client()
-        username = await _username_for_client_key(client, client_key)
+        username = username or await _username_for_client_key(client, client_key)
         if not username:
             log.info(
                 "[tak-group-sync] client_key %s 無在線 TAK 連線 → 跳過群同步（device 連上後重分類即生效）", client_key

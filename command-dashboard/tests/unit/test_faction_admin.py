@@ -1,12 +1,13 @@
 # SPDX-License-Identifier: LicenseRef-Proprietary
 # Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 """
-tests/unit/test_faction_admin.py — #343 PR-5：admin 分類 API 層（faction_service）
+tests/unit/test_faction_admin.py — #343 PR-5 + #344：admin 分類 API 層（faction_service）
 
-鎖住：
-- list_clients：從 cop_entities 解 producer 聚合（非 team_color）+ 標目前分類
-- classify：驗場存在（D）→ upsert → 重解析名下 auto entity（NULL→指定 faction）→ resync 廣播
-- override_entity：手動點單一 entity（manual）→ 後續重解析不覆寫
+#344 改綁 **cert CN（穩定）** 非 uid：
+- list_clients：來源 = subscriptions/all（在線）∩ tak_device_certs（發證），去重成 per-CN，順帶寫 client_identity。
+- classify：client_key=CN → upsert（CN 鍵）→ 經 client_identity 解 CN→uids 重解析名下 auto entity → resync。
+- ingest faction 解析：producer uid 經 client_identity 翻 CN 再查（裝置換 uid 不丟分類）。
+- override_entity：手動點單一 entity（manual）→ 後續重解析不覆寫。
 """
 
 import asyncio
@@ -14,9 +15,9 @@ import asyncio
 import pytest
 from fastapi import HTTPException
 
-from repositories import client_faction_repo, cop_entity_repo
+from repositories import client_faction_repo, client_identity_repo, cop_entity_repo, tak_device_cert_repo
 from schemas.tak import CoTEventIn
-from services import cop_service, exercise_service, faction_service
+from services import cop_service, exercise_service, faction_service, tak_group_sync
 
 
 @pytest.fixture(autouse=True)
@@ -40,8 +41,13 @@ def _no_ws(monkeypatch):
     return ops
 
 
+def _identity(uid, cn):
+    """登記 uid→cert CN（模擬 subscriptions 寫入 client_identity）。"""
+    client_identity_repo.upsert_many({uid: cn})
+
+
 def _ingest_marker(uid, creator_uid, callsign="敵-A"):
-    """ingest 一個 tak 標記（creator=creator_uid）→ entity faction 依當下分類解析。"""
+    """ingest 一個 tak 標記（creator=creator_uid=producer）→ entity faction 依當下分類解析。"""
     ev = CoTEventIn(
         uid=uid,
         type="a-h-G",
@@ -57,148 +63,148 @@ def _ingest_marker(uid, creator_uid, callsign="敵-A"):
     return asyncio.run(cop_service.ingest_cot_event(ev))
 
 
-def _ingest_self_sa(uid, callsign):
-    """ingest 裝置 self-SA（無 creator/link → 歸屬鏈 fallback 自身 uid，uid 即 client_key）。"""
-    ev = CoTEventIn(
-        uid=uid,
-        type="a-f-G-U-C",
-        time="2026-06-22T00:00:00Z",
-        start="2026-06-22T00:00:00Z",
-        stale="2099-01-01T00:00:00Z",
-        how="m-g",
-        lat=24.0,
-        lon=120.5,
-        callsign=callsign,
-    )
-    return asyncio.run(cop_service.ingest_cot_event(ev))
+# ── classify：CN 鍵 + 經 client_identity 重解析 ──────────────────────────────
 
 
 def test_classify_reresolves_existing_entities(_no_ws):
-    # 先 ingest（未分類 → faction NULL），再 classify → 重解析名下 entity
+    _identity("DEV-X", "CN-X")  # uid→CN 已知（裝置在線過、面板載入寫入）
     _ingest_marker("MK-1", "DEV-X")
     _ingest_marker("MK-2", "DEV-X")
-    assert cop_entity_repo.get_cop_entity("MK-1")["faction"] is None  # 未分類
+    assert cop_entity_repo.get_cop_entity("MK-1")["faction"] is None  # classify 前未分類
 
-    res = asyncio.run(faction_service.classify(None, "DEV-X", "red", "敵-A", "admin"))
+    res = asyncio.run(faction_service.classify(None, "CN-X", "red", "CN-X", "admin"))  # 綁 CN
     assert res["reresolved"] == 2
     assert cop_entity_repo.get_cop_entity("MK-1")["faction"] == "red"
     assert cop_entity_repo.get_cop_entity("MK-2")["faction"] == "red"
-    assert "resync" in _no_ws  # 重分類後廣播 resync
+    assert "resync" in _no_ws
+
+
+def test_ingest_inherits_faction_via_uid_to_cn(_no_ws):
+    """#344：classify CN 後，新進 CoT（producer uid 經 client_identity 翻 CN）即繼承 faction。"""
+    _identity("DEV-I", "CN-I")
+    asyncio.run(faction_service.classify(None, "CN-I", "blue", None, "admin"))
+    _ingest_marker("MK-NEW", "DEV-I")  # classify 後才 ingest
+    assert cop_entity_repo.get_cop_entity("MK-NEW")["faction"] == "blue"
+
+
+def test_classification_survives_uid_change(_no_ws):
+    """#344 核心：同一 cert CN 的裝置換 uid（重裝/重 enroll）仍繼承既有分類。"""
+    _identity("UID-OLD", "CN-DEV")
+    asyncio.run(faction_service.classify(None, "CN-DEV", "blue", None, "admin"))
+    _ingest_marker("MK-OLD", "UID-OLD")
+    assert cop_entity_repo.get_cop_entity("MK-OLD")["faction"] == "blue"
+    # 裝置換新 uid（同 CN，面板載入寫入新對照）→ 新 CoT 仍藍，分類沒丟
+    _identity("UID-NEW", "CN-DEV")
+    _ingest_marker("MK-NEW", "UID-NEW")
+    assert cop_entity_repo.get_cop_entity("MK-NEW")["faction"] == "blue"
+
+
+def test_unknown_uid_fail_closed(_no_ws):
+    """uid 無 client_identity 對照 → 退回 uid 當鍵 → CN-keyed 分類查不到 → None（fail-closed）。"""
+    asyncio.run(faction_service.classify(None, "CN-Z", "blue", None, "admin"))
+    _ingest_marker("MK-U", "UID-UNKNOWN")  # 無對照
+    assert cop_entity_repo.get_cop_entity("MK-U")["faction"] is None
 
 
 def test_classify_validates_exercise_exists(_no_ws):
     """D：指定不存在的 exercise_id → 404（不留孤兒分類）。"""
     with pytest.raises(HTTPException) as ei:
-        asyncio.run(faction_service.classify(99999, "DEV-X", "blue", None, "admin"))
+        asyncio.run(faction_service.classify(99999, "CN-X", "blue", None, "admin"))
     assert ei.value.status_code == 404
 
 
 def test_classify_real_exercise_ok(_no_ws):
     ex = exercise_service.create({"name": "drill", "type": "ttx"})
     exercise_service.set_active(ex["id"], "admin")
+    _identity("DEV-Y", "CN-Y")
     _ingest_marker("MK-EX", "DEV-Y")  # ingest 綁 active 場
-    res = asyncio.run(faction_service.classify(ex["id"], "DEV-Y", "blue", None, "admin"))
+    res = asyncio.run(faction_service.classify(ex["id"], "CN-Y", "blue", None, "admin"))
     assert res["reresolved"] == 1
     assert cop_entity_repo.get_cop_entity("MK-EX")["faction"] == "blue"
 
 
-def test_list_clients_aggregates_producers(_no_ws):
-    _ingest_marker("MK-A", "DEV-A", "甲")
-    _ingest_marker("MK-A2", "DEV-A", "甲")  # 同 producer 兩 entity → 聚成一 client
-    _ingest_marker("MK-B", "DEV-B", "乙")
-    client_faction_repo.upsert_faction(None, "DEV-A", "blue", "甲", "admin")
-
-    clients = {c["client_key"]: c for c in faction_service.list_clients(None)}
-    assert set(clients) == {"DEV-A", "DEV-B"}  # 兩個 producer（非 4 個 entity）
-    assert clients["DEV-A"]["faction"] == "blue" and clients["DEV-A"]["classified"] is True
-    assert clients["DEV-B"]["faction"] is None and clients["DEV-B"]["classified"] is False
-
-
-def test_list_clients_callsign_prefers_self_sa(_no_ws):
-    """#358-1：呼號取裝置 self-SA（uid==client_key），不被較新的 marker 名蓋掉。"""
-    _ingest_self_sa("DEV-C", "丙-裝置")  # 先 self-SA（received_at 較早）
-    _ingest_marker("MK-C", "DEV-C", "敵標-丙")  # 後 marker（received_at 較新、uid≠client_key）
-    clients = {c["client_key"]: c for c in faction_service.list_clients(None)}
-    assert clients["DEV-C"]["callsign"] == "丙-裝置"  # self-SA 名勝出，非 marker「敵標-丙」
+def test_classify_bumps_version_clock(_no_ws):
+    """#358-2：faction 為前端顯示軸 → 重分類（auto）須 bump version_clock（前端 LWW 才套用新 faction）。"""
+    _identity("DEV-VC", "CN-VC")
+    _ingest_marker("MK-VC", "DEV-VC")
+    v0 = cop_entity_repo.get_cop_entity("MK-VC")["version_clock"]
+    asyncio.run(faction_service.classify(None, "CN-VC", "blue", None, "admin"))
+    ent = cop_entity_repo.get_cop_entity("MK-VC")
+    assert ent["faction"] == "blue"
+    assert ent["version_clock"] > v0
 
 
-def test_list_clients_self_sa_no_callsign_not_clobbered_by_marker(_no_ws):
-    """self-SA 無 callsign → 不退回 marker 名（與『優先 self-SA』語意一致；前端 fallback 顯 uid）。"""
-    _ingest_self_sa("DEV-D", None)
-    _ingest_marker("MK-D", "DEV-D", "敵標-丁")
-    clients = {c["client_key"]: c for c in faction_service.list_clients(None)}
-    assert clients["DEV-D"]["callsign"] != "敵標-丁"  # 不顯 marker 名
+# ── list_clients：online ∩ issued，CN 鍵 ────────────────────────────────────
 
 
-def test_list_clients_includes_online_flag(_no_ws):
-    """#389：剛 ingest（updated_at≈now）→ online=True（在線指示欄存在且正確）。"""
-    _ingest_self_sa("DEV-ON", "在線裝置")
-    clients = {c["client_key"]: c for c in faction_service.list_clients(None)}
-    assert clients["DEV-ON"]["online"] is True
+def _mock_subs(monkeypatch, uid2cn):
+    async def _f():
+        return dict(uid2cn)
+
+    monkeypatch.setattr(tak_group_sync, "online_uid_to_username", _f)
 
 
-def test_list_clients_online_uses_updated_at_not_received_at(_no_ws):
-    """#389 修正：live 裝置 received_at 久遠（首見）但 updated_at 近期（最後活動）→ 仍 online。
-    原用 received_at 會把持續廣播的裝置誤判離線（dogfood：received_at 停在昨天）。"""
-    from datetime import UTC, datetime
-
-    from core.database import get_conn
-
-    _ingest_self_sa("DEV-LIVE", "活裝置")
-    old = "2020-01-01T00:00:00Z"
-    recent = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
-    with get_conn() as conn:
-        conn.execute("UPDATE cop_entities SET received_at=?, updated_at=? WHERE uid='DEV-LIVE'", (old, recent))
-        conn.commit()
-    clients = {c["client_key"]: c for c in faction_service.list_clients(None)}
-    assert clients["DEV-LIVE"]["online"] is True  # 用 updated_at（近期）非 received_at（久遠）
-    assert clients["DEV-LIVE"]["last_seen"] == recent  # last_seen 顯示最後活動
+def _mock_issued(monkeypatch, callsigns):
+    monkeypatch.setattr(
+        tak_device_cert_repo,
+        "list_device_certs",
+        lambda: [{"callsign": c, "status": "active"} for c in callsigns],
+    )
 
 
-def test_is_online_heuristic():
-    """#389：last_seen 時效近似在線——近期 True、逾窗 False、空/壞格式 False（不丟例外）。"""
-    from datetime import UTC, datetime, timedelta
+def test_list_clients_online_and_issued_only(_no_ws, monkeypatch):
+    _mock_subs(monkeypatch, {"u1": "alpha", "u2": "bravo", "u3": "ghost"})
+    _mock_issued(monkeypatch, ["alpha", "bravo"])  # ghost 在線但未發證 → 排除
+    client_faction_repo.upsert_faction(None, "alpha", "blue", "alpha", "admin")
+    clients = {c["client_key"]: c for c in asyncio.run(faction_service.list_clients(None))}
+    assert set(clients) == {"alpha", "bravo"}
+    assert clients["alpha"]["faction"] == "blue" and clients["alpha"]["classified"] is True
+    assert clients["bravo"]["faction"] is None and clients["bravo"]["classified"] is False
+    assert clients["alpha"]["online"] is True
 
-    now = datetime.now(UTC)
-    recent = now.strftime("%Y-%m-%dT%H:%M:%SZ")
-    old = (now - timedelta(seconds=faction_service.ONLINE_WINDOW_SEC + 60)).strftime("%Y-%m-%dT%H:%M:%SZ")
-    assert faction_service._is_online(recent) is True
-    assert faction_service._is_online(old) is False
-    assert faction_service._is_online("") is False
-    assert faction_service._is_online("not-a-date") is False
-    # review 加固：無時區(naive) last_seen 不丟 TypeError → 視為 UTC 正常比對（防 500）。
-    naive_recent = now.strftime("%Y-%m-%dT%H:%M:%S")  # 無 Z
-    assert faction_service._is_online(naive_recent) is True
+
+def test_list_clients_dedups_by_cn(_no_ws, monkeypatch):
+    """同 CN 多 uid（換過 uid 都在線）→ 去重成一筆。"""
+    _mock_subs(monkeypatch, {"uidA": "same", "uidB": "same"})
+    _mock_issued(monkeypatch, ["same"])
+    clients = asyncio.run(faction_service.list_clients(None))
+    assert [c["client_key"] for c in clients] == ["same"]
+
+
+def test_list_clients_populates_identity(_no_ws, monkeypatch):
+    """list_clients 順帶把 {uid:CN} 寫入 client_identity（供 ingest 翻譯）。"""
+    _mock_subs(monkeypatch, {"uidP": "papa"})
+    _mock_issued(monkeypatch, ["papa"])
+    asyncio.run(faction_service.list_clients(None))
+    assert client_identity_repo.get_username("uidP") == "papa"
+
+
+def test_list_clients_empty_when_tak_offline(_no_ws, monkeypatch):
+    _mock_subs(monkeypatch, {})  # TAK 離線/未配置 → 無在線視圖
+    _mock_issued(monkeypatch, ["alpha"])
+    assert asyncio.run(faction_service.list_clients(None)) == []
+
+
+# ── override：manual 不被重解析覆寫 ─────────────────────────────────────────
 
 
 def test_override_entity_not_clobbered_by_reresolve(_no_ws):
     """手動 override（manual）後，classify 該 producer 不覆寫 manual entity。"""
+    _identity("DEV-Z", "CN-OV")
     _ingest_marker("MK-M", "DEV-Z")
     asyncio.run(faction_service.override_entity("MK-M", "neutral", "admin"))
     row = cop_entity_repo.get_cop_entity("MK-M")
     assert row["faction"] == "neutral" and row["faction_source"] == "manual"
 
-    # classify DEV-Z=red → 重解析只動 auto，manual 的 MK-M 不變
-    res = asyncio.run(faction_service.classify(None, "DEV-Z", "red", None, "admin"))
+    res = asyncio.run(faction_service.classify(None, "CN-OV", "red", None, "admin"))
     assert res["reresolved"] == 0  # MK-M 是 manual → 不在重解析範圍
-    assert cop_entity_repo.get_cop_entity("MK-M")["faction"] == "neutral"  # 保留 manual
+    assert cop_entity_repo.get_cop_entity("MK-M")["faction"] == "neutral"
 
 
 def test_override_entity_missing_404(_no_ws):
     with pytest.raises(HTTPException) as ei:
         asyncio.run(faction_service.override_entity("NOPE", "blue", "admin"))
     assert ei.value.status_code == 404
-
-
-def test_classify_bumps_version_clock(_no_ws):
-    """#358-2：faction 為前端顯示軸 → 重分類（auto）須 bump version_clock，否則前端 cop_stream
-    LWW（resync）對 idle entity 同版丟棄、分類變更不反映（dogfood 2026-06-23：idle iTAK 分藍仍掛未分類）。"""
-    _ingest_marker("MK-VC", "DEV-VC")
-    v0 = cop_entity_repo.get_cop_entity("MK-VC")["version_clock"]
-    asyncio.run(faction_service.classify(None, "DEV-VC", "blue", None, "admin"))
-    ent = cop_entity_repo.get_cop_entity("MK-VC")
-    assert ent["faction"] == "blue"
-    assert ent["version_clock"] > v0  # bump → 前端 LWW 會套用新 faction
 
 
 def test_override_entity_bumps_version_clock(_no_ws):

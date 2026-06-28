@@ -962,14 +962,14 @@ export async function admLoadFactions() {
   const clients = (await resp.json()).clients || [];
   let head =
     '<div style="font-size:11px;color:var(--text2);line-height:1.6;margin-bottom:10px;max-width:480px;">' +
-    '把本場觀測到的 TAK client（含已離線）分類成紅／藍／中立。<b>指揮官以下只看得到藍／中立</b>，紅軍與未分類者對其隱藏（fail-closed）。' +
+    '列出<b>發證後且目前在線</b>的 TAK client（以裝置憑證 CN 為準，不受 callsign／uid 變動影響）分類成紅／藍／中立。<b>指揮官以下只看得到藍／中立</b>，紅軍與未分類者對其隱藏（fail-closed）。' +
     '<br>作用範圍：<b>' + scopeLabel + '</b>　·　共 ' + clients.length + ' 個 client' +
     '<br><span style="color:var(--text3);">⚠ 需開 <code>ICS_FACTION_ISOLATION</code> 過濾才生效（分類本身隨時可做）。</span>' +
     '<button class="adm-btn" data-action="admExerciseSub" data-sub="faction" style="margin-left:8px;">重新整理</button></div>';
   let rows = '';
   if (!clients.length) {
     // #346：TAK 沒開就沒 client → 情境感知空狀態（指引去開 TAK），而非冷冷一片空。
-    let why = '本場尚未觀測到任何 TAK client（需現場裝置 broadcast 標記／位置）。';
+    let why = '目前無「發證後且在線」的 TAK client（需經面板發證的裝置連上 TAK 後才會列出）。';
     try {
       const ts = await authFetch(API_BASE + '/api/tak/status');
       if (ts.ok && !(await ts.json()).enabled) {

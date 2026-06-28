@@ -22,7 +22,7 @@ import logging
 import sqlite3
 
 from core.config import TRACK_MIN_INTERVAL_S
-from repositories import client_faction_repo, cop_entity_repo
+from repositories import client_faction_repo, client_identity_repo, cop_entity_repo
 from repositories._helpers import iso_to_dt
 from repositories.snapshot_repo import get_latest_snapshot
 from schemas.cop import CoPEntity, CoPEntityTrack
@@ -136,9 +136,14 @@ def _resolve_client_key(entity: CoPEntity) -> str:
 
 def _resolve_faction(entity: CoPEntity) -> str | None:
     """ingest 時解析 entity 的 faction（producer 經 admin 分類者繼承；未分類/解不到 → None
-    = fail-closed）。查 client_faction 綁 entity 的 exercise_id（per-exercise 分類）。"""
-    client_key = _resolve_client_key(entity)
-    return client_faction_repo.get_faction(entity.exercise_id, client_key)
+    = fail-closed）。查 client_faction 綁 entity 的 exercise_id（per-exercise 分類）。
+
+    #344：分類綁穩定的 **cert CN**（非易變 uid）→ 先經 client_identity 把 producer uid 翻成 CN 再查；
+    無對照（未在線過的未知裝置）→ 退回用 uid 當鍵 → CN-keyed 分類查不到 → None（fail-closed，符合既有語意）。
+    """
+    client_key = _resolve_client_key(entity)  # producer 裝置 uid
+    cn = client_identity_repo.get_username(client_key)
+    return client_faction_repo.get_faction(entity.exercise_id, cn or client_key)
 
 
 def _extract_squad(detail: dict) -> tuple[str | None, str | None, int | None]:

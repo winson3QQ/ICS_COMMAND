@@ -152,7 +152,10 @@ WARNING_THRESHOLD_SECONDS: int = int(os.getenv("ICS_WARNING_THRESHOLD_SECONDS", 
 # MINOR 2.25.0：VPN-gate 儀表板——裝置 .conf 的 AllowedIPs 加公網 IP（WG_EXTRA_ALLOWED_IPS）使瀏覽器經
 #               tunnel 用原網址連儀表板（SAN 不變）+ POST /wg/issue（帳號發 WG VPN，label=username，給單獨
 #               連 ICS 的人）+ POST /wg/peers/revoke（撤 WG-only peer）。「ICS 也走 VPN」（公網收口待移 :443）。
-APP_VERSION = "2.25.0"
+# MINOR 2.26.0：#344 紅藍分類改綁 cert CN（穩定）非 uid——加 client_identity（m035，uid→CN 快取，從
+#               subscriptions/all 寫入）+ ingest faction 解析經快取翻 uid→CN + 面板改列「發證後且在線」
+#               （subscriptions ∩ tak_device_certs，CN 鍵）→ 裝置重裝/重 enroll 換 uid 不丟分類。
+APP_VERSION = "2.26.0"
 
 # CMD_VERSION：前端 UI 功能版本（不同於後端 SemVer APP_VERSION；規則見 CLAUDE.md 版號規則）
 # 兩軌版本命名，不可混用。由 /api/version 提供給前端，是唯一 source-of-truth；release 時更新此值。
@@ -160,7 +163,8 @@ APP_VERSION = "2.25.0"
 #         + 演習/放置/稽核 UI P1-13/14/16/#93 + 分類編輯器 #66）→ 0.x 畢業為 MAJOR 紀元。
 CMD_VERSION: str = os.getenv(
     "CMD_VERSION",
-    "v1.18.0",  # MINOR：VPN-gate 儀表板——帳號管理裝置憑證面板加「📶 發 VPN」（label=username）+ WG 帳本列加撤除鈕
+    "v1.18.1",  # PATCH：#344 紅藍分類面板文案——改「發證後且在線（CN 為準，不受 callsign/uid 變動）」
+    # MINOR v1.18.0：VPN-gate 儀表板——帳號管理裝置憑證面板加「📶 發 VPN」（label=username）+ WG 帳本列加撤除鈕
     # PATCH v1.17.1：#434——WG peer 帳本段每列加 🟢/⚪ 在線指示（近期握手≈在線）
     # MINOR v1.17.0：#434 follow-up——發證結果面板顯 WG 配置狀態（X-WG-Status）+ TAK 面板附 WG peer 帳本段
     # PATCH v1.16.3：#318 Slice 3 part③——TAK 面板「撤銷盤點外的證（按 fingerprint）」輸入 + 撤在線證重啟 SOP 提示
