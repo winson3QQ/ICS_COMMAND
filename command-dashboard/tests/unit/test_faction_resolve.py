@@ -7,6 +7,8 @@ tests/unit/test_faction_resolve.py — #343 PR-2：producer 歸屬鏈 + ingest f
 - 歸屬鏈（全 by-uid）：creator.uid → link[relation=p-p].uid → fallback entity.uid
 - 真機平台差異：ATAK 標記/繪圖帶 creator；iTAK 標記帶 link p-p；iTAK 繪圖兩者皆無 → fail-closed
 - ingest 時依 client_faction 分類解 faction；未分類 / 解不到 → None（fail-closed）
+- #344：分類綁 cert CN（非 uid）；ingest 經 client_identity 把 producer uid 翻 CN 再查（無對照→fail-closed，
+  不退回用 CoT 自報字串當鍵——擋偽造 creator.uid=已知藍方 CN 的洩漏，security-review MED）
 - faction 綁 entity 的 exercise_id（per-exercise 分類）
 """
 
@@ -14,7 +16,7 @@ import asyncio
 
 import pytest
 
-from repositories import client_faction_repo
+from repositories import client_faction_repo, client_identity_repo
 from repositories.cop_entity_repo import get_cop_entity
 from schemas.cop import CoPEntity
 from schemas.tak import CoTEventIn
@@ -97,7 +99,9 @@ def _db(tmp_db):
 
 
 def test_resolve_faction_classified_blue():
-    client_faction_repo.upsert_faction(None, "ANDROID-DEV", "blue", "CAP", "admin")
+    # #344：分類綁 CN；ingest 經 client_identity 把 producer uid 翻 CN 再查
+    client_identity_repo.upsert_many({"ANDROID-DEV": "CAP-CN"})
+    client_faction_repo.upsert_faction(None, "CAP-CN", "blue", "CAP-CN", "admin")
     e = _entity("marker", attributes={"creator": {"uid": "ANDROID-DEV"}})
     assert cop_service._resolve_faction(e) == "blue"
 
@@ -110,7 +114,8 @@ def test_resolve_faction_unclassified_is_none():
 
 def test_resolve_faction_per_exercise_scoped():
     """同裝置跨場可不同陣營；解析綁 entity.exercise_id。"""
-    client_faction_repo.upsert_faction(None, "DEV", "blue", None, "admin")  # 實戰池
+    client_identity_repo.upsert_many({"DEV": "DEV-CN"})
+    client_faction_repo.upsert_faction(None, "DEV-CN", "blue", None, "admin")  # 待命池
     e_pool = _entity("m1", attributes={"creator": {"uid": "DEV"}}, exercise_id=None)
     assert cop_service._resolve_faction(e_pool) == "blue"
     # 未在 exercise 7 分類 → 該場 None（不繼承實戰池分類）
@@ -137,7 +142,8 @@ def _ingest(**overrides):
 
 
 def test_ingest_sets_faction_for_classified_producer():
-    client_faction_repo.upsert_faction(None, "ANDROID-DEV", "red", "敵-A", "admin")
+    client_identity_repo.upsert_many({"ANDROID-DEV": "ENEMY-CN"})
+    client_faction_repo.upsert_faction(None, "ENEMY-CN", "red", "敵-A", "admin")
     _ingest(uid="TAK-MK-1", detail={"creator": {"uid": "ANDROID-DEV"}})
     row = get_cop_entity("TAK-MK-1")
     assert row["faction"] == "red"
@@ -152,8 +158,9 @@ def test_ingest_unclassified_producer_faction_none():
 
 
 def test_ingest_self_sa_uses_uid_as_client_key():
-    """單位自身 PLI（無 creator/link）→ client_key=uid，分類後繼承。"""
-    client_faction_repo.upsert_faction(None, "ANDROID-SELF", "blue", "ALPHA-1", "admin")
+    """單位自身 PLI（無 creator/link）→ client_key=uid → 經 client_identity 翻 CN 後繼承分類。"""
+    client_identity_repo.upsert_many({"ANDROID-SELF": "ALPHA-CN"})
+    client_faction_repo.upsert_faction(None, "ALPHA-CN", "blue", "ALPHA-1", "admin")
     _ingest(uid="ANDROID-SELF", type="a-f-G-U-C", how="m-g")
     row = get_cop_entity("ANDROID-SELF")
     assert row["faction"] == "blue"

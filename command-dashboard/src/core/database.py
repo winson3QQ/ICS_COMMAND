@@ -1553,6 +1553,28 @@ def _m034_wg_peers_down(conn: sqlite3.Connection) -> None:
     conn.execute("DROP TABLE IF EXISTS wg_peers")
 
 
+def _m035_client_identity(conn: sqlite3.Connection) -> None:
+    """#344：裝置 uid → TAK username（= cert CN）對照快取。
+
+    紅藍分類改綁**穩定的 cert CN** 而非易變的 uid（裝置重裝/重 enroll 換 uid 就丟分類）。但 CoT 流裡
+    只有 uid，CN 只在 TAK 連線元資料（`/Marti/api/subscriptions/all` uid→username，見 tak_group_sync）。
+    故持久化 uid→username 對照：面板載入 / 分類時從 subscriptions 寫入；ingest faction 解析同步讀此表
+    把 uid 翻成 CN 再查分類（cop_service._resolve_faction）。uid 為 PK（一裝置一身分，後寫覆蓋）。
+    """
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS client_identity (
+            uid         TEXT PRIMARY KEY,
+            username    TEXT NOT NULL,
+            updated_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_client_identity_username ON client_identity(username)")
+
+
+def _m035_client_identity_down(conn: sqlite3.Connection) -> None:
+    conn.execute("DROP TABLE IF EXISTS client_identity")
+
+
 _MIGRATIONS: list[tuple[int, str, object]] = [
     (1, "events_columns", _m001_events_columns),
     (2, "decisions_columns", _m002_decisions_columns),
@@ -1588,6 +1610,7 @@ _MIGRATIONS: list[tuple[int, str, object]] = [
     (32, "chats_faction", _m032_chats_faction),
     (33, "tak_device_cert_enroll_meta", _m033_tak_device_cert_enroll_meta),
     (34, "wg_peers", _m034_wg_peers),
+    (35, "client_identity", _m035_client_identity),
 ]
 
 

@@ -397,10 +397,13 @@ def suspend_all(body: SuspendAllIn, request: Request):
 
 
 @router.get("/factions/clients", tags=["faction"])
-def faction_clients(request: Request, exercise_id: int | None = None):
-    """列本場觀測到的連線 client（producer）+ 目前分類（admin 右 tab 資料源）。exercise_id 省略=實戰池。"""
+async def faction_clients(request: Request, exercise_id: int | None = None):
+    """#344：列「發證後且在線」的 TAK client（CN 鍵）+ 目前分類（admin 右 tab 資料源）。exercise_id 省略=實戰池。
+
+    async：list_clients 會 await TAK subscriptions/all（在線視圖）並順帶刷新 client_identity 快取。
+    """
     _check_system_admin(request)
-    return {"clients": faction_service.list_clients(exercise_id)}
+    return {"clients": await faction_service.list_clients(exercise_id)}
 
 
 @router.post("/factions/classify", tags=["faction"])

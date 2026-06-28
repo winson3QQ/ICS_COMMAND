@@ -962,14 +962,14 @@ export async function admLoadFactions() {
   const clients = (await resp.json()).clients || [];
   let head =
     '<div style="font-size:11px;color:var(--text2);line-height:1.6;margin-bottom:10px;max-width:480px;">' +
-    '把本場觀測到的 TAK client（含已離線）分類成紅／藍／中立。<b>指揮官以下只看得到藍／中立</b>，紅軍與未分類者對其隱藏（fail-closed）。' +
+    '列出<b>發證後且目前在線</b>的 TAK client。顯示<b>角色名</b>（in-app callsign，使用者可改），但分類綁<b>裝置憑證 CN</b>（小字，穩定不變）→ 改 callsign／重裝換 uid 都不丟分類。分類<b>分演習</b>：同一裝置跨場可不同陣營。<br><b>指揮官以下只看得到藍／中立</b>，紅軍與未分類者對其隱藏（fail-closed）。' +
     '<br>作用範圍：<b>' + scopeLabel + '</b>　·　共 ' + clients.length + ' 個 client' +
     '<br><span style="color:var(--text3);">⚠ 需開 <code>ICS_FACTION_ISOLATION</code> 過濾才生效（分類本身隨時可做）。</span>' +
     '<button class="adm-btn" data-action="admExerciseSub" data-sub="faction" style="margin-left:8px;">重新整理</button></div>';
   let rows = '';
   if (!clients.length) {
     // #346：TAK 沒開就沒 client → 情境感知空狀態（指引去開 TAK），而非冷冷一片空。
-    let why = '本場尚未觀測到任何 TAK client（需現場裝置 broadcast 標記／位置）。';
+    let why = '目前無「發證後且在線」的 TAK client（需經面板發證的裝置連上 TAK 後才會列出）。';
     try {
       const ts = await authFetch(API_BASE + '/api/tak/status');
       if (ts.ok && !(await ts.json()).enabled) {
@@ -992,8 +992,11 @@ export async function admLoadFactions() {
         _FACTION_META[fac].label + '</button>';
     }
     rows += '<div style="display:flex;align-items:center;gap:6px;padding:5px 0;border-bottom:1px solid var(--border,#222);font-size:12px;">' +
-      '<span style="font-family:monospace;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + _escAudit(c.client_key) + '">' +
-        _escAudit(c.callsign || c.client_key) + '</span>' +
+      // 顯示 = live 角色名（in-app callsign，使用者可改）+ 穩定的 cert CN（mono 小字）；分類綁 CN。
+      '<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="角色（可變）：' + _escAudit(c.callsign || '') + ' ｜ 憑證 CN（分類依據）：' + _escAudit(c.cn || c.client_key) + '">' +
+        _escAudit(c.callsign || c.client_key) +
+        ((c.cn && c.cn !== c.callsign) ? '<span style="color:var(--text3);font-size:10px;margin-left:6px;font-family:monospace;">' + _escAudit(c.cn) + '</span>' : '') +
+      '</span>' +
       badge +
       // #389：在線/離線指示（last_seen 時效近似，非真連線態）。
       '<span style="font-size:10px;" title="' + (c.online ? '近期有活動（≈在線）' : '較久無活動（≈離線）') + '">' + (c.online ? '🟢' : '⚪') + '</span>' +

@@ -22,7 +22,7 @@ import logging
 import sqlite3
 
 from core.config import TRACK_MIN_INTERVAL_S
-from repositories import client_faction_repo, cop_entity_repo
+from repositories import client_faction_repo, client_identity_repo, cop_entity_repo
 from repositories._helpers import iso_to_dt
 from repositories.snapshot_repo import get_latest_snapshot
 from schemas.cop import CoPEntity, CoPEntityTrack
@@ -136,9 +136,19 @@ def _resolve_client_key(entity: CoPEntity) -> str:
 
 def _resolve_faction(entity: CoPEntity) -> str | None:
     """ingest 時解析 entity 的 faction（producer 經 admin 分類者繼承；未分類/解不到 → None
-    = fail-closed）。查 client_faction 綁 entity 的 exercise_id（per-exercise 分類）。"""
-    client_key = _resolve_client_key(entity)
-    return client_faction_repo.get_faction(entity.exercise_id, client_key)
+    = fail-closed）。查 client_faction 綁 entity 的 exercise_id（per-exercise 分類）。
+
+    #344：分類綁穩定的 **cert CN**（非易變 uid）→ 先經 client_identity（TAK subscriptions 權威，
+    非 CoT 自報）把 producer uid 翻成 CN 再查 client_faction。client_identity 為 last-writer-wins，
+    裝置下次在線觀測即自癒（極窄的「uid 跨不同分類裝置重用」陳舊窗口 → 退而非洩，可接受）。
+
+    **security（security-review #344 MED）**：uid 無對照 → **fail-closed（None）**，**不得退回用 CoT 自報的
+    producer 字串當鍵**。否則攻擊者（持證紅方）把 `creator.uid` 設成已知藍方 callsign（CN 低熵可枚舉）即可
+    命中 CN-keyed 分類、把紅軍標記偽裝成藍洩漏給指揮官。唯有經 client_identity 驗證翻出的 CN 才算數。
+    """
+    client_key = _resolve_client_key(entity)  # producer 裝置 uid（取自 CoT，不可信）
+    cn = client_identity_repo.get_username(client_key)  # 唯一可信來源：TAK subscriptions 寫入的對照
+    return client_faction_repo.get_faction(entity.exercise_id, cn) if cn else None
 
 
 def _extract_squad(detail: dict) -> tuple[str | None, str | None, int | None]:
