@@ -1,14 +1,17 @@
 # SPDX-License-Identifier: LicenseRef-Proprietary
 # Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
-"""services/faction_service.py — #343 紅藍隔離 admin 分類層（PR-5）。
+"""services/faction_service.py — #343 紅藍隔離 admin 分類層（PR-5）；#344 改綁 cert CN。
 
-admin 對「連線 client（裝置）」指派陣營：
-- list_clients：列本場觀測到的 producer（裝置）+ 目前分類（接 cop_entities 解 client_key 聚合，
-  **非** team_color 聚合——隊伍≠faction，見設計 §8.1）。
-- classify：驗場存在 → upsert client_faction → 重解析該 producer 名下 auto entity → resync 廣播。
+admin 對「連線 client（裝置）」指派陣營，以**穩定的 cert CN（= TAK username）** 為鍵（#344；舊版綁易變
+的裝置 uid，重裝/重 enroll 換 uid 就丟分類）：
+- list_clients：列「**發證後且在線**」的 client——來源 = `subscriptions/all`（在線視圖）∩ `tak_device_certs`
+  （active 發證），per-CN 去重；順帶把 {uid: CN} 寫進 client_identity 供 ingest 翻譯。
+- classify：驗場存在 → upsert client_faction（CN 鍵）→ 經 client_identity 解 CN→uids 重解析名下 auto
+  entity → resync 廣播 → 同步 TAK 群（username=CN 直傳）。
 - override_entity：對單一 entity 手動點陣營（iTAK 繪圖等無 producer 物件）→ resync。
 
-歸屬鏈核心 = cop_service.resolve_client_key_from_parts（與 ingest 同一套，避免漂移）。
+歸屬鏈核心 = cop_service.resolve_client_key_from_parts（解 producer uid，與 ingest 同一套）；uid→CN 翻譯
+見 cop_service._resolve_faction + repositories.client_identity_repo。
 """
 
 from __future__ import annotations

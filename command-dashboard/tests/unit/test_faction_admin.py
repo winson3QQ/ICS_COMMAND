@@ -100,10 +100,20 @@ def test_classification_survives_uid_change(_no_ws):
 
 
 def test_unknown_uid_fail_closed(_no_ws):
-    """uid 無 client_identity 對照 → 退回 uid 當鍵 → CN-keyed 分類查不到 → None（fail-closed）。"""
+    """uid 無 client_identity 對照 → fail-closed（None）；不退回用 uid/CoT 字串當鍵。"""
     asyncio.run(faction_service.classify(None, "CN-Z", "blue", None, "admin"))
     _ingest_marker("MK-U", "UID-UNKNOWN")  # 無對照
     assert cop_entity_repo.get_cop_entity("MK-U")["faction"] is None
+
+
+def test_forged_creator_cn_does_not_inherit_faction(_no_ws):
+    """#344 security（security-review MED）：攻擊者把 CoT creator.uid 偽造成已知藍方 CN（callsign 低熵
+    可枚舉）→ 不得命中 CN-keyed 分類偽裝成藍。uid 無 client_identity 對照即 fail-closed（不退回用 CoT
+    自報字串當 CN 鍵）。"""
+    client_faction_repo.upsert_faction(None, "blue-01", "blue", "blue-01", "admin")  # 正常把 CN blue-01 分藍
+    # 攻擊者（紅/未分類、無 client_identity 對照）發 marker，creator.uid 偽造成 "blue-01"
+    _ingest_marker("MK-FORGE", "blue-01")
+    assert cop_entity_repo.get_cop_entity("MK-FORGE")["faction"] is None  # 不繼承藍 → 無洩漏
 
 
 def test_classify_validates_exercise_exists(_no_ws):

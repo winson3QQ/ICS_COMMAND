@@ -28,6 +28,13 @@ def test_upsert_overwrites_on_conflict():
     assert client_identity_repo.get_username("uid1") == "new"
 
 
+def test_caches_all_online_uids_not_just_issued():
+    """承重正確性（code-review nit）：list_clients 在 issued 過濾**之前**寫全 online 對照——
+    ingest 需翻譯非發證 uid 的 CN（否則該裝置 entity 解析不到 → 漏著色）。此處直驗 repo 不挑剔 username。"""
+    client_identity_repo.upsert_many({"issued-uid": "alpha", "unissued-uid": "ghost"})
+    assert client_identity_repo.get_username("unissued-uid") == "ghost"  # 非發證的也要在
+
+
 def test_upsert_skips_empty():
     assert client_identity_repo.upsert_many({"": "x", "uid": "", "ok": "cn"}) == 1
     assert client_identity_repo.get_username("ok") == "cn"
