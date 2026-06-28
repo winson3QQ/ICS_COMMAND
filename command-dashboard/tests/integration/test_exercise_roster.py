@@ -83,3 +83,23 @@ def test_roster_endpoints(client, auth):
 
 def test_roster_requires_sysadmin(client):
     assert client.get("/api/admin/exercises/1/roster").status_code == 401
+
+
+def test_roster_add_connected(client, auth, monkeypatch):
+    """#267 UI：「加入全部連線」一鍵把在線 client 全納入 roster；已在者不重計（added=新加入數）。"""
+    eid = exercise_repo.create_exercise({"name": "drill", "type": "ttx"})["id"]
+    base = f"/api/admin/exercises/{eid}/roster"
+    client.post(base, json={"cn": "alpha"}, headers=auth)  # alpha 先在 roster
+
+    async def _fake_clients(exercise_id):  # mock 在線∩發證（免起 TAK）
+        return [{"cn": "alpha"}, {"cn": "bravo"}, {"cn": "charlie"}]
+
+    from services import faction_service
+
+    monkeypatch.setattr(faction_service, "list_clients", _fake_clients)
+    r = client.post(base + "/add-connected", headers=auth)
+    assert r.status_code == 200
+    data = r.json()
+    assert data["total_online"] == 3
+    assert data["added"] == 2  # alpha 已在 → 只加 bravo/charlie
+    assert {m["client_cn"] for m in data["roster"]} == {"alpha", "bravo", "charlie"}

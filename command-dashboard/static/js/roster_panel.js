@@ -16,8 +16,10 @@ import { affiliationFromCot } from './map/mil_symbol.js';
 let _getTakUnits = () => [];
 let _hasActiveExercise = () => false;
 let _onEnroll = null; // #267：(uid, 'enroll'|'unenroll') => Promise；main.js 注入（指揮層才有）
+let _onAddConnected = null; // #267：() => Promise；「加入全部連線」一鍵（指揮層；解純乙空場可用性）
 let _timer = null;
 let _clickBound = false;
+let _addBusy = false; // 「加入全部連線」進行中旗標（防連點重送）
 
 // 隊伍名冊＝**編成單位（TAK 端點：裝置/人員）**，#358-2 起以 **faction 為組織主軸**（見 rosterModel）。
 // 「是不是單位」用 **team_color（自報 __group）** 判定——TAK client self-SA 必帶 __group（隊色），
@@ -84,10 +86,64 @@ const _TEAM_HEX = {
 };
 function _teamColor(team) { return _TEAM_HEX[team] || 'var(--text3)'; }
 
+/** 「加入全部連線」鈕（指揮層才有 _onAddConnected）。busy 時禁點並顯進度。 */
+function _addAllBtn(label) {
+  if (!_onAddConnected) return '';
+  const base = 'font-size:9px;border-radius:3px;padding:2px 8px;cursor:pointer;flex-shrink:0;'
+    + 'border:1px solid var(--accent);color:#fff;background:var(--accent);';
+  return _addBusy
+    ? `<span style="${base}opacity:.5;cursor:default;">加入中…</span>`
+    : `<span data-roster-addall="1" style="${base}">${_esc(label)}</span>`;
+}
+
+/** #267：演習中的「連線/在場」top section HTML（計數 + 空場警示 + 一鍵全加）。 */
+function _renderScopeTop(st) {
+  const counts = '<div style="display:flex;align-items:center;gap:6px;padding:6px;font-size:10px;color:var(--text2);">'
+    + '<span style="width:7px;height:7px;border-radius:50%;background:var(--green);flex-shrink:0;"></span>'
+    + '<span>' + st.connected + ' 連線</span><span style="color:var(--text3);">·</span>'
+    + '<span style="color:' + (st.scoped ? 'var(--text)' : 'var(--text3)') + ';">' + st.scoped + ' 在場</span>'
+    + '</div>';
+  if (st.warn) {
+    // 空場警示（純乙：沒人在場＝這場無資料進場）。有人連線 → 給「加入全部連線」；無人連線 → 指引連入。
+    const action = st.connected > 0
+      ? _addAllBtn('加入全部連線 (' + st.connected + ')')
+      : '<span style="font-size:9px;color:var(--text3);">尚無單位連線</span>';
+    return counts
+      + '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:2px 6px 6px;padding:7px 9px;'
+      + 'background:rgba(239,159,39,.12);border:1px solid var(--warn,#EF9F27);border-radius:4px;">'
+      + '<span style="font-size:11px;line-height:1.4;color:var(--text);flex:1;min-width:120px;">'
+      + '⚠ 演習進行中，<b>無單位在場</b> — 目前沒有任何單位資料進入這場演習。</span>'
+      + action + '</div>';
+  }
+  if (st.gap > 0) {
+    // 已有人在場、但仍有連線未納編 → 輕量提示 + 一鍵補齊（非紅、不搶眼）。
+    return counts
+      + '<div style="display:flex;align-items:center;gap:8px;padding:0 6px 6px;font-size:10px;color:var(--text3);">'
+      + '<span style="flex:1;">還有 ' + st.gap + ' 台連線未納編</span>' + _addAllBtn('加入全部連線') + '</div>';
+  }
+  return counts;
+}
+
+/**
+ * #267 純乙可用性：演習中的「連線 / 在場」計數 + 空場警示模型（可單測，無 DOM）。
+ * connected = 在線的編成單位數；scoped = 其中已歸入本場（exercise_id 非空）的數。
+ * 純乙下空 roster = 沒人在場 → scoped==0 時警示；scoped<connected 時提示還有人未納編。
+ * 鍵在「結果（在場數）」而非「roster 表空不空」→ 對「一鍵全加」與「逐一納編」兩套機制都正確。
+ * @returns {{ connected: number, scoped: number, warn: boolean, gap: number }}
+ */
+export function scopeStatus(units, nowIso) {
+  const now = nowIso || new Date().toISOString();
+  const online = (units || []).filter((e) => _isRosterUnit(e) && _isOnline(e, now));
+  const connected = online.length;
+  const scoped = online.filter((e) => e.exercise_id != null).length;
+  return { connected, scoped, warn: scoped === 0, gap: connected - scoped };
+}
+
 /** 渲染名冊到 #roster-body + 更新 tab 紅圈（離線數）。隱藏時也會更新 badge（cheap）。 */
 export function renderRoster() {
   const now = new Date().toISOString();
-  const { groups, offline } = rosterModel(_getTakUnits(), now); // rosterModel 內按 faction 分組（#358-2）
+  const units = _getTakUnits();
+  const { groups, offline } = rosterModel(units, now); // rosterModel 內按 faction 分組（#358-2）
 
   // badge：離線數（「未編人數」要等 enrollment 後端，#269 step6 先用 offline 佔位）
   const badge = _el('roster-tab-badge');
@@ -98,17 +154,21 @@ export function renderRoster() {
 
   const body = _el('roster-body');
   if (!body) return;
-  if (!groups.length) {
-    body.innerHTML = '<div style="color:var(--text3);font-size:11px;padding:8px;">尚無編成單位</div>';
-    return;
-  }
 
   // #267：有 active 演習時，NULL 單位＝常駐候選（疊看送進來的）→ 加「常駐」標記以與在場單位區分；
   // 無 active 演習時所有單位都是常駐、無對照 → 不標（徒增雜訊）。active 狀態由 main.js 注入
   // （不能只看「清單有無在場單位」—— 演習剛開、尚無人在場時會誤判）。
   const markStanding = _hasActiveExercise();
 
-  let html = '';
+  // #267 純乙可用性 top section：演習中顯「連線 / 在場」計數 + 空場警示 + 「加入全部連線」一鍵。
+  // 解「忘了勾 roster → 演習空白」：用 UI（顯眼提醒 + 一鍵全加）而非程式 fallback（避免怪邊角）。
+  let html = markStanding ? _renderScopeTop(scopeStatus(units, now)) : '';
+
+  if (!groups.length) {
+    body.innerHTML = html + '<div style="color:var(--text3);font-size:11px;padding:8px;">尚無編成單位</div>';
+    return;
+  }
+
   for (const [fac, list] of groups) {
     const online = list.filter((e) => _isOnline(e, now)).length;
     // #358-2：群標頭 = faction（藍軍/紅軍/中立/未分類）+ faction 區塊色。
@@ -153,8 +213,20 @@ export function renderRoster() {
   body.innerHTML = html;
 }
 
-/** #267 納編/退編 鈕的委派點擊（綁在 #roster-body，innerHTML 重繪不掉）。 */
+/** #267 納編/退編 + 「加入全部連線」鈕的委派點擊（綁在 #roster-body，innerHTML 重繪不掉）。 */
 function _onBodyClick(ev) {
+  const addAll = ev.target.closest && ev.target.closest('[data-roster-addall]');
+  if (addAll && _onAddConnected && !_addBusy) {
+    _addBusy = true;
+    renderRoster(); // 立即顯「加入中…」
+    Promise.resolve(_onAddConnected())
+      .catch(() => {})
+      .finally(() => {
+        _addBusy = false;
+        renderRoster(); // WS resync 隨後也會重繪，這裡先解 busy
+      });
+    return;
+  }
   const btn = ev.target.closest && ev.target.closest('[data-roster-enroll]');
   if (!btn || !_onEnroll) return;
   const uid = btn.getAttribute('data-uid');
@@ -165,10 +237,12 @@ function _onBodyClick(ev) {
 }
 
 /** main.js 注入 TAK 單位來源 + 納編 callback + 啟動週期重繪 + 綁 tab 切換即時重繪。 */
-export function initRoster({ getTakUnits, getHasActiveExercise, onEnroll } = {}) {
+export function initRoster({ getTakUnits, getHasActiveExercise, onEnroll, onAddConnected } = {}) {
   if (typeof getTakUnits === 'function') _getTakUnits = getTakUnits;
   if (typeof getHasActiveExercise === 'function') _hasActiveExercise = getHasActiveExercise;
-  if (typeof onEnroll === 'function') _onEnroll = onEnroll;
+  // 能力 callback：未提供＝該身分無此能力 → reset 成 null（非指揮層不殘留上一次的鈕；re-init 語意乾淨）。
+  _onEnroll = typeof onEnroll === 'function' ? onEnroll : null;
+  _onAddConnected = typeof onAddConnected === 'function' ? onAddConnected : null;
   document.addEventListener('right-tab:switched', (e) => {
     if (e?.detail?.tab === 'roster') renderRoster();
   });

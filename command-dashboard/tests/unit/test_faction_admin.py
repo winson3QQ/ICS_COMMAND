@@ -11,11 +11,18 @@ tests/unit/test_faction_admin.py — #343 PR-5 + #344：admin 分類 API 層（f
 """
 
 import asyncio
+from datetime import UTC, datetime
 
 import pytest
 from fastapi import HTTPException
 
-from repositories import client_faction_repo, client_identity_repo, cop_entity_repo, tak_device_cert_repo
+from repositories import (
+    client_faction_repo,
+    client_identity_repo,
+    cop_entity_repo,
+    exercise_roster_repo,
+    tak_device_cert_repo,
+)
 from schemas.tak import CoTEventIn
 from services import cop_service, exercise_service, faction_service, tak_group_sync
 
@@ -46,13 +53,16 @@ def _identity(uid, cn):
     client_identity_repo.upsert_many({uid: cn})
 
 
-def _ingest_marker(uid, creator_uid, callsign="敵-A"):
-    """ingest 一個 tak 標記（creator=creator_uid=producer）→ entity faction 依當下分類解析。"""
+def _ingest_marker(uid, creator_uid, callsign="敵-A", *, time="2026-06-22T01:00:00Z"):
+    """ingest 一個 tak 標記（creator=creator_uid=producer）→ entity faction 依當下分類解析。
+
+    time 預設固定（多數測試不在意場次窗）；要落在「現在 active 窗」內的測試（#267 乙）須傳現在時間。
+    """
     ev = CoTEventIn(
         uid=uid,
         type="a-h-G",
-        time="2026-06-22T01:00:00Z",
-        start="2026-06-22T01:00:00Z",
+        time=time,
+        start=time,
         stale="2099-01-01T00:00:00Z",
         how="h-g-i-g-o",
         lat=24.1,
@@ -127,7 +137,9 @@ def test_classify_real_exercise_ok(_no_ws):
     ex = exercise_service.create({"name": "drill", "type": "ttx"})
     exercise_service.set_active(ex["id"], "admin")
     _identity("DEV-Y", "CN-Y")
-    _ingest_marker("MK-EX", "DEV-Y")  # ingest 綁 active 場
+    exercise_roster_repo.upsert_member(ex["id"], "CN-Y", None, "admin")  # #267(乙)：須在 roster 才綁場
+    now = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")  # 須落在 active 窗（活化時間=現在）
+    _ingest_marker("MK-EX", "DEV-Y", time=now)  # ingest 綁 active 場
     res = asyncio.run(faction_service.classify(ex["id"], "CN-Y", "blue", None, "admin"))
     assert res["reresolved"] == 1
     assert cop_entity_repo.get_cop_entity("MK-EX")["faction"] == "blue"

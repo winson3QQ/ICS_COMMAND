@@ -22,7 +22,7 @@ import logging
 import sqlite3
 
 from core.config import TRACK_MIN_INTERVAL_S
-from repositories import client_faction_repo, client_identity_repo, cop_entity_repo
+from repositories import client_faction_repo, client_identity_repo, cop_entity_repo, exercise_repo, exercise_roster_repo
 from repositories._helpers import iso_to_dt
 from repositories.snapshot_repo import get_latest_snapshot
 from schemas.cop import CoPEntity, CoPEntityTrack
@@ -149,6 +149,67 @@ def _resolve_faction(entity: CoPEntity) -> str | None:
     client_key = _resolve_client_key(entity)  # producer 裝置 uid（取自 CoT，不可信）
     cn = client_identity_repo.get_username(client_key)  # 唯一可信來源：TAK subscriptions 寫入的對照
     return client_faction_repo.get_faction(entity.exercise_id, cn) if cn else None
+
+
+def _resolve_exercise_scope(entity: CoPEntity) -> int | None:
+    """#267：entity 屬哪場演習 = 唯一 active 場 IF（producer CN 在該場 roster）AND（entity.time 在活躍窗），
+    否則 NULL（待命池）。取代舊「insert 當下 current_exercise_id() 蓋死、不能改」。
+
+    doctrine（使用者拍板）：身分(CN)常駐 + 參與/編制/敵我 per-場 roster + 時段=活躍區間聯集；中途加入者
+    **從加入起算**（不回算）→ 故只在 CREATE/重 stamp 時算當下、之後凍結（轉換靠顯式重 stamp 捕捉，同 #344）。
+    軌跡逐點繼承當下 entity.exercise_id（免重算）。
+
+    **純乙（使用者拍板）**：空 roster = 沒人（不 auto-capture）——「忘了勾就空白」靠 UI 解（Slice 4：空-場
+    警示橫幅 + 「加入全部連線」一鍵 + 即時計數），不靠程式 fallback。CN 無 client_identity 對照（未在線過）
+    → NULL（fail-closed）。實際判定見 _resolve_exercise_scope_parts。
+    """
+    return _resolve_exercise_scope_parts(entity.uid, entity.attributes, entity.time)
+
+
+def _resolve_exercise_scope_parts(uid: str, attributes: dict | None, ts: str) -> int | None:
+    """#267 scope 解析核心（dict-based，供 ingest 與重 stamp 共用，同 resolve_client_key_from_parts）。
+
+    純 roster-based（使用者拍板「乙」）：**空 roster = 沒人**（不 auto-capture）——「忘了勾就空白」的可用性
+    靠 UI 解（Slice 4：空-roster 警示橫幅 + 「加入全部連線」一鍵 + 開場流程內建勾選 + 即時計數），不靠
+    程式 fallback（避免「清空 roster 又自動全抓」的怪邊角）。CN 無 client_identity 對照 → NULL（fail-closed）。
+    """
+    ex_id = current_exercise_id()
+    if ex_id is None:
+        return None  # 無 active 場 → 待命池
+    cn = client_identity_repo.get_username(resolve_client_key_from_parts(uid, attributes or {}))
+    if cn and exercise_roster_repo.is_in_roster(ex_id, cn) and exercise_repo.ts_in_active_window(ex_id, ts):
+        return ex_id
+    return None
+
+
+async def restamp_exercise_for_cns(cns: list[str]) -> int:
+    """#267：roster 變動 → 重解析這些 CN 名下 live entity 的 exercise_id（live 點即時歸位/離場）+ resync。
+    回更新筆數。軌跡逐點繼承當下 entity.exercise_id（不重算歷史，符合「中途加入從加入起算」）。
+
+    處理「人已連線、才開場/才勾進 roster」流程：既有 entity（建於待命=NULL，更新位置凍結 exercise_id）
+    靠此顯式重 stamp 歸位（同 #344 classify 後 _reresolve_producer）。
+
+    註：解析一律對**當前 active 場**（_resolve_exercise_scope_parts 內取 current_exercise_id），不看呼叫端的
+    exercise_id。故只在「對 active 場改 roster」時呼叫才有意義（UI 即如此）；對非 active 場改 roster 回的
+    筆數無意義（但絕不會誤把 entity 綁到非 active 場——fail-closed，非安全問題）。
+    """
+    target_uids: set[str] = set()
+    for cn in cns:
+        target_uids.update(client_identity_repo.uids_for_username(cn))
+    if not target_uids:
+        return 0
+    n = 0
+    for e in cop_entity_repo.list_cop_entities(source="tak", exercise_id=None, include_stale=True, limit=10000):
+        attrs = e.get("attributes") or {}
+        if resolve_client_key_from_parts(e["uid"], attrs) not in target_uids:
+            continue
+        new_ex = _resolve_exercise_scope_parts(e["uid"], attrs, e.get("time"))
+        if new_ex != e.get("exercise_id"):
+            cop_entity_repo.set_exercise_for_uid(e["uid"], new_ex)
+            n += 1
+    if n:
+        await cop_hub.broadcast_all({"op": "resync"})
+    return n
 
 
 def _extract_squad(detail: dict) -> tuple[str | None, str | None, int | None]:
@@ -447,6 +508,9 @@ async def ingest_cot_event(event: CoTEventIn) -> dict | None:
     if event.type.startswith("t-x-d-d"):
         return await _handle_tak_delete(event)
     entity = normalize_cot(event)
+    # #267：解析 entity 歸屬演習（roster × 活躍窗），覆寫 normalize_cot 的 current_exercise_id 預設。
+    # 須在 _resolve_faction 前——faction 查綁 entity.exercise_id 的 per-場分類。
+    entity.exercise_id = _resolve_exercise_scope(entity)
     # #343：解析 producer faction（藍/紅/中立），create 時隨 entity 落地（insert 走 model_dump
     # 自動帶 faction 欄）。未分類 / 解不到 producer → None = fail-closed（對 commander 不可見）。
     # faction 不在 _TAK_UPDATE_FIELDS → 後續位置更新幀不覆寫（保留），admin 重分類走另路徑。

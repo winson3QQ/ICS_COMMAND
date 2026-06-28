@@ -815,6 +815,11 @@ function _loadClassicScript(src) {
             body: JSON.stringify({ uid, action }),
           });
         },
+        // #267 純乙可用性：「加入全部連線」一鍵把在線 client（CN）全納入 active 場 roster（後端重 stamp + resync）。
+        onAddConnected: async () => {
+          if (_activeExId == null) return;
+          await authFetch(`${API_BASE}/api/admin/exercises/${_activeExId}/roster/add-connected`, { method: 'POST' });
+        },
       });
       // #269：還原 per-session 記憶的右欄 tab（TAK 狀態套用後；記憶為 TAK 頁但已停用則退回事件）
       restoreRightTab();

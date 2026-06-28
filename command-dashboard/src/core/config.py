@@ -157,10 +157,14 @@ WARNING_THRESHOLD_SECONDS: int = int(os.getenv("ICS_WARNING_THRESHOLD_SECONDS", 
 #               （subscriptions ∩ tak_device_certs，CN 鍵）→ 裝置重裝/重 enroll 換 uid 不丟分類。
 # PATCH 2.26.1：#344 Slice 2——背景週期（45s）刷新 client_identity（uid→CN），免「裝置換 uid 重連後須
 #               先開紅藍分類面板才著色」的窗口（最多一輪詢週期即自動解析 faction）。
+# MINOR 2.27.0：#267 感測層 scope 重構——entity 屬某場 = 唯一 active 場 × producer CN 在 roster ×
+#               ts 在活躍窗（純乙：空 roster=沒人，不 auto-capture），取代舊「insert-time current_exercise_id
+#               蓋死」。ingest 接線 _resolve_exercise_scope（覆寫 normalize 預設、在 faction 前）；roster 變動/
+#               「加入全部連線」即時重 stamp live 點。新端點 POST /api/admin/exercises/{id}/roster/add-connected。
 # PATCH 2.26.2：security 收緊——#393 通用 /api/config/{key} GET/POST 收成 SYSADMIN_ONLY（原 observer 可讀/
 #               commander 可寫任意 key）；#375 suspend-all 納 _SYSADMIN_GUARD_LOCK + re-assert 發起者仍
 #               active sysadmin（並發 demote 發起者→拒，防達零 sysadmin 自鎖）。
-APP_VERSION = "2.26.2"
+APP_VERSION = "2.27.0"
 
 # CMD_VERSION：前端 UI 功能版本（不同於後端 SemVer APP_VERSION；規則見 CLAUDE.md 版號規則）
 # 兩軌版本命名，不可混用。由 /api/version 提供給前端，是唯一 source-of-truth；release 時更新此值。
@@ -168,7 +172,9 @@ APP_VERSION = "2.26.2"
 #         + 演習/放置/稽核 UI P1-13/14/16/#93 + 分類編輯器 #66）→ 0.x 畢業為 MAJOR 紀元。
 CMD_VERSION: str = os.getenv(
     "CMD_VERSION",
-    "v1.18.1",  # PATCH：#344 紅藍分類面板文案——改「發證後且在線（CN 為準，不受 callsign/uid 變動）」
+    "v1.19.0",  # MINOR：#267 演習 roster 可用性 UI——隊伍名冊頭顯「X 連線 / Y 在場」計數 + 空場紅字警示橫幅
+    # （在場數==0 → 顯，鍵在結果故對「逐一納編」與「一鍵全加」兩套機制都正確）+「加入全部連線」一鍵鈕
+    # PATCH v1.18.1：#344 紅藍分類面板文案——改「發證後且在線（CN 為準，不受 callsign/uid 變動）」
     # MINOR v1.18.0：VPN-gate 儀表板——帳號管理裝置憑證面板加「📶 發 VPN」（label=username）+ WG 帳本列加撤除鈕
     # PATCH v1.17.1：#434——WG peer 帳本段每列加 🟢/⚪ 在線指示（近期握手≈在線）
     # MINOR v1.17.0：#434 follow-up——發證結果面板顯 WG 配置狀態（X-WG-Status）+ TAK 面板附 WG peer 帳本段

@@ -46,6 +46,14 @@ def _active_exercise(tmp_db):
     return ex
 
 
+@pytest.fixture(autouse=True)
+def _scope_via_active(monkeypatch):
+    """本檔測**軌跡接線機制**（非 #267 scope doctrine）：讓 in-scope entity 直接綁 active 場，
+    把「roster × 活躍窗」scope 解析交給 test_exercise_scope_resolve.py 專責，兩者關注點分離。
+    （純乙後，ingest 不再 auto-capture；本檔不設 roster，故顯式還原「有 active 即綁」供軌跡測試。）"""
+    monkeypatch.setattr(cop_service, "_resolve_exercise_scope", lambda e: cop_service.current_exercise_id())
+
+
 def _event(uid: str = "TRK-1", *, time: str, **overrides) -> CoTEventIn:
     base = {
         "uid": uid,
