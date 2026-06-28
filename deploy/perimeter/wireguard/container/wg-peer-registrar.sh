@@ -27,7 +27,7 @@ QUEUE="${WG_QUEUE:-/wg-queue}"
 REQ_DIR="$QUEUE/requests"
 RES_DIR="$QUEUE/results"
 IFACE="${WG_IFACE:-wg0}"
-CONF="${WG_CONF:-/etc/wireguard/${IFACE}.conf}"
+CONF="${WG_CONF:-/wg-data/${IFACE}.conf}"  # #434 fix：持久卷（同 server.key），否則 --force-recreate 丟 peer
 POLL_S="${WG_POLL_S:-1}"
 # 允許的 peer IP 段（fail-closed：只接受本 VPN 子網內的 /32，擋亂配導致路由污染）。
 # 注意：不可寫成 `${WG_SUBNET_RE:-...{1,3}...}`——預設值內的 `{1,3}` 大括號會提前截斷 parameter
