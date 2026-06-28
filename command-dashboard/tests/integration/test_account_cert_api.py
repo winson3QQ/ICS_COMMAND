@@ -265,6 +265,51 @@ class TestTakDeviceCert:
         assert calls == [("enr-01", "FP:EN:RO:LL", config.TAK_ENROLL_DEFAULT_GROUP)]
         assert r.headers["X-TAK-Enroll-Status"] == "ok"
 
+    def test_issue_bundles_wireguard_when_configured(self, client, auth, monkeypatch, tmp_path):
+        """#434：WG 配置時，發證回傳外層 bundle（TAK 包 + wireguard.conf + QR + 說明），X-WG-Status=ok。"""
+        import io
+        import zipfile
+
+        import core.config as config
+        import services.tak_device_cert as tdc
+        import services.wg_provision as wgp
+
+        (tmp_path / "tak-ca.key").write_text("KEY", encoding="ascii")
+        (tmp_path / "tak-ca.pem").write_text("PEM", encoding="ascii")
+        monkeypatch.setattr(config, "TAK_DEVICE_CONNECT_HOST", "1.2.3.4")
+        monkeypatch.setattr(config, "TAK_DEVICE_CA_DIR", str(tmp_path))
+        monkeypatch.setattr(tdc, "build_device_package", lambda *a, **k: (b"TAKZIP", "SER-WG", "FP:00"))
+        monkeypatch.setattr(wgp, "is_configured", lambda: True)
+        monkeypatch.setattr(
+            wgp,
+            "provision_device",
+            lambda cs, op: {"ok": True, "reason": "ok", "conf": "[Interface]\nPrivateKey = x\n", "qr": b"PNGX"},
+        )
+        r = client.post("/api/admin/tak/device-cert?callsign=wg-01&mode=aware", headers=auth)
+        assert r.status_code == 200, r.text
+        assert r.headers["X-WG-Status"] == "ok"
+        names = zipfile.ZipFile(io.BytesIO(r.content)).namelist()
+        assert "wireguard.conf" in names and "wireguard-qr.png" in names and "安裝說明.txt" in names
+        assert "wg-01-TAK.zip" in names
+
+    def test_issue_wg_failure_falls_back_to_plain_pkg(self, client, auth, monkeypatch, tmp_path):
+        """#434：WG provisioning 失敗 → 仍交付純 TAK 包（不擋發證），X-WG-Status 帶 reason。"""
+        import core.config as config
+        import services.tak_device_cert as tdc
+        import services.wg_provision as wgp
+
+        (tmp_path / "tak-ca.key").write_text("KEY", encoding="ascii")
+        (tmp_path / "tak-ca.pem").write_text("PEM", encoding="ascii")
+        monkeypatch.setattr(config, "TAK_DEVICE_CONNECT_HOST", "1.2.3.4")
+        monkeypatch.setattr(config, "TAK_DEVICE_CA_DIR", str(tmp_path))
+        monkeypatch.setattr(tdc, "build_device_package", lambda *a, **k: (b"TAKZIP-ONLY", "SER", "FP:00"))
+        monkeypatch.setattr(wgp, "is_configured", lambda: True)
+        monkeypatch.setattr(wgp, "provision_device", lambda cs, op: {"ok": False, "reason": "pool-exhausted"})
+        r = client.post("/api/admin/tak/device-cert?callsign=wg-02&mode=aware", headers=auth)
+        assert r.status_code == 200
+        assert r.headers["X-WG-Status"] == "pool-exhausted"
+        assert r.content == b"TAKZIP-ONLY"  # WG 失敗仍交付純 TAK 包
+
     def test_list_and_revoke_flag(self, client, auth, monkeypatch, tmp_path):
         """#317：列管 + 撤銷-flag（帳面，不 enforce）。"""
         import core.config as config

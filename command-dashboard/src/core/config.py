@@ -144,7 +144,9 @@ WARNING_THRESHOLD_SECONDS: int = int(os.getenv("ICS_WARNING_THRESHOLD_SECONDS", 
 #               新端點 deregister 任一 TAK callsign（infra 大小寫不敏感擋）。管理非 dashboard 發的殭屍。
 # PATCH 2.23.1：#431——enrollment 模式發證補綁 cert fingerprint（usermod -f）→ 修「reconcile 未同步 /
 #               證不可撤」；行為改變故 PATCH+1。
-APP_VERSION = "2.23.1"
+# MINOR 2.24.0：#434——容器化 WireGuard + ICS 統管 VPN：發裝置證連帶產 keypair/配 IP/註冊 peer/夾 .conf+QR
+#               外層 bundle（一站式）+ 撤證連動撤 peer。完整新功能（實機 E2E 過：發證→自動 WG→裝置同上 TAK）。
+APP_VERSION = "2.24.0"
 
 # CMD_VERSION：前端 UI 功能版本（不同於後端 SemVer APP_VERSION；規則見 CLAUDE.md 版號規則）
 # 兩軌版本命名，不可混用。由 /api/version 提供給前端，是唯一 source-of-truth；release 時更新此值。
@@ -365,6 +367,15 @@ TAK_ENROLL_TIMEOUT_S: float = float(os.getenv("TAK_ENROLL_TIMEOUT_S", "8.0"))  #
 # #429 ICS 代理 enrollment（dashboard signClient 發證）：TAK 憑證註冊埠 :8446 的對內 URL。
 # 空 → 代理發證停用（dashboard 回退 offline 簽 / 或回 503）。容器內網用 https://takserver:8446。
 TAK_ENROLL_URL: str = os.getenv("TAK_ENROLL_URL", "")
+
+# #434 容器化 WireGuard：ICS 經共享卷檔佇列驅動 ics-wg 容器加/刪 peer（services/wg_provision）。
+# 空 queue dir → WG peer 控制停用（發證仍出 TAK 證、VPN peer 待手動/重試；不影響證流程）。
+WG_QUEUE_DIR: str = os.getenv("WG_QUEUE_DIR", "")  # 與 ics-wg 容器共享的卷掛載點，如 /wg-queue
+WG_SUBNET_PREFIX: str = os.getenv("WG_SUBNET_PREFIX", "10.13.13.")  # VPN 子網前綴（peer /32 須落此段，fail-closed）
+WG_PEER_TIMEOUT_S: float = float(os.getenv("WG_PEER_TIMEOUT_S", "8.0"))  # 等 ics-wg 容器結果逾時（best-effort）
+# 組裝裝置端 .conf 用：server 公鑰（ics-wg 容器開機產，寫在 /wg-queue/server.pub，部署時填此）+ 對外端點。
+WG_SERVER_PUBKEY: str = os.getenv("WG_SERVER_PUBKEY", "")  # ics-wg 的 server pubkey（裝置 .conf 的 [Peer] PublicKey）
+WG_ENDPOINT: str = os.getenv("WG_ENDPOINT", "")  # 對外 WG 端點 公網IP:port（裝置 .conf 的 Endpoint），如 1.2.3.4:51820
 
 # ── #318 層2 真撤銷：ICS 直連 TAK Server postgres ──────────────────────────────
 # reality check（2026-06-26，#318）：TAK 對 CA 信任的證 TLS 不拒、deregister 只降匿名(__ANON__)；
