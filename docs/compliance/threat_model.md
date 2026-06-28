@@ -350,6 +350,31 @@ Command **信任 TAK Server 轉發的所有 CoT** —— 即使傳輸加密（§
 
 > **紅線**：上述「正式交付」欄各項，**不可帶著公測階段的風險接受值出貨**。密封盒模型下 CA 同機可接受，但**整碟加密 + FIDO2 鑰閘（PIN+touch）+ 碟鑰分離 + 閒置斷電**為出貨強制，缺一即退回公測風險等級。
 
+### 8.9 容器化 WireGuard 周界 — ICS 統管 VPN 的攻擊面與信任邊界（[#434](https://github.com/winson3QQ/ICS_COMMAND/issues/434)，2026-06-28）
+
+§8.6/§8.7.1 的 doctrine 是「不直曝、用 VPN 收公網入口」（[#280](https://github.com/winson3QQ/ICS_COMMAND/issues/280)）。#434 把這條落地成**容器化 WireGuard**：TAK :8089 串流入口從公網收回 VPN 之後，公網只開 `51822/udp`（WG），:8089/:8446 不再 forward → **未持 WG peer 私鑰者連 TAK 埠都摸不到**。同時 ICS 比照 tak-registrar 經**共享卷檔案佇列**統管 peer 生命週期（產 keypair / 配 IP / 加刪 peer / QR），把「連線那半」也納入 ICS 管理。2026-06-28 cutover：退役 Windows-native WG，容器 WG 轉正。
+
+**新增信任邊界與攻擊面**
+
+| 元件 / 面 | 攻擊面 | 緩解 |
+|---|---|---|
+| **特權容器 `ics-wg`**（`NET_ADMIN` + root + `/dev/net/tun`） | kernel WG **刻意特權**；container escape → 摸到 `wg0`、DNAT 規則、server WG 私鑰 | 單一用途、最小服務（alpine + wireguard-tools/iptables/iproute2 而已）；與 §8.8 manned-C2 密封盒「container escape 殘留」**同類**，靠盒硬化緩解 |
+| **佇列控制面**（ICS→ics-wg 經共享卷 `/wg-queue`，4 行純文字協定 pubkey/allowed_ip/op/label） | 注入 / 偽造操作 / 越權配號 | **不引入 docker.sock**（呼應 §8.3 #408 part④ 同一 doctrine，不擴 docker daemon 攻擊面）；`op`/`pubkey`/`allowed_ip` 正則閘門**才餵 `wg`（走 argv 非 shell、無 eval）**，`label` 只進雙引號 log echo + ICS 端 `_submit_op` 過濾換行/截斷；watcher **獨立 re-validate subnet**（即使 ICS 已驗）；`<id>`=server `uuid4().hex`（無路徑穿越）；卷只掛 ICS↔ics-wg（無第三方）。`/security-review` 2026-06-28 全套 **clean** |
+| **DNAT 路由信任邊界**（wg0 10.13.13.1 → :8089/:8446 takserver、:443 nginx） | 任何握手進 wg0 者被 DNAT 到內部服務 | **信任假設＝握手成功＝持有效 WG peer 私鑰**；peer 私鑰由 ICS server-side 生成（X25519 CSPRNG）+ 經 **admin-only bundle** 交付。WG 層＝TAK :8089 的**網路層守門**（疊加在 TAK cert 准入之上，非取代） |
+| **server 私鑰持久化**（`/wg-data/server.key`、`wg0.conf` 含 PrivateKey via `wg showconf`） | 偷碟 / 卷外洩 → 冒充 WG server | 兩檔皆 **0600**（#439 硬化）；卷 root-only、**非跨掛 ICS**；at-rest 由 §8.4 整碟加密覆蓋 |
+
+**與既有節對照（縱深，非取代）**
+
+- **WG ≠ 取代 TAK 准入，是疊加的網路層**：被擄裝置的 bundle 含 WG peer 私鑰 → 攻擊者可連 VPN 摸到 :8089，但**仍受 TAK cert 准入 + 層1 群隔離 + 層2 撤銷（§8.3）擋**。對齊 §8.7.1 zero-trust doctrine（NIST 800-207：VPN 是周界、必要但不充分）。
+- **撤證連動撤 peer（雙層撤）**：admin 撤裝置證時連動 `deprovision_device` 撤 WG peer → 失竊裝置**同時失去 TAK 證 + VPN 連線**，補強 §8.5 撤銷能力（網路層 + app 層雙斷）。
+- **消除 WG 連線盲區**：#434 前 WG 是 host service、ICS 驅動不了、peer 不在名冊＝**盲區**（如 cutover 盤點時 Windows WG 的 legacy peer ICS 看不到）。容器化後 peer 生命週期全進 ICS 名冊（`wg_peers`/m034）+ 強制 audit，呼應 §8.3「消除 offline 簽撤銷盲區」的同一治理方向。
+
+**殘留（記明、可接受）**
+
+- **container escape / ics-wg RCE** → server WG 私鑰 + DNAT 控制（冒充 server、改路由）。同 §8.8 密封盒「盒內 app RCE 摸到 CA 鑰」**同等級殘留**，緩解一致（單一用途、最小服務、盒硬化）；對 manned-C2 單盒可接受。
+- **Docker Desktop UDP NAT（Windows 部署）**：peer 經 host NAT 到達、source IP 為 NAT 位址 → per-peer IP 溯源弱。但 **WG 按 pubkey 認證、不靠 IP**，不影響准入；呼應 #280 真實IP還原議題（per-IP 限速/稽核才受影響，非認證）。
+- **公網僅存 51822/udp WG**：攻擊面從「:8089/:8446/:443 多埠直曝」縮到「單一 WG UDP 埠」，未握手者連 TAK 都觸不到 → 進一步收窄 §8.6 直曝面。
+
 ---
 
 ## 9. 審查歷程
@@ -366,3 +391,4 @@ Command **信任 TAK Server 轉發的所有 CoT** —— 即使傳輸加密（§
 | 2026-06-20 | 0.8 | 新增 §8.7.1「前端駭客視角 + perimeter 防禦對照」：攻法①–⑥ × mTLS/VPN/真實IP 覆蓋 × app 層殘留(#292–296)。結論=perimeter 關「網路層/外部」整面,殘留=圈內人+資料毒化須 app 縱深;皆已知類別有標準解。doctrine：zero-trust(NIST 800-207)——C2 威脅含被擄合法裝置,圈內不可預設信任 |
 | 2026-06-21 | 0.9 | §8.4 加「P1-12 動工前決議」拍板（2026-06-12；LUKS 主控 [#231](https://github.com/winson3QQ/ICS_COMMAND/issues/231) / SQLCipher 內層 [#229](https://github.com/winson3QQ/ICS_COMMAND/issues/229) / `disk-v1` child 入 12a [#227](https://github.com/winson3QQ/ICS_COMMAND/issues/227) / manned C2 形態）；§8.5 升優先開 [#232](https://github.com/winson3QQ/ICS_COMMAND/issues/232)（rebase 對齊：原 0.6 與安全批次撞號 → 改 0.9）|
 | 2026-06-22 | 1.0 | #301 公網黑箱（周邊強：mTLS 雙 port 強制、Marti/後端/DB 對外 filtered、header/cipher PASS）後新增 §8.8「Live-host vs at-rest 區分 + 安全交付 checklist」：釐清全碟加密只防冷竊、live-host 威脅；**使用者拍板交付形態＝manned C2 密封盒（加密碟 + 單 container + 實體 FIDO2 金鑰）**——用縮面 + 鑰閘取代「CA 離機」，CA 同機於密封盒可接受（[#323](https://github.com/winson3QQ/ICS_COMMAND/issues/323)）；前提＝PIN+touch / 碟鑰分離 / 閒置斷電 / 多鑰救援（#230）；唯一不可逆殘留＝開機運行中被實體奪取。公測 vs 正式交付分階段紀律（at-rest+FIDO2 / 真實IP #280 / 撤銷 #232 / SAN #321 為交付強制）|
+| 2026-06-28 | 1.1 | 新增 §8.9「容器化 WireGuard 周界」（[#434](https://github.com/winson3QQ/ICS_COMMAND/issues/434)，#280 VPN前置的容器化落地）：TAK :8089 入口收回 VPN（公網僅 51822/udp WG）、ICS 經共享卷檔案佇列統管 peer 生命週期。攻擊面＝特權容器 ics-wg（NET_ADMIN/root，escape 殘留同 §8.8 密封盒）+ 佇列控制面（不引 docker.sock、4 欄位正則閘門 injection-safe、`/security-review` clean）+ DNAT 信任邊界（握手＝持有效 peer 私鑰，WG 為網路層守門疊加於 TAK 准入）。縱深對照：撤證連動撤 peer（雙層撤，補 §8.5）、消除 WG 連線盲區（peer 入名冊 m034+audit）、WG≠取代准入（zero-trust 周界，呼應 §8.7.1）。2026-06-28 cutover 退役 Windows-native WG、容器轉正 |
