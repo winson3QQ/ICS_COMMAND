@@ -144,7 +144,9 @@ WARNING_THRESHOLD_SECONDS: int = int(os.getenv("ICS_WARNING_THRESHOLD_SECONDS", 
 #               新端點 deregister 任一 TAK callsign（infra 大小寫不敏感擋）。管理非 dashboard 發的殭屍。
 # PATCH 2.23.1：#431——enrollment 模式發證補綁 cert fingerprint（usermod -f）→ 修「reconcile 未同步 /
 #               證不可撤」；行為改變故 PATCH+1。
-APP_VERSION = "2.23.1"
+# MINOR 2.24.0：#434——容器化 WireGuard + ICS 統管 VPN：發裝置證連帶產 keypair/配 IP/註冊 peer/夾 .conf+QR
+#               外層 bundle（一站式）+ 撤證連動撤 peer。完整新功能（實機 E2E 過：發證→自動 WG→裝置同上 TAK）。
+APP_VERSION = "2.24.0"
 
 # CMD_VERSION：前端 UI 功能版本（不同於後端 SemVer APP_VERSION；規則見 CLAUDE.md 版號規則）
 # 兩軌版本命名，不可混用。由 /api/version 提供給前端，是唯一 source-of-truth；release 時更新此值。

@@ -19,6 +19,9 @@
 #   無 eval、wg 參數走 argv 不走 shell 字串。佇列僅 ICS 與本容器掛載。
 
 set -uo pipefail
+# 結果檔須讓**不同 uid 的 ICS 容器**讀得到（佇列跨容器共享）。重設 umask（entrypoint 為 server key
+# 設過 077，會洩漏到此 exec 的子行程 → 結果檔變 600、ICS 讀不到 → 誤判 registrar 失敗）。
+umask 022
 
 QUEUE="${WG_QUEUE:-/wg-queue}"
 REQ_DIR="$QUEUE/requests"

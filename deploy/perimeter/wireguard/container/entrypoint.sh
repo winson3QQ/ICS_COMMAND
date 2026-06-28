@@ -22,7 +22,8 @@ log() { echo "[wg-entrypoint $(date -u +%FT%TZ)] $*"; }
 # ── 1. server 私鑰：持久化在 volume，跨重啟穩定（與已發裝置 config 的 server pubkey 對得上）──
 mkdir -p "$(dirname "$KEY_FILE")"
 if [ ! -s "$KEY_FILE" ]; then
-  umask 077; wg genkey >"$KEY_FILE"; log "產生新 server 私鑰 → $KEY_FILE（pubkey：$(wg pubkey <"$KEY_FILE")）"
+  (umask 077; wg genkey >"$KEY_FILE")  # 子殼 scope umask，不洩漏到後續/watcher（結果檔須 ICS 可讀）
+  log "產生新 server 私鑰 → $KEY_FILE（pubkey：$(wg pubkey <"$KEY_FILE")）"
 else
   log "載入既有 server 私鑰（pubkey：$(wg pubkey <"$KEY_FILE")）"
 fi
