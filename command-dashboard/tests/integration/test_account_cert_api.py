@@ -482,6 +482,13 @@ class TestTakDeviceCert:
     def test_wg_peer_revoke_requires_auth(self, client):
         assert client.post("/api/admin/wg/peers/revoke?callsign=x").status_code == 401
 
+    def test_wg_peer_revoke_503_when_unconfigured(self, client, auth, monkeypatch):
+        # review nit：WG 未配置時撤除應 503（與 issue 對稱），非 404。
+        import services.wg_provision as wgp
+
+        monkeypatch.setattr(wgp, "is_configured", lambda: False)
+        assert client.post("/api/admin/wg/peers/revoke?callsign=wg-x", headers=auth).status_code == 503
+
     def test_503_when_no_ca_dir(self, client, auth, monkeypatch):
         import core.config as config
 

@@ -229,7 +229,7 @@ document.addEventListener('click', function (e) {
     case 'adm-reconcile-tak-refresh': import('./auth.js').then(m => m.admLoadTakDeviceCerts()); break;  // #401：重整 TAK 帳號清單
     case 'adm-backfill-tak-revocations': import('./auth.js').then(m => m.admBackfillTakRevocations()); break;  // #318 Slice 3：撤銷補登 TAK
     case 'adm-revoke-by-fingerprint': import('./auth.js').then(m => m.admRevokeByFingerprint()); break;  // #318 Slice 3 part③：按 fingerprint 撤盤點外證
-    case 'adm-issue-wg-config': import('./auth.js').then(m => m.admIssueWgConfig()); break;  // VPN-gate：純儀表板使用者發 WG-only 設定
+    case 'adm-issue-vpn': import('./auth.js').then(m => m.admIssueVpn(btn.dataset.username)); break;  // VPN-gate：帳號發 WG VPN 設定（label=username）
     case 'adm-revoke-wg-peer': import('./auth.js').then(m => m.admRevokeWgPeer(btn.dataset.callsign)); break;  // 撤 WG-only peer
     case 'adm-deregister-tak-user': import('./auth.js').then(m => m.admDeregisterTakUser(btn.dataset.callsign)); break;  // #401：移除 TAK 殭屍
     case 'adm-strip-anon-tak-user': import('./auth.js').then(m => m.admStripAnonTakUser(btn.dataset.callsign)); break;  // #404：移出 __ANON__ 隔離破口

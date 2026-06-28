@@ -150,8 +150,8 @@ WARNING_THRESHOLD_SECONDS: int = int(os.getenv("ICS_WARNING_THRESHOLD_SECONDS", 
 # PATCH 2.24.2：#434 follow-up——GET /api/admin/wg/peers（WG peer 帳本，sysadmin 唯讀）供前端顯示。
 # PATCH 2.24.3：#434——WG peer 在線指示（registrar status op 回 wg latest-handshakes + peer_handshakes 合併）。
 # MINOR 2.25.0：VPN-gate 儀表板——裝置 .conf 的 AllowedIPs 加公網 IP（WG_EXTRA_ALLOWED_IPS）使瀏覽器經
-#               tunnel 用原網址連儀表板（SAN 不變）+ POST /wg/issue（純儀表板使用者發 WG-only 設定）+
-#               POST /wg/peers/revoke（撤 WG-only peer）。完成「ICS 也走 VPN」（公網收口待 router 移除 :443）。
+#               tunnel 用原網址連儀表板（SAN 不變）+ POST /wg/issue（帳號發 WG VPN，label=username，給單獨
+#               連 ICS 的人）+ POST /wg/peers/revoke（撤 WG-only peer）。「ICS 也走 VPN」（公網收口待移 :443）。
 APP_VERSION = "2.25.0"
 
 # CMD_VERSION：前端 UI 功能版本（不同於後端 SemVer APP_VERSION；規則見 CLAUDE.md 版號規則）
@@ -160,7 +160,7 @@ APP_VERSION = "2.25.0"
 #         + 演習/放置/稽核 UI P1-13/14/16/#93 + 分類編輯器 #66）→ 0.x 畢業為 MAJOR 紀元。
 CMD_VERSION: str = os.getenv(
     "CMD_VERSION",
-    "v1.18.0",  # MINOR：VPN-gate 儀表板——TAK 面板加「發 WG-only 設定」（純儀表板使用者）+ WG 帳本列加撤除鈕
+    "v1.18.0",  # MINOR：VPN-gate 儀表板——帳號管理裝置憑證面板加「📶 發 VPN」（label=username）+ WG 帳本列加撤除鈕
     # PATCH v1.17.1：#434——WG peer 帳本段每列加 🟢/⚪ 在線指示（近期握手≈在線）
     # MINOR v1.17.0：#434 follow-up——發證結果面板顯 WG 配置狀態（X-WG-Status）+ TAK 面板附 WG peer 帳本段
     # PATCH v1.16.3：#318 Slice 3 part③——TAK 面板「撤銷盤點外的證（按 fingerprint）」輸入 + 撤在線證重啟 SOP 提示

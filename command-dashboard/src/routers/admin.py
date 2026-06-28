@@ -912,12 +912,15 @@ def revoke_wg_peer(request: Request, callsign: str):
     sess = _check_system_admin(request)
     cs = (callsign or "").strip()
     validate_no_unsafe_strings(cs, label="callsign")
-    if not cs:
-        raise HTTPException(422, "callsign 必填")
+    # 與 issue_wg_config 對稱用同一道嚴格驗證（review nit：原本只 validate_no_unsafe_strings/max512）。
+    if not is_valid_cert_cn(cs):
+        raise HTTPException(422, "callsign 不合法（不可含逗號、不可 - 開頭，限字母/數字/空白/-_.@）")
     if _is_infra_callsign(cs):
         raise HTTPException(422, f"callsign「{cs}」為 ICS 保留身分，不可撤")
     from services import wg_provision
 
+    if not wg_provision.is_configured():
+        raise HTTPException(503, "WG 未配置（部署層設 WG_QUEUE_DIR）")
     removed = wg_provision.deprovision_device(cs, sess["username"])
     audit(sess["username"], None, "wg_peer_revoke", "wg", cs, {"callsign": cs, "peers_removed": removed})
     if removed == 0:
