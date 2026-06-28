@@ -67,6 +67,11 @@ async def activate(exercise_id: int, request: Request):
         result = set_active(exercise_id, sess["username"])
     except ValueError as e:
         raise HTTPException(409, str(e)) from e
+    # #267 bug 修：active 場改變 → 重 stamp live entity 的 DB scope（名下 CN 在新場 roster+窗 者自動歸位）。
+    # 須在 _rescope_and_announce 前（DB scope 先正確，WS rescope/廣播才反映新狀態）。
+    from services import cop_service
+
+    await cop_service.restamp_all_tak_entities()
     # P1-14：active 場改變 → 各 session 重新依新 scope 對帳（map/面板/chip 即時反應）。
     # #265：先就地 rescope 跟隨 active 的 WS 連線，再廣播（不靠 client 重連）。
     await _rescope_and_announce()
@@ -85,6 +90,11 @@ async def do_archive(exercise_id: int, request: Request):
     backup_name = await _l2_archive_backup(ex, sess["username"])
     if backup_name:
         result = {**result, "backup": backup_name} if isinstance(result, dict) else result
+    # #267 bug 修（bug 2）：歸檔 → 無 active 場 → 重 stamp 把該場 entity 釋放回 NULL（單位回待命視圖顯示，
+    # 不再卡在 archived 場而從地圖消失）。軌跡逐點凍結各自 exercise_id（m038）→ AAR 回放不受影響。
+    from services import cop_service
+
+    await cop_service.restamp_all_tak_entities()
     # 同 activate：歸檔 active 場 → active 變 None（NULL_SCOPE 實戰池），就地 rescope + 廣播（#265）
     await _rescope_and_announce()
     return result

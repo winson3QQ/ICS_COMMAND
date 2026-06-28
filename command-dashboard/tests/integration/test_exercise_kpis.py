@@ -84,6 +84,35 @@ class TestBuildKpis:
         assert k["events"]["resolution"]["avg_minutes"] is None
         assert k["tracks"] == {"points": 0, "distinct_units": 0}
 
+    def test_tracks_count_survives_entity_rescope(self, tmp_db):
+        """#267 bug 修（review HIGH）：archive 後 entity 重 stamp 回 NULL，KPI 軌跡量仍須用軌跡自身
+        exercise_id 取（修前 JOIN e.exercise_id → 回 0/0）。"""
+        from repositories import cop_entity_repo
+        from schemas.cop import CoPEntity, CoPEntityTrack
+
+        exid = _mk()
+        cop_entity_repo.insert_cop_entity(
+            CoPEntity(
+                uid="u-k",
+                type="a-f-G",
+                time="2026-01-01T00:00:00Z",
+                start="2026-01-01T00:00:00Z",
+                stale="2099-01-01T00:00:00Z",
+                how="m-g",
+                lat=24.0,
+                lon=120.0,
+                source="tak",
+                exercise_id=exid,
+            )
+        )
+        for h in (2, 3):
+            cop_entity_repo.insert_cop_track(
+                CoPEntityTrack(uid="u-k", t=f"2026-01-01T0{h}:00:00Z", lat=24.1, lon=120.1, exercise_id=exid)
+            )
+        cop_entity_repo.set_exercise_for_uid("u-k", None)  # 模擬 archive→restamp（entity 回 NULL）
+        k = build_kpis(exid)
+        assert k["tracks"] == {"points": 2, "distinct_units": 1}  # 仍算得到（entity 已 NULL）
+
 
 class TestBookmarkRefT:
     def test_ref_t_normalized_and_stored(self, tmp_db):

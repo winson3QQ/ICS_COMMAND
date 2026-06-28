@@ -69,6 +69,51 @@ def test_delete_exercise_clears_new_fk_tables():
     assert exercise_repo.get_exercise(eid) is None
 
 
+def test_delete_exercise_clears_client_faction_and_tracks():
+    """bug 1 補洞：client_faction（#344）+ cop_entity_tracks（denormalize exercise_id）也須清，
+    否則其 FK / 殘留擋刪場（前者 FK RESTRICT、後者 m038 後自帶 exercise_id）。"""
+    from core.database import get_conn
+
+    eid = _mk()
+    with get_conn() as conn:
+        conn.execute("INSERT INTO client_faction (exercise_id, client_key, faction) VALUES (?, 'cnx', 'red')", (eid,))
+        conn.execute(
+            "INSERT INTO cop_entities (uid, type, time, start, stale, how, lat, lon, source, exercise_id) "
+            "VALUES ('UX', 'a-f-G', ?, ?, ?, 'm-g', 1, 1, 'tak', ?)",
+            ("2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z", "2099-01-01T00:00:00Z", eid),
+        )
+        conn.execute(
+            "INSERT INTO cop_entity_tracks (uid, t, lat, lon, exercise_id) VALUES ('UX', ?, 1, 1, ?)",
+            ("2026-01-01T00:00:00Z", eid),
+        )
+    res = exercise_repo.delete_exercise(eid)
+    assert "skipped" not in res and exercise_repo.get_exercise(eid) is None
+    with get_conn() as conn:
+        assert conn.execute("SELECT COUNT(*) FROM client_faction WHERE exercise_id=?", (eid,)).fetchone()[0] == 0
+        assert conn.execute("SELECT COUNT(*) FROM cop_entity_tracks WHERE exercise_id=?", (eid,)).fetchone()[0] == 0
+
+
+def test_delete_exercise_prod_append_only_keeps_audit():
+    """bug 1 回歸（dev/prod 分歧根因）：prod audit_log append-only 觸發器在時，刪演習仍成功，且 audit
+    列保留——audit 是不可變問責軌，刪場不抹（m039 拆 audit→exercises FK + 移出 cascade 清單後不再死結）。
+    dev 無觸發器故原 B1 測試測不到，這條補上 prod 行為。"""
+    from core.database import ensure_audit_append_only, get_conn
+
+    eid = _mk()
+    with get_conn() as conn:
+        conn.execute("INSERT INTO audit_log (action_type, exercise_id) VALUES ('exercise_x', ?)", (eid,))
+    ensure_audit_append_only(True)  # 套 prod 觸發器（擋 audit_log UPDATE/DELETE）
+    try:
+        res = exercise_repo.delete_exercise(eid)
+        assert "skipped" not in res
+        assert exercise_repo.get_exercise(eid) is None  # 刪成功（不再被 audit FK 死結擋）
+        with get_conn() as conn:
+            n = conn.execute("SELECT COUNT(*) FROM audit_log WHERE exercise_id=?", (eid,)).fetchone()[0]
+        assert n == 1  # audit 列保留（append-only 不抹；exercise_id 成 dangling 歷史標籤）
+    finally:
+        ensure_audit_append_only(False)  # 還原觸發器，免污染後續測試
+
+
 # ── 端點（sysadmin） ──
 def test_roster_endpoints(client, auth):
     eid = exercise_repo.create_exercise({"name": "drill", "type": "ttx"})["id"]

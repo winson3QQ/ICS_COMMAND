@@ -77,10 +77,11 @@ def build_kpis(exercise_id: int) -> dict:
         }
 
         # ── 軌跡 / COP 活動量 ───────────────────────────────────────────
+        # #267 bug 修：查**軌跡自身** t.exercise_id（denormalize，m038），不再 JOIN cop_entities.exercise_id
+        # ——演習結束後 entity 重 stamp 回 NULL，舊 JOIN 法會回 0 軌跡/0 單位。只用 t.* → JOIN 可整個拿掉。
         trk = _rows(
             conn,
-            "SELECT COUNT(*), COUNT(DISTINCT t.uid) FROM cop_entity_tracks t "
-            "JOIN cop_entities e ON t.uid=e.uid WHERE e.exercise_id=?",
+            "SELECT COUNT(*), COUNT(DISTINCT t.uid) FROM cop_entity_tracks t WHERE t.exercise_id=?",
             exercise_id,
         )[0]
 

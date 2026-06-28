@@ -146,6 +146,9 @@ class CoPEntityTrack(BaseModel):
     hae: float = 0.0
     heading_deg: float | None = Field(default=None, ge=0.0, le=360.0)
     speed_mps: float | None = Field(default=None, ge=0.0, le=1000.0)
+    # #267 bug 修：軌跡寫入時逐點凍結當下 entity.exercise_id（denormalize，取代 Design B 的 JOIN）。
+    # AAR 查軌跡自身 exercise_id → 與 entity 當前 scope 脫鉤（演習結束 entity 改回 NULL 也不破 AAR）。
+    exercise_id: int | None = None
 
     _wrap_heading = field_validator("heading_deg")(_wrap_heading)
 

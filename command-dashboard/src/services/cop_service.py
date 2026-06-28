@@ -217,6 +217,27 @@ async def restamp_exercise_for_cns(cns: list[str]) -> int:
     return n
 
 
+async def restamp_all_tak_entities() -> int:
+    """#267 bug 修：重解析**所有 live tak entity** 的 exercise_id（演習 activate/archive 後呼叫）+ resync。
+
+    解 bug 2（演習結束單位從地圖消失）：archive → current_exercise_id 變 None → 全 entity 重解析回 NULL →
+    回待命視圖顯示。順帶 activate → 名下 CN 在新場 roster+窗 者自動歸新場（pre-rostered 啟動即歸位，省去
+    「加入全部連線」一鍵）。軌跡逐點凍結各自 exercise_id（m038）→ entity 改 scope 不破 AAR。回更新筆數。
+    """
+    n = 0
+    for e in cop_entity_repo.list_cop_entities(source="tak", exercise_id=None, include_stale=True, limit=10000):
+        if e.get("deleted"):
+            continue
+        attrs = e.get("attributes") or {}
+        new_ex = _resolve_exercise_scope_parts(e["uid"], attrs, e.get("time"))
+        if new_ex != e.get("exercise_id"):
+            cop_entity_repo.set_exercise_for_uid(e["uid"], new_ex)
+            n += 1
+    if n:
+        await cop_hub.broadcast_all({"op": "resync"})
+    return n
+
+
 def _extract_squad(detail: dict) -> tuple[str | None, str | None, int | None]:
     """從 CoT detail 的 <__group>/<status> 提取小隊欄位（P2-06c，#126）。
 
@@ -478,6 +499,9 @@ def _record_track(entity: dict) -> None:
                 hae=entity.get("hae") or 0.0,
                 heading_deg=entity.get("heading_deg"),
                 speed_mps=entity.get("speed_mps"),
+                # #267 bug 修：逐點凍結當下 entity.exercise_id（此處已過 line 467 的 None gate，必非 None）→
+                # AAR 查軌跡自身欄位，entity 之後重 stamp 回 NULL 也不破該場回放（denormalize，取代 JOIN）。
+                exercise_id=entity.get("exercise_id"),
             )
         )
     except Exception as e:  # noqa: BLE001 — best-effort，吞所有例外只留痕

@@ -267,6 +267,18 @@ def test_list_by_exercise_real_type_queryable(monkeypatch):
     assert {r["uid"] for r in rows} == {"R1"}
 
 
+def test_track_keeps_exercise_id_after_entity_rescoped(_active_exercise):
+    """#267 denormalize（bug 2 修的 AAR 半邊）：軌跡寫入時凍結 exercise_id；entity 事後改 scope
+    （archive→NULL）後，list_tracks_by_exercise 仍用**軌跡自身** exercise_id 查到（不再靠 JOIN entity，
+    否則 entity 一改 NULL 該場軌跡就消失）。"""
+    ex = _active_exercise["id"]
+    _ingest(_event(time="2026-06-05T04:00:00Z"))
+    cop_entity_repo.set_exercise_for_uid("TRK-1", None)  # 模擬 archive 後 entity 離場
+    assert cop_entity_repo.get_cop_entity("TRK-1")["exercise_id"] is None
+    rows = cop_entity_repo.list_tracks_by_exercise(ex)
+    assert [r["uid"] for r in rows] == ["TRK-1"]  # 軌跡仍掛 ex，entity 已 NULL 也查得到
+
+
 def test_list_by_exercise_pagination_stable_same_t(_active_exercise):
     """同 t 多筆（不同 uid 同秒）分頁穩定 —— t.id tiebreak 保證頁邊界無漏無重（review #1）。"""
     for u in ("A", "B", "C"):

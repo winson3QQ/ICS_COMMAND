@@ -117,3 +117,29 @@ def test_restamp_on_roster_remove(_no_ws):
     exercise_roster_repo.remove_member(ex, "cn1", "admin")  # 移除（roster 變空）
     assert asyncio.run(cop_service.restamp_exercise_for_cns(["cn1"])) == 1
     assert cop_entity_repo.get_cop_entity("DEV1")["exercise_id"] is None  # 離場 → 待命（純乙：空 roster=沒人）
+
+
+def test_archive_releases_entity_and_preserves_aar(_no_ws):
+    """bug 2 修：演習結束（archive）→ 該場 entity 重 stamp 回 NULL（回待命視圖顯示，不再從地圖消失），
+    且軌跡仍掛該場 exercise_id（denormalize）→ AAR 回放不破。"""
+    from repositories import exercise_repo
+
+    ex = _active_exercise()
+    client_identity_repo.upsert_many({"DEV1": "cn1"})
+    exercise_roster_repo.upsert_member(ex, "cn1", None, "admin")
+    assert _ingest("DEV1")["exercise_id"] == ex  # 在場（同時寫了一筆 exercise_id=ex 的軌跡）
+    exercise_repo.update_exercise_status(ex, "archived", "admin")  # 結束 → 無 active 場
+    assert asyncio.run(cop_service.restamp_all_tak_entities()) == 1  # 模擬 archive 後 hook
+    assert cop_entity_repo.get_cop_entity("DEV1")["exercise_id"] is None  # entity 回待命（bug 2 修）
+    tracks = cop_entity_repo.list_tracks_by_exercise(ex)  # 軌跡查該場
+    assert any(t["uid"] == "DEV1" for t in tracks)  # 仍查得到（AAR 不破，軌跡凍結 exercise_id）
+
+
+def test_restamp_all_pulls_in_window_rostered(_no_ws):
+    """restamp_all_tak_entities（activate hook 用）：roster 內、ts 在窗 的 live entity 被全域重 stamp 歸場。"""
+    ex = _active_exercise()
+    client_identity_repo.upsert_many({"DEV1": "cn1"})
+    assert _ingest("DEV1")["exercise_id"] is None  # 連線在窗、但還沒 roster → NULL
+    exercise_roster_repo.upsert_member(ex, "cn1", None, "admin")  # 後勾
+    assert asyncio.run(cop_service.restamp_all_tak_entities()) == 1
+    assert cop_entity_repo.get_cop_entity("DEV1")["exercise_id"] == ex  # 全域重 stamp 歸場
