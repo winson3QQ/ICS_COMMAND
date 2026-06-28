@@ -822,9 +822,20 @@ def list_wg_peers(request: Request):
     讓 operator 看得到「誰配了 VPN」（與發證帳本並列）。撤證連動撤 peer，故此處唯讀。
     """
     _check_system_admin(request)
-    from repositories.wg_peer_repo import list_peers
+    import time
 
-    return list_peers()
+    from repositories.wg_peer_repo import list_peers
+    from services import wg_provision
+
+    peers = list_peers()
+    hs = wg_provision.peer_handshakes()  # {pubkey: last_handshake_unix}；best-effort，{} 則無在線資訊
+    now = time.time()
+    for p in peers:
+        ts = hs.get(p.get("pubkey")) or 0
+        p["last_handshake"] = ts
+        # 近期握手（< 180s ≈ 7 個 keepalive）≈ 在線（近似，非即時連線態，同 #389 精神）。
+        p["online"] = bool(ts and (now - ts) < 180)
+    return peers
 
 
 @router.post("/tak/device-certs/{cert_id}/revoke", tags=["account-admin"])

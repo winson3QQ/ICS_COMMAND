@@ -228,3 +228,24 @@ def deprovision_device(callsign: str, operator: str) -> int:
     for pk in pubkeys:
         remove_peer(pk)  # best-effort，容器沒跑也不 raise
     return len(pubkeys)
+
+
+def peer_handshakes() -> dict[str, int]:
+    """回 {pubkey: last_handshake_unix}（0=從未）——經 ics-wg 容器 `wg show latest-handshakes`（status op）。
+
+    供前端顯在線/離線。best-effort：未配置 / 容器沒跑 / 逾時 → 回 {}（前端就不顯在線指示，不擋帳本）。
+    """
+    if not is_configured():
+        return {}
+    outcome, body = _submit_op("", "", "status", "", getattr(config, "WG_PEER_TIMEOUT_S", 8))
+    if outcome != "ok":
+        return {}
+    hs: dict[str, int] = {}
+    for line in body.splitlines():
+        parts = line.split("\t")
+        if len(parts) == 2 and _PUBKEY_RE.match(parts[0]):
+            try:
+                hs[parts[0]] = int(parts[1])
+            except ValueError:
+                pass
+    return hs

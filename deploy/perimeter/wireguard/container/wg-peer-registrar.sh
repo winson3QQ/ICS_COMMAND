@@ -37,7 +37,7 @@ SUBNET_RE="${WG_SUBNET_RE:-}"
 
 # WireGuard public key＝base64 32 bytes → 43 字 + '='（標準 wg genkey | wg pubkey 輸出）。
 PUBKEY_RE='^[A-Za-z0-9+/]{43}=$'
-OP_RE='^(add|remove)$'
+OP_RE='^(add|remove|status)$'
 
 log() { echo "[wg-registrar $(date -u +%FT%TZ)] $*"; }
 
@@ -65,6 +65,13 @@ while true; do
 
     if ! [[ "$op" =~ $OP_RE ]]; then
       log "reject $id: bad-op '$op'"; write_res "ERR bad-op"; rm -f "$f"; continue
+    fi
+    # #434：status op 回每個 peer 的 latest-handshake（`<pubkey>\t<unix>`，0=從未）供 ICS 顯在線/離線。
+    # 無使用者輸入、不碰 wg set、不需 pubkey（故在 pubkey 驗證之前處理）。
+    if [ "$op" = "status" ]; then
+      out="$(wg show "$IFACE" latest-handshakes 2>&1)"; rc=$?
+      if [ "$rc" -eq 0 ]; then write_res "OK"$'\n'"$out"; else write_res "ERR ${out//$'\n'/ }"; fi
+      rm -f "$f"; continue
     fi
     if ! [[ "$pubkey" =~ $PUBKEY_RE ]]; then
       log "reject $id: bad-pubkey"; write_res "ERR bad-pubkey"; rm -f "$f"; continue
