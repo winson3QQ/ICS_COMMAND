@@ -479,8 +479,8 @@ def insert_cop_track(track: CoPEntityTrack) -> int:
     with get_conn() as conn:
         cur = conn.execute(
             """
-            INSERT INTO cop_entity_tracks (uid, t, lat, lon, hae, heading_deg, speed_mps)
-            VALUES (:uid, :t, :lat, :lon, :hae, :heading_deg, :speed_mps)
+            INSERT INTO cop_entity_tracks (uid, t, lat, lon, hae, heading_deg, speed_mps, exercise_id)
+            VALUES (:uid, :t, :lat, :lon, :hae, :heading_deg, :speed_mps, :exercise_id)
             """,
             payload,
         )
@@ -525,17 +525,18 @@ def list_tracks_by_exercise(
 ) -> list[dict]:
     """某場（演習 ttx / 實戰 real）所有 entity 的軌跡時間序列（P2-06b，issue #123）。
 
-    設計 B：tracks 不存 exercise_id，靠 uid JOIN cop_entities 取場歸屬（SoT 單一）。
+    #267 bug 修：改查**軌跡自身 exercise_id**（denormalize，m038 寫入時逐點凍結），取代舊 Design B 的
+    `JOIN cop_entities WHERE e.exercise_id=?`。理由：演習結束後 live entity 重 stamp 回 NULL（單位回待命
+    視圖，bug 2），舊 JOIN 法此時就查不到該場軌跡、AAR 破；改查軌跡自身欄位 → 與 entity 當前 scope 脫鉤。
     回 {uid, t, lat, lon, hae, heading_deg, speed_mps}，按 t 升序，分頁（limit/offset）。
-    since/until 為 ISO 8601 UTC Z 字串（caller 應先 iso_utc 正規化，與 t 同格式才能
-    正確字串比較）。WHERE 走 idx_cop_entities_exercise（driving）；跨多 uid 的全域
-    ORDER BY t 走不到 idx_cop_tracks_uid_t(uid,t)（uid 在前）→ 為 temp B-tree 排序，
-    故加 t.id 次序保證同秒多筆的分頁穩定（避免 LIMIT/OFFSET 頁邊界漏/重）。
+    since/until 為 ISO 8601 UTC Z 字串（caller 應先 iso_utc 正規化，與 t 同格式才能正確字串比較）。
+    WHERE 走 idx_cop_tracks_exercise_t(exercise_id, t)（driving + 部分排序）。
+    t.id 次序保證同秒多筆的分頁穩定（避免 LIMIT/OFFSET 頁邊界漏/重）。
     """
     sql = [
         "SELECT t.uid, t.t, t.lat, t.lon, t.hae, t.heading_deg, t.speed_mps",
-        "FROM cop_entity_tracks t JOIN cop_entities e ON t.uid = e.uid",
-        "WHERE e.exercise_id = ?",
+        "FROM cop_entity_tracks t",
+        "WHERE t.exercise_id = ?",
     ]
     params: list = [exercise_id]
     if uid is not None:

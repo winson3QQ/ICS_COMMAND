@@ -161,8 +161,14 @@ def get_active_exercise() -> dict | None:
 _EXERCISE_SCOPED_TABLES = (
     "events",
     "cop_entities",
+    # #267 bug 修：cop_entity_tracks 自帶 exercise_id（m038 denormalize）→ 直接清本場軌跡。entity 經
+    # uid ON DELETE CASCADE 也會帶走其軌跡，但 entity 若已重 stamp 離場（archive→NULL），其凍結在本場的
+    # 軌跡 uid 已不在「本場 entity」集合內、cascade 漏清 → 故此處按軌跡自身 exercise_id 顯式補清。
+    "cop_entity_tracks",
     "decisions",
-    "audit_log",
+    # #267 bug 修（bug 1）：audit_log **移出**此清單。它是 append-only 不可變問責軌（#348 prod 觸發器
+    # 擋 DELETE）→ 原本級聯清它必被擋（abort 被吞）、殘留列再 FK 擋死刪場。m039 已拆其 → exercises 的
+    # FK，故刪場不再被擋；audit 列保留（歷史標籤），符合「刪演習不該抹問責軌」。
     "manual_records",
     "snapshots",
     "resource_snapshots",
@@ -173,6 +179,9 @@ _EXERCISE_SCOPED_TABLES = (
     # #348-F10：chats 原漏在此清單外 → 刪演習不清通聯 PII（message/callsign/lat-lon）。補回
     # 一致性；chats.exercise_id=NULL（實戰/未分場廣播）不受 WHERE exercise_id=? 影響、不誤刪。
     "chats",
+    # #344：client_faction（per-場 紅藍分類，REFERENCES exercises(id)）原漏 → 有分類的場刪不掉（FK
+    # RESTRICT）。補回（此例 0 列但 latent）。
+    "client_faction",
     # #267：新 FK 子表（REFERENCES exercises(id)，無 ON DELETE CASCADE + foreign_keys=ON）須先清，
     # 否則 DELETE FROM exercises 撞 FK RESTRICT → 500（開場必寫 interval ⇒ 幾乎每場都刪不掉）。
     "exercise_active_intervals",

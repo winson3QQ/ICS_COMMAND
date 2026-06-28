@@ -1627,6 +1627,87 @@ def _m037_exercise_roster_down(conn: sqlite3.Connection) -> None:
     conn.execute("DROP TABLE IF EXISTS exercise_roster")
 
 
+def _m038_cop_tracks_exercise_id(conn: sqlite3.Connection) -> None:
+    """#267 bug 修：軌跡 denormalize exercise_id（取代 Design B 的「靠 JOIN entity 取場」）。
+
+    為何：演習結束後 live entity 須重 stamp 回 NULL（單位回待命視圖顯示，bug 2），但 AAR 軌跡回放
+    原靠 `JOIN cop_entities WHERE exercise_id=?`——entity 一旦改回 NULL，該場軌跡就 JOIN 不到、AAR 破。
+    改成軌跡寫入時逐點凍結當下 entity.exercise_id（正是 #267 doctrine「軌跡逐點繼承」），AAR 查軌跡
+    自身欄位、與 entity 當前 scope 脫鉤。回填既有軌跡＝當下 entity 的 exercise_id（重 stamp 前的真相）。
+    """
+    cols = [r[1] for r in conn.execute("PRAGMA table_info(cop_entity_tracks)")]
+    if "exercise_id" in cols:
+        return  # idempotent（重跑 / fresh DB rebuild 後）
+    conn.execute("ALTER TABLE cop_entity_tracks ADD COLUMN exercise_id INTEGER")
+    conn.execute(
+        "UPDATE cop_entity_tracks SET exercise_id = "
+        "(SELECT e.exercise_id FROM cop_entities e WHERE e.uid = cop_entity_tracks.uid)"
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_cop_tracks_exercise_t ON cop_entity_tracks(exercise_id, t)")
+
+
+def _m038_cop_tracks_exercise_id_down(conn: sqlite3.Connection) -> None:
+    conn.execute("DROP INDEX IF EXISTS idx_cop_tracks_exercise_t")
+    # 舊 SQLite 無 DROP COLUMN；down 僅移索引（多出的 exercise_id 欄保留無害）。
+
+
+_AUDIT_LOG_NEW_DDL = """
+    CREATE TABLE audit_log_new (
+        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+        operator     TEXT,
+        device_id    TEXT,
+        action_type  TEXT NOT NULL,
+        target_table TEXT,
+        target_id    TEXT,
+        detail       TEXT,
+        correlation_id TEXT,
+        exercise_id  INTEGER,
+        created_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+        hash_prev    TEXT
+    )
+"""
+
+
+def _m039_audit_log_drop_exercise_fk(conn: sqlite3.Connection) -> None:
+    """#267 bug 修：拆 audit_log → exercises 的 FK（bug 1）。
+
+    audit_log 為 append-only 不可變問責軌（#348 GAP2：prod 觸發器擋 UPDATE/DELETE）。原 exercise_id 帶
+    `REFERENCES exercises(id)` RESTRICT FK → 刪演習時 delete_exercise 想級聯清 audit 被觸發器擋（abort
+    被 `except: pass` 吞）→ 殘留 audit 列 FK RESTRICT 反過來擋死 `DELETE FROM exercises`（bug 1；dev 無
+    觸發器故 B1 測試測不到＝dev/prod 分歧）。解：audit 是獨立不可變紀錄，exercise_id 只該是歷史標籤、
+    不該 FK 擋刪場 → 整表 rebuild 去 FK。append-only 觸發器隨舊表 DROP 移除，boot 的 ensure_audit_append_only
+    會對新表重建（main.py 既有順序 init_db→ensure 已滿足）。exercise_id 值保留（刪場後成 dangling 標籤）。
+    搭配 exercise_repo._EXERCISE_SCOPED_TABLES 把 audit_log 移出 delete 清單（不再嘗試刪 audit）。
+    """
+    existing = conn.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='audit_log'").fetchone()
+    if existing and "REFERENCES exercises" not in existing[0]:
+        return  # 已去 FK（重跑 / fresh DB）
+    _rebuild_with_fk(conn, "audit_log", _AUDIT_LOG_NEW_DDL)
+
+
+def _m039_audit_log_drop_exercise_fk_down(conn: sqlite3.Connection) -> None:
+    pass  # 不還原（去 FK 為單向修正；還原會再引入 bug 1 死結）
+
+
+def _m040_release_archived_exercise_entities(conn: sqlite3.Connection) -> None:
+    """#267 bug 修一次性收斂（bug 2 既有殘留）：把卡在「非 active 演習」的 tak entity 釋放回 NULL（待命）。
+
+    部署 archive-restamp 前已 archived 的場，其 entity 仍凍結在該 exercise_id → live 待命視圖（顯
+    exercise_id IS NULL）看不到（bug 2）。此一次性把它們改回 NULL → 回待命視圖顯示。**須在 m038 之後**
+    （軌跡已各自凍結 exercise_id，AAR 不受影響）。只動 source='tak'（指揮部自建 manual/command 不受此
+    doctrine）、未刪除者；active 場 entity 不動（仍進行中）。idempotent（再跑＝no-op）。
+    """
+    conn.execute(
+        "UPDATE cop_entities SET exercise_id = NULL "
+        "WHERE source='tak' AND exercise_id IS NOT NULL AND COALESCE(deleted,0)=0 "
+        "AND exercise_id NOT IN (SELECT id FROM exercises WHERE status='active')"
+    )
+
+
+def _m040_release_archived_exercise_entities_down(conn: sqlite3.Connection) -> None:
+    pass  # 不還原（一次性資料收斂，無對應反向；重綁需經正常 restamp 流程）
+
+
 _MIGRATIONS: list[tuple[int, str, object]] = [
     (1, "events_columns", _m001_events_columns),
     (2, "decisions_columns", _m002_decisions_columns),
@@ -1665,6 +1746,9 @@ _MIGRATIONS: list[tuple[int, str, object]] = [
     (35, "client_identity", _m035_client_identity),
     (36, "exercise_active_intervals", _m036_exercise_active_intervals),
     (37, "exercise_roster", _m037_exercise_roster),
+    (38, "cop_tracks_exercise_id", _m038_cop_tracks_exercise_id),
+    (39, "audit_log_drop_exercise_fk", _m039_audit_log_drop_exercise_fk),
+    (40, "release_archived_exercise_entities", _m040_release_archived_exercise_entities),
 ]
 
 
