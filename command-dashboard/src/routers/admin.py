@@ -815,6 +815,18 @@ def list_tak_device_certs(request: Request):
     return list_device_certs()
 
 
+@router.get("/wg/peers", tags=["account-admin"])
+def list_wg_peers(request: Request):
+    """#434：列出 ICS 配給裝置的 WireGuard peer（帳本：callsign/address/status）。sysadmin only。
+
+    讓 operator 看得到「誰配了 VPN」（與發證帳本並列）。撤證連動撤 peer，故此處唯讀。
+    """
+    _check_system_admin(request)
+    from repositories.wg_peer_repo import list_peers
+
+    return list_peers()
+
+
 @router.post("/tak/device-certs/{cert_id}/revoke", tags=["account-admin"])
 def revoke_tak_device_cert(cert_id: int, request: Request):
     """#317 標記已撤銷 + #398 A：撤銷現行證 → 從 TAK **真 deregister**（usermod -D，不再只是帳面 flag）。

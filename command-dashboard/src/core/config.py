@@ -147,7 +147,8 @@ WARNING_THRESHOLD_SECONDS: int = int(os.getenv("ICS_WARNING_THRESHOLD_SECONDS", 
 # MINOR 2.24.0：#434——容器化 WireGuard + ICS 統管 VPN：發裝置證連帶產 keypair/配 IP/註冊 peer/夾 .conf+QR
 #               外層 bundle（一站式）+ 撤證連動撤 peer。完整新功能（實機 E2E 過：發證→自動 WG→裝置同上 TAK）。
 # PATCH 2.24.1：#434 review fix——IP 配號並發 IntegrityError 重試 + admin WG backstop（WG 任何例外不擋發證）。
-APP_VERSION = "2.24.1"
+# PATCH 2.24.2：#434 follow-up——GET /api/admin/wg/peers（WG peer 帳本，sysadmin 唯讀）供前端顯示。
+APP_VERSION = "2.24.2"
 
 # CMD_VERSION：前端 UI 功能版本（不同於後端 SemVer APP_VERSION；規則見 CLAUDE.md 版號規則）
 # 兩軌版本命名，不可混用。由 /api/version 提供給前端，是唯一 source-of-truth；release 時更新此值。
@@ -155,7 +156,8 @@ APP_VERSION = "2.24.1"
 #         + 演習/放置/稽核 UI P1-13/14/16/#93 + 分類編輯器 #66）→ 0.x 畢業為 MAJOR 紀元。
 CMD_VERSION: str = os.getenv(
     "CMD_VERSION",
-    "v1.16.3",  # PATCH：#318 Slice 3 part③——TAK 面板「撤銷盤點外的證（按 fingerprint）」輸入 + 撤在線證重啟 SOP 提示
+    "v1.17.0",  # MINOR：#434 follow-up——發證結果面板顯 WG 配置狀態（X-WG-Status）+ TAK 面板附 WG peer 帳本段
+    # PATCH v1.16.3：#318 Slice 3 part③——TAK 面板「撤銷盤點外的證（按 fingerprint）」輸入 + 撤在線證重啟 SOP 提示
     # PATCH v1.16.2：#318 Slice 3——TAK 面板「↑ 撤銷補登 TAK」鈕（backfill）+ 已撤無 fp 證標「⚠ TAK 撤不掉」
     # PATCH v1.16.1：#318——撤銷文案誠實化（降 __ANON__ 隔離、非硬斷線、在線證需重啟）+ 回饋 tak_revoke 結果
     # MINOR v1.16.0：#404——TAK 面板示警卡 __ANON__（面板級+per-row ⚠）+ 一鍵「移出匿名群」+「在線匿名連線」段
