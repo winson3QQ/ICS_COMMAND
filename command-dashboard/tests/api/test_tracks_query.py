@@ -12,9 +12,19 @@ api/test_tracks_query.py — P2-06b 軌跡查詢 endpoint（issue #123）
 
 import pytest
 
+from services import cop_service
+
 pytestmark = pytest.mark.api
 
 # operator_auth / observer_auth / commander_auth fixtures 在 tests/api/conftest.py 共用
+
+
+@pytest.fixture(autouse=True)
+def _scope_via_active(monkeypatch):
+    """本檔測**軌跡查詢 endpoint**（非 #267 scope doctrine）：純乙後 ingest 不再 auto-capture，
+    本檔不設 roster，故顯式還原「有 active 即綁」讓推入的點落場、寫軌跡；scope 解析（roster×窗）
+    交給 test_exercise_scope_resolve.py 專責。TestClient 同進程跑 app → monkeypatch 直達 service。"""
+    monkeypatch.setattr(cop_service, "_resolve_exercise_scope", lambda e: cop_service.current_exercise_id())
 
 
 def _push_cot(client, auth, uid, t, lat=24.1, lon=120.6):

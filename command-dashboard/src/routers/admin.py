@@ -451,8 +451,11 @@ def exercise_roster_list(exercise_id: int, request: Request):
 
 
 @router.post("/exercises/{exercise_id}/roster", tags=["faction"])
-def exercise_roster_upsert(exercise_id: int, body: RosterMemberIn, request: Request):
-    """#267：把 client（cert CN）加進某場 roster / 改其編制。sysadmin only + 強制 audit。"""
+async def exercise_roster_upsert(exercise_id: int, body: RosterMemberIn, request: Request):
+    """#267：把 client（cert CN）加進某場 roster / 改其編制。sysadmin only + 強制 audit。
+
+    勾進 roster 後即時重 stamp 該 CN 的 live entity（處理「人已連線、才開場/才勾」流程）+ resync。
+    """
     sess = _check_system_admin(request)
     cn = (body.cn or "").strip()
     validate_no_unsafe_strings(cn, label="cn")
@@ -461,22 +464,65 @@ def exercise_roster_upsert(exercise_id: int, body: RosterMemberIn, request: Requ
     if body.unit:
         validate_no_unsafe_strings(body.unit, label="unit", max_len=64)
     from repositories import exercise_roster_repo
+    from services import cop_service
 
-    return exercise_roster_repo.upsert_member(exercise_id, cn, body.unit, sess["username"])
+    row = exercise_roster_repo.upsert_member(exercise_id, cn, body.unit, sess["username"])
+    row["restamped"] = await cop_service.restamp_exercise_for_cns([cn])  # live 點即時歸位 + resync
+    return row
+
+
+@router.post("/exercises/{exercise_id}/roster/add-connected", tags=["faction"])
+async def exercise_roster_add_connected(exercise_id: int, request: Request):
+    """#267：把**目前在線的 TAK client（CN）全數**加進 roster（面板「加入全部連線」一鍵）。
+
+    sysadmin only。解「純乙=空 roster 沒人」的可用性——操作員一鍵把連上來的人全納入，毋須逐一勾。
+    來源 = faction_service.list_clients（在線∩發證；順帶寫 client_identity uid→CN 供重 stamp 翻譯）。
+    對「尚未在 roster」的 CN 逐筆 upsert（各自 audit）→ 對全部在線 CN 一次重 stamp（live 點即時歸位）+ resync。
+    回 {added: 新加入數, total_online: 在線數, roster: 更新後名冊}。
+
+    **限當前 active 場**：重 stamp 一律對 current_exercise_id 解析（同 restamp_exercise_for_cns），故對
+    非 active 場一鍵全加語意不清（roster 進了但沒人歸場、回的 restamped 會混淆）→ 409 擋下，要 pre-stage
+    非 active 場 roster 請走逐 CN upsert。
+    """
+    sess = _check_system_admin(request)
+    from repositories import exercise_roster_repo
+    from services import cop_service, faction_service
+    from services.exercise_service import current_exercise_id
+
+    if current_exercise_id() != exercise_id:
+        raise HTTPException(409, "只能對當前 active 演習「加入全部連線」（非 active 場請逐一指定 roster）")
+
+    clients = await faction_service.list_clients(exercise_id)  # 在線∩發證；CN 鍵
+    online_cns = [c["cn"] for c in clients]
+    existing = {m["client_cn"] for m in exercise_roster_repo.list_roster(exercise_id)}
+    added = 0
+    for cn in online_cns:
+        if cn in existing:  # 已在 roster → 跳過（不重複 audit/無意義 upsert）
+            continue
+        exercise_roster_repo.upsert_member(exercise_id, cn, None, sess["username"])
+        added += 1
+    if online_cns:
+        await cop_service.restamp_exercise_for_cns(online_cns)  # 全在線 CN 一次重 stamp + resync
+    return {"added": added, "total_online": len(online_cns), "roster": exercise_roster_repo.list_roster(exercise_id)}
 
 
 @router.post("/exercises/{exercise_id}/roster/remove", tags=["faction"])
-def exercise_roster_remove(exercise_id: int, body: RosterRemoveIn, request: Request):
-    """#267：把 client（cert CN）移出某場 roster。sysadmin only + audit（POST 非 DELETE：避 cn 進路徑編碼坑）。"""
+async def exercise_roster_remove(exercise_id: int, body: RosterRemoveIn, request: Request):
+    """#267：把 client（cert CN）移出某場 roster。sysadmin only + audit（POST 非 DELETE：避 cn 進路徑編碼坑）。
+
+    移出後即時重 stamp 該 CN 的 live entity（離場 → 待命池 NULL）+ resync。
+    """
     sess = _check_system_admin(request)
     cn = (body.cn or "").strip()
     validate_no_unsafe_strings(cn, label="cn")
     from repositories import exercise_roster_repo
+    from services import cop_service
 
     removed = exercise_roster_repo.remove_member(exercise_id, cn, sess["username"])
     if not removed:
         raise HTTPException(404, f"roster 內無此 CN：{cn}")
-    return {"ok": True, "removed": cn}
+    n = await cop_service.restamp_exercise_for_cns([cn])  # 離場 → live 點回待命池 + resync
+    return {"ok": True, "removed": cn, "restamped": n}
 
 
 @router.get("/audit-log")

@@ -46,6 +46,14 @@ def _active_exercise(tmp_db):
     return ex
 
 
+@pytest.fixture(autouse=True)
+def _scope_via_active(monkeypatch):
+    """本檔測**軌跡接線機制**（非 #267 scope doctrine）：讓 in-scope entity 直接綁 active 場，
+    把「roster × 活躍窗」scope 解析交給 test_exercise_scope_resolve.py 專責，兩者關注點分離。
+    （純乙後，ingest 不再 auto-capture；本檔不設 roster，故顯式還原「有 active 即綁」供軌跡測試。）"""
+    monkeypatch.setattr(cop_service, "_resolve_exercise_scope", lambda e: cop_service.current_exercise_id())
+
+
 def _event(uid: str = "TRK-1", *, time: str, **overrides) -> CoTEventIn:
     base = {
         "uid": uid,
@@ -179,7 +187,8 @@ def test_mixed_tz_naive_time_does_not_drop_track():
     _ingest(_event(time="2026-06-05T04:00:06"))  # naive（無 Z），+6s ≥ 間隔 → 應寫
     tracks = cop_entity_repo.list_cop_tracks("TRK-1")
     assert len(tracks) == 2  # 混格式仍正確寫入第二筆，未因 TypeError 漏寫
-    assert tracks[1]["t"] == "2026-06-05T04:00:06"
+    # #267：ingest 接縫正規化 → naive 入庫成秒精度 Z（與字典序窗/stale 比較對齊）。
+    assert tracks[1]["t"] == "2026-06-05T04:00:06Z"
 
 
 # ── 9. review #7：抽樣間隔可由 config 覆寫 ────────────────────────────────────

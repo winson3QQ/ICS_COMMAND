@@ -199,6 +199,18 @@ def set_faction_for_uids(uids: list[str], faction: str | None) -> int:
         return cur.rowcount
 
 
+def set_exercise_for_uid(uid: str, exercise_id: int | None) -> int:
+    """#267 重 stamp：把單一 entity 的 exercise_id 設為新值（roster/演習狀態變 → live 點歸位/離場）+
+    bump version_clock（同 set_faction：前端 cop_stream LWW resync 才反映 scope 變更）。回 0/1。"""
+    now = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    with get_conn() as conn:
+        cur = conn.execute(
+            "UPDATE cop_entities SET exercise_id=?, version_clock = version_clock + 1, updated_at=? WHERE uid=?",
+            (exercise_id, now, uid),
+        )
+        return cur.rowcount
+
+
 def set_entity_faction_manual(uid: str, faction: str) -> dict | None:
     """#343 admin 對單一 entity override faction（faction_source='manual'，重解析不覆寫）。
 
