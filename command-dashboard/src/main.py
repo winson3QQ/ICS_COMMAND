@@ -109,10 +109,12 @@ async def _refresh_client_identity_once() -> int:
         return 0
     try:
         uid2cn = await tak_group_sync.online_uid_to_username()
+        # upsert 也包進 try（review MED）：upsert_many 開 DB 寫，與 ingest 爭用可拋 `database is locked`
+        # 等 OperationalError → 須一併吞掉走 best-effort，否則例外逃進週期迴圈把 poller 永久殺掉。
+        return client_identity_repo.upsert_many(uid2cn) if uid2cn else 0
     except Exception:
         log.warning("[faction] client_identity 刷新失敗（best-effort，下輪再試）", exc_info=True)
         return 0
-    return client_identity_repo.upsert_many(uid2cn) if uid2cn else 0
 
 
 async def _periodic_client_identity_refresh():
@@ -120,7 +122,10 @@ async def _periodic_client_identity_refresh():
     裝置換 uid 重連後最多一個輪詢週期即自動解析 faction。間隔 45s 對齊 ~60s online 視窗近似。"""
     while True:
         await asyncio.sleep(_CLIENT_IDENTITY_INTERVAL)
-        await _refresh_client_identity_once()
+        try:  # 迴圈內 try（對齊 sibling 週期任務）：單次失敗不中斷迴圈、不永久殺任務（防 review MED）。
+            await _refresh_client_identity_once()
+        except Exception:
+            log.warning("[faction] client_identity 週期刷新失敗（best-effort，下輪再試）", exc_info=True)
 
 
 def _assert_safe_mtls_config() -> None:

@@ -51,6 +51,23 @@ def test_refresh_best_effort_on_error(monkeypatch):
     assert asyncio.run(main._refresh_client_identity_once()) == 0
 
 
+def test_refresh_swallows_upsert_error(monkeypatch):
+    """review MED：upsert_many 拋（如 ingest 爭用的 DB lock）也須吞掉回 0，否則例外逃進週期迴圈把
+    poller 永久殺掉。"""
+    monkeypatch.setattr(tak_group_sync, "is_configured", lambda: True)
+
+    async def _subs():
+        return {"u1": "cn1"}
+
+    monkeypatch.setattr(tak_group_sync, "online_uid_to_username", _subs)
+
+    def _boom(_):
+        raise RuntimeError("database is locked")
+
+    monkeypatch.setattr(client_identity_repo, "upsert_many", _boom)
+    assert asyncio.run(main._refresh_client_identity_once()) == 0  # 不拋、回 0
+
+
 def test_refresh_empty_subs_noop(monkeypatch):
     monkeypatch.setattr(tak_group_sync, "is_configured", lambda: True)
 
