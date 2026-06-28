@@ -155,7 +155,9 @@ WARNING_THRESHOLD_SECONDS: int = int(os.getenv("ICS_WARNING_THRESHOLD_SECONDS", 
 # MINOR 2.26.0：#344 紅藍分類改綁 cert CN（穩定）非 uid——加 client_identity（m035，uid→CN 快取，從
 #               subscriptions/all 寫入）+ ingest faction 解析經快取翻 uid→CN + 面板改列「發證後且在線」
 #               （subscriptions ∩ tak_device_certs，CN 鍵）→ 裝置重裝/重 enroll 換 uid 不丟分類。
-APP_VERSION = "2.26.0"
+# PATCH 2.26.1：#344 Slice 2——背景週期（45s）刷新 client_identity（uid→CN），免「裝置換 uid 重連後須
+#               先開紅藍分類面板才著色」的窗口（最多一輪詢週期即自動解析 faction）。
+APP_VERSION = "2.26.1"
 
 # CMD_VERSION：前端 UI 功能版本（不同於後端 SemVer APP_VERSION；規則見 CLAUDE.md 版號規則）
 # 兩軌版本命名，不可混用。由 /api/version 提供給前端，是唯一 source-of-truth；release 時更新此值。
