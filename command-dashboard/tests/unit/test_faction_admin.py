@@ -173,6 +173,33 @@ def test_list_clients_online_and_issued_only(_no_ws, monkeypatch):
     assert clients["alpha"]["online"] is True
 
 
+def test_list_clients_shows_live_callsign_keyed_on_cn(_no_ws, monkeypatch):
+    """#344：顯示 live in-app callsign（角色，使用者可改），但 client_key 綁 cert CN（穩定）。
+
+    指揮認的是角色名（如「紅軍-1」），分類依據是憑證 CN（如 cert-cn-01）——改 callsign 不丟分類。
+    """
+    # 裝置 self-SA（uid==裝置uid）帶 in-app callsign「紅軍-1」
+    ev = CoTEventIn(
+        uid="DEVUID",
+        type="a-f-G-U-C",
+        time="2026-06-22T00:00:00Z",
+        start="2026-06-22T00:00:00Z",
+        stale="2099-01-01T00:00:00Z",
+        how="m-g",
+        lat=24.0,
+        lon=120.5,
+        callsign="紅軍-1",
+    )
+    asyncio.run(cop_service.ingest_cot_event(ev))
+    _mock_subs(monkeypatch, {"DEVUID": "cert-cn-01"})  # subscriptions：uid→CN
+    _mock_issued(monkeypatch, ["cert-cn-01"])
+    clients = asyncio.run(faction_service.list_clients(None))
+    assert len(clients) == 1
+    c = clients[0]
+    assert c["client_key"] == "cert-cn-01" and c["cn"] == "cert-cn-01"  # 鍵/身分 = CN
+    assert c["callsign"] == "紅軍-1"  # 顯示 = live 角色名
+
+
 def test_list_clients_dedups_by_cn(_no_ws, monkeypatch):
     """同 CN 多 uid（換過 uid 都在線）→ 去重成一筆。"""
     _mock_subs(monkeypatch, {"uidA": "same", "uidB": "same"})

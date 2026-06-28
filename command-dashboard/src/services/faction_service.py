@@ -44,7 +44,10 @@ async def list_clients(exercise_id: int | None) -> list[dict]:
     來源 = `subscriptions/all`（可靠在線視圖）的 {uid: username} ∩ `tak_device_certs`（active 發證集合），
     去重成 per-CN。順帶把 {uid: username} 寫進 client_identity（供 ingest 同步把 uid 翻 CN 著色）。
 
-    回 [{client_key=CN, callsign=CN, last_seen, online=True, faction, classified}]，依 CN 排序。
+    回 [{client_key=CN, callsign=live角色名, cn=CN, last_seen, online=True, faction, classified}]，依 CN 排序。
+    **鍵（client_key）= cert CN（穩定身分）**；**顯示（callsign）= 裝置 self-SA 的 live in-app callsign（這場
+    扮的角色，使用者可隨手改）**——指揮認的是角色名，但分類綁 CN（改 callsign/換 uid 都不丟）。faction 為
+    **per-exercise**（同一 CN 跨場可不同陣營，由 exercise_id scope 決定）。
     best-effort：TAK 未配置 / 離線 → uid2cn={} → 回 []（前端顯空狀態，指引去開 TAK）。
     """
     uid2cn = await tak_group_sync.online_uid_to_username()  # {uid: username(CN)}；在線視圖
@@ -52,21 +55,24 @@ async def list_clients(exercise_id: int | None) -> list[dict]:
     issued = {c["callsign"] for c in tak_device_cert_repo.list_device_certs() if c.get("status") == "active"}
     fmap = client_faction_repo.get_faction_map(exercise_id)
     out, seen = [], set()
-    for cn in uid2cn.values():
-        if cn not in issued or cn in seen:  # 只列發證後（active 證）的；per-CN 去重
+    for uid, cn in uid2cn.items():
+        if cn not in issued or cn in seen:  # 只列發證後（active 證）的；per-CN 去重（取首見 uid 的角色名）
             continue
         seen.add(cn)
+        ent = cop_entity_repo.get_cop_entity(uid)  # 裝置 self-SA（uid==裝置uid）→ live in-app callsign（角色）
+        live_callsign = (ent.get("callsign") if ent else None) or cn
         out.append(
             {
-                "client_key": cn,
-                "callsign": cn,
+                "client_key": cn,  # 穩定鍵 = cert CN（classify 綁此）
+                "callsign": live_callsign,  # 顯示 = live 角色名（fallback CN）
+                "cn": cn,  # 穩定身分（前端與角色名並顯，便於辨識「誰扮這角色」）
                 "last_seen": "",  # 在線視圖即時，無需 last_seen 時效近似
                 "online": True,  # 來源即在線訂閱
                 "faction": fmap.get(cn),
                 "classified": cn in fmap,
             }
         )
-    out.sort(key=lambda d: d["client_key"])
+    out.sort(key=lambda d: d["cn"])
     return out
 
 
