@@ -383,13 +383,17 @@ def suspend_all(body: SuspendAllIn, request: Request):
     # OP-1（#153）：不可逆批次停權強制確認字串（後端把關，不依賴前端 dialog 防誤點）。
     if body.confirm != "SUSPEND_ALL":
         raise HTTPException(422, 'confirm 必須為 "SUSPEND_ALL"（不可逆批次停權確認）')
-    # suspend_all_accounts 已排除發起者本人（防自鎖，見 account_repo）。
-    # ⚠ #369 review 殘留（narrow，未納本鎖）：suspend-all 不在 _SYSADMIN_GUARD_LOCK 內，且其
-    # 自排除保的是「發起者帳號」非「最後一個 sysadmin」。並發下若發起者 S1 同時被他人 demote 成
-    # operator，suspend-all 仍排除 S1（已 operator）卻停掉最後的 sysadmin S2 → 可達零 sysadmin。
-    # 修需 suspend-all 事後 re-assert「≥1 active sysadmin」（非僅自排除），屬獨立 follow-up、非
-    # #369（並發降級）範圍。觸發極窄（須 SUSPEND_ALL 確認串 + 同瞬間 demote 發起者）。
-    count = suspend_all_accounts(sess["username"])
+    # #375：在 _SYSADMIN_GUARD_LOCK 內序列化（與 demote/role-change 同鎖）+ re-assert 發起者「此刻仍是
+    # active sysadmin」。suspend_all_accounts 排除發起者本人 → 只要發起者仍是 sysadmin，事後即 ≥1 active
+    # sysadmin（floor 保住）。若發起者已被並發 demote 成 operator（TOCTOU），排除他不保 sysadmin → 拒絕
+    # （否則停掉最後的 sysadmin S2 達零，正是 #354 要防的自鎖）。鎖序列化兩端：
+    #   · demote(S1) 先 → S1 變 operator → 本檢查失敗 → 409，不歸零；
+    #   · suspend-all 先 → S1 留 active sysadmin → 之後 demote(S1) 撞 _require_not_last_sysadmin → 409。
+    with _SYSADMIN_GUARD_LOCK:
+        actor = next((a for a in get_all_accounts() if a["username"] == sess["username"]), None)
+        if not actor or (actor.get("status") or "active") != "active" or _session_role(actor) != ROLE_SYSADMIN:
+            raise HTTPException(409, "發起者已非有效系統管理員（並發降級？）→ 拒絕批次停權以免零管理能力")
+        count = suspend_all_accounts(sess["username"])
     return {"ok": True, "suspended_count": count}
 
 

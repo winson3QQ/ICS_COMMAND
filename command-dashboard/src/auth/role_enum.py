@@ -145,8 +145,12 @@ def allowed_roles_for(method: str, path: str) -> frozenset[str] | None:
         return ACCOUNT_MANAGER_ROLES
     if path.startswith("/api/admin/"):
         return SYSADMIN_ONLY
+    # #393：通用 config 端點 GET/POST /api/config/{key} 收成 **SYSADMIN_ONLY**（縱深）。原 GET→READ_ROLES
+    # （observer 可讀任意 key）/ POST→COMMAND_ROLES（commander 可寫任意 key、無 allow-list）= 越權面：未來
+    # 任何寫進 config 的機敏值自動對 observer 可見、commander 可改任意 runtime config。前端不直用此端點
+    # （具體設定如 tak toggle / retention / map_config 各有專屬端點），故收 sysadmin-only 不破壞既有流程。
     if path.startswith("/api/config/"):
-        return READ_ROLES if method == "GET" else COMMAND_ROLES
+        return SYSADMIN_ONLY
     # 拆 case：map_config 寫入（POST）是 operator 日常操作（畫 zone / route / 拖事件位置），
     # 開放給 WRITE_ROLES；但 GET（看地圖）必須含 observer，否則觀察員登入後 _loadMapConfig
     # 吃 403、地圖整片載不出。故分 method：GET → READ_ROLES、寫入 → WRITE_ROLES。

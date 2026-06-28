@@ -157,7 +157,10 @@ WARNING_THRESHOLD_SECONDS: int = int(os.getenv("ICS_WARNING_THRESHOLD_SECONDS", 
 #               （subscriptions ∩ tak_device_certs，CN 鍵）→ 裝置重裝/重 enroll 換 uid 不丟分類。
 # PATCH 2.26.1：#344 Slice 2——背景週期（45s）刷新 client_identity（uid→CN），免「裝置換 uid 重連後須
 #               先開紅藍分類面板才著色」的窗口（最多一輪詢週期即自動解析 faction）。
-APP_VERSION = "2.26.1"
+# PATCH 2.26.2：security 收緊——#393 通用 /api/config/{key} GET/POST 收成 SYSADMIN_ONLY（原 observer 可讀/
+#               commander 可寫任意 key）；#375 suspend-all 納 _SYSADMIN_GUARD_LOCK + re-assert 發起者仍
+#               active sysadmin（並發 demote 發起者→拒，防達零 sysadmin 自鎖）。
+APP_VERSION = "2.26.2"
 
 # CMD_VERSION：前端 UI 功能版本（不同於後端 SemVer APP_VERSION；規則見 CLAUDE.md 版號規則）
 # 兩軌版本命名，不可混用。由 /api/version 提供給前端，是唯一 source-of-truth；release 時更新此值。

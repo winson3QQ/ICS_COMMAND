@@ -44,6 +44,10 @@ _DENY = [
     ("commander", "POST", "/api/tak/connection"),
     ("commander", "POST", "/api/event_taxonomy"),
     ("commander", "GET", "/api/admin/audit-log"),
+    # #393：通用 config 端點收成 sysadmin-only（原 GET=observer 可讀 / POST=commander 可寫任意 key）
+    ("observer", "GET", "/api/config/k"),
+    ("commander", "GET", "/api/config/k"),
+    ("commander", "POST", "/api/config/k"),
 ]
 
 
@@ -60,6 +64,7 @@ _ALLOW = [
     ("observer", "GET", "/api/chat"),
     ("operator", "GET", "/api/map_config"),
     ("operator", "POST", "/api/cop/entities"),  # operator 可寫 COP（WRITE）
+    ("sysadmin", "GET", "/api/config/k"),  # #393：sysadmin 仍可讀寫 config（端點留著、只收權限）
 ]
 
 
