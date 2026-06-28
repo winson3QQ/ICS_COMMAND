@@ -1091,6 +1091,17 @@ export function admShowTak() {
       <div style="margin-top:10px;max-width:480px;font-size:11px;color:#d9a441;border:1px solid #d9a441;border-radius:4px;padding:4px 6px;line-height:1.5;">
         ⚠ <b>撤「在線」證的 SOP</b>：TAK 把連過的證快取成有效 → 撤銷對在線/近期連過的證<b>不即時</b>。要立刻踢掉，在部署機重啟 TAK 清快取：<code style="font-size:10px;">docker restart takserver</code>（~95s，全員自動重連）。「先撤再連」的新證則即時生效、免重啟。
       </div>
+      <div style="margin-top:14px;max-width:480px;border-top:1px solid var(--border,#222);padding-top:10px;">
+        <div style="font-size:12px;font-weight:600;color:var(--text);margin-bottom:2px;">發 WG-only 設定（純儀表板使用者）</div>
+        <div style="font-size:11px;color:var(--text3);margin-bottom:6px;line-height:1.5;">
+          只用儀表板、無 TAK 裝置的人（指揮幕僚）：發一份 WireGuard 設定讓他們經 VPN 連儀表板（掃 QR 掛隧道後照原網址登入）。TAK 裝置的 VPN 隨發證自動配、隨撤證連動撤，此處專給 <b>WG-only</b>。
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;">
+          <input id="adm-wg-label" type="text" placeholder="label（如 cmd-staff-01）" style="flex:1;min-width:180px;font-family:monospace;font-size:11px;" />
+          <button class="adm-btn" data-action="adm-issue-wg-config" title="只配 WG peer、不發 TAK 證；下載 wireguard.conf + QR">發 WG 設定</button>
+        </div>
+        <div id="adm-wg-result"></div>
+      </div>
     </div>`;
   _admLoadTakConn();
   admLoadTakDeviceCerts();
@@ -1148,14 +1159,20 @@ async function _appendWgPeers(box) {
     html += '<div style="font-size:11px;color:var(--text3);">（無；發證時若配置 WG 會自動配 peer）</div>';
   } else {
     for (const p of active) {
+      // TAK 裝置的 peer → 隨撤證連動撤（此處唯讀，避免與撤證重複）；WG-only peer（callsign 不在 TAK 帳號集）
+      // → 給「撤除」鈕走 /wg/peers/revoke。fallback 視圖 _lastTakCallsigns 可能為空 → 一律當 WG-only（可撤）。
+      const takLinked = _lastTakCallsigns.has(p.callsign);
+      const tail = takLinked
+        ? '<span style="color:var(--text3);font-size:10px;" title="撤對應 TAK 裝置證會連動撤此 peer">隨證撤</span>'
+        : '<button class="adm-btn" data-action="adm-revoke-wg-peer" data-callsign="' + _escAudit(p.callsign || '') + '" title="撤除此 WG-only 設定（容器 peer + 帳本）">撤除</button>';
       html += '<div style="display:flex;align-items:center;gap:6px;padding:3px 0;border-bottom:1px solid var(--border);font-size:12px;">'
         + '<span style="font-family:monospace;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + _escAudit(p.callsign || '') + '">' + _escAudit(p.callsign || '—') + '</span>'
         + '<span style="font-family:monospace;color:var(--text2);font-size:11px;">' + _escAudit(p.address || '') + '</span>'
         + '<span style="font-size:10px;" title="' + (p.online ? '近期有握手（≈在線）' : '久未握手（≈離線）') + '">' + (p.online ? '🟢' : '⚪') + '</span>'
-        + '<span style="color:var(--green);font-size:10px;">active</span>'
+        + tail
         + '</div>';
     }
-    html += '<div style="font-size:10px;color:var(--text3);margin-top:4px;">撤對應裝置證會連動撤此 peer（唯讀）。</div>';
+    html += '<div style="font-size:10px;color:var(--text3);margin-top:4px;">TAK 裝置 peer 隨撤證連動撤（標「隨證撤」）；WG-only 設定按「撤除」。</div>';
   }
   const div = document.createElement('div');
   div.innerHTML = html;
@@ -1444,6 +1461,68 @@ function _showTakDeviceResult(callsign, mode, blob, blobUrl, enrollStatus, wgSta
   banner.appendChild(label);
   banner.appendChild(row);
   box.appendChild(banner);
+}
+
+// VPN-gate 儀表板：給純儀表板使用者（無 TAK 裝置）發 WG-only 設定（conf + QR），讓他們經 VPN 連儀表板。
+export async function admIssueWgConfig() {
+  const label = el('adm-wg-label')?.value.trim();
+  if (!label) { alert('請輸入 label'); return; }
+  if (!/^[\x00-\x7F]*$/.test(label)) { alert('label 請用英數（非 ASCII 不適用）'); return; }
+  const resp = await authFetch(API_BASE + '/api/admin/wg/issue?label=' + encodeURIComponent(label), { method: 'POST' });
+  if (resp.status === 503) { alert('WG 未配置（部署層設 WG_QUEUE_DIR / WG_SERVER_PUBKEY / WG_ENDPOINT）。'); return; }
+  if (resp.status === 422) { alert('label 不合法或為保留身分'); return; }
+  if (!resp.ok) { alert('WG 配置失敗（' + resp.status + '）：' + (await resp.text()).slice(0, 200)); return; }
+  const blob = await resp.blob();
+  const blobUrl = URL.createObjectURL(blob);
+  _showWgResult(label, blob, blobUrl);
+  admLoadTakDeviceCerts();  // 刷新 WG 帳本（新 peer 入列）
+}
+
+function _showWgResult(label, blob, blobUrl) {
+  const box = el('adm-wg-result');
+  if (!box) { URL.revokeObjectURL(blobUrl); return; }
+  box.innerHTML = '';
+  const banner = document.createElement('div');
+  banner.style.cssText = 'border:1px solid var(--green,#2ea043);border-radius:6px;padding:8px;margin-top:8px;font-size:12px;';
+  const lab = document.createElement('div');
+  lab.style.cssText = 'color:var(--text2);margin-bottom:6px;line-height:1.5;';
+  lab.textContent = '🔐 已配 ' + label + ' 的 WireGuard 設定。轉交給對方：掃 wireguard-qr.png（或匯 wireguard.conf）→ 啟用隧道 → 照原網址開儀表板登入。';
+  const row = document.createElement('div');
+  row.style.cssText = 'display:flex;align-items:center;gap:6px;flex-wrap:wrap;';
+  const dlBtn = document.createElement('button');
+  dlBtn.className = 'adm-btn';
+  dlBtn.textContent = '⬇ 下載 .zip';
+  dlBtn.addEventListener('click', () => {
+    const a = document.createElement('a');
+    a.href = blobUrl; a.download = label + '-wg.zip';
+    document.body.appendChild(a); a.click(); a.remove();
+  });
+  row.appendChild(dlBtn);
+  const file = _makeFile(label + '-wg.zip', blob, 'application/zip');
+  if (file && navigator.canShare?.({ files: [file] })) {
+    const shareBtn = document.createElement('button');
+    shareBtn.className = 'adm-btn';
+    shareBtn.textContent = '📤 分享 / 存檔';
+    shareBtn.addEventListener('click', async () => {
+      try { await navigator.share({ files: [file], title: label + '-wg.zip' }); }
+      catch (e) { if (e?.name === 'AbortError') return; dlBtn.click(); }
+    });
+    row.appendChild(shareBtn);
+  }
+  banner.appendChild(lab);
+  banner.appendChild(row);
+  box.appendChild(banner);
+}
+
+// 撤 WG-only peer（按 callsign/label）。TAK 裝置 peer 走撤證連動，不經此。
+export async function admRevokeWgPeer(callsign) {
+  if (!callsign) return;
+  if (!confirm('撤除 WG 設定「' + callsign + '」？\n該裝置會立即失去 VPN 連線（容器 peer + 帳本一併撤）。')) return;
+  const resp = await authFetch(API_BASE + '/api/admin/wg/peers/revoke?callsign=' + encodeURIComponent(callsign), { method: 'POST' });
+  if (resp.status === 404) { alert('無 active WG peer：' + callsign); return; }
+  if (resp.status === 422) { alert('callsign 不合法或為保留身分'); return; }
+  if (!resp.ok) { alert('撤除失敗（' + resp.status + '）'); return; }
+  admLoadTakDeviceCerts();  // 刷新帳本
 }
 
 // ── P1-12b（#228）「備份／重設」tab（in-dashboard，取代 orphaned admin_backups.html）──
