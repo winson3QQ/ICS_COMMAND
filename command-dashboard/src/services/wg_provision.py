@@ -13,11 +13,15 @@ WG 改跑進 Linux 容器（`deploy/perimeter/wireguard/container/`）後，ICS 
 
 from __future__ import annotations
 
+import base64
 import logging
 import os
 import re
 import time
 import uuid
+
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
 
 from core import config
 
@@ -122,3 +126,47 @@ def remove_peer(pubkey: str) -> dict:
         log.info("[wg-provision] peer 撤除 %s…", pubkey[:12])
         return {"ok": True, "reason": "removed"}
     return {"ok": False, "reason": outcome if outcome in ("timeout", "write-failed") else f"registrar:{body[:120]}"}
+
+
+def gen_keypair() -> tuple[str, str]:
+    """產 WireGuard keypair（X25519，純 Python，免 wg 工具 / 免 ICS 容器裝 wireguard-tools）。
+
+    回 (private_b64, public_b64)，格式與 `wg genkey | wg pubkey` 相容（base64 32 bytes；clamping 在
+    X25519 scalar-mult 時套用，故 raw private 之 public 與 `wg pubkey` 一致——已容器實證）。#434 採方案 B
+    （ICS 產 keypair、私鑰夾進裝置包，與現行 p12 一站式對齊，對非技術測試者最省事）。
+    """
+    priv = X25519PrivateKey.generate()
+    priv_raw = priv.private_bytes(
+        serialization.Encoding.Raw, serialization.PrivateFormat.Raw, serialization.NoEncryption()
+    )
+    pub_raw = priv.public_key().public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
+    return base64.b64encode(priv_raw).decode("ascii"), base64.b64encode(pub_raw).decode("ascii")
+
+
+def build_device_conf(
+    private_key: str,
+    address: str,
+    server_pubkey: str,
+    endpoint: str,
+    *,
+    allowed_ips: str = "",
+    keepalive: int = 25,
+) -> str:
+    """組裝裝置端 WireGuard `.conf`（夾進裝置包 / 轉 QR）。
+
+    allowed_ips 預設＝整個 VPN 子網（WG_SUBNET_PREFIX + '0/24'），只把 ICS/TAK 私網導進隧道（非全流量）。
+    keepalive=25 撐 cellular CGNAT 對應、保漫遊不斷。
+    """
+    if not allowed_ips:
+        prefix = getattr(config, "WG_SUBNET_PREFIX", "10.13.13.")
+        allowed_ips = f"{prefix}0/24"
+    return (
+        "[Interface]\n"
+        f"PrivateKey = {private_key}\n"
+        f"Address = {address}\n\n"
+        "[Peer]\n"
+        f"PublicKey = {server_pubkey}\n"
+        f"Endpoint = {endpoint}\n"
+        f"AllowedIPs = {allowed_ips}\n"
+        f"PersistentKeepalive = {keepalive}\n"
+    )

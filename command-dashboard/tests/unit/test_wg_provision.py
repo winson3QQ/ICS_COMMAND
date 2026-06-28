@@ -117,3 +117,25 @@ class TestRoundTrip:
         r = wg_provision.add_peer(GOOD_PUB, "10.13.13.50/32")
         t.join(timeout=5)
         assert r["ok"] is False and "registrar:ERR bad-ip" in r["reason"]
+
+
+class TestKeygen:
+    def test_gen_keypair_format(self):
+        priv, pub = wg_provision.gen_keypair()
+        # base64 32 bytes → 44 字含「=」；pub 通過 wg pubkey 正則。
+        assert len(priv) == 44 and priv.endswith("=")
+        assert wg_provision.is_valid_pubkey(pub)
+
+    def test_gen_keypair_unique(self):
+        assert wg_provision.gen_keypair()[0] != wg_provision.gen_keypair()[0]
+
+    def test_build_device_conf(self, monkeypatch):
+        monkeypatch.setattr(config, "WG_SUBNET_PREFIX", "10.13.13.")
+        priv, _ = wg_provision.gen_keypair()
+        conf = wg_provision.build_device_conf(priv, "10.13.13.50/32", GOOD_PUB, "1.2.3.4:51820")
+        assert f"PrivateKey = {priv}" in conf
+        assert "Address = 10.13.13.50/32" in conf
+        assert f"PublicKey = {GOOD_PUB}" in conf
+        assert "Endpoint = 1.2.3.4:51820" in conf
+        assert "AllowedIPs = 10.13.13.0/24" in conf  # 預設＝整個 VPN 子網
+        assert "PersistentKeepalive = 25" in conf
