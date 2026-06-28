@@ -1575,6 +1575,33 @@ def _m035_client_identity_down(conn: sqlite3.Connection) -> None:
     conn.execute("DROP TABLE IF EXISTS client_identity")
 
 
+def _m036_exercise_active_intervals(conn: sqlite3.Connection) -> None:
+    """#267 Slice 1：演習「活躍時段」log（時間窗地基）。
+
+    取代「單一 started_at/ended_at」——演習可 開始→停→重開→結束，活躍時段是**多區間聯集**。每次 set_active
+    開一筆（deactivated_at=NULL=仍活躍）、archive 關一筆。後續 scope 解析（#267 後刀）判「CoT 時間戳是否落在
+    某場活躍區間內」即查此表。待命/停用期間產生的資料不屬任何場（doctrine：不回填）。
+    """
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS exercise_active_intervals (
+            id             INTEGER PRIMARY KEY AUTOINCREMENT,
+            exercise_id    INTEGER NOT NULL REFERENCES exercises(id),
+            activated_at   TEXT NOT NULL,
+            deactivated_at TEXT,
+            activated_by   TEXT
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_eai_exercise ON exercise_active_intervals(exercise_id)")
+    # 開放區間（仍活躍）查詢用——一場至多一筆 deactivated_at IS NULL。
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_eai_open ON exercise_active_intervals(exercise_id) WHERE deactivated_at IS NULL"
+    )
+
+
+def _m036_exercise_active_intervals_down(conn: sqlite3.Connection) -> None:
+    conn.execute("DROP TABLE IF EXISTS exercise_active_intervals")
+
+
 _MIGRATIONS: list[tuple[int, str, object]] = [
     (1, "events_columns", _m001_events_columns),
     (2, "decisions_columns", _m002_decisions_columns),
@@ -1611,6 +1638,7 @@ _MIGRATIONS: list[tuple[int, str, object]] = [
     (33, "tak_device_cert_enroll_meta", _m033_tak_device_cert_enroll_meta),
     (34, "wg_peers", _m034_wg_peers),
     (35, "client_identity", _m035_client_identity),
+    (36, "exercise_active_intervals", _m036_exercise_active_intervals),
 ]
 
 
