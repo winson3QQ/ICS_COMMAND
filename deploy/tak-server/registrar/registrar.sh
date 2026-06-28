@@ -41,6 +41,15 @@ POLL_S="${REGISTRAR_POLL_S:-1}"
 # #398 B：reconcile 讀此檔取 TAK 端 cert-user → fingerprint 真相（與 usermod 同一份 SoT）。
 AUTH_FILE="${USER_AUTH_FILE:-/opt/tak/UserAuthenticationFile.xml}"
 
+# #433 netns 自癒：registrar 用 network_mode=service:takserver 共享 takserver netns 跑 usermod 本機 IPC。
+# takserver 一重啟其 netns 重建，registrar 仍掛舊（死）netns → usermod 連不到 IPC、靜默卡死（reconcile 讀檔
+# 仍活，故面板半正常難察）。解：探測本 netns 是否還看得到 takserver 埠；失聯即 exit，靠 restart:unless-stopped
+# 重啟 registrar 重掛當前 netns 自癒（取代手動 docker restart）。
+PROBE_PORT="${REGISTRAR_PROBE_PORT:-8443}"          # takserver API；netns 健康+takserver up 時於本 netns 可見
+PROBE_EVERY="${REGISTRAR_PROBE_EVERY:-15}"          # 每 N 次 loop 探一次（~N*POLL_S 秒）
+PROBE_FAIL_LIMIT="${REGISTRAR_PROBE_FAIL_LIMIT:-4}" # 連續失敗 N 次 → exit 自癒（避免單次抖動誤殺）
+START_GRACE_S="${REGISTRAR_START_GRACE_S:-150}"     # 啟動寬限：等 takserver 起來，期間不計失敗（免起步 exit-loop）
+
 # fingerprint＝SHA-256 冒號分隔大小寫 hex（openssl x509 -fingerprint -sha256 原樣，32 組）。
 FP_RE='^([0-9A-Fa-f]{2}:){31}[0-9A-Fa-f]{2}$'
 # callsign＝cert CN，對齊 dashboard is_valid_cert_cn（限字母/數字/空白/-_.@，不可逗號、不可 - 開頭）。
@@ -57,12 +66,18 @@ valid_group() { case "$1" in neutral | red | blue) return 0 ;; *) return 1 ;; es
 # 共享、被攻陷的 web tier 可直寫請求 → 此處獨立 denylist 防「刪掉 ICS 自己的 TAK 身分」blast radius。
 is_infra_user() { case "$1" in ics-cot | ics-tak-admin) return 0 ;; *) return 1 ;; esac; }
 
+# #433：探測共享 netns 是否還活著＝本 netns 看不看得到 takserver 的 PROBE_PORT（stale netns 看不到任何埠）。
+probe_ipc() { { netstat -tln 2>/dev/null || ss -tln 2>/dev/null; } | grep -q ":${PROBE_PORT} "; }
+
 mkdir -p "$REQ_DIR" "$RES_DIR"
 # 佇列由 root（本容器，takserver image）建，但消費端 ics-command 跑**非 root**（uid 10001 `ics`）→
 # root:root 755 會讓 ICS 寫請求檔 Permission denied、enroll 靜默失敗。0777（無 sticky）：兩個受信
 # 內部容器互寫/互刪佇列檔（協定即如此，ICS 寫 .req、registrar 寫 .res、各自刪對方檔）；此卷僅此二者掛載。
 chmod 0777 "$QUEUE" "$REQ_DIR" "$RES_DIR" 2>/dev/null || true
 log "watcher up; queue=$QUEUE jar=$JAR poll=${POLL_S}s（dirs chmod 0777，容非 root ICS 可寫）"
+
+# #433 netns 自癒計數器
+_start_ts="$(date +%s)"; _loop_n=0; _probe_fails=0
 
 while true; do
   shopt -s nullglob
@@ -187,5 +202,19 @@ while true; do
     rm -f "$f"  # 結果已落地，刪請求（at-least-once：crash 重跑冪等）
   done
   shopt -u nullglob
+  # #433：定期探測共享 netns 健康；失聯（多半 takserver 重啟過）連續達上限 → exit 讓 Docker 重啟重掛 netns。
+  _loop_n=$((_loop_n + 1))
+  if [ $((_loop_n % PROBE_EVERY)) -eq 0 ]; then
+    if probe_ipc; then
+      _probe_fails=0
+    elif [ $(( $(date +%s) - _start_ts )) -gt "$START_GRACE_S" ]; then
+      _probe_fails=$((_probe_fails + 1))
+      log "IPC 探測失敗 ${_probe_fails}/${PROBE_FAIL_LIMIT}（本 netns 看不到 takserver:${PROBE_PORT}）"
+      if [ "$_probe_fails" -ge "$PROBE_FAIL_LIMIT" ]; then
+        log "共享 netns 失聯確認（多半 takserver 重啟）→ exit，靠 restart 重掛當前 netns 自癒"
+        exit 1
+      fi
+    fi
+  fi
   sleep "$POLL_S"
 done

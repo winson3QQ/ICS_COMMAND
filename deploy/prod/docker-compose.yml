@@ -224,6 +224,14 @@ services:
         condition: service_started
     network_mode: "service:takserver"        # ← 關鍵：共享 takserver netns（不可同時設 networks）
     entrypoint: ["/bin/bash", "/registrar/registrar.sh"]
+    # #433：探共享 netns 健康（看得到 takserver:8443）。registrar.sh 自身亦會偵測失聯後 exit + restart 自癒；
+    # 此 healthcheck 供 `docker ps` 觀測（takserver 重啟時短暫 unhealthy → registrar 自我重啟後恢復）。
+    healthcheck:
+      test: ["CMD-SHELL", "netstat -tln 2>/dev/null | grep -q ':8443 ' || ss -tln 2>/dev/null | grep -q ':8443 '"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 150s
     volumes:
       - ../tak-server/release/tak:/opt/tak                              # 同一份 payload（UserManager.jar）
       - ../tak-server/registrar/registrar.sh:/registrar/registrar.sh:ro
