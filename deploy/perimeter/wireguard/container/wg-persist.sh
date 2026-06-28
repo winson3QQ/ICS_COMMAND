@@ -6,7 +6,7 @@
 # entrypoint 另外套用），正好可被 boot 時的 `wg setconf` 原樣載回。原子寫避免讀半寫。
 set -uo pipefail
 IFACE="${WG_IFACE:-wg0}"
-CONF="${WG_CONF:-/etc/wireguard/${IFACE}.conf}"
+CONF="${WG_CONF:-/wg-data/${IFACE}.conf}"  # #434 fix：持久卷（同 server.key），否則 --force-recreate 丟 peer
 tmp="${CONF}.tmp.$$"
 if wg showconf "$IFACE" >"$tmp" 2>/dev/null; then
   mv "$tmp" "$CONF"

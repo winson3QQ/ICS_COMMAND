@@ -10,7 +10,7 @@
 set -euo pipefail
 
 IFACE="${WG_IFACE:-wg0}"
-CONF="${WG_CONF:-/etc/wireguard/${IFACE}.conf}"
+CONF="${WG_CONF:-/wg-data/${IFACE}.conf}"  # #434 fix：持久卷（同 server.key），否則 --force-recreate 丟 peer
 WG_ADDRESS="${WG_ADDRESS:-10.13.13.1/24}"
 WG_PORT="${WG_PORT:-51820}"
 KEY_FILE="${WG_KEY_FILE:-/wg-data/server.key}"
