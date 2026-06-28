@@ -187,7 +187,8 @@ def test_mixed_tz_naive_time_does_not_drop_track():
     _ingest(_event(time="2026-06-05T04:00:06"))  # naive（無 Z），+6s ≥ 間隔 → 應寫
     tracks = cop_entity_repo.list_cop_tracks("TRK-1")
     assert len(tracks) == 2  # 混格式仍正確寫入第二筆，未因 TypeError 漏寫
-    assert tracks[1]["t"] == "2026-06-05T04:00:06"
+    # #267：ingest 接縫正規化 → naive 入庫成秒精度 Z（與字典序窗/stale 比較對齊）。
+    assert tracks[1]["t"] == "2026-06-05T04:00:06Z"
 
 
 # ── 9. review #7：抽樣間隔可由 config 覆寫 ────────────────────────────────────

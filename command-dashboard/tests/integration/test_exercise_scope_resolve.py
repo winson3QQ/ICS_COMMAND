@@ -38,14 +38,14 @@ def _active_exercise():
     return ex["id"]
 
 
-def _ingest(uid):
-    # live 點時間用「現在」（須 ≥ 演習活化時間，才落在活躍窗內；過去時間=演習開始前=待命）。
-    now = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+def _ingest(uid, time=None):
+    # live 點時間預設用「現在」（須 ≥ 演習活化時間，才落在活躍窗內；過去時間=演習開始前=待命）。
+    ts = time or datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     ev = CoTEventIn(
         uid=uid,
         type="a-f-G-U-C",
-        time=now,
-        start=now,
+        time=ts,
+        start=ts,
         stale="2099-01-01T00:00:00Z",
         how="m-g",
         lat=24.0,
@@ -79,6 +79,25 @@ def test_non_roster_member_null(_no_ws):
     client_identity_repo.upsert_many({"DEV1": "cn1", "DEV2": "cn2"})
     exercise_roster_repo.upsert_member(ex, "cn1", None, "admin")  # roster 非空（cn1）但 cn2 不在
     assert _ingest("DEV2")["exercise_id"] is None  # 不在 roster → 待命池
+
+
+def test_member_before_window_null(_no_ws):
+    """活躍窗 rejection arm：rostered 成員但 ts 在演習活化「之前」（過去時間）→ NULL（中途加入從加入起算）。"""
+    ex = _active_exercise()
+    client_identity_repo.upsert_many({"DEV1": "cn1"})
+    exercise_roster_repo.upsert_member(ex, "cn1", None, "admin")
+    assert _ingest("DEV1", time="2000-01-01T00:00:00Z")["exercise_id"] is None  # 開場前 → 不在窗 → 待命
+
+
+def test_member_noncanonical_ts_scoped(_no_ws):
+    """review 修：REST push 送非典範時間戳（毫秒）。接縫正規化後須與字典序活躍窗對齊 → 不被誤判落 NULL。"""
+    ex = _active_exercise()
+    client_identity_repo.upsert_many({"DEV1": "cn1"})
+    exercise_roster_repo.upsert_member(ex, "cn1", None, "admin")
+    now_ms = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S.000Z")  # 帶毫秒（'.' < 'Z' 會字典序失準）
+    row = _ingest("DEV1", time=now_ms)
+    assert row["exercise_id"] == ex  # 正規化掉毫秒 → 落在窗 → 歸場（修前會錯落 NULL）
+    assert row["time"].endswith("Z") and "." not in row["time"]  # 入庫已秒精度正規化
 
 
 def test_restamp_on_roster_add(_no_ws):

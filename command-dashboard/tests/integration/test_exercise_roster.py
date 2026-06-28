@@ -88,6 +88,7 @@ def test_roster_requires_sysadmin(client):
 def test_roster_add_connected(client, auth, monkeypatch):
     """#267 UI：「加入全部連線」一鍵把在線 client 全納入 roster；已在者不重計（added=新加入數）。"""
     eid = exercise_repo.create_exercise({"name": "drill", "type": "ttx"})["id"]
+    exercise_repo.update_exercise_status(eid, "active", "admin")  # 限 active 場（guard）
     base = f"/api/admin/exercises/{eid}/roster"
     client.post(base, json={"cn": "alpha"}, headers=auth)  # alpha 先在 roster
 
@@ -103,3 +104,10 @@ def test_roster_add_connected(client, auth, monkeypatch):
     assert data["total_online"] == 3
     assert data["added"] == 2  # alpha 已在 → 只加 bravo/charlie
     assert {m["client_cn"] for m in data["roster"]} == {"alpha", "bravo", "charlie"}
+
+
+def test_roster_add_connected_requires_active(client, auth):
+    """guard：對非 active 場一鍵全加 → 409（重 stamp 對 active 場解析，非 active 語意不清）。"""
+    eid = exercise_repo.create_exercise({"name": "drill", "type": "ttx"})["id"]  # 未啟動
+    r = client.post(f"/api/admin/exercises/{eid}/roster/add-connected", headers=auth)
+    assert r.status_code == 409

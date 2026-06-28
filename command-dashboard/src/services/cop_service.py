@@ -199,7 +199,12 @@ async def restamp_exercise_for_cns(cns: list[str]) -> int:
     if not target_uids:
         return 0
     n = 0
+    # include_stale=True：撈 stale-但仍在 的（仍須隨 roster 變動重 stamp，AAR 正確）；exercise_id=None=不過濾
+    # scope（三態，見 list_cop_entities）→ 連已歸場的也撈得到才能「離場」。但**跳過已刪墓碑**（deleted）——
+    # 重 stamp 它無意義且會灌水回傳的 restamped 計數。
     for e in cop_entity_repo.list_cop_entities(source="tak", exercise_id=None, include_stale=True, limit=10000):
+        if e.get("deleted"):
+            continue
         attrs = e.get("attributes") or {}
         if resolve_client_key_from_parts(e["uid"], attrs) not in target_uids:
             continue
@@ -303,6 +308,24 @@ def _extract_medevac(detail: dict) -> dict | None:
     }
 
 
+def _norm_ts(value: str) -> str:
+    """best-effort 正規化 ISO8601 時間戳 → `%Y-%m-%dT%H:%M:%SZ`（秒精度 UTC）。
+
+    為何在 ingest 接縫做：scope 活躍窗（exercise_repo.ts_in_active_window，#267）與 stale 過濾
+    （list_cop_entities）皆用**字典序字串比較**，須與 repo 的 `%Y-%m-%dT%H:%M:%SZ` 格式對齊。
+    `:8089` 串流路徑已於 parse_cot_xml 正規化，但 **REST push（POST /api/tak/events）直收 JSON、
+    未經 parse** → producer 送毫秒（`...00.000Z`）/帶偏移（`...+08:00`）/naive 會讓字典序失準，
+    rostered 成員竟被判不在活躍窗 → 靜默落 NULL（漏進場）。在此補做使兩路徑一致。
+    非法格式 → 保留原值（不在此拒收，維持既有寬鬆；失準退化為 NULL scope，非崩潰）。
+    """
+    from services.tak_service import CoTParseError, _normalize_iso8601
+
+    try:
+        return _normalize_iso8601(value, field="time")
+    except CoTParseError:
+        return value
+
+
 def normalize_cot(cot_event: CoTEventIn) -> CoPEntity:
     """TAK CoT event → CoPEntity（純函式，無副作用）。
 
@@ -343,9 +366,9 @@ def normalize_cot(cot_event: CoTEventIn) -> CoPEntity:
     return CoPEntity(
         uid=cot_event.uid,
         type=cot_event.type,
-        time=cot_event.time,
-        start=cot_event.start,
-        stale=cot_event.stale,
+        time=_norm_ts(cot_event.time),  # #267：接縫正規化（REST push 未經 parse → 對齊字典序窗/stale 比較）
+        start=_norm_ts(cot_event.start),
+        stale=_norm_ts(cot_event.stale),
         how=cot_event.how,
         version=cot_event.version,
         lat=cot_event.lat,

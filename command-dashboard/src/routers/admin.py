@@ -479,10 +479,18 @@ async def exercise_roster_add_connected(exercise_id: int, request: Request):
     來源 = faction_service.list_clients（在線∩發證；順帶寫 client_identity uid→CN 供重 stamp 翻譯）。
     對「尚未在 roster」的 CN 逐筆 upsert（各自 audit）→ 對全部在線 CN 一次重 stamp（live 點即時歸位）+ resync。
     回 {added: 新加入數, total_online: 在線數, roster: 更新後名冊}。
+
+    **限當前 active 場**：重 stamp 一律對 current_exercise_id 解析（同 restamp_exercise_for_cns），故對
+    非 active 場一鍵全加語意不清（roster 進了但沒人歸場、回的 restamped 會混淆）→ 409 擋下，要 pre-stage
+    非 active 場 roster 請走逐 CN upsert。
     """
     sess = _check_system_admin(request)
     from repositories import exercise_roster_repo
     from services import cop_service, faction_service
+    from services.exercise_service import current_exercise_id
+
+    if current_exercise_id() != exercise_id:
+        raise HTTPException(409, "只能對當前 active 演習「加入全部連線」（非 active 場請逐一指定 roster）")
 
     clients = await faction_service.list_clients(exercise_id)  # 在線∩發證；CN 鍵
     online_cns = [c["cn"] for c in clients]
