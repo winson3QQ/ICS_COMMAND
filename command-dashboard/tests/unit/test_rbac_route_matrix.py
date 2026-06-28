@@ -62,6 +62,9 @@ SYSADMIN GET    /api/admin/ca/root
 SYSADMIN GET    /api/admin/factions/clients
 SYSADMIN POST   /api/admin/factions/classify
 SYSADMIN POST   /api/admin/factions/entity-override
+SYSADMIN GET    /api/admin/exercises/{exercise_id}/roster
+SYSADMIN POST   /api/admin/exercises/{exercise_id}/roster
+SYSADMIN POST   /api/admin/exercises/{exercise_id}/roster/remove
 SYSADMIN POST   /api/admin/tak/device-cert
 SYSADMIN GET    /api/admin/tak/device-certs
 SYSADMIN GET    /api/admin/tak/device-certs/reconcile

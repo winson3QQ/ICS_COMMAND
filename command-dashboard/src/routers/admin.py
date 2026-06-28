@@ -60,6 +60,8 @@ from schemas.admin import (
     PiNodeCreateIn,
     RetentionToggleIn,
     RoleUpdateIn,
+    RosterMemberIn,
+    RosterRemoveIn,
     SuspendAllIn,
     TakRevokeByFingerprintIn,
 )
@@ -424,6 +426,47 @@ async def faction_entity_override(body: FactionOverrideIn, request: Request):
     """對單一 entity 手動點陣營（iTAK 繪圖等無 producer 物件）+ resync。"""
     sess = _check_system_admin(request)
     return await faction_service.override_entity(body.uid, body.faction, sess["username"])
+
+
+# ── #267 演習 roster（參與 + 編制；prefix /api/admin → SYSADMIN_ONLY）。敵我另在 /factions（#344），並列。──
+
+
+@router.get("/exercises/{exercise_id}/roster", tags=["faction"])
+def exercise_roster_list(exercise_id: int, request: Request):
+    """#267：列某場 roster（參與的 CN + 編制）。sysadmin only。"""
+    _check_system_admin(request)
+    from repositories import exercise_roster_repo
+
+    return {"roster": exercise_roster_repo.list_roster(exercise_id)}
+
+
+@router.post("/exercises/{exercise_id}/roster", tags=["faction"])
+def exercise_roster_upsert(exercise_id: int, body: RosterMemberIn, request: Request):
+    """#267：把 client（cert CN）加進某場 roster / 改其編制。sysadmin only + 強制 audit。"""
+    sess = _check_system_admin(request)
+    cn = (body.cn or "").strip()
+    validate_no_unsafe_strings(cn, label="cn")
+    if not is_valid_cert_cn(cn):
+        raise HTTPException(422, "cn 不合法（不可含逗號、不可 - 開頭，限字母/數字/空白/-_.@）")
+    if body.unit:
+        validate_no_unsafe_strings(body.unit, label="unit", max_len=64)
+    from repositories import exercise_roster_repo
+
+    return exercise_roster_repo.upsert_member(exercise_id, cn, body.unit, sess["username"])
+
+
+@router.post("/exercises/{exercise_id}/roster/remove", tags=["faction"])
+def exercise_roster_remove(exercise_id: int, body: RosterRemoveIn, request: Request):
+    """#267：把 client（cert CN）移出某場 roster。sysadmin only + audit（POST 非 DELETE：避 cn 進路徑編碼坑）。"""
+    sess = _check_system_admin(request)
+    cn = (body.cn or "").strip()
+    validate_no_unsafe_strings(cn, label="cn")
+    from repositories import exercise_roster_repo
+
+    removed = exercise_roster_repo.remove_member(exercise_id, cn, sess["username"])
+    if not removed:
+        raise HTTPException(404, f"roster 內無此 CN：{cn}")
+    return {"ok": True, "removed": cn}
 
 
 @router.get("/audit-log")

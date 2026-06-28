@@ -1602,6 +1602,31 @@ def _m036_exercise_active_intervals_down(conn: sqlite3.Connection) -> None:
     conn.execute("DROP TABLE IF EXISTS exercise_active_intervals")
 
 
+def _m037_exercise_roster(conn: sqlite3.Connection) -> None:
+    """#267 Slice 2：演習 roster（參與 + 編制）= 「WHO」軸。
+
+    取代「靠連線時機綁 exercise_id」——開場時操作員從已連線池**主動勾**哪些 client（cert CN，穩定身分）
+    參加本場、各屬哪個編制（unit）。敵我（紅藍）另在 `client_faction`（per-場 CN 綁，#344），與此並列；
+    三者（參與/編制/敵我）合成 per-場任務編組。一場一 CN 至多一筆（UNIQUE）。後刀 scope 解析查此表判
+    「CN 在不在本場 roster」× ts_in_active_window（時間窗）決定 entity 歸屬。
+    """
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS exercise_roster (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            exercise_id  INTEGER NOT NULL REFERENCES exercises(id),
+            client_cn    TEXT NOT NULL,
+            unit         TEXT,
+            joined_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+            joined_by    TEXT
+        )
+    """)
+    conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_roster_exercise_cn ON exercise_roster(exercise_id, client_cn)")
+
+
+def _m037_exercise_roster_down(conn: sqlite3.Connection) -> None:
+    conn.execute("DROP TABLE IF EXISTS exercise_roster")
+
+
 _MIGRATIONS: list[tuple[int, str, object]] = [
     (1, "events_columns", _m001_events_columns),
     (2, "decisions_columns", _m002_decisions_columns),
@@ -1639,6 +1664,7 @@ _MIGRATIONS: list[tuple[int, str, object]] = [
     (34, "wg_peers", _m034_wg_peers),
     (35, "client_identity", _m035_client_identity),
     (36, "exercise_active_intervals", _m036_exercise_active_intervals),
+    (37, "exercise_roster", _m037_exercise_roster),
 ]
 
 
