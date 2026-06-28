@@ -1121,6 +1121,7 @@ export async function admLoadTakDeviceCerts() {
         if (dc.ok) nullFpRevoked = (await dc.json()).filter(c => c.status === 'revoked' && !c.fingerprint);
       } catch (e) { /* best-effort，不擋主視圖 */ }
       _renderTakDriven(box, data, nullFpRevoked);
+      await _appendWgPeers(box);  // #434
       return;
     }
   }
@@ -1128,6 +1129,36 @@ export async function admLoadTakDeviceCerts() {
   const resp = await authFetch(API_BASE + '/api/admin/tak/device-certs');
   if (!resp.ok) { box.innerHTML = '<div style="color:var(--text3);font-size:12px;">無法載入（需系統管理員）</div>'; return; }
   _renderIcsOnlyList(box, await resp.json());
+  await _appendWgPeers(box);  // #434
+}
+
+/** #434：在裝置證列表下方附「WireGuard peer 帳本」段（ICS 配給裝置的 VPN；唯讀，撤證連動撤 peer）。
+ *  best-effort：endpoint 未配置/無權限 → 靜默跳過，不擋主視圖。 */
+async function _appendWgPeers(box) {
+  let peers;
+  try {
+    const r = await authFetch(API_BASE + '/api/admin/wg/peers');
+    if (!r.ok) return;
+    peers = await r.json();
+  } catch (e) { return; }
+  const active = (peers || []).filter(p => p.status === 'active');
+  let html = '<div style="font-size:11px;color:var(--text3);margin:12px 0 4px;border-top:1px solid var(--border);padding-top:8px;">'
+    + '🔐 WireGuard peer（' + active.length + '）— ICS 配給裝置的 VPN：</div>';
+  if (!active.length) {
+    html += '<div style="font-size:11px;color:var(--text3);">（無；發證時若配置 WG 會自動配 peer）</div>';
+  } else {
+    for (const p of active) {
+      html += '<div style="display:flex;align-items:center;gap:6px;padding:3px 0;border-bottom:1px solid var(--border);font-size:12px;">'
+        + '<span style="font-family:monospace;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + _escAudit(p.callsign || '') + '">' + _escAudit(p.callsign || '—') + '</span>'
+        + '<span style="font-family:monospace;color:var(--text2);font-size:11px;">' + _escAudit(p.address || '') + '</span>'
+        + '<span style="color:var(--green);font-size:10px;">active</span>'
+        + '</div>';
+    }
+    html += '<div style="font-size:10px;color:var(--text3);margin-top:4px;">撤對應裝置證會連動撤此 peer（唯讀）。</div>';
+  }
+  const div = document.createElement('div');
+  div.innerHTML = html;
+  box.appendChild(div);
 }
 
 const _RECON_ST = {
@@ -1345,13 +1376,14 @@ export async function admIssueTakDevice() {
   if (resp.status === 422) { alert('callsign 不合法或平台錯誤'); return; }
   if (!resp.ok) { alert('發證失敗（' + resp.status + '）：' + (await resp.text()).slice(0, 200)); return; }
   const enrollStatus = resp.headers.get('X-TAK-Enroll-Status') || 'unknown';  // #398 D：surface 同步結果
+  const wgStatus = resp.headers.get('X-WG-Status') || 'skipped';  // #434：WG 配置結果（ok/skipped/失敗 reason）
   const blob = await resp.blob();
   const blobUrl = URL.createObjectURL(blob);
-  _showTakDeviceResult(callsign, mode, blob, blobUrl, enrollStatus);
+  _showTakDeviceResult(callsign, mode, blob, blobUrl, enrollStatus, wgStatus);
   admLoadTakDeviceCerts();  // #317：發完刷新盤點列表
 }
 
-function _showTakDeviceResult(callsign, mode, blob, blobUrl, enrollStatus) {
+function _showTakDeviceResult(callsign, mode, blob, blobUrl, enrollStatus, wgStatus) {
   const box = el('adm-tak-device-result');
   if (!box) { URL.revokeObjectURL(blobUrl); return; }
   box.innerHTML = '';
@@ -1370,6 +1402,18 @@ function _showTakDeviceResult(callsign, mode, blob, blobUrl, enrollStatus) {
     warn.textContent = '⚠ 未同步 TAK（' + enrollStatus + '）：證已簽發，但沒註冊成 TAK managed user → 裝置匯入後會連不上。'
       + '請確認 registrar 運作後重發，或改用英數 callsign。';
     banner.appendChild(warn);
+  }
+  // #434：WG 配置結果——bundle 是否含 WireGuard 設定（一站式包 = TAK 證 + WG conf + QR）。
+  if (wgStatus === 'ok') {
+    const wg = document.createElement('div');
+    wg.style.cssText = 'color:var(--green,#2ea043);margin-bottom:6px;line-height:1.5;';
+    wg.textContent = '🔐 已附 WireGuard VPN：解壓後掃 wireguard-qr.png（或匯 wireguard.conf）進 WireGuard app → 啟用 → 再開 TAK。';
+    banner.appendChild(wg);
+  } else if (wgStatus && wgStatus !== 'skipped') {
+    const wg = document.createElement('div');
+    wg.style.cssText = 'color:var(--yellow,#d29922);margin-bottom:6px;line-height:1.5;';
+    wg.textContent = '⚠ WireGuard 未配（' + wgStatus + '）：本包僅含 TAK 證，VPN 需另配。';
+    banner.appendChild(wg);
   }
   const row = document.createElement('div');
   row.style.cssText = 'display:flex;align-items:center;gap:6px;flex-wrap:wrap;';

@@ -405,6 +405,18 @@ class TestTakDeviceCert:
     def test_list_requires_auth(self, client):
         assert client.get("/api/admin/tak/device-certs").status_code == 401
 
+    def test_wg_peers_list(self, client, auth):
+        """#434：WG peer 帳本 endpoint（sysadmin）回 active peer。"""
+        from repositories import wg_peer_repo
+
+        wg_peer_repo.allocate_and_record("PUBwgX", "wg-dev", "admin")
+        r = client.get("/api/admin/wg/peers", headers=auth)
+        assert r.status_code == 200
+        assert any(p["callsign"] == "wg-dev" and p["status"] == "active" for p in r.json())
+
+    def test_wg_peers_requires_auth(self, client):
+        assert client.get("/api/admin/wg/peers").status_code == 401
+
     def test_503_when_no_ca_dir(self, client, auth, monkeypatch):
         import core.config as config
 
