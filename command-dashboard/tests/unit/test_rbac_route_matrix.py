@@ -90,8 +90,8 @@ EXEMPT   POST   /api/auth/login
 EXEMPT   POST   /api/auth/logout
 EXEMPT   GET    /api/auth/me
 READ     GET    /api/chat
-READ     GET    /api/config/{key}
-COMMAND  POST   /api/config/{key}
+SYSADMIN GET    /api/config/{key}
+SYSADMIN POST   /api/config/{key}
 READ     GET    /api/cop/entities
 WRITE    POST   /api/cop/entities
 WRITE    DELETE /api/cop/entities/{uid}
