@@ -353,7 +353,17 @@ async def reset_exercise(request: Request):
     sess = _check_system_admin(request)
     await _require_reset_confirm(request)  # OP-2
     pre_backup = await _pre_destructive_backup("pre-reset-exercise")  # L3
-    ex_tables = ["ttx_injects", "exercises", "resource_snapshots", "aar_entries", "ai_recommendations", "exercise_kpis"]
+    # #267：新 FK 子表（exercise_active_intervals/exercise_roster）須在 exercises 前清，否則 FK RESTRICT。
+    ex_tables = [
+        "exercise_active_intervals",
+        "exercise_roster",
+        "ttx_injects",
+        "exercises",
+        "resource_snapshots",
+        "aar_entries",
+        "ai_recommendations",
+        "exercise_kpis",
+    ]
     # issue #29 PR-G1b：cop_entities 有 exercise_id，演習重設一併清演習場域的 COP 圖釘
     # （事件/route/polygon）。tracks/links 無 exercise_id（references uid ON DELETE CASCADE）；
     # PRAGMA foreign_keys=ON，故刪 cop_entities 時 tracks/links 自動級聯，無 orphan。

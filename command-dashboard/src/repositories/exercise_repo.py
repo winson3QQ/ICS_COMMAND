@@ -173,6 +173,10 @@ _EXERCISE_SCOPED_TABLES = (
     # #348-F10：chats 原漏在此清單外 → 刪演習不清通聯 PII（message/callsign/lat-lon）。補回
     # 一致性；chats.exercise_id=NULL（實戰/未分場廣播）不受 WHERE exercise_id=? 影響、不誤刪。
     "chats",
+    # #267：新 FK 子表（REFERENCES exercises(id)，無 ON DELETE CASCADE + foreign_keys=ON）須先清，
+    # 否則 DELETE FROM exercises 撞 FK RESTRICT → 500（開場必寫 interval ⇒ 幾乎每場都刪不掉）。
+    "exercise_active_intervals",
+    "exercise_roster",
 )
 
 

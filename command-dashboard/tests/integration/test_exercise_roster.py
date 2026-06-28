@@ -55,6 +55,20 @@ def test_per_exercise_isolation():
     assert exercise_roster_repo.is_in_roster(e2, "alpha") is False  # 別場不含同 CN
 
 
+def test_delete_exercise_clears_new_fk_tables():
+    """review B1 回歸：新 FK 子表（interval/roster，無 ON DELETE CASCADE + foreign_keys=ON）須先清，
+    否則 delete_exercise 撞 FK RESTRICT。開場必寫 interval ⇒ 幾乎每場都會中。"""
+    eid = _mk()
+    exercise_repo.update_exercise_status(eid, "active", "admin")  # 寫一筆 interval
+    exercise_repo.update_exercise_status(eid, "archived", "admin")  # 關（非 active 才可刪）
+    exercise_roster_repo.upsert_member(eid, "alpha", "U", "admin")  # roster 一筆
+    res = exercise_repo.delete_exercise(eid)  # 不可拋 FK
+    assert "skipped" not in res  # 真的刪了（非 active_or_missing）
+    assert exercise_repo.list_active_intervals(eid) == []
+    assert exercise_roster_repo.list_roster(eid) == []
+    assert exercise_repo.get_exercise(eid) is None
+
+
 # ── 端點（sysadmin） ──
 def test_roster_endpoints(client, auth):
     eid = exercise_repo.create_exercise({"name": "drill", "type": "ttx"})["id"]
