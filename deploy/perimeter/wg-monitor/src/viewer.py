@@ -19,6 +19,8 @@ import sqlite3
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+from peermap import load_map
+
 DB = os.environ.get("WGMON_DB", "/data/wg-monitor.db")
 PORT = int(os.environ.get("VIEWER_PORT", "8088"))
 BIND = os.environ.get("VIEWER_BIND", "0.0.0.0")  # 容器內綁全介面；對外可達範圍由 compose port 綁定決定
@@ -78,18 +80,20 @@ def _dot(online: int) -> str:
 
 def render() -> str:
     now = int(time.time())
+    pmap = load_map(os.environ.get("WGMON_PEERMAP", ""))  # 輕耦合：pubkey→callsign，無則只顯 pubkey
     peers = _q("SELECT * FROM peer_state ORDER BY online DESC, last_seen_ts DESC")
     alerts = _q("SELECT * FROM alerts ORDER BY id DESC LIMIT 20")
     events = _q("SELECT * FROM events ORDER BY id DESC LIMIT 30")
 
     rows_p = (
         "".join(
-            f"<tr><td>{_dot(p['online'])}</td><td class=mono>{_esc(p['pubkey'][:16])}…</td>"
+            f"<tr><td>{_dot(p['online'])}</td><td>{_esc(pmap.get(p['pubkey']) or '—')}</td>"
+            f"<td class=mono>{_esc(p['pubkey'][:16])}…</td>"
             f"<td class=mono>{_esc(p['last_endpoint_ip'])}</td><td>{_ago(p['last_handshake'], now)}</td>"
             f"<td>↓{_bytes(p['last_rx'])} ↑{_bytes(p['last_tx'])}</td></tr>"
             for p in peers
         )
-        or "<tr><td colspan=5 class=empty>尚無 peer（等 collector 讀一輪 wg）</td></tr>"
+        or "<tr><td colspan=6 class=empty>尚無 peer（等 collector 讀一輪 wg）</td></tr>"
     )
 
     rows_a = (
@@ -133,7 +137,7 @@ th{{color:#7c8a9e;font-weight:600}} .mono{{font-family:ui-monospace,Menlo,Consol
 <span class=pill>線上 peer {n_online}/{len(peers)}</span>
 <span class=pill>近期 critical {n_crit}</span></div>
 <h2>裝置連線（peer）</h2>
-<table><tr><th>狀態</th><th>pubkey</th><th>endpoint（公網IP）</th><th>最後握手</th><th>流量</th></tr>{rows_p}</table>
+<table><tr><th>狀態</th><th>識別</th><th>pubkey</th><th>endpoint（公網IP）</th><th>最後握手</th><th>流量</th></tr>{rows_p}</table>
 <h2>告警（最近 20）</h2>
 <table><tr><th>時間</th><th>嚴重度</th><th>kind</th><th>摘要</th><th>投遞</th></tr>{rows_a}</table>
 <h2>事件（最近 30）</h2>

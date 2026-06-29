@@ -23,6 +23,7 @@ import time
 import config
 from alert import AlertManager
 from detect import detect_peer, is_online, next_baseline
+from peermap import load_map
 from store import Store
 from wg_dump import parse_wg_dump
 
@@ -48,6 +49,7 @@ def run_wg_dump(iface: str, timeout_s: int = 10) -> str:
 def run_once(store: Store, cfg, now: int, dump_text: str) -> list:
     """處理單輪 dump 文字（注入式，便於測試）。回 alertable detections（warning/critical）。"""
     samples = parse_wg_dump(dump_text)
+    pmap = load_map(cfg.peermap_path)  # 輕耦合：pubkey→callsign（空檔 → {}，退回只顯 pubkey）
     alertable = []
     for s in samples:
         online = is_online(s.last_handshake, now, cfg.offline_after_s)
@@ -59,7 +61,10 @@ def run_once(store: Store, cfg, now: int, dump_text: str) -> list:
             store.record_endpoint(s.pubkey, now, s.endpoint_ip)
         recent_ips = store.recent_endpoint_history(s.pubkey, now - cfg.oscillation_window_s)
 
+        callsign = pmap.get(s.pubkey)
         for det in detect_peer(s, prior, recent_ips, now, cfg):
+            if callsign:
+                det.detail["callsign"] = callsign  # 豐富化：人話標籤入 detail（流向 events/alerts/ntfy）
             store.add_event(now, det)  # 全紀錄（含 info）
             if det.severity in ("warning", "critical"):
                 alertable.append(det)

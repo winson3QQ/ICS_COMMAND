@@ -30,6 +30,8 @@ class Config:
     ntfy_timeout_s: int
     # 保留
     retention_days: int
+    # pubkey→callsign 豐富化（B 方案）：扁平檔路徑；空=停用，只顯 pubkey
+    peermap_path: str
 
 
 def _int(name: str, default: int) -> int:
@@ -64,4 +66,5 @@ def from_env() -> Config:
         ntfy_token=os.environ.get("WGMON_NTFY_TOKEN") or None,
         ntfy_timeout_s=_int("WGMON_NTFY_TIMEOUT_S", 5),
         retention_days=_int("WGMON_RETENTION_DAYS", 30),
+        peermap_path=os.environ.get("WGMON_PEERMAP", ""),
     )

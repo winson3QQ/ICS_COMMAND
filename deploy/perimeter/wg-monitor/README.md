@@ -73,7 +73,21 @@ docker exec ics-wg wg show wg0 dump   # 每 peer：pubkey / endpoint(真實公�
 | `WGMON_COOLDOWN_S` | `600` | 告警冷卻 |
 | `WGMON_ESCALATE_WINDOW_S` / `_COUNT` | `3600` / `3` | 升級窗 / 次數 |
 | `WGMON_NTFY_URL` / `_TOKEN` | — | 自架 ntfy topic URL（空=只 log）|
+| `WGMON_PEERMAP` | — | pubkey→callsign 扁平檔路徑（空=只顯 pubkey）。見〈識別豐富化〉|
 | `WGMON_RETENTION_DAYS` | `30` | history/events 保留（alerts 永久）|
+
+## 識別豐富化：pubkey → callsign（B 方案，輕耦合）
+
+告警/viewer 預設只顯 pubkey。要顯示人話 callsign 又**不碰 ICS** 的做法：
+
+- callsign 在發證時已被 ICS 當 label 送進 WG 佇列 → **wg-peer-registrar 落成扁平檔**
+  `peer-map.tsv`（每行 `pubkey\tcallsign`，預設寫在其 queue 卷 `$WG_QUEUE/peer-map.tsv`）。
+- 監測（collector + viewer）**唯讀**讀這個檔（設 `WGMON_PEERMAP` 指過去 + 把該卷唯讀掛進來）→
+  在 viewer「識別」欄、告警 detail、ntfy 內容補上 callsign。
+- **檔不在/缺某 pubkey → 退回只顯 pubkey**（核心偵測零依賴；單向；無 runtime 依賴）。
+
+> 契約 = 一個扁平檔，**不讀 ICS 的 DB、不呼叫 ICS 的 API、不需 ICS 活著**。資料源自 WG 平面本身
+> （registrar 已有 callsign）。要 cert CN（非 callsign）才需動 ICS（發證時把 CN 也塞進 label），屬選配。
 
 ## 資料 / 安全
 
