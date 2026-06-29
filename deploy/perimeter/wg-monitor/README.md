@@ -89,6 +89,40 @@ docker exec ics-wg wg show wg0 dump   # 每 peer：pubkey / endpoint(真實公�
 > 契約 = 一個扁平檔，**不讀 ICS 的 DB、不呼叫 ICS 的 API、不需 ICS 活著**。資料源自 WG 平面本身
 > （registrar 已有 callsign）。要 cert CN（非 callsign）才需動 ICS（發證時把 CN 也塞進 label），屬選配。
 
+## Prod 部署（與 ICS 並排）
+
+監測與 ICS **同機、各自獨立 compose**（不合併進 `deploy/prod`）。獨立生命週期 = ICS 掛了監測還活、互不波及。
+
+```bash
+# 0. 前置：ICS prod 棧已起且含 WG（ics-wg 在線）
+docker ps --filter name=ics-wg                 # 確認 ics-wg 在跑
+docker volume ls | grep wg-queue               # 記下卷實名（多半 ics-prod_wg-queue）
+
+# 1. 設定
+cd deploy/perimeter/wg-monitor
+cp .env.example .env
+#   .env 填：WGMON_WG_CONTAINER（ics-wg 容器名）、WGMON_PEERMAP_VOL（上面查到的卷名）、
+#           WGMON_NTFY_URL（要推播才填）、WGMON_VIEWER_PORT
+
+# 2. 起監測（疊加 peermap 啟用 callsign）
+docker compose -f docker-compose.yml -f docker-compose.peermap.yml --env-file .env up -d --build
+
+# 3.（選配）自架 ntfy
+cd ntfy && cp .env.example .env   # 設 ICS_NET=<icsnet 實名>、NTFY_BASE_URL
+docker compose --env-file .env up -d
+docker exec -it ics-ntfy ntfy user add wgmon && docker exec -it ics-ntfy ntfy access wgmon wg-alerts rw
+
+# 4. 真機驗證
+bash verify.sh                    # 監測讀到的 peer 數 = 真機 live 數 → PASS
+
+# 5. 看網頁：http://localhost:8088（prod 預設只綁 127.0.0.1）
+#    要在 iPad/手機看 → 走 WG tunnel 進來（in-perimeter），別曝 LAN（endpoint 是真實 IP=PII）
+```
+
+- **不要把 viewer raw 曝公網/LAN**（顯示真實公網 IP=PII）。遠端看走 WG tunnel。
+- ntfy 投遞是 **egress** → 對齊 [#450](https://github.com/winson3QQ/ICS_COMMAND/issues/450) 白名單。
+- 埠：8088（viewer）/ 8080（ntfy）勿與 host 既有服務撞（ICS 443、TAK 8089/8446 不撞）。
+
 ## 資料 / 安全
 
 - `wg show dump` **第一行含 server 私鑰** → parser 只取 8 欄的 peer 行，**私鑰永不解析/落帳**（有測試守）。

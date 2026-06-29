@@ -80,7 +80,9 @@ services:
       - VIEWER_PORT=8088
       - WGMON_PEERMAP=/shared/peer-map.tsv
     ports:
-      - "127.0.0.1:8088:8088"
+      # 測試棧資料是假 IP（172.18.x），故對 LAN 開放方便用 iPad/手機看。
+      # ⚠ prod 的 viewer 是真實公網 IP（PII）→ 仍預設只綁 127.0.0.1（見 ../docker-compose.yml）。
+      - "8088:8088"
     volumes:
       - mondata:/data:ro
       - shared:/shared:ro

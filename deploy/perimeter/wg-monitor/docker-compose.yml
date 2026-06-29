@@ -10,8 +10,10 @@
 #        (b) 設 WGMON_WG_CONTAINER=ics-prod-ics-wg-1（用產生名）。
 #   2. 啟動：docker compose --env-file .env up -d --build
 #
-# 限制（network_mode: container 的天性）：本容器**不能 publish 埠、不能定義 networks**（共享 ics-wg 的）。
-#   v1 只推 ntfy（egress），不需入站埠；viewer 網頁（自己的埠）留 v2、另拆容器（#447 Phase 5）。
+# 限制（network_mode: container 的天性）：collector 不能 publish 埠、不能定義 networks（共享 ics-wg 的）→
+#   故 viewer 拆成第二支獨立容器（自己的埠）。callsign 豐富化（B 方案）走疊加檔，見 docker-compose.peermap.yml。
+#
+# Prod 與 ICS 並排部署、callsign 接線、ntfy、verify 步驟見 README〈Prod 部署〉。
 name: ics-wg-monitor
 
 services:
