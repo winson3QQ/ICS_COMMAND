@@ -85,6 +85,8 @@ docker exec ics-wg wg show wg0 dump   # 每 peer：pubkey / endpoint(真實公�
 ```bash
 cd deploy/perimeter/wg-monitor
 python -m pytest tests/ -q     # 純邏輯（parser/偵測/告警/端到端），無需容器
+
+bash test-stack/run.sh         # 整合：真 WireGuard + cloned-key → 偵測 endpoint_oscillation（見 test-stack/README）
 ```
 
 ## 範圍
