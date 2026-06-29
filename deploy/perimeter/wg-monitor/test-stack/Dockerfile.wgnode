@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: LicenseRef-Proprietary
+# Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
+# #447 測試棧用的最小 WireGuard 節點（server / client / keygen 共用一個 image，ROLE 切換）。
+FROM alpine:3.21
+RUN apk add --no-cache wireguard-tools iproute2
+COPY node.sh /node.sh
+RUN chmod +x /node.sh
+ENTRYPOINT ["/node.sh"]

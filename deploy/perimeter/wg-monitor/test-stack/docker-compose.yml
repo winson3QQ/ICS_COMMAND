@@ -1,0 +1,71 @@
+# deploy/perimeter/wg-monitor/test-stack/docker-compose.yml — #447 自帶整合測試棧
+#
+# 真 WireGuard：server + 兩個「同 key」client（cloned-key）→ server endpoint 在兩來源間擺盪 →
+# wg-monitor（共享 server netns）在**真 wg show** 上偵測到 endpoint_oscillation/critical。
+# 完全獨立、不碰 prod/ICS/TAK。跑法見 run.sh；清理 `docker compose down -v`。
+name: wgtest
+
+services:
+  keygen:
+    build:
+      context: .
+      dockerfile: Dockerfile.wgnode
+    image: wgtest-node:dev
+    environment: [ROLE=keygen]
+    volumes: [shared:/shared]
+    restart: "no"
+
+  server:
+    image: wgtest-node:dev
+    container_name: wgtest-server          # 供 wg-monitor 以 network_mode:container 接入
+    depends_on:
+      keygen: {condition: service_completed_successfully}
+    cap_add: [NET_ADMIN]
+    devices: ["/dev/net/tun"]
+    environment: [ROLE=server]
+    volumes: [shared:/shared]
+    restart: unless-stopped
+
+  client-a:
+    image: wgtest-node:dev
+    depends_on:
+      server: {condition: service_started}
+    cap_add: [NET_ADMIN]
+    devices: ["/dev/net/tun"]
+    environment: [ROLE=client, SERVER_HOST=wgtest-server]
+    volumes: [shared:/shared]
+    restart: unless-stopped
+
+  client-b:
+    image: wgtest-node:dev
+    depends_on:
+      server: {condition: service_started}
+    cap_add: [NET_ADMIN]
+    devices: ["/dev/net/tun"]
+    environment: [ROLE=client, SERVER_HOST=wgtest-server]
+    volumes: [shared:/shared]
+    restart: unless-stopped
+
+  wg-monitor:
+    build:
+      context: ..                          # 父目錄 = 監測本體（Dockerfile + src/）
+      dockerfile: Dockerfile
+    image: ics-wg-monitor:dev
+    depends_on:
+      server: {condition: service_started}
+    network_mode: "container:wgtest-server"  # 共享 server netns → 讀其 wg0
+    cap_add: [NET_ADMIN]
+    environment:
+      - WGMON_IFACE=wg0
+      - WGMON_POLL_S=5                     # 測試加速：5s 輪詢，抓得到擺盪
+      - WGMON_OSC_WINDOW_S=120
+      - WGMON_OFFLINE_AFTER_S=60
+      - WGMON_COOLDOWN_S=30
+      - WGMON_DB=/data/wg-monitor.db
+      - WGMON_NTFY_URL=                    # 測試不推播，只看 DB
+    volumes: [mondata:/data]
+    restart: unless-stopped
+
+volumes:
+  shared:
+  mondata:
