@@ -34,7 +34,7 @@ WireGuard **沒有可遠端呼叫的 API**；狀態只能在持有 `wg0` 的 net
 - **一律先落 `alerts` 表**（append-only、權威真相），再投遞；投遞失敗不丟告警。
 - 去抖（同 `(pubkey, kind)` cooldown 內一次）+ 升級（窗內反覆 → critical）。
 - 投遞走 `WGMON_NTFY_URL`（自架 ntfy 的完整 topic URL）。**預設自架 ntfy 經 WG**（資料主權）；
-  Slack/Telegram 等第三方僅在接受資料出境時當選配。
+  Slack/Telegram 等第三方僅在接受資料出境時當選配。自架 ntfy 部署 + 手機訂閱見 [`ntfy/`](ntfy/)。
 - **iOS 背景鎖屏喚醒繞不過 Apple APNs**（平台天花板）：app 前景可全程經 WG 即時收；背景靠 ntfy
   喚醒（wake 借 APNs、內容留自架 server）。Android（F-Droid ntfy）可全程常駐連線走 WG。
 - **訊息不會丟**：ntfy server cache + 本系統 SQLite 雙重留存；開 app 或查 DB 一定看得到。
