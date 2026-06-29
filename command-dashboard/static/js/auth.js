@@ -1000,7 +1000,7 @@ export async function admLoadFactions() {
       badge +
       // #389：在線/離線指示（last_seen 時效近似，非真連線態）。
       '<span style="font-size:10px;" title="' + (c.online ? '近期有活動（≈在線）' : '較久無活動（≈離線）') + '">' + (c.online ? '🟢' : '⚪') + '</span>' +
-      '<span style="color:var(--text3);font-size:10px;" title="最後活動時間">' + _escAudit((c.last_seen || '').replace('T', ' ').replace('Z', '')) + '</span>' +
+      '<span style="color:var(--text3);font-size:10px;" title="最後活動時間（本地時區）">' + _escAudit(c.last_seen ? fmtLocalDT(c.last_seen) : '') + '</span>' +
       '<span style="display:flex;gap:3px;">' + btns + '</span>' +
     '</div>';
   }
@@ -1192,7 +1192,7 @@ function _renderTakDriven(box, data, nullFpRevoked = []) {
   for (const u of data.tak_users) {
     const m = _RECON_ST[u.status] || ['var(--text3)', _escAudit(u.status)];
     const plat = u.mode === 'aware' ? 'iTAK' : (u.mode ? 'ATAK' : '');
-    const when = u.issued_at ? _escAudit((u.issued_at || '').replace('T', ' ').replace('Z', '')) : '';
+    const when = u.issued_at ? _escAudit(fmtLocalDT(u.issued_at)) : '';
     let action;
     if (u.status === 'infra') action = '<span title="ICS 自身/管理身分，鎖死保護（動了 ICS 連不上 TAK）" style="color:var(--text3);font-size:10px;">🔒 保護</span>';
     else if (u.ics_cert_id != null) action = '<button class="adm-btn" data-action="adm-revoke-tak-device" data-cert-id="' + u.ics_cert_id + '">撤銷</button>';
@@ -1277,7 +1277,7 @@ function _renderIcsOnlyList(box, certs) {
     rows += '<div style="display:flex;align-items:center;gap:6px;padding:4px 0;border-bottom:1px solid var(--border,#222);font-size:12px;flex-wrap:wrap;">' +
         '<span style="font-family:monospace;flex:1;min-width:80px;' + (active ? '' : 'text-decoration:line-through;color:var(--text3);') + '">' + _escAudit(c.callsign) + '</span>' +
         '<span style="color:var(--text3);">' + plat + '</span>' + sync + fp + tukWarn +
-        '<span style="color:var(--text3);font-size:10px;">' + _escAudit((c.issued_at || '').replace('T', ' ').replace('Z', '')) + '</span>' +
+        '<span style="color:var(--text3);font-size:10px;">' + _escAudit(c.issued_at ? fmtLocalDT(c.issued_at) : '') + '</span>' +
         '<span class="adm-badge ' + (active ? 'active' : 'suspended') + '">' + (active ? '有效' : '已撤銷') + '</span>' +
         (active
           ? '<button class="adm-btn" data-action="adm-revoke-tak-device" data-cert-id="' + c.id + '">撤銷</button>'
@@ -1372,9 +1372,12 @@ export async function admIssueTakDevice() {
   const callsign = el('adm-tak-callsign')?.value.trim();
   const mode = el('adm-tak-mode')?.value || 'atak';
   if (!callsign) { alert('請輸入 callsign'); return; }
-  // #398 E：非 ASCII callsign 不會註冊成 TAK managed user（enroll skip）→ 發了也連不上。發前擋。
-  if (!/^[\x00-\x7F]*$/.test(callsign)) {
-    if (!confirm('「' + callsign + '」含非 ASCII（中文）字元。\n⚠ 這種 callsign 不會註冊成 TAK managed user，發出的證裝置連不上 TAK。\n建議改用英數 callsign。仍要發嗎？')) return;
+  // callsign = TAK managed-user 帳號(cert CN)。TAK new-user API 實測規則：**至少 4 字、僅限
+  // 字母/數字/. _ -**(不可空格、@、中文，不可 - 開頭)。原本只擋非 ASCII → BB/GGW 這種短英數溜過去
+  // 被 TAK 400→502。改成照 TAK 規則發前硬擋,訊息講清楚 + 中文名請設在 App 顯示 callsign。
+  if (!/^[A-Za-z0-9._-]{4,}$/.test(callsign) || callsign.startsWith('-')) {
+    alert('「' + callsign + '」不符 TAK 帳號規則。\n\n憑證帳號(= TAK username)需:\n· 至少 4 個字\n· 僅限 英數 與 . _ -\n· 不可有空格、@、中文,不可 - 開頭\n\n想要中文名:憑證帳號用英數(如 wensheng),中文「文生」到 ATAK/iTAK App 內設「顯示 callsign」——地圖一樣顯中文。');
+    return;
   }
   // #398 C / #401：callsign 已在 TAK（或 ICS 未同步列）→ 重發會覆寫 TAK fingerprint、作廢舊證。發前警告。
   if (_lastTakCallsigns.has(callsign)) {

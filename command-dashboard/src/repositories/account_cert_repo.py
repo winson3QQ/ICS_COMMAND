@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime
 
 from core.database import get_conn
@@ -33,6 +34,21 @@ def is_valid_cert_cn(cert_cn: str) -> bool:
     if cn[0] == "-" or "," in cn:
         return False
     return all(c.isalnum() or c in " -_.@" or ord(c) > 127 for c in cn)
+
+
+_TAK_USERNAME_RE = re.compile(r"^[A-Za-z0-9._-]{4,64}$")
+
+
+def is_valid_tak_username(callsign: str) -> bool:
+    """TAK managed-user 帳號(= 裝置證 CN)規則，比 is_valid_cert_cn 嚴（TAK new-user API 實測拒則：
+    `minimum of 4 characters and contains only letters, numbers, dots, underscores and hyphens`）。
+
+    發 TAK 裝置證時 callsign 直接當 TAK username 送 new-user → 不合規 TAK 回 400、ICS 包成 502
+    （BB/GGW 短英數、空格、@、中文皆中招）。發證前用本規則擋,回乾淨 422，不讓 TAK 噴。
+    ＝ ≥4 字、僅 `[A-Za-z0-9._-]`、不可 `-` 開頭（避 step/openssl flag injection，沿 is_valid_cert_cn）。
+    """
+    cn = (callsign or "").strip()
+    return bool(_TAK_USERNAME_RE.match(cn)) and not cn.startswith("-")
 
 
 def account_id_for_username(username: str) -> int | None:

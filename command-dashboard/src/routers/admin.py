@@ -26,6 +26,7 @@ from repositories.account_cert_repo import (
     bind_cert,
     is_cert_active,
     is_valid_cert_cn,
+    is_valid_tak_username,
     list_certs,
     purge_revoked_certs,
     revoke_cert,
@@ -763,6 +764,14 @@ def issue_tak_device_cert(request: Request, callsign: str, mode: str = "atak"):
     validate_no_unsafe_strings(cn, label="callsign")
     if not is_valid_cert_cn(cn):
         raise HTTPException(422, "callsign 不合法（不可含逗號、不可 - 開頭，限字母/數字/空白/-_.@）")
+    # callsign = TAK managed-user 帳號(cert CN)。**僅當線上 enrollment 配置時**（#429 路徑會把 callsign 直送
+    # new-user）才套 TAK 帳號規則(≥4 字、僅英數與 . _ -)——否則 TAK 回 400、ICS 包成 502（BB/GGW 短英數、
+    # 空格、@、中文皆中招）。offline(#344) 路徑 enroll best-effort、非 ASCII 本就 skip，沿用較寬 is_valid_cert_cn
+    # （保留 #324 中文證能力）。前端一律先擋(對 #429 部署友善)，後端在此守第二道(直打 API)。
+    from services import tak_enrollment
+
+    if tak_enrollment.is_configured() and not is_valid_tak_username(cn):
+        raise HTTPException(422, "callsign（= TAK 帳號）需至少 4 字、僅限英數與 . _ -（不可空格/@/中文/- 開頭）")
     # #398 review：保留給 ICS 自身/管理身分的 callsign 不可被裝置證流程佔用——否則發證的 usermod -f
     # 會改寫 ICS 自己的 TAK 連線/管理 cert、之後 revoke 還會 usermod -D 把它刪掉（毀 ICS 控制面）。
     if _is_infra_callsign(cn):
