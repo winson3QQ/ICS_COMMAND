@@ -67,6 +67,19 @@ services:
     volumes: [mondata:/data]
     restart: unless-stopped
 
+  # 唯讀網頁（#447 Phase 5）：瀏覽器開 http://localhost:8088 看 peer/告警/事件。
+  wg-viewer:
+    image: ics-wg-monitor:dev
+    depends_on: [wg-monitor]
+    entrypoint: ["python3", "/app/viewer.py"]
+    environment:
+      - WGMON_DB=/data/wg-monitor.db
+      - VIEWER_PORT=8088
+    ports:
+      - "127.0.0.1:8088:8088"
+    volumes: [mondata:/data:ro]
+    restart: unless-stopped
+
   # 自架 ntfy（驗「監測 → ntfy → 手機」整條鏈）。手機在 ntfy app 訂閱
   # http://<本機LAN-IP>:8080/wg-alerts 即可在觸發時收到推播。
   ntfy:

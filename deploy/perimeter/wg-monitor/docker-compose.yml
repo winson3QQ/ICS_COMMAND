@@ -47,5 +47,22 @@ services:
     volumes:
       - wg-monitor-data:/data   # 自己的 SQLite（peer_state/events/alerts）；endpoint=真實公網 IP（PII，#388）
 
+  # 唯讀網頁（#447 Phase 5）：第二支容器、自己的埠、唯讀同一份 SQLite。
+  # 因 collector 用 network_mode:container 不能自開埠 → viewer 獨立成一支。
+  # endpoint 是 PII → **預設只綁 localhost**（127.0.0.1）。要給 LAN/WG 看自行改 port 綁定（慎，會曝真實 IP）。
+  wg-viewer:
+    image: ics-wg-monitor:dev   # 複用同一 image（由 wg-monitor build），改跑 viewer.py
+    restart: unless-stopped
+    depends_on: [wg-monitor]
+    entrypoint: ["python3", "/app/viewer.py"]
+    environment:
+      - WGMON_DB=/data/wg-monitor.db
+      - VIEWER_PORT=8088
+      - VIEWER_REFRESH_S=${WGMON_VIEWER_REFRESH_S:-5}
+    ports:
+      - "127.0.0.1:${WGMON_VIEWER_PORT:-8088}:8088"   # 本地端瀏覽：http://localhost:8088
+    volumes:
+      - wg-monitor-data:/data:ro                       # 唯讀
+
 volumes:
   wg-monitor-data:
