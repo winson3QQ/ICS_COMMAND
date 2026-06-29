@@ -9,7 +9,14 @@ set -uo pipefail
 cd "$(dirname "$0")"
 
 echo "── #447 wg-monitor 整合測試棧（真 WireGuard + cloned-key）──"
-docker compose up -d --build || { echo "FAIL: docker compose up（WSL2 需 kernel WireGuard 模組）"; exit 1; }
+# 前置：docker 要在 PATH 上。從 cmd 打 'bash' 會進 WSL2，若該 distro 沒開 Docker Desktop WSL 整合就找不到
+# docker → 請在 Docker Desktop 開 WSL Integration，或改用 Git Bash 跑（docker.exe 已在 PATH）。
+command -v docker >/dev/null 2>&1 || {
+  echo "FAIL: 找不到 docker。"
+  echo "  → 在 Docker Desktop 開 WSL Integration（Settings→Resources→WSL Integration），或改用 Git Bash 跑本腳本。"
+  exit 1
+}
+docker compose up -d --build || { echo "FAIL: docker compose up（若 'ip link add wg0' 報錯＝核心無 WireGuard 模組）"; exit 1; }
 
 phase() { # $1 active, $2 idle, $3 說明
   docker compose unpause "$1" >/dev/null 2>&1 || true
