@@ -26,6 +26,6 @@ def load_map(path: str) -> dict[str, str]:
                 pubkey, callsign = pubkey.strip(), callsign.strip()
                 if pubkey and callsign:
                     out[pubkey] = callsign
-    except OSError:
+    except (OSError, UnicodeError):  # 讀不到 / 非 UTF-8 / 二進位 → 退回 {}（豐富化絕不可崩 viewer/collector）
         return {}
     return out

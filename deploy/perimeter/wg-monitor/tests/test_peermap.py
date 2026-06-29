@@ -23,6 +23,13 @@ def test_load_map_empty_path_and_missing():
     assert load_map("/no/such/file.tsv") == {}
 
 
+def test_load_map_binary_file_returns_empty(tmp_path):
+    # 非 UTF-8 / 二進位檔不可讓 load_map 拋例外（會崩 viewer 請求緒）→ 退回 {}。
+    p = tmp_path / "bin.tsv"
+    p.write_bytes(b"\xff\xfe\x00\x01rubbish\x80\x81")
+    assert load_map(str(p)) == {}
+
+
 def test_load_map_skips_malformed(tmp_path):
     p = tmp_path / "m.tsv"
     p.write_text("PK1\tBRAVO-1\n沒有tab的行\n\nPK2\t\n\tONLYCS\n", encoding="utf-8")
