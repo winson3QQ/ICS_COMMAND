@@ -1,0 +1,51 @@
+# deploy/perimeter/wg-monitor/docker-compose.yml — #447 獨立 WG 層連線監測
+#
+# 獨立小系統：自帶 compose、自己的 SQLite 卷、**零改 ICS code / ICS compose**。
+# 經 `network_mode: container:<ics-wg>` 站進 ics-wg 的 netns 讀 `wg show`（同 tak-registrar 共享 netns 模式）。
+#
+# 前置（見 README）：
+#   1. ics-wg 容器要有「穩定名稱」。ics-prod compose 的 ics-wg 服務預設無 container_name →
+#      其產生名為 `ics-prod-ics-wg-1`。兩條路：
+#        (a) 在 ics-prod 的 ics-wg 服務加一行 `container_name: ics-wg`（建議），或
+#        (b) 設 WGMON_WG_CONTAINER=ics-prod-ics-wg-1（用產生名）。
+#   2. 啟動：docker compose --env-file .env up -d --build
+#
+# 限制（network_mode: container 的天性）：本容器**不能 publish 埠、不能定義 networks**（共享 ics-wg 的）。
+#   v1 只推 ntfy（egress），不需入站埠；viewer 網頁（自己的埠）留 v2、另拆容器（#447 Phase 5）。
+name: ics-wg-monitor
+
+services:
+  wg-monitor:
+    build: .
+    image: ics-wg-monitor:dev
+    restart: unless-stopped
+    # 共享 ics-wg 的 network namespace → 看得到 wg0、讀得到 wg show。
+    network_mode: "container:${WGMON_WG_CONTAINER:-ics-wg}"
+    cap_add:
+      - NET_ADMIN              # 讀 wg netlink 所需
+    environment:
+      - WGMON_IFACE=${WGMON_IFACE:-wg0}
+      - WGMON_POLL_S=${WGMON_POLL_S:-20}
+      - WGMON_DB=/data/wg-monitor.db
+      # 偵測門檻（可選；預設見 src/config.py）
+      - WGMON_OFFLINE_AFTER_S=${WGMON_OFFLINE_AFTER_S:-180}
+      - WGMON_OSC_WINDOW_S=${WGMON_OSC_WINDOW_S:-180}
+      - WGMON_DORMANT_AFTER_S=${WGMON_DORMANT_AFTER_S:-86400}
+      - WGMON_VOL_FLOOR=${WGMON_VOL_FLOOR:-10485760}
+      - WGMON_VOL_FACTOR=${WGMON_VOL_FACTOR:-8}
+      - WGMON_VOL_LEARN=${WGMON_VOL_LEARN:-20}
+      # 告警去抖 / 升級
+      - WGMON_COOLDOWN_S=${WGMON_COOLDOWN_S:-600}
+      - WGMON_ESCALATE_WINDOW_S=${WGMON_ESCALATE_WINDOW_S:-3600}
+      - WGMON_ESCALATE_COUNT=${WGMON_ESCALATE_COUNT:-3}
+      # 投遞：自架 ntfy 的「完整 topic URL」（如 http://ntfy/wg-alerts）。空 = 只落 log 不推播。
+      # ⚠ 此 URL 是 egress，須在 #450 egress 白名單內，否則 default-deny 會把告警一起擋死。
+      - WGMON_NTFY_URL=${WGMON_NTFY_URL:-}
+      - WGMON_NTFY_TOKEN=${WGMON_NTFY_TOKEN:-}
+      - WGMON_NTFY_TIMEOUT_S=${WGMON_NTFY_TIMEOUT_S:-5}
+      - WGMON_RETENTION_DAYS=${WGMON_RETENTION_DAYS:-30}
+    volumes:
+      - wg-monitor-data:/data   # 自己的 SQLite（peer_state/events/alerts）；endpoint=真實公網 IP（PII，#388）
+
+volumes:
+  wg-monitor-data:
