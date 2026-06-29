@@ -1,0 +1,40 @@
+# deploy/perimeter/wg-monitor/ntfy/docker-compose.yml — #447 自架 ntfy（prod 告警投遞目標）
+#
+# 跑在 ICS 的 icsnet 上 → wg-monitor（共享 ics-wg netns，也在 icsnet）可用容器名 http://ics-ntfy 推；
+# 手機訂閱 → 收推播。預設資料主權優先（自架，告警內容不出 perimeter）。
+#
+# 啟動：
+#   docker compose --env-file .env up -d
+# 接 wg-monitor：在 ../.env 設 WGMON_NTFY_URL=http://ics-ntfy/wg-alerts，recreate wg-monitor。
+#
+# ⚠ 投遞是 egress，須在 #450 egress 白名單內。
+name: ics-ntfy
+
+services:
+  ntfy:
+    image: binwiederhier/ntfy:v2.11.0       # 上游官方（德國作者 Philipp Heckel，Apache-2.0；無中國成分）
+    container_name: ics-ntfy                 # wg-monitor 以此名解析（http://ics-ntfy）
+    command: ["serve"]
+    environment:
+      - NTFY_BASE_URL=${NTFY_BASE_URL:-http://localhost:8080}
+      - NTFY_LISTEN_HTTP=:80
+      - NTFY_CACHE_FILE=/var/lib/ntfy/cache.db
+      - NTFY_CACHE_DURATION=${NTFY_CACHE_DURATION:-168h}   # 訊息保留 7 天（鎖屏漏接也補得回）
+      - NTFY_AUTH_FILE=/var/lib/ntfy/auth.db
+      # 預設 deny-all：只有建立的帳號/token 能讀寫（資料主權 + 不被任意人訂閱告警）。
+      # 開帳號：docker exec -it ics-ntfy ntfy user add wgmon ; ntfy access wgmon wg-alerts rw
+      - NTFY_AUTH_DEFAULT_ACCESS=${NTFY_AUTH_DEFAULT_ACCESS:-deny-all}
+    volumes:
+      - ntfy-data:/var/lib/ntfy
+    ports:
+      - "${NTFY_PORT:-8080}:80"              # 手機訂閱用（見 README 的可達性選項）
+    networks: [icsnet]
+    restart: unless-stopped
+
+networks:
+  icsnet:
+    external: true
+    name: ${ICS_NET:-ics-prod_icsnet}        # 沿用 prod compose 的 icsnet（docker network ls 查實名）
+
+volumes:
+  ntfy-data:

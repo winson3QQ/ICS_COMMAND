@@ -1,0 +1,28 @@
+# deploy/perimeter/wg-monitor/docker-compose.peermap.yml — #447 B 方案 prod 疊加（callsign 豐富化）
+#
+# base compose 維持可獨立跑（無此外部卷亦能起）；prod 才疊上來，唯讀掛 ics-wg 的 wg-queue 卷
+# （wg-peer-registrar 把 peer-map.tsv 寫在那）→ 啟用 viewer/告警的 callsign。
+#
+# 用法（與 ICS 並排，prod）：
+#   docker compose -f docker-compose.yml -f docker-compose.peermap.yml --env-file .env up -d --build
+#
+# WGMON_PEERMAP_VOL = ics-wg 的 wg-queue 卷實名：`docker volume ls | grep wg-queue`（多半 ics-prod_wg-queue）。
+# 安全：wg-queue 只含 pubkey/callsign/allowed-ip 佇列檔 + server.pub（公鑰）→ 無私鑰，唯讀掛載安全。
+
+services:
+  wg-monitor:
+    environment:
+      - WGMON_PEERMAP=/peermap/peer-map.tsv
+    volumes:
+      - peermap:/peermap:ro
+
+  wg-viewer:
+    environment:
+      - WGMON_PEERMAP=/peermap/peer-map.tsv
+    volumes:
+      - peermap:/peermap:ro
+
+volumes:
+  peermap:
+    external: true
+    name: ${WGMON_PEERMAP_VOL:-ics-prod_wg-queue}

@@ -51,7 +51,23 @@ persist() {
 
 mkdir -p "$REQ_DIR" "$RES_DIR"
 chmod 0777 "$QUEUE" "$REQ_DIR" "$RES_DIR" 2>/dev/null || true
-log "watcher up; queue=$QUEUE iface=$IFACE poll=${POLL_S}s"
+
+# #447 B 方案（輕耦合豐富化）：把 pubkey→callsign(=label) 落成扁平檔（每行 `pubkey\tcallsign`），
+# 供 wg-monitor **唯讀**顯示人話標籤。callsign 是 ICS 發證時已當 label 送進來的，registrar 只負責落檔，
+# 不回讀 ICS。awk 以欄位字面比對（pubkey base64 含 + / 等 regex metachar，不可用 grep ^pat）。
+PEERMAP="${WG_PEERMAP:-$QUEUE/peer-map.tsv}"
+peermap_set() {  # $1=pubkey $2=label
+  cs="$(printf '%s' "$2" | tr '\t\r\n' '   ')"; [ -n "${cs// /}" ] || return 0
+  tmp="$PEERMAP.tmp.$$"
+  { [ -f "$PEERMAP" ] && awk -F'\t' -v pk="$1" '$1!=pk' "$PEERMAP"; printf '%s\t%s\n' "$1" "$cs"; } \
+    >"$tmp" 2>/dev/null && mv "$tmp" "$PEERMAP" || rm -f "$tmp"
+}
+peermap_del() {  # $1=pubkey
+  [ -f "$PEERMAP" ] || return 0; tmp="$PEERMAP.tmp.$$"
+  awk -F'\t' -v pk="$1" '$1!=pk' "$PEERMAP" >"$tmp" 2>/dev/null && mv "$tmp" "$PEERMAP" || rm -f "$tmp"
+}
+
+log "watcher up; queue=$QUEUE iface=$IFACE poll=${POLL_S}s peermap=$PEERMAP"
 
 while true; do
   shopt -s nullglob
@@ -83,14 +99,16 @@ while true; do
       fi
       out="$(wg set "$IFACE" peer "$pubkey" allowed-ips "$allowed_ip" 2>&1)"; rc=$?
       if [ "$rc" -eq 0 ]; then
-        persist; log "added peer ${pubkey:0:12}… → $allowed_ip (${label})"; write_res "OK add $allowed_ip"
+        persist; peermap_set "$pubkey" "$label"
+        log "added peer ${pubkey:0:12}… → $allowed_ip (${label})"; write_res "OK add $allowed_ip"
       else
         log "wg set add FAIL $id rc=$rc: ${out//$'\n'/ }"; write_res "ERR rc=$rc ${out//$'\n'/ }"
       fi
     else  # remove
       out="$(wg set "$IFACE" peer "$pubkey" remove 2>&1)"; rc=$?
       if [ "$rc" -eq 0 ]; then
-        persist; log "removed peer ${pubkey:0:12}… (${label})"; write_res "OK remove"
+        persist; peermap_del "$pubkey"
+        log "removed peer ${pubkey:0:12}… (${label})"; write_res "OK remove"
       else
         log "wg set remove FAIL $id rc=$rc: ${out//$'\n'/ }"; write_res "ERR rc=$rc ${out//$'\n'/ }"
       fi

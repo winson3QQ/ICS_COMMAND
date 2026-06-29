@@ -14,7 +14,9 @@ keygen)
   wg pubkey <"$SHARED/server.key" >"$SHARED/server.pub"
   if [ ! -f "$SHARED/client.key" ]; then (umask 077; wg genkey >"$SHARED/client.key"); fi
   wg pubkey <"$SHARED/client.key" >"$SHARED/client.pub"
-  log "金鑰就緒（server + cloned-client）"
+  # #447 B 方案 demo：模擬 registrar 落的 pubkey→callsign 扁平檔（真實由 wg-peer-registrar 產）。
+  printf '%s\t%s\n' "$(cat "$SHARED/client.pub")" "BRAVO-1" >"$SHARED/peer-map.tsv"
+  log "金鑰就緒（server + cloned-client）+ peer-map（→ BRAVO-1）"
   ;;
 server)
   CPUB="$(cat "$SHARED/client.pub")"

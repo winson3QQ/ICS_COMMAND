@@ -53,7 +53,8 @@ services:
     image: ics-wg-monitor:dev
     depends_on:
       server: {condition: service_started}
-    network_mode: "container:wgtest-server"  # 共享 server netns → 讀其 wg0
+      ntfy: {condition: service_started}
+    network_mode: "container:wgtest-server"  # 共享 server netns → 讀其 wg0（也能解析同網段的 ntfy）
     cap_add: [NET_ADMIN]
     environment:
       - WGMON_IFACE=wg0
@@ -62,8 +63,42 @@ services:
       - WGMON_OFFLINE_AFTER_S=60
       - WGMON_COOLDOWN_S=30
       - WGMON_DB=/data/wg-monitor.db
-      - WGMON_NTFY_URL=                    # 測試不推播，只看 DB
-    volumes: [mondata:/data]
+      - WGMON_NTFY_URL=http://ntfy/wg-alerts   # 推到自架 ntfy（驗手機推播鏈路）
+      - WGMON_PEERMAP=/shared/peer-map.tsv     # B 方案：pubkey→callsign（keygen 落、唯讀）
+    volumes:
+      - mondata:/data
+      - shared:/shared:ro
+    restart: unless-stopped
+
+  # 唯讀網頁（#447 Phase 5）：瀏覽器開 http://localhost:8088 看 peer/告警/事件。
+  wg-viewer:
+    image: ics-wg-monitor:dev
+    depends_on: [wg-monitor]
+    entrypoint: ["python3", "/app/viewer.py"]
+    environment:
+      - WGMON_DB=/data/wg-monitor.db
+      - VIEWER_PORT=8088
+      - WGMON_PEERMAP=/shared/peer-map.tsv
+    ports:
+      # 測試棧資料是假 IP（172.18.x），故對 LAN 開放方便用 iPad/手機看。
+      # ⚠ prod 的 viewer 是真實公網 IP（PII）→ 仍預設只綁 127.0.0.1（見 ../docker-compose.yml）。
+      - "8088:8088"
+    volumes:
+      - mondata:/data:ro
+      - shared:/shared:ro
+    restart: unless-stopped
+
+  # 自架 ntfy（驗「監測 → ntfy → 手機」整條鏈）。手機在 ntfy app 訂閱
+  # http://<本機LAN-IP>:8080/wg-alerts 即可在觸發時收到推播。
+  ntfy:
+    image: binwiederhier/ntfy:v2.11.0      # 上游官方（德國作者 Philipp Heckel，Apache-2.0，無中國成分）
+    container_name: wgtest-ntfy
+    command: ["serve"]
+    environment:
+      - NTFY_BASE_URL=http://localhost:8080
+      - NTFY_LISTEN_HTTP=:80
+    ports:
+      - "8080:80"                          # 手機/瀏覽器訂閱用
     restart: unless-stopped
 
 volumes:

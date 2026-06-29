@@ -23,6 +23,7 @@ CFG = config_mod.Config(
     ntfy_token=None,
     ntfy_timeout_s=5,
     retention_days=30,
+    peermap_path="",
 )
 
 NOW = 1_719_600_000
