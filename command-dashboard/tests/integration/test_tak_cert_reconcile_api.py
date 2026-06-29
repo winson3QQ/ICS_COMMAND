@@ -101,6 +101,17 @@ def test_issue_infra_callsign_rejected(client, auth):
     assert r.status_code == 422
 
 
+def test_issue_bad_tak_username_rejected(client, auth, monkeypatch):
+    """線上 enrollment 配置時，callsign 不符 TAK 帳號規則（<4 字 / 空格 / @ / 中文）→ 發前 422
+    （早於 CA 503），不送 TAK 吐 502。規則僅在 enrollment 配置時套（#429 路徑）。"""
+    from services import tak_enrollment
+
+    monkeypatch.setattr(tak_enrollment, "is_configured", lambda: True)
+    for cs in ("BB", "GGW", "ab cd", "a@b", "文生"):
+        r = client.post("/api/admin/tak/device-cert", params={"callsign": cs, "mode": "atak"}, headers=auth)
+        assert r.status_code == 422, cs
+
+
 def test_reconcile_classifies_matched_mismatch_zombie_infra_unsynced(client, auth, monkeypatch):
     # review 覆蓋缺口：mock TAK 端回傳 → 驗 endpoint 的分類交叉比對。
     from services import tak_user_enroll

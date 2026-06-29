@@ -228,6 +228,24 @@ class TestCertCnValidation:
             assert is_valid_cert_cn(cn) is False, repr(cn)
 
 
+class TestTakUsernameValidation:
+    """TAK 裝置證 callsign(= TAK managed-user 帳號)規則：≥4 字、僅 [A-Za-z0-9._-]、不可 - 開頭。
+    比 is_valid_cert_cn 嚴（後者允許空格/@/中文）——對齊 TAK new-user 實測拒則,發前擋免 502。"""
+
+    def test_valid(self):
+        from repositories.account_cert_repo import is_valid_tak_username
+
+        for cn in ("wensheng", "kuan01", "bluelead", "a.b_c-d", "ABCD", "node-7.alpha"):
+            assert is_valid_tak_username(cn) is True, cn
+
+    def test_invalid(self):
+        from repositories.account_cert_repo import is_valid_tak_username
+
+        # 太短(BB/GGW/Kuan? Kuan=4 合規)、空格、@、中文、- 開頭、逗號、空
+        for cn in ("BB", "GGW", "abc", "", "ab cd", "a@b", "文生", "-lead", "a,b", "x" * 65):
+            assert is_valid_tak_username(cn) is False, repr(cn)
+
+
 class TestRevokeKillsLiveSession:
     def test_revoked_cert_invalidates_active_session(self, tmp_db, monkeypatch):
         """撤銷後活躍 session 下一個 request 即失效（不必等 token 過期）。"""
