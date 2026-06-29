@@ -57,6 +57,15 @@ def test_escalation_to_critical():
     assert sevs == ["warning", "warning", "critical"]
 
 
+def test_clock_jump_backward_does_not_suppress_forever():
+    # 時鐘回跳：第一筆在 t=5000，之後 now 退到 4000（負 delta）→ 不可被 cooldown 永久壓制。
+    s = _store()
+    am = AlertManager(s, CFG, deliver=lambda *a: True)
+    assert am.handle(_det(), now=5000) is True
+    assert am.handle(_det(), now=4000) is True  # 負 delta → 放行（非靜默）
+    assert s.conn.execute("SELECT COUNT(*) c FROM alerts").fetchone()["c"] == 2
+
+
 def test_distinct_kinds_independent_cooldown():
     s = _store()
     am = AlertManager(s, CFG, deliver=lambda *a: True)

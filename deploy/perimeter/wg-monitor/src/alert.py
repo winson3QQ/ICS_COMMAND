@@ -51,8 +51,10 @@ class AlertManager:
     def handle(self, det: Detection, now: int) -> bool:
         """處理一筆 alertable detection。回 True=本次有發出新告警；False=被 cooldown 壓掉。"""
         # 去抖：cooldown 內同 (pubkey, kind) 不重報（事件已另記 events，不丟）。
+        # 守 `0 <= delta`：系統時鐘回跳（NTP step / VM 暫停恢復）使 last > now → 負 delta，
+        # 不可讓它把告警「永久靜默」到 wall-clock 追過舊時間戳為止 → 負 delta 一律放行。
         last = self.store.last_alert_ts(det.pubkey, det.kind)
-        if last is not None and (now - last) < self.cfg.cooldown_s:
+        if last is not None and 0 <= (now - last) < self.cfg.cooldown_s:
             return False
         # 升級：窗內累計（含本次）達門檻 → critical。
         prior_count = self.store.recent_alert_count(det.pubkey, det.kind, now - self.cfg.escalate_window_s)
