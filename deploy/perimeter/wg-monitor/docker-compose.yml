@@ -46,6 +46,9 @@ services:
       - WGMON_NTFY_TOKEN=${WGMON_NTFY_TOKEN:-}
       - WGMON_NTFY_TIMEOUT_S=${WGMON_NTFY_TIMEOUT_S:-5}
       - WGMON_RETENTION_DAYS=${WGMON_RETENTION_DAYS:-30}
+      # callsign 豐富化：peer-map 檔路徑（空=只顯 pubkey）。放 /data（本卷）＝零碰 ICS；
+      # 或用 docker-compose.peermap.yml 疊加掛 ics-wg 的 wg-queue 卷（registrar 自動維護）。
+      - WGMON_PEERMAP=${WGMON_PEERMAP:-}
     volumes:
       - wg-monitor-data:/data   # 自己的 SQLite（peer_state/events/alerts）；endpoint=真實公網 IP（PII，#388）
 
@@ -61,6 +64,7 @@ services:
       - WGMON_DB=/data/wg-monitor.db
       - VIEWER_PORT=8088
       - VIEWER_REFRESH_S=${WGMON_VIEWER_REFRESH_S:-5}
+      - WGMON_PEERMAP=${WGMON_PEERMAP:-}
     ports:
       - "127.0.0.1:${WGMON_VIEWER_PORT:-8088}:8088"   # 本地端瀏覽：http://localhost:8088
     volumes:

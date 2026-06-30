@@ -89,6 +89,24 @@ docker exec ics-wg wg show wg0 dump   # 每 peer：pubkey / endpoint(真實公�
 > 契約 = 一個扁平檔，**不讀 ICS 的 DB、不呼叫 ICS 的 API、不需 ICS 活著**。資料源自 WG 平面本身
 > （registrar 已有 callsign）。要 cert CN（非 callsign）才需動 ICS（發證時把 CN 也塞進 label），屬選配。
 
+### 兩種接法
+
+- **A — 檔放 monitor 自己的卷（免 rebuild ics-wg、零碰 ICS 卷；現有 peer 用回填）**
+  設 `WGMON_PEERMAP=/data/peer-map.tsv`（base compose 直接吃，無需疊加）。現有 peer 一次性回填
+  （只**讀** ICS 名冊、寫到 **monitor 自己**的 /data，不碰 ICS 共享卷）：
+  ```bash
+  docker exec <ics-command> python3 -c "import sqlite3;c=sqlite3.connect('/app/data/ics.db');\
+  print('\n'.join(r[0]+chr(9)+r[1] for r in c.execute(\"SELECT pubkey,callsign FROM wg_peers WHERE status='active' AND callsign IS NOT NULL\")))" \
+    | docker exec -i <wg-monitor> sh -c 'cat > /data/peer-map.tsv'
+  docker compose --env-file .env up -d   # 重啟吃 WGMON_PEERMAP
+  ```
+  ⚠ 回填是**快照**——新發證/撤證的裝置不會自動進，需重跑回填或改用 B。
+
+- **B — registrar 自動維護（長期解；首次需 rebuild ics-wg）**
+  rebuild ics-wg（其 registrar 含 `peermap_set/del`）→ peer-map 隨發/撤證自動更新；monitor 用
+  `-f docker-compose.yml -f docker-compose.peermap.yml` 唯讀掛 wg-queue 卷（`WGMON_PEERMAP_VOL`）。
+  代價：rebuild ics-wg 會使全裝置 VPN 短暫斷線（~60–90s，peer 持久不丟）→ 排維護窗口。
+
 ## Prod 部署（與 ICS 並排）
 
 監測與 ICS **同機、各自獨立 compose**（不合併進 `deploy/prod`）。獨立生命週期 = ICS 掛了監測還活、互不波及。
