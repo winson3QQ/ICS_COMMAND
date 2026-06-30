@@ -192,6 +192,60 @@ def build_mobileconfig(cert_cn: str, p12_bytes: bytes, p12_pass: str, root_pem: 
     return plist.encode("utf-8")
 
 
+def _cert_package_readme(cert_cn: str, server_host: str) -> str:
+    """桌機憑證安裝包的 README（分平台步驟）。**走「乙」：密碼不放包內**，只在發證面板顯示——
+    包被轉交也不洩匯入密碼（憑證 .p12 的保護不被削弱，對齊 #307 密碼不落檔的安全姿態）。"""
+    url = f"https://{server_host}/"
+    return (
+        "ICS 指揮儀表板 — 登入憑證安裝包\n"
+        "================================\n\n"
+        f"帳號憑證 CN：{cert_cn}\n"
+        f"儀表板網址：{url}\n\n"
+        "本包內含：\n"
+        f"  · {cert_cn}.p12   ← 你的登入身分憑證（mTLS）\n"
+        "  · root-ca.pem      ← ICS 根憑證（用來信任儀表板伺服器）\n"
+        "  · 本說明檔\n\n"
+        "⚠ 匯入密碼：請用「發證畫面上顯示的密碼」。基於安全，密碼不放在本包內、也不隨包轉交。\n\n"
+        "────────────────────────────────────────\n"
+        "■ Windows\n"
+        "  1. 雙擊 root-ca.pem →「安裝憑證」→ 存放區選「受信任的根憑證授權單位」。\n"
+        "  2. 雙擊 .p12 → 存放位置「目前使用者」→ 輸入上述匯入密碼 → 完成。\n"
+        f"  3. Edge/Chrome 開 {url} → 提示選憑證時選此張 → 輸入登入 PIN。\n\n"
+        "■ macOS\n"
+        "  1. 雙擊 root-ca.pem → 加入「登入」鑰匙圈；在「鑰匙圈存取」對該根憑證右鍵→「取得資訊」→\n"
+        "     信任→「使用此憑證時」設「永遠信任」。\n"
+        "  2. 雙擊 .p12 → 加入「登入」鑰匙圈 → 輸入匯入密碼。\n"
+        f"  3. Safari/Chrome 開 {url} → 選此憑證 → 登入 PIN。（Chrome 換證後須完全關閉重開才生效。）\n\n"
+        "■ Android\n"
+        "  1. 設定 → 安全性 → 加密與憑證 → 安裝憑證 →「CA 憑證」選 root-ca.pem。\n"
+        "  2. 同處「VPN 與 App 使用者憑證」選 .p12 → 輸入匯入密碼。\n"
+        f"  3. 瀏覽器開 {url} → 選此憑證 → 登入 PIN。\n\n"
+        "■ iPhone / iPad\n"
+        "  iOS 請改用發證時選「iOS 描述檔（.mobileconfig）」——一點即裝、密碼免打，不需本 .p12 包。\n\n"
+        "────────────────────────────────────────\n"
+        "· 憑證綁定帳號：裝了此證才登得進（cert-bound session）。一個帳號可綁多台。\n"
+        "· 遺失裝置請立即通知管理員撤銷此憑證。\n"
+    )
+
+
+def build_cert_package(cert_cn: str, p12_bytes: bytes, root_pem: str, server_host: str) -> bytes:
+    """桌機登入憑證打包：zip{<cn>.p12, root-ca.pem, README.txt}（比照 TAK data package，收斂多平台安裝）。
+
+    取代「裸 .p12 + 另抓 root CA + 一大段文字」——一個 zip 到位。**密碼走「乙」不入包**（見 README）。
+    iOS 不走此包（.mobileconfig 已自成一檔）。檔名收斂 alnum+-_.，root CA 固定 root-ca.pem。
+    """
+    import io
+    import zipfile
+
+    safe = "".join(c for c in cert_cn if c.isalnum() or c in "-_.") or "client"
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr(f"{safe}.p12", p12_bytes)
+        z.writestr("root-ca.pem", root_pem)
+        z.writestr("README.txt", _cert_package_readme(cert_cn, server_host))
+    return buf.getvalue()
+
+
 def _tail(s: str | None, n: int = 200) -> str:
     """取 step stderr 末段做錯誤訊息（避免洩漏過多內部細節；密碼不會出現在 stderr）。"""
     return (s or "").strip().splitlines()[-1][:n] if (s or "").strip() else "unknown"

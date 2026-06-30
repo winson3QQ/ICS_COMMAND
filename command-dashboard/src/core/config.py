@@ -157,6 +157,10 @@ WARNING_THRESHOLD_SECONDS: int = int(os.getenv("ICS_WARNING_THRESHOLD_SECONDS", 
 #               （subscriptions ∩ tak_device_certs，CN 鍵）→ 裝置重裝/重 enroll 換 uid 不丟分類。
 # PATCH 2.26.1：#344 Slice 2——背景週期（45s）刷新 client_identity（uid→CN），免「裝置換 uid 重連後須
 #               先開紅藍分類面板才著色」的窗口（最多一輪詢週期即自動解析 faction）。
+# MINOR 2.28.0：ICS 登入憑證桌機安裝包——新 fmt=zip（cert_issuance.build_cert_package）打包 .p12 + root-ca.pem
+#               + 分平台 README（Windows/macOS/Android 安裝步驟），收斂原本「裸證 + 另抓 root CA + 一大段文字」
+#               的多 use-case 複雜度（比照 TAK data package）。密碼走「乙」不入包、仍經 X-P12-Password 顯示。
+#               iOS 維持 .mobileconfig（已自成一檔）。
 # PATCH 2.27.2：TAK 裝置證發證 callsign 驗證——callsign(=TAK managed-user 帳號)發前套 TAK new-user 規則
 #               (≥4 字、僅 [A-Za-z0-9._-])，**僅當線上 enrollment 配置時**(#429 路徑),回乾淨 422 取代
 #               TAK 400→502(BB/GGW 短英數、空格、@、中文皆中招)；offline(#344) 沿用較寬規則保留 #324 中文證。
@@ -172,7 +176,7 @@ WARNING_THRESHOLD_SECONDS: int = int(os.getenv("ICS_WARNING_THRESHOLD_SECONDS", 
 # PATCH 2.26.2：security 收緊——#393 通用 /api/config/{key} GET/POST 收成 SYSADMIN_ONLY（原 observer 可讀/
 #               commander 可寫任意 key）；#375 suspend-all 納 _SYSADMIN_GUARD_LOCK + re-assert 發起者仍
 #               active sysadmin（並發 demote 發起者→拒，防達零 sysadmin 自鎖）。
-APP_VERSION = "2.27.2"
+APP_VERSION = "2.28.0"
 
 # CMD_VERSION：前端 UI 功能版本（不同於後端 SemVer APP_VERSION；規則見 CLAUDE.md 版號規則）
 # 兩軌版本命名，不可混用。由 /api/version 提供給前端，是唯一 source-of-truth；release 時更新此值。
@@ -180,7 +184,9 @@ APP_VERSION = "2.27.2"
 #         + 演習/放置/稽核 UI P1-13/14/16/#93 + 分類編輯器 #66）→ 0.x 畢業為 MAJOR 紀元。
 CMD_VERSION: str = os.getenv(
     "CMD_VERSION",
-    "v1.19.2",  # PATCH：ICS .p12 憑證「分享 / 存檔」在 Mac 桌機 navigator.share 丟 Permission denied(NotAllowedError)
+    "v1.20.0",  # MINOR：發證面板桌機改發「安裝包 .zip」（含 root CA + 分平台 README）——一個檔到位、瘦身
+    # 原本落落長的多平台說明文字；密碼仍只在面板顯示（乙）。iOS 維持 .mobileconfig。
+    # PATCH v1.19.2：ICS .p12 憑證「分享 / 存檔」在 Mac 桌機 navigator.share 丟 Permission denied(NotAllowedError)
     # → 對齊 #330 退回下載(原其餘 3 個 share 鈕已有、唯 .p12 漏 → 只它 alert「分享失敗」)；Windows share 成功時行為不變
     # PATCH v1.19.1：TAK 發證面板修——① 憑證時間改顯本地時區(fmtLocalDT,原顯 UTC 差 8h)；
     # ② callsign 提示照 TAK 帳號規則(≥4 字/英數._-)發前硬擋 + 講清「中文名設在 App 顯示 callsign」

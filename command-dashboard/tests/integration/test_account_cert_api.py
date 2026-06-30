@@ -120,6 +120,32 @@ class TestOnlineIssue:
         certs = client.get("/api/admin/accounts/iris/certs", headers=auth).json()
         assert any(c["cert_cn"] == "iris-ipad" and c["status"] == "active" for c in certs)
 
+    def test_issue_zip_package(self, client, auth, monkeypatch):
+        """桌機安裝包：fmt=zip → 回 zip{<cn>.p12, root-ca.pem, README.txt}；密碼仍走 X-P12-Password
+        header 顯示、**不入包**（走「乙」）；仍自動綁定。"""
+        import io
+        import zipfile
+
+        import core.config as config
+        import services.cert_issuance as ci
+
+        monkeypatch.setattr(config, "step_ca_configured", lambda: True)
+        monkeypatch.setattr(ci, "issue_p12", lambda cn: (b"P12-BYTES", "secret-pw-123"))
+        monkeypatch.setattr(ci, "fetch_root_ca_pem", lambda: "-----BEGIN CERTIFICATE-----ROOT")
+        _mk_account(client, auth, "kelly")
+        r = client.post("/api/admin/accounts/kelly/certs/issue?fmt=zip", json={"cert_cn": "kelly-pc"}, headers=auth)
+        assert r.status_code == 200, r.text
+        assert r.headers["content-type"] == "application/zip"
+        assert "kelly-pc-ics.zip" in r.headers.get("content-disposition", "")
+        assert r.headers.get("X-P12-Password") == "secret-pw-123"  # 密碼走 header、不入包
+        z = zipfile.ZipFile(io.BytesIO(r.content))
+        assert set(z.namelist()) == {"kelly-pc.p12", "root-ca.pem", "README.txt"}
+        assert z.read("kelly-pc.p12") == b"P12-BYTES"
+        readme = z.read("README.txt").decode("utf-8")
+        assert "kelly-pc" in readme and "secret-pw-123" not in readme  # 乙：密碼不在 README
+        certs = client.get("/api/admin/accounts/kelly/certs", headers=auth).json()
+        assert any(c["cert_cn"] == "kelly-pc" and c["status"] == "active" for c in certs)
+
     def test_issue_invalid_fmt_422(self, client, auth, monkeypatch):
         import core.config as config
 
