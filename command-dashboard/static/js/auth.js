@@ -1938,9 +1938,10 @@ export async function admLoadCerts(username) {
     '<div style="display:flex;gap:4px;margin-top:8px;flex-wrap:wrap;">' +
       '<input id="adm-certcn-' + username + '" placeholder="裝置憑證 CN（如 指揮官-手機）" style="flex:2;min-width:180px;font-family:monospace;">' +
       '<input id="adm-certlabel-' + username + '" placeholder="標籤（選填，如 指揮官手機）" style="flex:1;min-width:120px;">' +
-      '<select id="adm-certfmt-' + username + '" title="iOS 選描述檔（免打密碼）；Windows/iMac/Android 選 .p12">' +
-        '<option value="p12">.p12（Windows / iMac / Android）</option>' +
+      '<select id="adm-certfmt-' + username + '" title="iOS 選描述檔（免打密碼）；Windows/iMac/Android 選安裝包">' +
+        '<option value="zip">安裝包 .zip（Windows / iMac / Android，含 root CA + 說明）</option>' +
         '<option value="mobileconfig">iOS 描述檔（免打密碼）</option>' +
+        '<option value="p12">裸 .p12（進階，無 root CA / 說明）</option>' +
       '</select>' +
       '<button class="adm-btn" data-action="adm-issue-cert" data-username="' + username + '" title="線上向 step-ca 簽發並自動綁定">發憑證</button>' +
       '<button class="adm-btn" data-action="adm-bind-cert" data-username="' + username + '" title="已有離線簽好的憑證時，只綁定 CN">僅綁定</button>' +
@@ -1948,7 +1949,7 @@ export async function admLoadCerts(username) {
       '<button class="adm-btn" data-action="adm-issue-vpn" data-username="' + username + '" title="發此帳號的 WireGuard VPN 設定——VPN-gate 下，單獨連 ICS 的人需掛 VPN 才連得到儀表板">📶 發 VPN</button>' +
     '</div>' +
     '<div id="adm-vpn-result-' + username + '"></div>' +
-    '<div style="font-size:11px;color:var(--text3);margin-top:6px;line-height:1.5;"><b>發憑證</b>：線上向 step-ca 簽一張 + 自動綁定。<b>.p12</b>（Windows / iMac / Android，發證後顯示匯入密碼）或 <b>iOS 描述檔</b>（.mobileconfig，密碼內嵌→點開直接裝、免手打）。<b>僅綁定</b>：已離線簽好時只綁 CN ↔ 帳號。一帳號可綁多台，撤銷即時失效。<br><b>非 iOS 要連得進來</b>：另按「<b>下載 root CA</b>」信任 server——<b>iMac</b>：.p12 與 root CA 都匯入鑰匙圈「<b>登入</b>」（root CA <b>勿丟「系統根」</b>，那是唯讀），雙擊 root CA →「信任」設<b>永遠信任</b>；<b>Windows</b>：.p12 匯入個人憑證、root CA 匯入<b>受信任的根憑證授權單位</b>；<b>Android</b>：設定→安全性→安裝憑證，.p12 選「VPN 與 App 使用者憑證」、root CA 選「CA 憑證」。⚠ 桌機/Android 請用 .p12，<b>勿用 iOS 描述檔</b>（會一直跳「Configuration Profiles」提示）。憑證須<b>綁到本帳號</b>才登得進（cert-bound session）；<b>Mac/Chrome 換證後須完全重開 Chrome</b> 才會重新選憑證。</div>';
+    '<div style="font-size:11px;color:var(--text3);margin-top:6px;line-height:1.5;"><b>發憑證</b>：線上向 step-ca 簽一張 + 自動綁定。<br>· <b>桌機（Windows / iMac / Android）</b>選「<b>安裝包 .zip</b>」——一個檔內含 憑證 + root CA + <b>分平台安裝 README</b>，照 README 裝即可（取代原本一堆步驟）。匯入密碼發證後顯示在此（安全考量不放包內）。<br>· <b>iPhone / iPad</b>選「<b>iOS 描述檔</b>」（.mobileconfig，密碼內嵌→點開直接裝、免手打）。<br>· <b>僅綁定</b>：已離線簽好時只綁 CN ↔ 帳號。一帳號可綁多台，撤銷即時失效。憑證須綁到本帳號才登得進（cert-bound session）；Mac/Chrome 換證後須完全重開 Chrome。（「下載 root CA」單獨鈕保留作備援，安裝包內已附。）</div>';
 }
 
 export async function admBindCert(username) {
@@ -1981,7 +1982,7 @@ export async function admDownloadRootCa() {
 export async function admIssueCert(username) {
   const cn = el('adm-certcn-' + username)?.value.trim();
   const label = el('adm-certlabel-' + username)?.value.trim();
-  const fmt = el('adm-certfmt-' + username)?.value || 'p12';
+  const fmt = el('adm-certfmt-' + username)?.value || 'zip';
   if (!cn) { alert('請輸入裝置憑證 CN'); return; }
   const resp = await authFetch(API_BASE + '/api/admin/accounts/' + username + '/certs/issue?fmt=' + fmt, {
     method: 'POST',
@@ -2000,7 +2001,8 @@ export async function admIssueCert(username) {
     _showMobileconfigResult(username, cn, blob, blobUrl);  // #312：密碼內嵌、不顯示
   } else {
     // #307 缺口1：不自動下載。iOS 一拿到 .p12 即攔成安裝、蓋掉畫面 → 先顯示密碼、手動觸發。
-    _showP12Result(username, cn, p12pass, blob, blobUrl);
+    // fmt='zip'（桌機安裝包，預設）與 'p12'（裸證，進階）共用結果框，只差下載檔名/型別。
+    _showP12Result(username, cn, p12pass, blob, blobUrl, fmt);
   }
 }
 
@@ -2053,16 +2055,22 @@ function _isIOS() {
 }
 
 // #307 缺口1+衍生子缺口：發證後常駐顯示密碼 + 手動下載/分享鈕（textContent 防 XSS）。
-function _showP12Result(username, cn, pass, blob, blobUrl) {
+function _showP12Result(username, cn, pass, blob, blobUrl, fmt) {
   const box = el('adm-certs-' + username);
   if (!box) { URL.revokeObjectURL(blobUrl); return; }
+  const isZip = fmt === 'zip';
+  const fname = isZip ? cn + '-ics.zip' : cn + '.p12';
+  const mime = isZip ? 'application/zip' : 'application/x-pkcs12';
   const banner = document.createElement('div');
   banner.style.cssText = 'border:1px solid var(--green,#2ea043);border-radius:6px;padding:8px;margin-bottom:8px;font-size:12px;';
 
   const label = document.createElement('div');
   label.style.cssText = 'color:var(--text2);margin-bottom:6px;line-height:1.5;';
-  label.textContent = '✅ 已簽發並自動綁定 ' + cn + '。請先複製下方密碼，再點「下載 / 安裝」'
-    + '（iOS 點下載即跳安裝、屆時需輸入此密碼）。本訊息關閉後密碼無法再取得：';
+  label.textContent = isZip
+    ? '✅ 已簽發並自動綁定 ' + cn + '。請先複製下方匯入密碼，再下載安裝包——解開後照內附 README 分平台安裝。'
+      + '本訊息關閉後密碼無法再取得：'
+    : '✅ 已簽發並自動綁定 ' + cn + '。請先複製下方密碼，再點「下載 / 安裝」'
+      + '（iOS 點下載即跳安裝、屆時需輸入此密碼）。本訊息關閉後密碼無法再取得：';
 
   const row = document.createElement('div');
   row.style.cssText = 'display:flex;align-items:center;gap:6px;flex-wrap:wrap;';
@@ -2078,10 +2086,10 @@ function _showP12Result(username, cn, pass, blob, blobUrl) {
   });
   const dlBtn = document.createElement('button');
   dlBtn.className = 'adm-btn';
-  dlBtn.textContent = '⬇ 下載 / 安裝 .p12';
+  dlBtn.textContent = isZip ? '⬇ 下載安裝包 .zip' : '⬇ 下載 / 安裝 .p12';
   dlBtn.addEventListener('click', () => {
     const a = document.createElement('a');
-    a.href = blobUrl; a.download = cn + '.p12';
+    a.href = blobUrl; a.download = fname;
     document.body.appendChild(a); a.click(); a.remove();
   });
   row.appendChild(code);
@@ -2090,15 +2098,15 @@ function _showP12Result(username, cn, pass, blob, blobUrl) {
 
   // #307 缺口1：iOS 上「下載」會被攔成本機安裝、存不了檔。Web Share API 走 iOS 原生
   // 分享單 → 可「儲存到檔案 / AirDrop」轉交別台裝置。支援檔案分享時才顯示此鈕。
-  const p12File = _makeFile(cn + '.p12', blob, 'application/x-pkcs12');
-  const canShare = p12File && navigator.canShare?.({ files: [p12File] });
+  const shareFile = _makeFile(fname, blob, mime);
+  const canShare = shareFile && navigator.canShare?.({ files: [shareFile] });
   if (canShare) {
     const shareBtn = document.createElement('button');
     shareBtn.className = 'adm-btn';
     shareBtn.textContent = '📤 分享 / 存檔（轉交別台）';
     shareBtn.addEventListener('click', async () => {
       try {
-        await navigator.share({ files: [p12File], title: cn + '.p12' });
+        await navigator.share({ files: [shareFile], title: fname });
       } catch (e) {
         // #330/Mac：桌機 Chrome/Safari `canShare` 回 true、但實際 share 檔案丟 NotAllowedError
         // （"Permission denied"）→ 該瀏覽器不真支援檔案分享，**退回下載**（非真失敗，別嚇使用者）。
