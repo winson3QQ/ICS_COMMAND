@@ -2100,7 +2100,10 @@ function _showP12Result(username, cn, pass, blob, blobUrl) {
       try {
         await navigator.share({ files: [p12File], title: cn + '.p12' });
       } catch (e) {
-        if (e?.name !== 'AbortError') alert('分享失敗：' + (e?.message || e));
+        // #330/Mac：桌機 Chrome/Safari `canShare` 回 true、但實際 share 檔案丟 NotAllowedError
+        // （"Permission denied"）→ 該瀏覽器不真支援檔案分享，**退回下載**（非真失敗，別嚇使用者）。
+        // AbortError = 使用者主動取消分享單，不動作。Windows 若 share 成功則不進此分支、行為不變。
+        if (e?.name !== 'AbortError') dlBtn.click();
       }
     });
     row.appendChild(shareBtn);

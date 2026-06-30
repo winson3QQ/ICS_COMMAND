@@ -180,7 +180,9 @@ APP_VERSION = "2.27.2"
 #         + 演習/放置/稽核 UI P1-13/14/16/#93 + 分類編輯器 #66）→ 0.x 畢業為 MAJOR 紀元。
 CMD_VERSION: str = os.getenv(
     "CMD_VERSION",
-    "v1.19.1",  # PATCH：TAK 發證面板修——① 憑證時間改顯本地時區(fmtLocalDT,原顯 UTC 差 8h)；
+    "v1.19.2",  # PATCH：ICS .p12 憑證「分享 / 存檔」在 Mac 桌機 navigator.share 丟 Permission denied(NotAllowedError)
+    # → 對齊 #330 退回下載(原其餘 3 個 share 鈕已有、唯 .p12 漏 → 只它 alert「分享失敗」)；Windows share 成功時行為不變
+    # PATCH v1.19.1：TAK 發證面板修——① 憑證時間改顯本地時區(fmtLocalDT,原顯 UTC 差 8h)；
     # ② callsign 提示照 TAK 帳號規則(≥4 字/英數._-)發前硬擋 + 講清「中文名設在 App 顯示 callsign」
     # MINOR v1.19.0：#267 演習 roster 可用性 UI——隊伍名冊頭顯「X 連線 / Y 在場」計數 + 空場紅字警示橫幅
     # （在場數==0 → 顯，鍵在結果故對「逐一納編」與「一鍵全加」兩套機制都正確）+「加入全部連線」一鍵鈕
