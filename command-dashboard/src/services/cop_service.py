@@ -22,13 +22,13 @@ import logging
 import sqlite3
 
 from core.config import TRACK_MIN_INTERVAL_S
-from repositories import client_faction_repo, client_identity_repo, cop_entity_repo, exercise_repo, exercise_roster_repo
+from repositories import client_identity_repo, cop_entity_repo, exercise_repo, exercise_roster_repo
 from repositories._helpers import iso_to_dt
 from repositories.snapshot_repo import get_latest_snapshot
 from schemas.cop import CoPEntity, CoPEntityTrack
 from schemas.manual import ManualRecordIn
 from schemas.tak import CoTEventIn
-from services import chat_service, geometry_service
+from services import chat_service, faction_resolve, geometry_service
 from services.exercise_service import current_exercise_id
 from services.realtime_hub import cop_hub
 
@@ -147,8 +147,7 @@ def _resolve_faction(entity: CoPEntity) -> str | None:
     命中 CN-keyed 分類、把紅軍標記偽裝成藍洩漏給指揮官。唯有經 client_identity 驗證翻出的 CN 才算數。
     """
     client_key = _resolve_client_key(entity)  # producer 裝置 uid（取自 CoT，不可信）
-    cn = client_identity_repo.get_username(client_key)  # 唯一可信來源：TAK subscriptions 寫入的對照
-    return client_faction_repo.get_faction(entity.exercise_id, cn) if cn else None
+    return faction_resolve.resolve_faction_for_uid(entity.exercise_id, client_key)
 
 
 def _resolve_exercise_scope(entity: CoPEntity) -> int | None:
