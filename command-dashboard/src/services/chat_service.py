@@ -10,9 +10,10 @@ services/chat_service.py — GeoChat（CoT b-t-f）通聯落地（P2-07，#129�
 
 import html
 
-from repositories import chat_repo, client_faction_repo
+from repositories import chat_repo
 from schemas.chat import ChatIn
 from schemas.tak import CoTEventIn
+from services import faction_resolve
 from services.exercise_service import current_exercise_id
 from services.realtime_hub import cop_hub
 
@@ -82,7 +83,9 @@ async def ingest_chat(event: CoTEventIn) -> dict | None:
     if client_key == ICS_SELF_UID:
         faction = "blue"
     elif client_key:
-        faction = client_faction_repo.get_faction(ex_id, client_key)
+        # #459：GeoChat uid 的裝置段 → faction，經 faction_resolve 統一解（uid→CN 翻譯 + fail-closed）。
+        # 外部 TAK 裝置的 uid ≠ CN，#344 後 client_faction 以 CN 為鍵，直接用 uid 查會恆解 None。
+        faction = faction_resolve.resolve_faction_for_uid(ex_id, client_key)
     else:
         faction = None
     record = ChatIn(
