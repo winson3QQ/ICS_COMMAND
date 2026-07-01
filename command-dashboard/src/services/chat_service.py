@@ -10,7 +10,7 @@ services/chat_service.py — GeoChat（CoT b-t-f）通聯落地（P2-07，#129�
 
 import html
 
-from repositories import chat_repo, client_faction_repo
+from repositories import chat_repo, client_faction_repo, client_identity_repo
 from schemas.chat import ChatIn
 from schemas.tak import CoTEventIn
 from services.exercise_service import current_exercise_id
@@ -82,7 +82,12 @@ async def ingest_chat(event: CoTEventIn) -> dict | None:
     if client_key == ICS_SELF_UID:
         faction = "blue"
     elif client_key:
-        faction = client_faction_repo.get_faction(ex_id, client_key)
+        # #459：client_key 為 GeoChat uid 的裝置段（裝置 uid），但 #344 後 client_faction 以 cert CN 為鍵。
+        # 須先經 client_identity 把裝置 uid 翻成 CN 再查分類（對齊 cop_service._resolve_faction），否則
+        # 外部 TAK 裝置的 GeoChat faction 恆解 None → commander 以下 fail-closed 隱藏（本 bug）。
+        # 翻不到 CN → None = fail-closed（不得退回用不可信的 uid 當鍵，同 #344 security-review 結論）。
+        cn = client_identity_repo.get_username(client_key)
+        faction = client_faction_repo.get_faction(ex_id, cn) if cn else None
     else:
         faction = None
     record = ChatIn(

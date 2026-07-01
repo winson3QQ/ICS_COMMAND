@@ -13,7 +13,7 @@ import asyncio
 
 import pytest
 
-from repositories import client_faction_repo, cop_entity_repo
+from repositories import client_faction_repo, client_identity_repo, cop_entity_repo
 from schemas.cop import CoPEntity
 from schemas.tak import CoTEventIn
 from services import chat_service
@@ -111,16 +111,20 @@ def test_ingest_geochat_resolves_sender_faction(monkeypatch):
         captured.append((source, faction))
 
     monkeypatch.setattr(chat_service.cop_hub, "broadcast", _fake)
-    client_faction_repo.upsert_faction(None, "ANDROID-RED", "red", "敵", "admin")
+    # #459：真實 #344 情境——裝置 uid ≠ CN；分類綁 CN，ingest 須經 client_identity 翻 uid→CN 再查。
+    client_identity_repo.upsert_many({"ANDROID-RED": "RedActor"})
+    client_faction_repo.upsert_faction(None, "RedActor", "red", "敵", "admin")
 
     asyncio.run(chat_service.ingest_chat(_geochat("GeoChat.ANDROID-RED.All Chat Rooms.m1")))
-    # broadcast 帶 source='tak' + 解析出的 faction='red' → 藍方 WS 連線會被擋
+    # broadcast 帶 source='tak' + 經翻譯解出的 faction='red' → 藍方 WS 連線會被擋
     assert captured == [("tak", "red")]
 
 
 def test_geochat_read_filters_red_from_blue():
-    client_faction_repo.upsert_faction(None, "ANDROID-RED", "red", "敵", "admin")
-    client_faction_repo.upsert_faction(None, "ANDROID-BLUE", "blue", "友", "admin")
+    # #459：裝置 uid ≠ CN；建立 uid→CN 對照 + CN 鍵分類（真實 #344 情境）。
+    client_identity_repo.upsert_many({"ANDROID-RED": "RedActor", "ANDROID-BLUE": "BlueActor"})
+    client_faction_repo.upsert_faction(None, "RedActor", "red", "敵", "admin")
+    client_faction_repo.upsert_faction(None, "BlueActor", "blue", "友", "admin")
     asyncio.run(chat_service.ingest_chat(_geochat("GeoChat.ANDROID-RED.All Chat Rooms.r1", "紅軍通聯")))
     asyncio.run(chat_service.ingest_chat(_geochat("GeoChat.ANDROID-BLUE.All Chat Rooms.b1", "藍軍通聯")))
 
@@ -149,3 +153,16 @@ def test_geochat_ics_self_origin_classified_blue():
     # 藍方視角看得到 ICS 自己的出向訊息（非被當未分類擋掉）
     feed = chat_service.build_chat_feed(None, visible_factions=BLUE)
     assert {c["message"] for c in feed["chats"]} == {"指揮部廣播"}
+
+
+def test_geochat_external_device_blue_visible_to_commander_issue459():
+    """#459 regression：外部 TAK 裝置（裝置 uid ≠ CN）發的藍方 GeoChat，須經 client_identity
+    uid→CN 翻譯正確解出 blue → commander(藍方)看得到。
+
+    修前 bug：ingest 拿裝置 uid 直查 CN 鍵的 client_faction → miss → faction=None → 對 commander
+    以下 fail-closed 隱藏（sysadmin 全見所以只有指揮層察覺）。此測試在缺翻譯時 feed 為空而失敗。"""
+    client_identity_repo.upsert_many({"ANDROID-05c3": "Miku"})  # TAK subscriptions 權威對照
+    client_faction_repo.upsert_faction(None, "Miku", "blue", "友", "admin")  # 分類綁 CN（#344）
+    asyncio.run(chat_service.ingest_chat(_geochat("GeoChat.ANDROID-05c3.All Chat Rooms.k1", "現場回報")))
+    feed = chat_service.build_chat_feed(None, visible_factions=BLUE)
+    assert {c["message"] for c in feed["chats"]} == {"現場回報"}
