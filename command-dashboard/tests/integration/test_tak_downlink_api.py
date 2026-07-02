@@ -155,12 +155,50 @@ def test_observer_cannot_chat(client, captured_cot, tak_enabled):
     assert captured_cot == []
 
 
-def test_operator_cannot_chat(client, captured_cot, tak_enabled):
-    # 對外發話＝指揮層動作（COMMAND_ROLES）；operator（WRITE_ROLES）不可（與 downlink 同層）。
+def test_operator_can_chat_and_audits(client, captured_cot, tak_enabled):
+    # #463 公測回報放寬：operator（WRITE_ROLES）可發通聯（一線操作訊息，比照 share 窄洞）；
+    # audit-first 對 operator 同樣強制、發話者身分 server 端決定（session，不信 client）。
     create_account("op_chat", "1234", ROLE_OPERATOR_ZH, "Op Chat", "operator")
-    r = client.post("/api/tak/chat", json={"message": "x"}, headers=_login(client, "op_chat"))
-    assert r.status_code == 403
-    assert captured_cot == []
+    r = client.post("/api/tak/chat", json={"message": "前線回報"}, headers=_login(client, "op_chat"))
+    assert r.status_code == 200, r.text
+    data = r.json()
+    assert data["status"] == "sent"
+    assert len(captured_cot) == 1 and "Op Chat" in captured_cot[0]
+    rows = _chat_audit_rows(data["uid"])
+    assert len(rows) == 1 and rows[0][0] == "op_chat"
+
+
+def test_operator_dm_not_faction_gated_at_ics(client, captured_cot, tak_enabled, monkeypatch):
+    """#463：出向 DM **不在 ICS 層做 faction 檢查**——operator 比照 commander（改動前即無此檢查）。
+    即使隔離開啟、收件 uid 可解析為紅軍 entity，ICS 仍照送（權威邊界＝TAK #344 group 隔離；
+    callsign 非可靠 faction 鍵）。此測試鎖住「不擋」的刻意設計，防後續誤補解耦的假防線。"""
+    from core import config as _cfg
+    from repositories import cop_entity_repo
+    from schemas.cop import CoPEntity
+
+    monkeypatch.setattr(_cfg, "FACTION_ISOLATION_ENABLED", True)
+    cop_entity_repo.insert_cop_entity(
+        CoPEntity(
+            uid="RED-DM-1",
+            type="a-h-G",
+            time="2026-07-03T00:00:00Z",
+            start="2026-07-03T00:00:00Z",
+            stale="2099-01-01T00:00:00Z",
+            how="h-e",
+            lat=25.0,
+            lon=121.0,
+            source="tak",
+            faction="red",
+        )
+    )
+    create_account("op_dm", "1234", ROLE_OPERATOR_ZH, "Op DM", "operator")
+    r = client.post(
+        "/api/tak/chat",
+        json={"message": "x", "recipient_uid": "RED-DM-1", "recipient_callsign": "RED-01"},
+        headers=_login(client, "op_dm"),
+    )
+    assert r.status_code == 200, r.text
+    assert len(captured_cot) == 1 and "RED-01" in captured_cot[0]
 
 
 def test_chat_empty_message_422(client, auth, captured_cot, tak_enabled):

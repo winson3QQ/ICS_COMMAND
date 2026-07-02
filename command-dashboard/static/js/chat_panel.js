@@ -17,7 +17,7 @@
  * 範圍邊界（移出 b1，各自後置）：b3 marker 連結 / 欄位盤點(#193) / O/C 識別與限可見 / b2 即時 WS。
  */
 
-import { authFetch, getToken, hasAnyRole } from './auth.js';
+import { authFetch, canSendChat, getToken } from './auth.js';
 
 // 同 cop.js 慣例：各模組各自定義（auth.js 的 API_BASE 非 export）。typeof 守門讓純函式
 // 能在無 location 的 vitest node 環境被 import（不影響瀏覽器：location 必存在）。
@@ -189,11 +189,12 @@ export function initChatPanel() {
 }
 
 // #216：出向 GeoChat compose ─────────────────────────────────────────────────
-// 對外發話＝指揮層動作（後端 POST /api/tak/chat = COMMAND_ROLES）。observer/operator
-// 唯讀通聯，故 compose 僅 COMMAND_ROLES 顯示（否則他們會看到一個必 403 的送出框）。
-function _canSendChat() { return hasAnyRole('sysadmin', 'commander'); }
+// #463：放寬到 WRITE_ROLES（後端 POST /api/tak/chat = WRITE_ROLES）——operator 是一線
+// 操作訊息者，通聯雙向屬其職責。observer 仍唯讀，compose 不顯示（否則會看到必 403 的送出框）。
+// role 集合收斂在 auth.js canSendChat（勿 inline 攤開清單，防與後端 WRITE_ROLES 漂移）。
+function _canSendChat() { return canSendChat(); }
 
-/** 依角色顯隱 compose（COMMAND_ROLES 才出）。initChatPanel 可能在登入前跑（role 未進
+/** 依角色顯隱 compose（WRITE_ROLES 才出）。initChatPanel 可能在登入前跑（role 未進
  *  sessionStorage）→ refreshChatNow（登入後 hook）會再套一次，否則 commander 也看不到送出框。 */
 function _applyComposeVisibility() {
   const box = _el('chat-compose');

@@ -14,7 +14,8 @@ ingestion 兩條路徑（共用 #105 的 `cop_service.ingest_cot_event` 接縫�
   寫 CoT 進 :8089 → server 廣播現場 ATAK。live broadcast；持久/可靠刪除是 P2-14 未解問題。
 
 協調契約（#105/#107）：本檔**只呼叫** `ingest_cot_event`，不定義（接縫是 cop_service 的）；
-RBAC 由 `auth/role_enum.py` 中央 gate（POST=COMMAND_ROLES，見 #146）。
+RBAC 由 `auth/role_enum.py` 中央 gate（POST 預設 COMMAND_ROLES 見 #146；例外：share #180 與
+chat #463 放寬 WRITE_ROLES，清單見 role_enum 的 /api/tak/ 各 case）。
 """
 
 import uuid
@@ -115,7 +116,8 @@ async def push_downlink(body: DownlinkCommandIn, request: Request):
 async def send_geochat(body: ChatSendIn, request: Request):
     """#216 出向 GeoChat：指揮部對現場 TAK 發文字通聯（對稱入向 P2-07 chat_service）。
 
-    RBAC = COMMAND_ROLES（role_enum 中央 gate：POST /api/tak/* → COMMAND_ROLES）。
+    RBAC = WRITE_ROLES（#463 公測回報放寬：role_enum 窄洞 POST /api/tak/chat → WRITE_ROLES，
+    operator 一線操作訊息；observer 仍唯讀）。
     **發話者身分 server 端決定**（session display_name/username），不信 client 宣告——
     對齊「不信 client 時鐘/身分」doctrine。audit-first（指揮對外發話須留痕；只記路由 +
     長度 metadata，**不**記訊息內文——內文走 chats 表的 PII 保留政策 #348-F10，不雙重保留）。
@@ -132,6 +134,13 @@ async def send_geochat(body: ChatSendIn, request: Request):
     # 縱深防護：內容白名單（schema 已驗，這裡再過一次 sink 防護，對齊 downlink/cop）。
     validate_no_unsafe_strings(body.model_dump())
 
+    # 出向 DM **不在 ICS 層做 faction 檢查**——operator 比照 commander（改動前即如此，兩者同為
+    # 藍方 faction，發 DM 一律無 ICS 檢查）。為何不加（防下個 reviewer 誤補漏洞檢查）：TAK server
+    # 靠 <marti><dest callsign> 投遞（tak_downlink.build_geochat_cot），而 callsign「顯示不可信、
+    # 同 uid 可多陣營」（memory tak-faction-group-identifier）＝**非可靠 faction 鍵**，ICS 層依它擋
+    # 不牢（crafted callsign 可繞 by-uid 檢查）。出向跨陣營隔離的**權威邊界＝TAK #344 server group
+    # 隔離**。（對比 share 端點有 faction 檢查：它 by-uid 操作既有 entity、檢查與操作同鍵才成立；
+    # DM 是 by-callsign 投遞，鍵不同，同型檢查放這裡是解耦的假防線。）
     msg_id = uuid.uuid4().hex
     # DM 顯示名：優先收件呼號、退收件 uid；非 DM → 聊天室名（防空白退全體）。
     if body.recipient_uid:
@@ -176,8 +185,8 @@ async def send_geochat(body: ChatSendIn, request: Request):
 async def share_entity_to_tak(uid: str, request: Request):
     """P2-30 part 2（#180）：把**既有 COP 感知標記**推到 TAK（共享閘）。
 
-    「共享閘」= 指揮層顯式、受 audit 的分享動作（非自動轟全網）。RBAC = COMMAND_ROLES
-    （role_enum 中央 gate：POST /api/tak/* → COMMAND_ROLES）。放 tak.py 不放 cop.py：與
+    「共享閘」= 顯式、受 audit 的分享動作（非自動轟全網）。RBAC = WRITE_ROLES（#180 part 3
+    放寬：operator 前線感知職責；role_enum 窄洞）。放 tak.py 不放 cop.py：與
     P2-27（另一 session 改 cop.py/events）零檔案重疊。對 cop_entities **唯讀**（get），不改 schema。
 
     流程：查 entity → `entity_to_cot`（點/幾何分流）→ **audit-first** → send_cot。
