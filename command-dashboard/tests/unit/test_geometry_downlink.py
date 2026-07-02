@@ -149,3 +149,59 @@ def test_build_geometry_cot_line_roundtrips_through_extract():
     geom = extract_geometry(e.find("detail"))
     assert geom["type"] == "LineString"
     assert geojson_to_vertices(geom) == verts
+
+
+# ── #260 Slice B：出向 route 忠實 round-trip（waypoints + link_attr）───────────────
+
+
+def test_route_outbound_faithful_with_waypoints_issue260():
+    """#260 Slice B：route 出向有原始 waypoints → 保 waypoint callsign/type + link_attr 導航屬性
+    （非光禿 control point）。"""
+    waypoints = [
+        {"uid": "wp1", "callsign": "Route 1 SP", "type": "b-m-p-w", "point": "24.837,121.035,44", "relation": "c"},
+        {"uid": "wp2", "callsign": "TGT", "type": "b-m-p-w", "point": "24.831,121.034,54", "relation": "c"},
+    ]
+    link_attr = {"method": "Walking", "routetype": "Primary", "direction": "Infil"}
+    cot = build_geometry_cot(
+        uid="R1",
+        type_="b-m-r",
+        vertices=[[24.837, 121.035], [24.831, 121.034]],
+        closed=False,
+        waypoints=waypoints,
+        link_attr=link_attr,
+        now=_NOW,
+    )
+    e = ET.fromstring(cot[cot.index("<event") :])
+    links = e.findall("detail/link")
+    assert {link.get("callsign") for link in links} == {"Route 1 SP", "TGT"}  # waypoint 名字保留
+    assert all(link.get("type") == "b-m-p-w" for link in links)  # waypoint（非光禿 control point）
+    la = e.find("detail/link_attr")
+    assert la is not None and la.get("method") == "Walking" and la.get("routetype") == "Primary"
+
+
+def test_route_outbound_falls_back_without_waypoints_issue260():
+    """ICS 自建 route（無 attributes.link）→ 退回光禿 control point。"""
+    cot = build_geometry_cot(uid="R2", type_="b-m-r", vertices=[[24.9, 121.4], [25.0, 121.5]], closed=False, now=_NOW)
+    e = ET.fromstring(cot[cot.index("<event") :])
+    assert all(link.get("type") == "b-m-p-c" for link in e.findall("detail/link"))  # 光禿 control point
+    assert e.find("detail/link_attr") is None
+
+
+def test_route_outbound_xml_injection_defended_issue260():
+    """XML injection 防護：惡意 waypoint callsign / link_attr key+value → escape/過濾，不破壞 XML。"""
+    waypoints = [{"callsign": '"><evil/>', "type": "b-m-p-w", "point": "24.8,121.0", "relation": "c"}]
+    link_attr = {"bad key": "x", "method": '"><inject/>'}  # "bad key" 含空格 → 過濾
+    cot = build_geometry_cot(
+        uid="R3",
+        type_="b-m-r",
+        vertices=[[24.8, 121.0], [24.9, 121.1]],
+        closed=False,
+        waypoints=waypoints,
+        link_attr=link_attr,
+        now=_NOW,
+    )
+    e = ET.fromstring(cot[cot.index("<event") :])  # 仍合法 XML（escape 有效）
+    assert "<evil" not in cot and "<inject" not in cot  # 未注入成 element
+    la = e.find("detail/link_attr")
+    assert la.get("bad key") is None and la.get("method") == '"><inject/>'  # 不安全 key 過濾、value escape 後忠實
+    assert e.find("detail/link").get("callsign") == '"><evil/>'  # callsign escape 後還原

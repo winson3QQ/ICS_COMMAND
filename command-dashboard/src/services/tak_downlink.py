@@ -181,6 +181,8 @@ def build_geometry_cot(
     color: str | None = None,
     dashed: bool = False,
     dotted: bool = False,
+    waypoints: list | None = None,
+    link_attr: dict | None = None,
     stale_minutes: int = 60,
     now: datetime | None = None,
 ) -> str:
@@ -198,7 +200,15 @@ def build_geometry_cot(
 
     # 同一組 cleaned 點供 links 與形心用（避免 links 過濾、形心沒過濾的分歧，review #180）。
     pts = geometry_service.clean_vertices(vertices, closed=closed)
-    links = geometry_service.vertices_to_cot_links(vertices, closed=closed)
+    # #260 Slice B：route 有原始 waypoints（入向保留的 attributes.link）→ 忠實序列化（保 waypoint
+    # 名字/type + link_attr 導航屬性）；ICS 自建 route（僅 vertices）或無合法 waypoint → 退回光禿 links。
+    links = None
+    if not closed and waypoints:
+        raw = geometry_service.route_links_to_cot(waypoints)
+        if raw:
+            links = raw + geometry_service.link_attr_to_cot(link_attr)
+    if links is None:
+        links = geometry_service.vertices_to_cot_links(vertices, closed=closed)
     now = now or datetime.now(UTC)
     t = now.strftime("%Y-%m-%dT%H:%M:%S.000Z")
     stale = (now + timedelta(minutes=stale_minutes)).strftime("%Y-%m-%dT%H:%M:%S.000Z")
@@ -271,6 +281,10 @@ def entity_to_cot(entity: dict, *, stale_minutes: int = 60, now: datetime | None
             color=attrs.get("color"),
             dashed=bool(attrs.get("dash")),
             dotted=bool(attrs.get("dotted")),
+            # #260 Slice B：route 忠實 round-trip —— 傳入向保留的原始 waypoints + 導航屬性；
+            # polygon 無 waypoint 語意（不傳，走 vertices）。
+            waypoints=attrs.get("link") if kind == "route" else None,
+            link_attr=attrs.get("link_attr") if kind == "route" else None,
             stale_minutes=stale_minutes,
             now=now,
         )

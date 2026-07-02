@@ -243,3 +243,23 @@ def test_real_fixture_medevac_extracted():
     assert mv["marking"] == "Smoke - Green"
     # 原始 _medevac_ 仍保留（含未提取進摘要的 medline_remarks）
     assert ent.attributes["_medevac_"]["medline_remarks"] == "2 lower-limb amputations"
+
+
+# ── 4. #260 Slice A：route/繪圖 <point>=0,0 佔位 → 取首頂點當代表座標 ──────────────
+
+
+def test_route_zero_point_uses_first_vertex_issue260():
+    """#260 Slice A：route 的 <point>=0,0（錨點在 waypoints、非單點）→ 主座標退化 (0,0)。
+    無效 point + 有頂點 → 取首頂點（route 起點）當代表座標，非留 0,0。"""
+    geom = {"type": "LineString", "coordinates": [[121.0353, 24.8377], [121.0382, 24.8351]]}  # [lon,lat]
+    ent = normalize_cot(_event(uid="R1", type="b-m-r", lat=0.0, lon=0.0, geometry=geom))
+    assert (round(ent.lat, 4), round(ent.lon, 4)) == (24.8377, 121.0353)  # 首頂點 [lat,lon]，非 0,0
+    assert ent.attributes.get("kind") == "route"
+    assert ent.attributes.get("vertices")  # 頂點保留供渲染
+
+
+def test_valid_point_not_overwritten_by_vertex_issue260():
+    """有效 <point>（非 0,0）+ geometry → lat/lon 保留原 point，不被首頂點覆寫（守 review #132）。"""
+    geom = {"type": "LineString", "coordinates": [[121.0353, 24.8377], [121.0382, 24.8351]]}
+    ent = normalize_cot(_event(uid="R2", type="b-m-r", lat=24.5, lon=120.5, geometry=geom))
+    assert (ent.lat, ent.lon) == (24.5, 120.5)  # 保留原 point
