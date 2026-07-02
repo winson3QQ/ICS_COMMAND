@@ -187,8 +187,11 @@ APP_VERSION = "2.28.1"
 #         + 演習/放置/稽核 UI P1-13/14/16/#93 + 分類編輯器 #66）→ 0.x 畢業為 MAJOR 紀元。
 CMD_VERSION: str = os.getenv(
     "CMD_VERSION",
-    "v1.20.1",  # PATCH：#463——通聯 compose 送出框對 operator 顯示（後端同步放寬 WRITE_ROLES）。
-    # MINOR v1.20.0：發證面板桌機改發「安裝包 .zip」（含 root CA + 分平台 README）——一個檔到位、瘦身
+    "v1.21.1",  # PATCH：#463——通聯 compose 送出框對 operator 顯示（後端同步放寬 WRITE_ROLES）。
+    # MINOR v1.21.0：route 命名 waypoint（SP/CP/TGT）顯示成 map marker+label（#260 C2 / #464）——
+    # 圓點+白字標出戰術 checkpoint（`attributes.link` 的 b-m-p-w+callsign），control point 不畫、
+    # 純自建 route 無 link 不顯示（命名/編輯=#260 D）；移動時 waypoint 隨 link 同步位移。真機 4-route dogfood PASS。
+    # v1.20.0：發證面板桌機改發「安裝包 .zip」（含 root CA + 分平台 README）——一個檔到位、瘦身
     # 原本落落長的多平台說明文字；密碼仍只在面板顯示（乙）。iOS 維持 .mobileconfig。
     # PATCH v1.19.2：ICS .p12 憑證「分享 / 存檔」在 Mac 桌機 navigator.share 丟 Permission denied(NotAllowedError)
     # → 對齊 #330 退回下載(原其餘 3 個 share 鈕已有、唯 .p12 漏 → 只它 alert「分享失敗」)；Windows share 成功時行為不變

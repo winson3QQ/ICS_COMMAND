@@ -41,6 +41,7 @@ import {
   routeToFeature,
   routeMidLngLat,
   routeLabelToFeature,
+  routeWaypointsToFeatures,
   zoneToNodeFeature,
   copEntityToRoute,
   copEntityToPolygon,
@@ -1625,6 +1626,43 @@ function _ensureEntityLayers() {
           ],
         },
       },
+      {
+        // #260 C2：命名 waypoint 圓點（kind='waypoint' Point，routeWaypointsToFeatures 產）。
+        // 用 circle（免 SDF bake）：route 色填 + 白邊，疊在線上標出 SP/CP/TGT 位置。
+        // 不設 properties.id → 不參與 route feature-state（promoteId='id'）。
+        id: 'routes-waypoint-dot', type: 'circle',
+        filter: ['==', ['get', 'kind'], 'waypoint'],
+        paint: {
+          'circle-radius': 4,
+          'circle-color': ['get', 'color'],
+          'circle-stroke-color': '#ffffff',
+          'circle-stroke-width': 1.5,
+          'circle-opacity': 0.95,
+        },
+      },
+      {
+        // #260 C2：waypoint 名字 label（native text-field SDF glyph）。往上偏不壓點；
+        // 長 SP 名（如「撤退路線 SP」）靠 text-max-width 折行。allow-overlap:false +
+        // text-optional → waypoint 密集時自動避讓（declutter），避免糊成一團。
+        id: 'routes-waypoint-label', type: 'symbol',
+        filter: ['==', ['get', 'kind'], 'waypoint'],
+        layout: {
+          'text-field': ['get', 'label'],
+          'text-font': ['Noto Sans Regular'],
+          'text-size': 10,
+          'text-offset': [0, -0.9],
+          'text-anchor': 'bottom',
+          'text-max-width': 8,
+          'symbol-placement': 'point',
+          'text-allow-overlap': false,
+          'text-optional': true,
+        },
+        paint: {
+          'text-color': '#ffffff',
+          'text-halo-color': '#0d1117',
+          'text-halo-width': 1.5,
+        },
+      },
     ],
   });
 
@@ -2651,7 +2689,16 @@ function _applyShapeMoveOverride(shapes, kind) {
   if (!_movingShape || _movingShape.kind !== kind) return shapes;
   const { uid, baseVertices, dLat, dLng } = _movingShape;
   return shapes.map((s) => (s && s.id === uid)
-    ? { ...s, latlngs: baseVertices.map(([la, lo]) => [la + dLat, lo + dLng]) }
+    ? {
+      ...s,
+      latlngs: baseVertices.map(([la, lo]) => [la + dLat, lo + dLng]),
+      // #260 C2：waypoint 跟著移動（原座標 + 累積 Δ；shape 每 render 從 cop 重取原座標 → 正確）
+      ...(Array.isArray(s.waypoints)
+        ? { waypoints: s.waypoints.map((w) => (Array.isArray(w?.lngLat)
+          ? { ...w, lngLat: [w.lngLat[0] + dLng, w.lngLat[1] + dLat] }
+          : w)) }
+        : {}),
+    }
     : s);
 }
 
@@ -2715,6 +2762,19 @@ async function _endShapeMove() {
   const moved = mv.baseVertices.map(([la, lo]) => [la + mv.dLat, lo + mv.dLng]);
   attrs.vertices = moved;
   if (mv.baseLabelAnchor) attrs.label_anchor = [mv.baseLabelAnchor[0] + mv.dLat, mv.baseLabelAnchor[1] + mv.dLng];
+  // #260 C2：route 移動時 attributes.link 的 point 座標（waypoint + control point）同步位移 Δ。
+  // 否則 commit 後 extractRouteWaypoints 讀到舊 link → waypoint 標記回彈；shared route 更會把
+  // 移動後的 vertices 上 TAK 卻帶舊 waypoint（線位脫節）。逐 link 保留 hae 尾段與 type/callsign。
+  if (Array.isArray(attrs.link)) {
+    attrs.link = attrs.link.map((lk) => {
+      if (!lk || typeof lk.point !== 'string') return lk;
+      const p = lk.point.split(',');
+      const la = Number(p[0]); const lo = Number(p[1]);
+      if (!Number.isFinite(la) || !Number.isFinite(lo)) return lk;
+      const tail = p.slice(2).join(',');  // hae（可能無）
+      return { ...lk, point: `${la + mv.dLat},${lo + mv.dLng}${tail ? `,${tail}` : ''}` };
+    });
+  }
   const [cLat, cLng] = _polyCentroid(moved);
   let ok = false;
   try {
@@ -2754,7 +2814,8 @@ function _applyVertexEditOverride(shapes, kind) {
   if (!_editingShape || _editingShape.kind !== kind) return shapes;
   const { uid, vertices } = _editingShape;
   return shapes.map((s) => (s && s.id === uid)
-    ? { ...s, latlngs: vertices.map(([la, lo]) => [la, lo]) }
+    // #260 C2：reshape 中隱藏該 route 的 waypoint（工作頂點與命名 waypoint 已不對應，顯示會誤導）
+    ? { ...s, latlngs: vertices.map(([la, lo]) => [la, lo]), waypoints: [] }
     : s);
 }
 
@@ -3141,6 +3202,7 @@ function _renderRoutes() {
   const features = [
     ...routes.map(routeToFeature).filter(Boolean),
     ...routes.map(routeLabelToFeature).filter(Boolean),
+    ...routes.flatMap(routeWaypointsToFeatures),  // #260 C2：命名 waypoint marker+label（併同 source）
   ];
   _routeLayer.update(features);
   _reapplySelection();  // P1-10e：setData 清掉 feature-state，重套選中
