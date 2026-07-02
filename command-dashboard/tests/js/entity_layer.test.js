@@ -17,6 +17,8 @@ import {
   polygonLabelToFeature,
   routeToFeature,
   routeLabelToFeature,
+  routeWaypointsToFeatures,
+  extractRouteWaypoints,
   infraToFeature,
   copEntityToRoute,
   copEntityToPolygon,
@@ -682,5 +684,90 @@ describe('copEntityToRoute route_attr (#260 C1)', () => {
   });
   test('link_attr 非物件（array）→ 不帶（避免髒資料）', () => {
     expect(copEntityToRoute(_route(['x'])).route_attr).toBeUndefined();
+  });
+});
+
+describe('extractRouteWaypoints / routeWaypointsToFeatures (#260 C2)', () => {
+  // 真機基準（ATAK「Waypoint」route，2026-07-03 dogfood）：link 序列 b-m-p-w/b-m-p-c 交錯
+  const _link = [
+    { uid: 'w1', callsign: 'Waypoint SP', type: 'b-m-p-w', point: '24.713793,120.9425444,73.109', relation: 'c' },
+    { uid: 'c1', callsign: '', type: 'b-m-p-c', point: '24.7173244,120.9468574,71.656', relation: 'c' },
+    { uid: 'c2', callsign: '', type: 'b-m-p-c', point: '24.7174419,120.9518168,105.093', relation: 'c' },
+    { uid: 'w2', callsign: 'TGT', type: 'b-m-p-w', point: '24.7200547,120.952002,87.458', relation: 'c' },
+  ];
+
+  test('只取 b-m-p-w 且有 callsign → 命名 waypoint，控制點 b-m-p-c 排除', () => {
+    const wps = extractRouteWaypoints({ attributes: { link: _link } });
+    expect(wps).toHaveLength(2);
+    expect(wps.map((w) => w.name)).toEqual(['Waypoint SP', 'TGT']);
+    // point "lat,lon,hae" → [lng, lat]
+    expect(wps[0].lngLat).toEqual([120.9425444, 24.713793]);
+    expect(wps[0].uid).toBe('w1');
+  });
+
+  test('b-m-p-w 但 callsign 空 → 不算命名 waypoint', () => {
+    const wps = extractRouteWaypoints({ attributes: { link: [
+      { callsign: '  ', type: 'b-m-p-w', point: '1,2,0' },
+    ] } });
+    expect(wps).toEqual([]);
+  });
+
+  test('純 ICS 自建 route（無 link）→ 回 []（scope：不顯示 waypoint）', () => {
+    expect(extractRouteWaypoints({ attributes: { vertices: [[0, 0], [1, 1]] } })).toEqual([]);
+    expect(extractRouteWaypoints({ attributes: {} })).toEqual([]);
+    expect(extractRouteWaypoints(null)).toEqual([]);
+  });
+
+  test('單一 <link>（dict 非 array）→ 包成 array 處理（防禦）', () => {
+    const wps = extractRouteWaypoints({ attributes: { link: { callsign: 'SP', type: 'b-m-p-w', point: '5,6,0' } } });
+    expect(wps).toEqual([{ uid: null, name: 'SP', lngLat: [6, 5] }]);
+  });
+
+  test('point 座標非法 → 略過該點', () => {
+    const wps = extractRouteWaypoints({ attributes: { link: [
+      { callsign: 'bad', type: 'b-m-p-w', point: 'x,y,z' },
+      { callsign: 'ok', type: 'b-m-p-w', point: '3,4,0' },
+    ] } });
+    expect(wps).toEqual([{ uid: null, name: 'ok', lngLat: [4, 3] }]);
+  });
+
+  test('WGS84 邊界外座標 → 略過（parseWgs84 擋畫到地球外的髒資料）', () => {
+    const wps = extractRouteWaypoints({ attributes: { link: [
+      { callsign: 'offglobe', type: 'b-m-p-w', point: '999,121,0' },   // lat > 90
+      { callsign: 'badlon', type: 'b-m-p-w', point: '24,300,0' },      // lon > 180
+      { callsign: 'good', type: 'b-m-p-w', point: '24.7,120.9,73' },
+    ] } });
+    expect(wps).toEqual([{ uid: null, name: 'good', lngLat: [120.9, 24.7] }]);
+  });
+
+  test('copEntityToRoute 掛上 waypoints（有命名 waypoint 才帶）', () => {
+    const ent = { uid: 'r', callsign: 'Waypoint', attributes: { kind: 'route', vertices: [[24.7, 120.9], [24.72, 120.95]], link: _link } };
+    const shape = copEntityToRoute(ent);
+    expect(shape.waypoints).toHaveLength(2);
+    expect(shape.waypoints[1].name).toBe('TGT');
+  });
+
+  test('copEntityToRoute 無命名 waypoint → 不帶 waypoints 欄位', () => {
+    const shape = copEntityToRoute({ uid: 'r', attributes: { kind: 'route', vertices: [[0, 0], [1, 1]] } });
+    expect(shape.waypoints).toBeUndefined();
+  });
+
+  test('routeWaypointsToFeatures → kind="waypoint" Point Feature，不帶 properties.id', () => {
+    const feats = routeWaypointsToFeatures({
+      id: 'r1', color: '#ff0000',
+      waypoints: [{ uid: 'w1', name: 'SP', lngLat: [120.94, 24.71] }],
+    });
+    expect(feats).toHaveLength(1);
+    expect(feats[0].geometry).toEqual({ type: 'Point', coordinates: [120.94, 24.71] });
+    expect(feats[0].properties.kind).toBe('waypoint');
+    expect(feats[0].properties.label).toBe('SP');
+    expect(feats[0].properties.color).toBe('#ff0000');
+    expect(feats[0].properties.route_id).toBe('r1');
+    expect(feats[0].properties.id).toBeUndefined();  // 不撞 route feature-state（promoteId='id'）
+  });
+
+  test('routeWaypointsToFeatures 無 waypoints → []', () => {
+    expect(routeWaypointsToFeatures({ id: 'r' })).toEqual([]);
+    expect(routeWaypointsToFeatures(null)).toEqual([]);
   });
 });
