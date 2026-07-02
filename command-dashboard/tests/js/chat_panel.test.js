@@ -11,6 +11,7 @@ vi.mock('../../static/js/auth.js', () => ({
   authFetch: () => Promise.resolve({ ok: true, json: async () => ({ chats: [] }) }),
   getToken: () => 't',
   hasAnyRole: () => true,
+  canSendChat: () => true,
 }));
 
 import {

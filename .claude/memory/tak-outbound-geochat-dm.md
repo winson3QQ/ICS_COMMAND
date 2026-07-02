@@ -7,7 +7,7 @@ metadata:
   originSessionId: 0ce2986b-a122-4dc9-a757-37f02a55d890
 ---
 
-ICS→TAK 出向文字通聯（GeoChat `b-t-f`）= `services/tak_downlink.build_geochat_cot` + `POST /api/tak/chat`（COMMAND_ROLES + audit-first + 內容白名單）。站台身分 `ICS_SELF_UID="ICS-CMD"`（ICS 非 GPS 裝置、wire 無自身 uid，需穩定 sender 才能組 chatgrp/link/uid）；發話者由 senderCallsign 帶出。回送 ICS 自身靠 uid 的 msg_id GUID 冪等去重（`chat_repo.chat_exists`），且 `ingest_chat` 把 sender==`ICS_SELF_UID` 歸 `faction='blue'`（否則 fail-closed 對藍方隱藏、連發話 commander 自己都看不到）。
+ICS→TAK 出向文字通聯（GeoChat `b-t-f`）= `services/tak_downlink.build_geochat_cot` + `POST /api/tak/chat`（**WRITE_ROLES**——#463 公測回報 2026-07-03 由 COMMAND 放寬，operator 一線操作訊息、比照 #180 share 窄洞，**勿修回 COMMAND**；audit-first + 內容白名單）。**出向 DM 不在 ICS 層做 faction 檢查**（operator 比照 commander，改動前即如此）：TAK 靠 `<marti><dest callsign>` 投遞而 callsign 非可靠 faction 鍵（[[tak-faction-group-identifier]]），ICS 依它擋不牢；出向跨陣營隔離**權威邊界＝TAK #344 group 隔離**。（對比 share 端點 by-uid 操作既有 entity、檢查與操作同鍵才成立；DM by-callsign 投遞鍵不同，同型檢查是解耦假防線——#463 review 一度誤補、後撤。）站台身分 `ICS_SELF_UID="ICS-CMD"`（ICS 非 GPS 裝置、wire 無自身 uid，需穩定 sender 才能組 chatgrp/link/uid）；發話者由 senderCallsign 帶出。回送 ICS 自身靠 uid 的 msg_id GUID 冪等去重（`chat_repo.chat_exists`），且 `ingest_chat` 把 sender==`ICS_SELF_UID` 歸 `faction='blue'`（否則 fail-closed 對藍方隱藏、連發話 commander 自己都看不到）。
 
 **🔑 出向 DM 必須帶 `<marti><dest callsign="..."/>`（2026-06-25 公網雙實機 dogfood 實證）**：
 - 沒帶 dest → TAK server 對 GeoChat **廣播全發**，要不要顯示交給各 client 過濾，而 **ATAK 過濾比 iTAK 鬆 → 私訊外洩**（私訊給 itak、atak 也收到；私訊給 atak 只 atak 收到，不對稱）。

@@ -198,8 +198,18 @@ def allowed_roles_for(method: str, path: str) -> frozenset[str] | None:
         # （operator）放置的感知標記可直接推上 TAK（符合 operator = 前線感知職責）。與 #146 收緊的
         # POST /api/tak/events 不同：share 只推「已存在的 cop_entity」（get→entity_to_cot），不接受
         # 任意 client CoT、不繞過 cop 來源守門；且 share endpoint audit-first（每次強制稽核分享意圖）。
-        # **窄洞**：僅此 path 放寬，其餘 /api/tak/* POST（events 注入、admin cert/role）維持 COMMAND_ROLES。
         return WRITE_ROLES if method == "POST" else READ_ROLES
+    if path == "/api/tak/chat":
+        # #463 公測回報：出向 GeoChat 放寬到 WRITE_ROLES —— operator 是一線操作訊息者，
+        # 通聯雙向屬其職責（推翻 #216「對外發話＝指揮層動作」的原始 rationale）。比照 #180
+        # share 窄洞模式：端點 audit-first（TAK_CHAT_SEND）+ 發話者身分 server 端決定
+        # （不信 client 宣告）→ 問責不減；observer 仍唯讀（GET /api/chat 看、不能發）。
+        # operator 比照 commander：出向 DM 不在 ICS 層做 faction 檢查（權威邊界＝TAK #344
+        # group 隔離；callsign 非可靠 faction 鍵——見 routers/tak.py send_geochat 註解）。
+        return WRITE_ROLES if method == "POST" else READ_ROLES
+    # ⚠ /api/tak/* POST 放寬清單（WRITE_ROLES 窄洞）：share（#180）、chat（#463）——僅上列兩
+    # path；其餘 POST（events 注入、downlink、resync、admin cert/role）維持 COMMAND_ROLES。
+    # 再加洞時更新此清單，勿在各洞內寫「僅此 path 放寬」的排他宣稱（會互相打臉）。
     if path == "/api/tak/connection":
         # P2-24（#164）：runtime 開關 TAK 連線＝關掉整 COP 態勢全斷、blast radius 最大 →
         # 比照 /api/exercises/ DELETE 鎖 SYSADMIN_ONLY（commander 不可，避免誤觸把全 COP 弄瞎）。
@@ -212,8 +222,9 @@ def allowed_roles_for(method: str, path: str) -> frozenset[str] | None:
     if path == "/api/chat":
         # #213 b1：通聯唯讀（GET）→ READ_ROLES——observer 做 audit/AAR 觀察需看當前場通聯，
         # 屬與 events/COP 同層級的情境資料；跨場 PII 由 resolve_scope 守門（observer/operator
-        # 鎖當前 active 場，歷史場 ?exercise_id 限 COMMAND_ROLES）。出向 compose（POST，#216）
-        # ＝指揮對外發話、audit-first → 預留 COMMAND_ROLES（未實作；明示避免落非-GET 的 WRITE_ROLES 預設）。
+        # 鎖當前 active 場，歷史場 ?exercise_id 限 COMMAND_ROLES）。POST 未實作（出向 compose
+        # 實作在 /api/tak/chat；#463 後為 WRITE_ROLES——若日後在此實作應對齊之，勿再引 #216
+        # 已推翻的「指揮對外發話」rationale）；此處非-GET 維持 COMMAND 僅為 fail-closed 預留。
         return READ_ROLES if method == "GET" else COMMAND_ROLES
     # #370：歷史靠寬鬆預設才通的現役路由（模組層 _LEGACY_DEFAULT_*）照凍結分類回 READ/WRITE
     # ——行為零變更。新端點必須在上方明確分類，不再有寬鬆兜底（落下方 default-deny）。

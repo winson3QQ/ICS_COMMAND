@@ -76,6 +76,12 @@ export function canCreateEvents() {
   return hasAnyRole('sysadmin', 'commander', 'operator');
 }
 
+// #463：出向 GeoChat compose 顯隱（對齊後端 POST /api/tak/chat = WRITE_ROLES）。
+// role 集合收斂在本檔——別在各面板 inline 攤開角色清單（會與後端 WRITE_ROLES 漂移）。
+export function canSendChat() {
+  return hasAnyRole('sysadmin', 'commander', 'operator');
+}
+
 export function canAccessMapObjects() {
   return hasAnyRole('sysadmin', 'commander', 'operator');
 }

@@ -1270,7 +1270,7 @@ body{position:fixed;inset:0;}
       <div id="chat-stream" style="flex:1;overflow-y:auto;padding:4px 6px;font-size:10px;min-height:0;">
         <div class="chat-empty">無通聯</div>
       </div>
-      <!-- #216 出向 compose：COMMAND_ROLES 才顯示（observer/operator 唯讀 → initChatPanel 依角色隱藏）。
+      <!-- #216/#463 出向 compose：WRITE_ROLES 才顯示（observer 唯讀 → initChatPanel 依角色隱藏）。
            送出目標跟隨當前過濾脈絡：選單位→DM、選房間→該房、否則→全體廣播（chat-compose-target 顯示）。 -->
       <div id="chat-compose" style="flex-shrink:0;border-top:1px solid var(--border);padding:4px 6px;display:none;flex-direction:column;gap:3px;">
         <span id="chat-compose-target" style="font-size:9px;color:var(--text3);">→ 廣播（全體）</span>
