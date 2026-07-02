@@ -149,3 +149,100 @@ def test_build_geometry_cot_line_roundtrips_through_extract():
     geom = extract_geometry(e.find("detail"))
     assert geom["type"] == "LineString"
     assert geojson_to_vertices(geom) == verts
+
+
+# ── #260 Slice B：出向 route 忠實 round-trip（waypoints + link_attr）───────────────
+
+
+def test_route_outbound_faithful_with_waypoints_issue260():
+    """#260 Slice B：route 出向有原始 waypoints → 保 waypoint callsign/type + link_attr 導航屬性
+    （非光禿 control point）。"""
+    waypoints = [
+        {"uid": "wp1", "callsign": "Route 1 SP", "type": "b-m-p-w", "point": "24.837,121.035,44", "relation": "c"},
+        {"uid": "wp2", "callsign": "TGT", "type": "b-m-p-w", "point": "24.831,121.034,54", "relation": "c"},
+    ]
+    link_attr = {"method": "Walking", "routetype": "Primary", "direction": "Infil"}
+    cot = build_geometry_cot(
+        uid="R1",
+        type_="b-m-r",
+        vertices=[[24.837, 121.035], [24.831, 121.034]],
+        closed=False,
+        waypoints=waypoints,
+        link_attr=link_attr,
+        now=_NOW,
+    )
+    e = ET.fromstring(cot[cot.index("<event") :])
+    links = e.findall("detail/link")
+    assert {link.get("callsign") for link in links} == {"Route 1 SP", "TGT"}  # waypoint 名字保留
+    assert all(link.get("type") == "b-m-p-w" for link in links)  # waypoint（非光禿 control point）
+    la = e.find("detail/link_attr")
+    assert la is not None and la.get("method") == "Walking" and la.get("routetype") == "Primary"
+
+
+def test_route_outbound_falls_back_without_waypoints_issue260():
+    """ICS 自建 route（無 attributes.link）→ 退回光禿 control point。"""
+    cot = build_geometry_cot(uid="R2", type_="b-m-r", vertices=[[24.9, 121.4], [25.0, 121.5]], closed=False, now=_NOW)
+    e = ET.fromstring(cot[cot.index("<event") :])
+    assert all(link.get("type") == "b-m-p-c" for link in e.findall("detail/link"))  # 光禿 control point
+    assert e.find("detail/link_attr") is None
+
+
+def test_route_outbound_xml_injection_defended_issue260():
+    """XML injection 防護：惡意 waypoint callsign / link_attr key+value → escape/過濾，不破壞 XML。"""
+    waypoints = [{"callsign": '"><evil/>', "type": "b-m-p-w", "point": "24.8,121.0", "relation": "c"}]
+    link_attr = {"bad key": "x", "method": '"><inject/>'}  # "bad key" 含空格 → 過濾
+    cot = build_geometry_cot(
+        uid="R3",
+        type_="b-m-r",
+        vertices=[[24.8, 121.0], [24.9, 121.1]],
+        closed=False,
+        waypoints=waypoints,
+        link_attr=link_attr,
+        now=_NOW,
+    )
+    e = ET.fromstring(cot[cot.index("<event") :])  # 仍合法 XML（escape 有效）
+    assert "<evil" not in cot and "<inject" not in cot  # 未注入成 element
+    la = e.find("detail/link_attr")
+    assert la.get("bad key") is None and la.get("method") == '"><inject/>'  # 不安全 key 過濾、value escape 後忠實
+    assert e.find("detail/link").get("callsign") == '"><evil/>'  # callsign escape 後還原
+
+
+def test_route_outbound_has_routeinfo_polygon_none_issue260():
+    """#260：route(open) 出向必帶 <__routeinfo><__navcues/> —— ATAK 認定「這是 route」的標記，
+    缺則 b-m-r event 收得到卻不渲染（真機 dogfood 實證）；polygon(closed) 不帶。"""
+    route = build_geometry_cot(uid="R", type_="b-m-r", vertices=[[24.9, 121.4], [25.0, 121.5]], closed=False, now=_NOW)
+    e = ET.fromstring(route[route.index("<event") :])
+    assert e.find("detail/__routeinfo") is not None
+    assert e.find("detail/__routeinfo/__navcues") is not None
+    poly = build_geometry_cot(
+        uid="Z", type_="u-d-f", vertices=[[25.0, 121.0], [25.1, 121.0], [25.1, 121.1]], closed=True, now=_NOW
+    )
+    ep = ET.fromstring(poly[poly.index("<event") :])
+    assert ep.find("detail/__routeinfo") is None  # polygon 不是 route，不帶 routeinfo
+
+
+def test_route_outbound_single_link_dict_faithful_issue260():
+    """review：單一 <link> 被 _extract_detail 存成 dict（非 list）→ 仍走忠實路徑（正規化為單元素 list）。"""
+    wp = {"uid": "w1", "callsign": "SP", "type": "b-m-p-w", "point": "24.8,121.0", "relation": "c"}
+    cot = build_geometry_cot(
+        uid="R", type_="b-m-r", vertices=[[24.8, 121.0], [24.9, 121.1]], closed=False, waypoints=wp, now=_NOW
+    )
+    e = ET.fromstring(cot[cot.index("<event") :])
+    assert e.find("detail/link").get("callsign") == "SP"  # 單 dict 忠實序列化，非光禿
+
+
+def test_route_outbound_garbage_waypoints_falls_back_issue260():
+    """review：waypoints 全非法（座標 garbage / 非 dict）→ route_links_to_cot 回 None → 退回光禿 control point。"""
+    bad = [{"point": "999,0", "type": "b-m-p-w"}, "not-a-dict", {"point": "abc"}]
+    cot = build_geometry_cot(
+        uid="R", type_="b-m-r", vertices=[[24.8, 121.0], [24.9, 121.1]], closed=False, waypoints=bad, now=_NOW
+    )
+    e = ET.fromstring(cot[cot.index("<event") :])
+    assert all(link.get("type") == "b-m-p-c" for link in e.findall("detail/link"))  # 全非法 → fallback 光禿
+
+
+def test_udf_open_line_no_routeinfo_issue260():
+    """review：u-d-f 開放繪圖（非 b-m-r route）不帶 __routeinfo（避免 ATAK 誤當 route）。"""
+    cot = build_geometry_cot(uid="D", type_="u-d-f", vertices=[[24.8, 121.0], [24.9, 121.1]], closed=False, now=_NOW)
+    e = ET.fromstring(cot[cot.index("<event") :])
+    assert e.find("detail/__routeinfo") is None

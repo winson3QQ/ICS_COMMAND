@@ -365,11 +365,17 @@ def normalize_cot(cot_event: CoTEventIn) -> CoPEntity:
     # P2-08：CoT <shape>/<link> 幾何 → attributes.kind（route/polygon）+ vertices。
     # lat/lon **沿用 CoT <point>**（ATAK 給的錨點，忠實對位；不重算 centroid，避免與 ATAK 端
     # 顯示位置不一致 + 避免未驗證 centroid 覆寫已驗證 point — review #132）。
+    anchor_lat, anchor_lon = cot_event.lat, cot_event.lon
     if cot_event.geometry:
         verts = geometry_service.geojson_to_vertices(cot_event.geometry)
         if verts:
             detail["kind"] = "polygon" if cot_event.geometry.get("type") == "Polygon" else "route"
             detail["vertices"] = verts
+            # #260 Slice A：route/繪圖的 <point> 常是 0,0 佔位（錨點在 waypoints/頂點，非單點）→
+            # 主座標退化 (0,0)（畫到幾內亞灣、依賴 lat/lon 的邏輯拿到 0）。無效 point + 有 verts →
+            # 取首頂點（route 起點 / 繪圖首頂點）當代表座標；忠實對位、非重算 centroid（守 review #132）。
+            if anchor_lat == 0.0 and anchor_lon == 0.0:
+                anchor_lat, anchor_lon = verts[0][0], verts[0][1]
             # P2-10 #5：把 CoT strokeColor/fillColor → attributes.color，前端才不會一律退灰/藍。
             color = _extract_color(detail)
             if color:
@@ -391,8 +397,8 @@ def normalize_cot(cot_event: CoTEventIn) -> CoPEntity:
         stale=_norm_ts(cot_event.stale),
         how=cot_event.how,
         version=cot_event.version,
-        lat=cot_event.lat,
-        lon=cot_event.lon,
+        lat=anchor_lat,
+        lon=anchor_lon,
         hae=cot_event.hae,
         ce=cot_event.ce,
         le=cot_event.le,

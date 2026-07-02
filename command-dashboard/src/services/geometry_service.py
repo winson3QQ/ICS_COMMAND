@@ -13,6 +13,7 @@ services/geometry_service.py — CoT <shape> + DataSync GeoJSON 幾何統一解�
 
 import logging
 import math
+from xml.sax.saxutils import quoteattr
 
 log = logging.getLogger(__name__)
 
@@ -232,3 +233,68 @@ def vertices_to_cot_links(vertices: list[list[float]], *, closed: bool) -> str:
         return links + f'<link point="{la0},{lo0},0"/>'  # 閉合點（首尾相同 → Polygon）
     # route：control point，ATAK 不建航點 marker（裸 link → waypoint → 自動「SP」起點，#211）
     return "".join(f'<link type="b-m-p-c" relation="c" point="{la},{lo},0"/>' for la, lo in pts)
+
+
+# ── #260 Slice B：出向 route 忠實序列化（保 waypoint 名字/type + 導航屬性）────────────
+
+
+def _valid_cot_point(point) -> str | None:
+    """CoT <link> 的 point 字串 `"lat,lon[,hae]"` 驗證：lat/lon 在範圍 → 回原字串，否則 None
+    （防不可信 attributes 的座標 garbage，同 `_valid_lonlat` 風格）。"""
+    if not isinstance(point, str):
+        return None
+    parts = point.split(",")
+    if len(parts) < 2:
+        return None
+    try:
+        lat, lon = float(parts[0]), float(parts[1])
+    except (TypeError, ValueError):
+        return None
+    return point if -90.0 <= lat <= 90.0 and -180.0 <= lon <= 180.0 else None
+
+
+def _safe_attr_name(name) -> bool:
+    """XML attribute 名安全性：只允許字母/數字/底線/連字號（擋 attributes 來的 key 注入額外 XML）。"""
+    return isinstance(name, str) and bool(name) and all(c.isalnum() or c in "_-" for c in name)
+
+
+def route_links_to_cot(link_list) -> str | None:
+    """**出向忠實**（#260 Slice B）：cop_entity `attributes.link`（原始 route waypoints）→ ATAK 原生
+    `<link>` 序列，保 waypoint `uid/callsign/type/relation`（vs `vertices_to_cot_links` 光禿 control point）。
+    值全走 `quoteattr` escape、座標驗證；無任何合法 waypoint → None（呼叫端退回 vertices 光禿路徑）。"""
+    if isinstance(link_list, dict):
+        link_list = [link_list]  # 單一 <link> → _extract_detail 存 dict（對齊 cop_service 正規化 idiom）
+    if not isinstance(link_list, list):
+        return None
+    segs: list[str] = []
+    for link in link_list:
+        if not isinstance(link, dict):
+            continue
+        pt = _valid_cot_point(link.get("point"))
+        if pt is None:
+            continue
+        attrs = (
+            f"point={quoteattr(pt)} type={quoteattr(str(link.get('type') or 'b-m-p-c'))} "
+            f"relation={quoteattr(str(link.get('relation') or 'c'))}"
+        )
+        if link.get("uid"):
+            attrs += f" uid={quoteattr(str(link['uid']))}"
+        if link.get("callsign"):
+            attrs += f" callsign={quoteattr(str(link['callsign']))}"
+        segs.append(f"<link {attrs}/>")
+    return "".join(segs) if segs else None
+
+
+def link_attr_to_cot(link_attr) -> str:
+    """route 導航屬性 dict（planningmethod/method/routetype/direction…）→ `<link_attr .../>`（#260 Slice B）。
+    key 過 `_safe_attr_name`（擋注入）、value 走 `quoteattr`；純量值才收（skip nested dict/list）；空 → 空字串。"""
+    if isinstance(link_attr, list):
+        link_attr = next((x for x in link_attr if isinstance(x, dict)), None)  # 多筆 <link_attr>（罕見）→ 取首個
+    if not isinstance(link_attr, dict):
+        return ""
+    parts = "".join(
+        f" {k}={quoteattr(str(v))}"
+        for k, v in link_attr.items()
+        if _safe_attr_name(k) and not isinstance(v, dict | list)
+    )
+    return f"<link_attr{parts}/>" if parts else ""
