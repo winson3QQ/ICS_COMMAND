@@ -662,3 +662,25 @@ describe('copEntityToInfra adapter（P1-16 PR-2 on-demand 設施）', () => {
     expect(copEntityToInfra({ uid: 'x', attributes: { kind: 'infra' } })).toBeNull(); // 缺座標
   });
 });
+
+describe('copEntityToRoute route_attr (#260 C1)', () => {
+  const _route = (link_attr) => ({
+    uid: 'r1',
+    callsign: 'Route 1',
+    attributes: {
+      kind: 'route',
+      vertices: [[24.8, 121.0], [24.9, 121.1]],
+      ...(link_attr !== undefined ? { link_attr } : {}),
+    },
+  });
+  test('暴露 attributes.link_attr → route_attr（導航屬性）', () => {
+    const r = copEntityToRoute(_route({ method: 'Walking', routetype: 'Primary', direction: 'Infil' }));
+    expect(r.route_attr).toEqual({ method: 'Walking', routetype: 'Primary', direction: 'Infil' });
+  });
+  test('無 link_attr → route_attr undefined', () => {
+    expect(copEntityToRoute(_route(undefined)).route_attr).toBeUndefined();
+  });
+  test('link_attr 非物件（array）→ 不帶（避免髒資料）', () => {
+    expect(copEntityToRoute(_route(['x'])).route_attr).toBeUndefined();
+  });
+});
