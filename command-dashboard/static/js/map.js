@@ -2306,11 +2306,12 @@ function _isReadonlySource(entity) {
 }
 
 /** 外部來源圖形的唯讀資訊 modal（無刪除鈕）。 */
-function _readonlyShapeModal(title, desc, entity) {
+function _readonlyShapeModal(title, desc, entity, navHtml = '') {
   const src = _escapeHtml(String(entity?.source || '外部'));
   const who = entity?.callsign ? `　·　${_escapeHtml(String(entity.callsign))}` : '';
   _deps.openModal?.(title,
     `<div style="font-size:12px;line-height:1.7;color:var(--text2);">${_escapeHtml(desc)}</div>`
+    + navHtml  // #260 C1：導航屬性（值已 escape）— desc 走 _escapeHtml 不能含 HTML，故獨立注入
     + `<div style="font-size:11px;color:var(--text3);margin-top:6px;">來源 ${src}${who}　·　唯讀（TAK 同步圖形）</div>`);
 }
 
@@ -2539,15 +2540,26 @@ function _onRouteClick(e) {
   const route = copEntityToRoute(ent);
   if (!route) return;
   _setSelection('routes', id);  // P1-10e
-  const typeLabel = ROUTE_TYPES[route.route_type]?.label || route.route_type;
+  const typeLabel = ROUTE_TYPES[route.route_type]?.label || route.route_type || '路線';
   const desc = `${typeLabel}　${route.latlngs.length} 個節點`;
+  // #260 C1：route 導航屬性做成獨立 navHtml 區塊（值走 _escapeHtml）；desc 保純文字——唯讀路徑
+  // _readonlyShapeModal 對 desc 做 _escapeHtml，塞 HTML 會被當文字露出，故導航屬性走 navHtml 分開注入。
+  const ra = route.route_attr;
+  let navHtml = '';
+  if (ra && typeof ra === 'object') {
+    const nav = [];
+    if (ra.method) nav.push(`行進 ${_escapeHtml(String(ra.method))}`);
+    if (ra.routetype) nav.push(`類型 ${_escapeHtml(String(ra.routetype))}`);
+    if (ra.direction) nav.push(`方向 ${_escapeHtml(String(ra.direction))}`);
+    if (nav.length) navHtml = `<div style="color:var(--text3);font-size:11px;margin-bottom:8px;">${nav.join('　·　')}</div>`;
+  }
   if (_isReadonlySource(ent)) {  // TAK 來源 → 唯讀，不給刪除（對齊 backend）
-    _readonlyShapeModal(`↗ ${route.label || '路線'}`, desc, ent);
+    _readonlyShapeModal(`↗ ${route.label || '路線'}`, desc, ent, navHtml);
     return;
   }
   _deps.openModal?.(`↗ ${route.label || '路線'}`,
     _featureInfo(desc, 'deleteRoute', route.id,
-      { ...(route.label_anchor ? { resetAnchorAction: 'resetRouteLabelAnchor' } : {}), shareTak: true, editVertices: true }));
+      { ...(route.label_anchor ? { resetAnchorAction: 'resetRouteLabelAnchor' } : {}), shareTak: true, editVertices: true, navHtml }));
 }
 
 function _onZoneClick(e) {
@@ -3368,6 +3380,7 @@ function _simpleInfo(text) {
  */
 function _featureInfo(desc, action, id, extra = {}) {
   let html = `<div style="font-size:12px;line-height:1.7;color:var(--text2);margin-bottom:12px;">${desc || ''}</div>`;
+  if (extra.navHtml) html += extra.navHtml;  // #260 C1：route 導航屬性（值已 _escapeHtml）
   // #257 α-2：自建 polygon/route 進「逐頂點編輯」（拖既有頂點 reshape）。入口走 modal 鈕——
   // 長按已給 α-1 整體移動。唯讀 TAK 來源走 _readonlyShapeModal 不到這（=#258）。
   if (extra.editVertices && canAccessMapObjects()) {

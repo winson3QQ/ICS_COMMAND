@@ -670,7 +670,12 @@ function _copEntityToMapObject(entity, typeField, defaultColor) {
 
 /** cop_entity（attributes.kind='route'）→ routeToFeature 吃的 route-shape。 */
 export function copEntityToRoute(entity) {
-  return _copEntityToMapObject(entity, 'route_type', '#58a6ff');
+  const obj = _copEntityToMapObject(entity, 'route_type', '#58a6ff');
+  // #260 C1：route 導航屬性（attributes.link_attr：method/routetype/direction…）暴露供詳情顯示
+  // （polygon 無此軸，故只在 route builder 帶）。值來自 TAK detail，顯示端須 escape。
+  const la = entity?.attributes?.link_attr;
+  if (obj && la && typeof la === 'object' && !Array.isArray(la)) obj.route_attr = la;
+  return obj;
 }
 
 /** cop_entity（attributes.kind='polygon'）→ polygonToFeature 吃的 polygon-shape。 */
