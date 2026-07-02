@@ -30,6 +30,8 @@
  *   - clustering（步驟 11 P1-10f 才開）
  */
 
+import { parseWgs84 } from './coord_tools.js';
+
 const EMPTY_FC = Object.freeze({ type: 'FeatureCollection', features: [] });
 
 /**
@@ -675,7 +677,66 @@ export function copEntityToRoute(entity) {
   // （polygon 無此軸，故只在 route builder 帶）。值來自 TAK detail，顯示端須 escape。
   const la = entity?.attributes?.link_attr;
   if (obj && la && typeof la === 'object' && !Array.isArray(la)) obj.route_attr = la;
+  // #260 C2：命名 waypoint（attributes.link 的 b-m-p-w）掛上 shape，供 _renderRoutes 畫 marker+label。
+  if (obj) {
+    const wps = extractRouteWaypoints(entity);
+    if (wps.length) obj.waypoints = wps;
+  }
   return obj;
+}
+
+/**
+ * #260 C2：從 cop_entity 的 attributes.link 萃取「命名 waypoint」。
+ *
+ * TAK route 的 <link> 序列（真機實證，4 樣本一致）：
+ *   - type='b-m-p-w' + 非空 callsign → 命名 waypoint（SP/CP1/TGT…），畫 marker+label
+ *   - type='b-m-p-c'（callsign 空）  → control point，只塑線、不畫 marker（已在 vertices）
+ * point 格式 "lat,lon,hae"（逗號三段，hae 可為 0.0）→ 轉 [lng,lat]。
+ * 純 ICS 自建 route 無 link → 回 []（不顯示 waypoint，符合 scope；命名 = #260 D 編輯 UI）。
+ *
+ * @returns {Array<{uid: string|null, name: string, lngLat: [number, number]}>}
+ */
+export function extractRouteWaypoints(entity) {
+  let links = entity?.attributes?.link;
+  if (links && !Array.isArray(links)) links = [links];  // 單一 <link>（dict）→ 包成 array（防禦）
+  if (!Array.isArray(links)) return [];
+  const out = [];
+  for (const lk of links) {
+    if (!lk || lk.type !== 'b-m-p-w') continue;         // 只取 waypoint，跳過 control point
+    const name = String(lk.callsign ?? '').trim();
+    if (!name) continue;                                 // 未命名 → 不畫
+    // point "lat,lon,hae" → parseWgs84 取前兩數（忽略 hae）+ WGS84 邊界驗證（擋畫到地球外的髒座標）
+    const c = parseWgs84(lk.point);
+    if (!c) continue;
+    out.push({ uid: lk.uid ?? null, name, lngLat: [c.lng, c.lat] });
+  }
+  return out;
+}
+
+/**
+ * route-shape.waypoints → GeoJSON Point Feature 陣列（kind='waypoint'）。
+ * 併進既有 'routes' source（對齊 kind='label' 樣板）；刻意不設 properties.id，
+ * 避免撞到 route LineString 的 feature-state（source promoteId='id'）。
+ * 座標非法 → 略過該點。
+ */
+export function routeWaypointsToFeatures(route) {
+  if (route == null || !Array.isArray(route.waypoints)) return [];
+  const out = [];
+  for (const w of route.waypoints) {
+    const ll = w?.lngLat;
+    if (!Array.isArray(ll) || !Number.isFinite(ll[0]) || !Number.isFinite(ll[1])) continue;
+    out.push({
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: [ll[0], ll[1]] },
+      properties: {
+        kind: 'waypoint',
+        label: w.name ?? '',
+        color: route.color ?? '#58a6ff',
+        route_id: route.id ?? null,
+      },
+    });
+  }
+  return out;
 }
 
 /** cop_entity（attributes.kind='polygon'）→ polygonToFeature 吃的 polygon-shape。 */
