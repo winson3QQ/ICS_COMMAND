@@ -205,3 +205,17 @@ def test_route_outbound_xml_injection_defended_issue260():
     la = e.find("detail/link_attr")
     assert la.get("bad key") is None and la.get("method") == '"><inject/>'  # 不安全 key 過濾、value escape 後忠實
     assert e.find("detail/link").get("callsign") == '"><evil/>'  # callsign escape 後還原
+
+
+def test_route_outbound_has_routeinfo_polygon_none_issue260():
+    """#260：route(open) 出向必帶 <__routeinfo><__navcues/> —— ATAK 認定「這是 route」的標記，
+    缺則 b-m-r event 收得到卻不渲染（真機 dogfood 實證）；polygon(closed) 不帶。"""
+    route = build_geometry_cot(uid="R", type_="b-m-r", vertices=[[24.9, 121.4], [25.0, 121.5]], closed=False, now=_NOW)
+    e = ET.fromstring(route[route.index("<event") :])
+    assert e.find("detail/__routeinfo") is not None
+    assert e.find("detail/__routeinfo/__navcues") is not None
+    poly = build_geometry_cot(
+        uid="Z", type_="u-d-f", vertices=[[25.0, 121.0], [25.1, 121.0], [25.1, 121.1]], closed=True, now=_NOW
+    )
+    ep = ET.fromstring(poly[poly.index("<event") :])
+    assert ep.find("detail/__routeinfo") is None  # polygon 不是 route，不帶 routeinfo
