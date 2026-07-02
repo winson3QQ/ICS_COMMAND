@@ -263,3 +263,18 @@ def test_valid_point_not_overwritten_by_vertex_issue260():
     geom = {"type": "LineString", "coordinates": [[121.0353, 24.8377], [121.0382, 24.8351]]}
     ent = normalize_cot(_event(uid="R2", type="b-m-r", lat=24.5, lon=120.5, geometry=geom))
     assert (ent.lat, ent.lon) == (24.5, 120.5)  # 保留原 point
+
+
+def test_single_zero_coord_not_substituted_issue260():
+    """review：只有一個座標為 0（赤道/子午線合法錨點）→ AND guard 不觸發，保留原 point。"""
+    geom = {"type": "LineString", "coordinates": [[121.0353, 24.8377], [121.0382, 24.8351]]}
+    ent = normalize_cot(_event(uid="R3", type="b-m-r", lat=0.0, lon=121.0, geometry=geom))
+    assert (ent.lat, ent.lon) == (0.0, 121.0)  # lon≠0 → 不覆寫（若 and 改 or 會被首頂點蓋掉）
+
+
+def test_polygon_zero_point_uses_first_vertex_issue260():
+    """review：polygon(closed) 的 <point>=0,0 佔位同樣取首頂點（Slice A kind-agnostic）。"""
+    geom = {"type": "Polygon", "coordinates": [[[121.0, 24.8], [121.1, 24.8], [121.1, 24.9], [121.0, 24.8]]]}
+    ent = normalize_cot(_event(uid="Z1", type="u-d-f", lat=0.0, lon=0.0, geometry=geom))
+    assert (round(ent.lat, 4), round(ent.lon, 4)) == (24.8, 121.0)  # 首頂點，非 0,0
+    assert ent.attributes.get("kind") == "polygon"

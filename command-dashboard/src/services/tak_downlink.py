@@ -229,9 +229,10 @@ def build_geometry_cot(
     if closed:
         fill = geometry_service.hex_to_argb_int(color, alpha=_FILL_ALPHA)
         detail_parts.append(f"<fillColor value='{_DEFAULT_FILL_ARGB if fill is None else fill}'/>")
-    else:
-        # #260：route(open) 必帶 <__routeinfo> —— ATAK 用它認定「這是 route」才渲染；缺了則 b-m-r
-        # event 收得到卻不畫（真機 dogfood 實證：其餘元素齊全、唯缺此標記整條 route 不顯示）。
+    elif type_.startswith("b-m-r"):
+        # #260：僅真 route(b-m-r) 帶 <__routeinfo> —— ATAK 用它認定「這是 route」才渲染；缺了則 b-m-r
+        # event 收得到卻不畫（真機 dogfood 實證）。u-d-f 等開放繪圖非導航 route，不加（避免 ATAK 誤當
+        # route；review：__routeinfo gate 在 route type 而非 not-closed，免波及 freehand 繪圖）。
         detail_parts.append("<__routeinfo><__navcues/></__routeinfo>")
     if callsign:
         detail_parts.append(f"<contact callsign={quoteattr(callsign)}/>")

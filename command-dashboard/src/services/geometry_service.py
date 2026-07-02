@@ -262,6 +262,8 @@ def route_links_to_cot(link_list) -> str | None:
     """**出向忠實**（#260 Slice B）：cop_entity `attributes.link`（原始 route waypoints）→ ATAK 原生
     `<link>` 序列，保 waypoint `uid/callsign/type/relation`（vs `vertices_to_cot_links` 光禿 control point）。
     值全走 `quoteattr` escape、座標驗證；無任何合法 waypoint → None（呼叫端退回 vertices 光禿路徑）。"""
+    if isinstance(link_list, dict):
+        link_list = [link_list]  # 單一 <link> → _extract_detail 存 dict（對齊 cop_service 正規化 idiom）
     if not isinstance(link_list, list):
         return None
     segs: list[str] = []
@@ -286,6 +288,8 @@ def route_links_to_cot(link_list) -> str | None:
 def link_attr_to_cot(link_attr) -> str:
     """route 導航屬性 dict（planningmethod/method/routetype/direction…）→ `<link_attr .../>`（#260 Slice B）。
     key 過 `_safe_attr_name`（擋注入）、value 走 `quoteattr`；純量值才收（skip nested dict/list）；空 → 空字串。"""
+    if isinstance(link_attr, list):
+        link_attr = next((x for x in link_attr if isinstance(x, dict)), None)  # 多筆 <link_attr>（罕見）→ 取首個
     if not isinstance(link_attr, dict):
         return ""
     parts = "".join(

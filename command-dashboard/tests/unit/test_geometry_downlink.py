@@ -219,3 +219,30 @@ def test_route_outbound_has_routeinfo_polygon_none_issue260():
     )
     ep = ET.fromstring(poly[poly.index("<event") :])
     assert ep.find("detail/__routeinfo") is None  # polygon 不是 route，不帶 routeinfo
+
+
+def test_route_outbound_single_link_dict_faithful_issue260():
+    """review：單一 <link> 被 _extract_detail 存成 dict（非 list）→ 仍走忠實路徑（正規化為單元素 list）。"""
+    wp = {"uid": "w1", "callsign": "SP", "type": "b-m-p-w", "point": "24.8,121.0", "relation": "c"}
+    cot = build_geometry_cot(
+        uid="R", type_="b-m-r", vertices=[[24.8, 121.0], [24.9, 121.1]], closed=False, waypoints=wp, now=_NOW
+    )
+    e = ET.fromstring(cot[cot.index("<event") :])
+    assert e.find("detail/link").get("callsign") == "SP"  # 單 dict 忠實序列化，非光禿
+
+
+def test_route_outbound_garbage_waypoints_falls_back_issue260():
+    """review：waypoints 全非法（座標 garbage / 非 dict）→ route_links_to_cot 回 None → 退回光禿 control point。"""
+    bad = [{"point": "999,0", "type": "b-m-p-w"}, "not-a-dict", {"point": "abc"}]
+    cot = build_geometry_cot(
+        uid="R", type_="b-m-r", vertices=[[24.8, 121.0], [24.9, 121.1]], closed=False, waypoints=bad, now=_NOW
+    )
+    e = ET.fromstring(cot[cot.index("<event") :])
+    assert all(link.get("type") == "b-m-p-c" for link in e.findall("detail/link"))  # 全非法 → fallback 光禿
+
+
+def test_udf_open_line_no_routeinfo_issue260():
+    """review：u-d-f 開放繪圖（非 b-m-r route）不帶 __routeinfo（避免 ATAK 誤當 route）。"""
+    cot = build_geometry_cot(uid="D", type_="u-d-f", vertices=[[24.8, 121.0], [24.9, 121.1]], closed=False, now=_NOW)
+    e = ET.fromstring(cot[cot.index("<event") :])
+    assert e.find("detail/__routeinfo") is None
