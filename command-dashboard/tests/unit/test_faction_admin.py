@@ -145,6 +145,24 @@ def test_classify_real_exercise_ok(_no_ws):
     assert cop_entity_repo.get_cop_entity("MK-EX")["faction"] == "blue"
 
 
+def test_restamp_all_factions_reresolves_on_active_change(_no_ws):
+    # #473-A：activate/archive 後，所有 live entity 的 faction 依「當前 active 演習」的分類重解析
+    # （對齊 #472 共享池——每場重來對可見性真的生效）。
+    _identity("DEV-Z", "CN-Z")
+    client_faction_repo.upsert_faction(None, "CN-Z", "blue", None, "admin")  # 平時全域 blue
+    _ingest_marker("MK-Z", "DEV-Z")  # 平時 ingest（無 active）→ 依全域分類 → blue
+    assert cop_entity_repo.get_cop_entity("MK-Z")["faction"] == "blue"
+    # 開一場（CN-Z 未在該場分類）→ restamp → 該場無分類 → None（fail-closed）
+    ex = exercise_service.create({"name": "d", "type": "ttx"})
+    exercise_service.set_active(ex["id"], "admin")
+    assert asyncio.run(cop_service.restamp_all_factions()) == 1
+    assert cop_entity_repo.get_cop_entity("MK-Z")["faction"] is None
+    # 在該場分類 neutral → restamp → neutral（每場重來對共享池生效）
+    client_faction_repo.upsert_faction(ex["id"], "CN-Z", "neutral", None, "admin")
+    assert asyncio.run(cop_service.restamp_all_factions()) == 1
+    assert cop_entity_repo.get_cop_entity("MK-Z")["faction"] == "neutral"
+
+
 def test_classify_bumps_version_clock(_no_ws):
     """#358-2：faction 為前端顯示軸 → 重分類（auto）須 bump version_clock（前端 LWW 才套用新 faction）。"""
     _identity("DEV-VC", "CN-VC")

@@ -20,7 +20,7 @@ from repositories import client_faction_repo, client_identity_repo
 from repositories.cop_entity_repo import get_cop_entity
 from schemas.cop import CoPEntity
 from schemas.tak import CoTEventIn
-from services import cop_service
+from services import cop_service, exercise_service
 
 
 def _entity(uid: str = "UID-1", *, attributes: dict | None = None, exercise_id: int | None = None) -> CoPEntity:
@@ -112,15 +112,26 @@ def test_resolve_faction_unclassified_is_none():
     assert cop_service._resolve_faction(e) is None
 
 
-def test_resolve_faction_per_exercise_scoped():
-    """同裝置跨場可不同陣營；解析綁 entity.exercise_id。"""
+def test_resolve_faction_keys_on_active_exercise():
+    """#473-A：faction 解析 key 在「當前 active 演習」（非 entity.exercise_id）——因 #472 cop 為跨場共享池。"""
     client_identity_repo.upsert_many({"DEV": "DEV-CN"})
-    client_faction_repo.upsert_faction(None, "DEV-CN", "blue", None, "admin")  # 待命池
+    client_faction_repo.upsert_faction(None, "DEV-CN", "blue", None, "admin")  # 平時/全域分類
     e_pool = _entity("m1", attributes={"creator": {"uid": "DEV"}}, exercise_id=None)
-    assert cop_service._resolve_faction(e_pool) == "blue"
-    # 未在 exercise 7 分類 → 該場 None（不繼承實戰池分類）
     e_ex = _entity("m2", attributes={"creator": {"uid": "DEV"}}, exercise_id=999)
-    assert cop_service._resolve_faction(e_ex) is None
+    # 平時（無 active 演習）→ 用 None 分類 → blue，**不論 entity.exercise_id**
+    assert cop_service._resolve_faction(e_pool) == "blue"
+    assert cop_service._resolve_faction(e_ex) == "blue"
+    # 開一場並分類 neutral → active 演習中，解析改用**該場**分類（不論 entity.exercise_id）
+    ex = exercise_service.create({"name": "x", "type": "ttx"})
+    exercise_service.set_active(ex["id"], "admin")
+    client_faction_repo.upsert_faction(ex["id"], "DEV-CN", "neutral", None, "admin")
+    assert cop_service._resolve_faction(e_pool) == "neutral"
+    assert cop_service._resolve_faction(e_ex) == "neutral"
+    # active 場沒分類此 CN → None（fail-closed），即使平時有全域分類
+    client_identity_repo.upsert_many({"DEV3": "DEV3-CN"})
+    client_faction_repo.upsert_faction(None, "DEV3-CN", "blue", None, "admin")
+    e3 = _entity("m3", attributes={"creator": {"uid": "DEV3"}}, exercise_id=None)
+    assert cop_service._resolve_faction(e3) is None
 
 
 # ── 3. ingest_cot_event 落地 faction（端到端 tak 路徑）──────────────────────────

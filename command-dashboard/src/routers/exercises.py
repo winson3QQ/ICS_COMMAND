@@ -72,6 +72,7 @@ async def activate(exercise_id: int, request: Request):
     from services import cop_service
 
     await cop_service.restamp_all_tak_entities()
+    await cop_service.restamp_all_factions()  # #473-A：active 場改變 → 依新場分類重解析所有 live entity 的 faction
     # P1-14：active 場改變 → 各 session 重新依新 scope 對帳（map/面板/chip 即時反應）。
     # #265：先就地 rescope 跟隨 active 的 WS 連線，再廣播（不靠 client 重連）。
     await _rescope_and_announce()
@@ -95,6 +96,7 @@ async def do_archive(exercise_id: int, request: Request):
     from services import cop_service
 
     await cop_service.restamp_all_tak_entities()
+    await cop_service.restamp_all_factions()  # #473-A：active 場改變 → 依新場分類重解析所有 live entity 的 faction
     # 同 activate：歸檔 active 場 → active 變 None（NULL_SCOPE 實戰池），就地 rescope + 廣播（#265）
     await _rescope_and_announce()
     return result
