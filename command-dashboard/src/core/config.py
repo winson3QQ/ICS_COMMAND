@@ -187,7 +187,12 @@ WARNING_THRESHOLD_SECONDS: int = int(os.getenv("ICS_WARNING_THRESHOLD_SECONDS", 
 #               演習中 fail-closed 藏）；exercise_id 降記錄歸屬鍵。events/decisions/chat 的 resolve_scope
 #               跨場隔離不變（#288）。**含安全補漏**：/api/dashboard 的 tak_squads 過去無 faction 過濾
 #               （紅隊 centroid/兵力洩漏給 READ_ROLES）→ 補 visible_factions。/security-review 過。
-APP_VERSION = "2.30.0"
+# PATCH 2.30.1：#473-A faction 解析 key 改「當前 active 演習」（非 entity.exercise_id）——修 #472 dogfood
+#               抓出「每場重來對可見性沒生效」（cop 跨場共享池，entity 多為 NULL scope，per-exercise 分類
+#               套不到）。新 restamp_all_factions()（activate/archive 依新場分類重解析 live entity，只動
+#               faction_source='auto'）；_reresolve_producer gate 在 active 場、撈全 live 池。/security-review
+#               5 邊界守住 0 洩漏（紅永遠藏、fail-closed、#344 anti-spoof、manual override 保護）。
+APP_VERSION = "2.30.1"
 
 # CMD_VERSION：前端 UI 功能版本（不同於後端 SemVer APP_VERSION；規則見 CLAUDE.md 版號規則）
 # 兩軌版本命名，不可混用。由 /api/version 提供給前端，是唯一 source-of-truth；release 時更新此值。

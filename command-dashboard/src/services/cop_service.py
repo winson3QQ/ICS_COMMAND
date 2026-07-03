@@ -147,7 +147,9 @@ def _resolve_faction(entity: CoPEntity) -> str | None:
     命中 CN-keyed 分類、把紅軍標記偽裝成藍洩漏給指揮官。唯有經 client_identity 驗證翻出的 CN 才算數。
     """
     client_key = _resolve_client_key(entity)  # producer 裝置 uid（取自 CoT，不可信）
-    return faction_resolve.resolve_faction_for_uid(entity.exercise_id, client_key)
+    # #473-A：分類是 per-exercise，但 entity.faction（可見性鍵）反映「當前 active 演習」的分類（#472
+    # cop 為跨場共享池、exercise_id 降記錄鍵）→ key 改 current_exercise_id()（平時=None=全域分類）。
+    return faction_resolve.resolve_faction_for_uid(current_exercise_id(), client_key)
 
 
 def _resolve_exercise_scope(entity: CoPEntity) -> int | None:
@@ -232,6 +234,30 @@ async def restamp_all_tak_entities() -> int:
         if new_ex != e.get("exercise_id"):
             cop_entity_repo.set_exercise_for_uid(e["uid"], new_ex)
             n += 1
+    if n:
+        await cop_hub.broadcast_all({"op": "resync"})
+    return n
+
+
+async def restamp_all_factions() -> int:
+    """#473-A：演習 activate/archive 後，把所有 live tak entity 的 faction 依「當前 active 演習」的分類
+    重解析（平時=None=全域分類）。對齊 `restamp_all_tak_entities` 對 exercise_id 的重 stamp，但改動 faction。
+
+    只動 `faction_source='auto'`（`set_faction_for_uids` repo 端保護 manual override）。CN 無對照 → None
+    （fail-closed）。依目標 faction 分桶批次更新。回更新筆數；有變動才 resync 廣播。
+    """
+    ex = current_exercise_id()
+    buckets: dict[str | None, list[str]] = {}
+    for e in cop_entity_repo.list_cop_entities(source="tak", exercise_id=None, include_stale=True, limit=10000):
+        if e.get("deleted") or (e.get("faction_source") or "auto") != "auto":
+            continue
+        client_key = resolve_client_key_from_parts(e["uid"], e.get("attributes") or {})
+        new_faction = faction_resolve.resolve_faction_for_uid(ex, client_key)
+        if new_faction != e.get("faction"):
+            buckets.setdefault(new_faction, []).append(e["uid"])
+    n = 0
+    for target, uids in buckets.items():
+        n += cop_entity_repo.set_faction_for_uids(uids, target)
     if n:
         await cop_hub.broadcast_all({"op": "resync"})
     return n

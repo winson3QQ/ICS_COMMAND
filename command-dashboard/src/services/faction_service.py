@@ -77,19 +77,26 @@ async def list_clients(exercise_id: int | None) -> list[dict]:
 
 
 def _reresolve_producer(exercise_id: int | None, client_key: str, faction: str | None) -> int:
-    """#344：把該場名下「歸屬到此 CN 任一裝置 uid」的 auto entity faction 改為新值。回更新筆數。
+    """#344/#473-A：把「歸屬到此 CN 任一裝置 uid」的 auto entity faction 改為新值。回更新筆數。
 
-    client_key 現為 **cert CN**：先經 client_identity 解出該 CN 的所有裝置 uid（含換過的舊 uid），再撈場內
-    tak entity、篩 producer uid 命中該集合者批次 UPDATE（repo 端只動 faction_source='auto'，保護 manual override）。
-    歸屬鏈在 Python（creator/link JSON 巢狀，SQL 解不了）。CN 無對應 uid（未在線過）→ 0（待裝置連上、
-    面板載入寫入 client_identity 後即可著色）。
+    client_key 現為 **cert CN**：先經 client_identity 解出該 CN 的所有裝置 uid（含換過的舊 uid），篩 producer
+    uid 命中者批次 UPDATE（repo 端只動 faction_source='auto'，保護 manual override）。歸屬鏈在 Python。
+
+    **#473-A**：entity.faction 反映「當前 active 演習」的分類（#472 共享池）→ ① 只有改到「當前 active 演習」
+    的分類才影響 live entity（改歷史/非 active 場分類無 live 效果，回 0）；② 撈**全 live 池**（非按場，因
+    entity 為跨場共享、多為 NULL scope）。CN 無對應 uid（未在線過）→ 0（待裝置連上、面板載入寫入後著色）。
     """
+    if exercise_id != exercise_service.current_exercise_id():
+        return 0  # #473-A：非當前 active 場的分類 → 不影響 live entity 可見性
     device_uids = set(client_identity_repo.uids_for_username(client_key))
     if not device_uids:
         return 0
+    # #473-A：撈**全 live tak 池**（exercise_id=None＝不過濾，跨場共享）——非 _producer_entities（其 _scope(None)
+    # 會退成 NULL_SCOPE 只撈常駐、漏掉綁到 active 場的 entity）。
+    all_tak = cop_entity_repo.list_cop_entities(source="tak", exercise_id=None, include_stale=True, limit=_SCAN_LIMIT)
     uids = [
         e["uid"]
-        for e in _producer_entities(exercise_id)
+        for e in all_tak
         if cop_service.resolve_client_key_from_parts(e["uid"], e.get("attributes") or {}) in device_uids
     ]
     return cop_entity_repo.set_faction_for_uids(uids, faction)
