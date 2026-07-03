@@ -16,7 +16,7 @@
  * 可 import：ws.js（依既有模組邊界慣例，authFetch / 角色判斷由 ws.js re-export）
  */
 
-import { hasAnyRole } from './auth.js';
+import { hasAnyRole, closeExercisePanel } from './auth.js';
 import { authFetch, canUseRealModeControls } from './ws.js';
 
 const API_BASE = location.origin;
@@ -279,6 +279,9 @@ export async function handleExActivate(id) {
  */
 export async function openExOpenWizard(id, name) {
   if (!hasAnyRole('sysadmin')) return;
+  // 精靈用通用 modal（#overlay z=210），演習面板 #exercise-overlay z=290 會蓋住它 → 先關演習面板，
+  // 讓精靈乾淨浮在地圖上（避免「精靈在演習面板後」）。「前往分隊面板」再重開面板落在分隊分頁。
+  closeExercisePanel();
   const { openModal } = await import('./cop.js');
   const body = `
     <div class="ex-wiz">

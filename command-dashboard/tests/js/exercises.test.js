@@ -18,9 +18,11 @@ vi.mock('../../static/js/ws.js', () => ({
   authFetch: (...a) => mockAuthFetch(...a),
   canUseRealModeControls: () => _canManage,
 }));
-// exercises.js 由 auth.js 取 hasAnyRole（刪除鈕 sysadmin-only 判斷）
+// exercises.js 由 auth.js 取 hasAnyRole（刪除鈕 sysadmin-only 判斷）+ closeExercisePanel（#473-B3 精靈開啟前關面板）
+const mockCloseExPanel = vi.fn();
 vi.mock('../../static/js/auth.js', () => ({
   hasAnyRole: (...roles) => (roles.includes('sysadmin') ? _isSysadmin : false),
+  closeExercisePanel: (...a) => mockCloseExPanel(...a),
 }));
 // #473-B3 開場精靈：exercises.js 動態 import cop.js 取 openModal / appConfirm
 const mockOpenModal = vi.fn();
@@ -61,6 +63,7 @@ beforeEach(() => {
   globalThis.location = { origin: 'http://127.0.0.1:8000' };
   mockAuthFetch.mockReset();
   mockOpenModal.mockReset();
+  mockCloseExPanel.mockReset();
   _confirmResult = true;
   _canManage = true;
   _isSysadmin = true;
@@ -284,6 +287,7 @@ describe('開場精靈（#473-B3）', () => {
     _isSysadmin = true;
     const m = await import('../../static/js/exercises.js');
     await m.openExOpenWizard(7, '化災桌推');
+    expect(mockCloseExPanel).toHaveBeenCalled();  // 精靈開啟前先關演習面板（否則被 z=290 面板蓋住）
     expect(mockOpenModal).toHaveBeenCalledTimes(1);
     const [title, body] = mockOpenModal.mock.calls[0];
     expect(title).toContain('開場精靈');
