@@ -252,6 +252,26 @@ def build_geometry_cot(
     )
 
 
+# #467 B：節點 node_type → MIL-STD-2525 CoT type（友軍地面組織單位；function 碼互不重複 →
+# ATAK/iTAK 渲染成可辨的不同符號）。實作 mil_symbol.js 註解預留的「cot_type 字典擴充」。
+# 只在**出向分享時**套用：節點的 cop_entity.type 存通用 'a-f-G-I'、ICS 本地渲染靠 node_type 白色象形
+# → 不改存儲、不需 migration、server-authoritative（出向代表由 server 決定）。未列 node_type → caller
+# 退回 entity.type。設施（kind='infra'）暫不做（#467 follow-up：民事概念無淨 2525 對應，待 EMS/HADR 符號）。
+# ⚠ 符號碼待真機 ATAK dogfood 定稿；調整只改此表一行。
+_NODE_COT_TYPE = {
+    "command": "a-f-G-U-H",  # 指揮所 / Headquarters
+    "medical": "a-f-G-U-U-S-M",  # 後勤醫療 / CSS medical
+    "security": "a-f-G-U-U-M",  # 憲兵 / 警戒
+    "forward": "a-f-G-U-C-I",  # 步兵 / 前進元素
+    "shelter": "a-f-G-U-U-S",  # 後勤支援 / 收容
+}
+
+
+def node_cot_type(node_type: str | None) -> str | None:
+    """節點 node_type → 出向 CoT type（#467 B）；未列 → None（caller 退回 entity.type）。"""
+    return _NODE_COT_TYPE.get(node_type or "")
+
+
 def entity_to_cot(entity: dict, *, stale_minutes: int = 60, now: datetime | None = None) -> str:
     """**cop_entity（既有感知標記）→ CoT**（P2-30 part 2 / #180）：分享既有標記到 TAK 用。
 
@@ -266,6 +286,10 @@ def entity_to_cot(entity: dict, *, stale_minutes: int = 60, now: datetime | None
     kind = attrs.get("kind")
     uid = entity["uid"]
     type_ = entity["type"]
+    # #467 B：節點出向套 per-node_type 2525 符號（存儲 type=通用 a-f-G-I，出向才換可辨符號）。
+    # 未列 node_type → 保留 entity.type（fail-safe，退通用友軍設施框）。zone 恆走點路徑（下方 else）。
+    if kind == "zone":
+        type_ = node_cot_type(attrs.get("node_type")) or type_
     callsign = entity.get("callsign")
     # P2-30 part 3：所有 ICS→TAK 外送標記在 remarks 標 `source: ICS` —— 現場端（iTAK）點開即知此標
     # 由指揮部送出（解「iTAK 送的 vs ICS 送的同款 2525 框肉眼難分」）。tag 只在出口加，不存進

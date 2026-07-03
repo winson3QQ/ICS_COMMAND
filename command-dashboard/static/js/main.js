@@ -78,7 +78,7 @@ import {
   saveMapConfig,
   openMapConfigPanel, closeMapConfigPanel, admUploadMapImage,
   admRemoveMapImage, _cancelEventPin,
-  _deleteNode,
+  _deleteNode, _shareNodeTak,
   applyMapRoleUiGuards,
   _toggleLayer, _closeLayerPanel, toggleTakFilter,
   setCopStream,
@@ -449,6 +449,11 @@ document.addEventListener('click', function (e) {
     case 'deleteNode': {
       if (!canAccessMapObjects()) break;
       _deleteNode(id);
+      break;
+    }
+    case 'shareNodeTak': {
+      if (!canUseRealModeControls()) break;  // #467：節點廣播=指揮層
+      _shareNodeTak(id);
       break;
     }
     case 'mgrsSearch':     _mgrsSearch(); break;
