@@ -227,7 +227,10 @@ APP_VERSION = "2.35.0"
 #         + 演習/放置/稽核 UI P1-13/14/16/#93 + 分類編輯器 #66）→ 0.x 畢業為 MAJOR 紀元。
 CMD_VERSION: str = os.getenv(
     "CMD_VERSION",
-    "v1.26.0",  # MINOR：#475 中途新連線提示 + 重分隊即時傳播——① 紅藍分類面板 ⚠N 未分隊在線 banner +
+    "v1.26.1",  # PATCH：#471 收尾——隊伍名冊退役 #267 exercise_id「在場/納編/加入全部連線」（#472 後
+    # 可見性＝faction、AAR 記錄＝track 自動蓋場，exercise_id「編入」已無實質作用且對 OP 顯「無單位在場」
+    # 與已分類可見單位矛盾，dogfood 抓出）；名冊改純以 faction 呈現「連線＋分類＝參與」，頂部顯誠實在線摘要。
+    # MINOR v1.26.0：#475 中途新連線提示 + 重分隊即時傳播——① 紅藍分類面板 ⚠N 未分隊在線 banner +
     # 演習 chip ⚠N badge（sysadmin poll /factions/unclassified-count）提示白隊分類；② resync 觸發
     # chat:resync → 重分隊改既有通聯 faction 即時顯/藏（GeoChat 軸）；③ AAR TYPE_LABELS 加「分類變更」。
     # MINOR v1.25.0：#477b 紅藍分類面板現場隔離指示——每台顯 🛡（已隔離）/ ⚠ 未隔離（分類了但實際

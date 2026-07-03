@@ -826,25 +826,11 @@ function _loadClassicScript(src) {
       setInterval(() => poll(), POLL_INTERVAL);
       // COP 即時同步：地圖就緒後連 WS（issue #29 PR-E）
       _initCopStream();
-      // #269：右欄「隊伍」名冊（讀 cop_stream TAK 單位、按 team_color 分組；純前端 v1）
+      // #269：右欄「隊伍」名冊（讀 cop_stream TAK 單位、按 faction 分組）。#471 收尾：退役 exercise_id
+      // 「納編/加入全部連線」——#472 後可見性＝faction、AAR 記錄＝track 自動蓋場，exercise_id「編入」已無
+      // 實質作用且對 OP 顯示矛盾（dogfood）。名冊改純以 faction 呈現「連線＋分類＝參與」。
       initRoster({
         getTakUnits: () => (_copStream ? _copStream.getEntitiesBySource('tak') : []),
-        // #267：有 active 演習時，NULL 單位＝常駐候選 → 標記；無 active 演習則不標（皆常駐、無對照）。
-        getHasActiveExercise: () => _activeExType != null,
-        // #267 納編/退編：把單位移進 active 場 / 退回 NULL。後端雙廣播 → cop_stream 就地過渡、roster 重繪。
-        onEnroll: async (uid, action) => {
-          if (_activeExId == null) return;
-          await authFetch(`${API_BASE}/api/exercises/${_activeExId}/enroll`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ uid, action }),
-          });
-        },
-        // #267 純乙可用性：「加入全部連線」一鍵把在線 client（CN）全納入 active 場 roster（後端重 stamp + resync）。
-        onAddConnected: async () => {
-          if (_activeExId == null) return;
-          await authFetch(`${API_BASE}/api/admin/exercises/${_activeExId}/roster/add-connected`, { method: 'POST' });
-        },
       });
       // #269：還原 per-session 記憶的右欄 tab（TAK 狀態套用後；記憶為 TAK 頁但已停用則退回事件）
       restoreRightTab();

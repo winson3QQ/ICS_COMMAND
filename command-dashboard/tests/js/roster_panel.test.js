@@ -10,7 +10,7 @@
  */
 import { afterEach, describe, expect, test, vi } from 'vitest';
 
-import { _esc, initRoster, renderRoster, rosterModel, scopeStatus, stopRoster } from '../../static/js/roster_panel.js';
+import { _esc, initRoster, renderRoster, rosterModel, stopRoster } from '../../static/js/roster_panel.js';
 
 const NOW = '2026-06-15T10:00:00Z';
 // 預設友軍（a-f）；faction = admin 分類（blue/red/neutral/null）；online → stale 未過。
@@ -83,44 +83,14 @@ describe('rosterModel（#358-2 faction 主軸）', () => {
     expect(offline).toBe(1);
   });
 
-  test('常駐(NULL exercise)單位仍列入名冊（#267 enroll 候選）', () => {
+  test('列入名冊不受 exercise_id 影響（#471 收尾：可見性/參與＝faction，非 exercise scope）', () => {
     const units = [
       { uid: 'in', faction: 'blue', type: 'a-f-G', exercise_id: 5, stale: '2026-06-15T10:05:00Z' },
-      { uid: 'stand', faction: 'blue', type: 'a-f-G', exercise_id: null, stale: '2026-06-15T10:05:00Z' },
+      { uid: 'null-scope', faction: 'blue', type: 'a-f-G', exercise_id: null, stale: '2026-06-15T10:05:00Z' },
     ];
     const uids = rosterModel(units, NOW).groups.flatMap(([, l]) => l.map((e) => e.uid));
     expect(uids).toContain('in');
-    expect(uids).toContain('stand'); // 常駐也列入（候選）
-  });
-
-  // #267 純乙可用性：scopeStatus（連線/在場計數 + 空場警示），只算「在線編成單位」。
-  test('scopeStatus：空場（有人連線、無人在場）→ warn + gap=connected', () => {
-    const units = [
-      { uid: 'a', faction: 'blue', type: 'a-f-G', exercise_id: null, stale: '2026-06-15T10:05:00Z' },
-      { uid: 'b', faction: 'blue', type: 'a-f-G', exercise_id: null, stale: '2026-06-15T10:05:00Z' },
-    ];
-    expect(scopeStatus(units, NOW)).toEqual({ connected: 2, scoped: 0, warn: true, gap: 2 });
-  });
-
-  test('scopeStatus：部分在場 → 不 warn、gap=未納編數', () => {
-    const units = [
-      { uid: 'a', faction: 'blue', type: 'a-f-G', exercise_id: 7, stale: '2026-06-15T10:05:00Z' },
-      { uid: 'b', faction: 'blue', type: 'a-f-G', exercise_id: null, stale: '2026-06-15T10:05:00Z' },
-    ];
-    expect(scopeStatus(units, NOW)).toEqual({ connected: 2, scoped: 1, warn: false, gap: 1 });
-  });
-
-  test('scopeStatus：離線單位不計、marker 不計', () => {
-    const units = [
-      { uid: 'a', faction: 'blue', type: 'a-f-G', exercise_id: 7, stale: '2026-06-15T10:05:00Z' }, // 在場在線
-      { uid: 'b', faction: 'blue', type: 'a-f-G', exercise_id: 7, stale: '2026-06-15T09:00:00Z' }, // 離線 → 不計
-      { uid: 'mk', faction: 'blue', type: 'a-n-G', exercise_id: 7, stale: '2026-06-15T10:05:00Z' }, // marker → 不計
-    ];
-    expect(scopeStatus(units, NOW)).toEqual({ connected: 1, scoped: 1, warn: false, gap: 0 });
-  });
-
-  test('scopeStatus：無連線 → warn 但 gap=0（指引連入而非全加）', () => {
-    expect(scopeStatus([], NOW)).toEqual({ connected: 0, scoped: 0, warn: true, gap: 0 });
+    expect(uids).toContain('null-scope'); // exercise_id=null 也列入（#472 後 entity 多為跨場共享）
   });
 
   test('#292 _esc 完整跳脫含引號（屬性脈絡 XSS 防護）', () => {
@@ -136,8 +106,8 @@ describe('rosterModel（#358-2 faction 主軸）', () => {
   });
 });
 
-// #267 純乙可用性：renderRoster 的 DOM 接線（無 live preview 可驗 → 以最小 document stub 驗渲染結果）。
-describe('renderRoster top section（#267 空場警示 + 加入全部連線）', () => {
+// #471 收尾：renderRoster 的 DOM 接線（以最小 document stub 驗渲染結果）。
+describe('renderRoster（#471 收尾：faction 名冊，退役 exercise_id 在場/納編）', () => {
   // 最小 element stub：捕捉 innerHTML、吞掉 addEventListener / style。
   function makeEl() {
     return { innerHTML: '', textContent: '', style: {}, addEventListener() {} };
@@ -155,54 +125,28 @@ describe('renderRoster top section（#267 空場警示 + 加入全部連線）',
     vi.restoreAllMocks();
   });
 
-  test('演習中 + 有人連線但無人在場 → 顯空場警示 + 「加入全部連線」鈕', () => {
+  test('顯在線摘要 + faction 名冊；不再有 exercise_id 在場門檻/警示/納編鈕', () => {
     const body = makeEl();
     setupDoc(body);
-    initRoster({
-      getTakUnits: () => [onUnit('a', null), onUnit('b', null)],
-      getHasActiveExercise: () => true,
-      onAddConnected: async () => {},
-    });
+    initRoster({ getTakUnits: () => [onUnit('a', null), onUnit('b', 7)] });
     renderRoster();
-    expect(body.innerHTML).toContain('無單位在場');
-    expect(body.innerHTML).toContain('data-roster-addall');
-    expect(body.innerHTML).toContain('加入全部連線 (2)'); // 鈕帶在線數
-    expect(body.innerHTML).toContain('2 連線');
-  });
-
-  test('無 onAddConnected（非指揮層）→ 警示在、但不出全加鈕', () => {
-    const body = makeEl();
-    setupDoc(body);
-    initRoster({ getTakUnits: () => [onUnit('a', null)], getHasActiveExercise: () => true });
-    renderRoster();
-    expect(body.innerHTML).toContain('無單位在場');
-    expect(body.innerHTML).not.toContain('data-roster-addall');
-  });
-
-  test('已全員在場 → 無警示、無 gap 提示', () => {
-    const body = makeEl();
-    setupDoc(body);
-    initRoster({
-      getTakUnits: () => [onUnit('a', 7), onUnit('b', 7)],
-      getHasActiveExercise: () => true,
-      onAddConnected: async () => {},
-    });
-    renderRoster();
+    expect(body.innerHTML).toContain('2 在線');
+    expect(body.innerHTML).toContain('藍軍');
+    // 退役的舊機制一律不再出現（不管 exercise_id 為何）
     expect(body.innerHTML).not.toContain('無單位在場');
-    expect(body.innerHTML).not.toContain('未納編');
-    expect(body.innerHTML).toContain('2 在場');
+    expect(body.innerHTML).not.toContain('在場');
+    expect(body.innerHTML).not.toContain('data-roster-addall');
+    expect(body.innerHTML).not.toContain('data-roster-enroll');
+    expect(body.innerHTML).not.toContain('加入全部連線');
   });
 
-  test('無 active 演習 → 不顯 top section（無在場概念）', () => {
+  test('已分類單位不論 exercise_id 皆列入（連線+分類＝參與）', () => {
     const body = makeEl();
     setupDoc(body);
-    initRoster({
-      getTakUnits: () => [onUnit('a', null)],
-      getHasActiveExercise: () => false,
-      onAddConnected: async () => {},
-    });
+    initRoster({ getTakUnits: () => [onUnit('x', null)] }); // exercise_id=null 也算參與
     renderRoster();
-    expect(body.innerHTML).not.toContain('連線');
-    expect(body.innerHTML).not.toContain('data-roster-addall');
+    expect(body.innerHTML).toContain('藍軍');
+    expect(body.innerHTML).toContain('x');
+    expect(body.innerHTML).not.toContain('無單位在場');
   });
 });
