@@ -348,3 +348,41 @@ def test_entity_to_cot_polygon_closed():
     # closed polygon：3 頂點 + 閉合 link（首尾相同）+ 填色（ATAK 原生格式，#211）
     assert len(e.findall("detail/link")) == 4
     assert e.find("detail/fillColor") is not None
+
+
+def test_node_cot_type_mapping():
+    """#467 B：節點 node_type → per-type 2525 CoT type（五類互不重複 → 現場端可辨）；未列 → None。"""
+    assert tak_downlink.node_cot_type("command") == "a-f-G-U-H"
+    assert tak_downlink.node_cot_type("medical") == "a-f-G-U-U-S-M"
+    types = [tak_downlink.node_cot_type(n) for n in ("command", "medical", "security", "forward", "shelter")]
+    assert len(set(types)) == 5 and all(types)  # B 的重點：五類不同符號
+    assert tak_downlink.node_cot_type("nonexistent") is None
+    assert tak_downlink.node_cot_type(None) is None
+
+
+def test_entity_to_cot_node_maps_per_type_symbol():
+    """#467 B：kind='zone' 出向套 node_type 對應 2525 符號（存儲 type=通用 a-f-G-I，出向才換）。"""
+    ent = {
+        "uid": "N-1",
+        "type": "a-f-G-I",
+        "lat": 25.0,
+        "lon": 121.0,
+        "callsign": "指揮部",
+        "attributes": {"kind": "zone", "node_type": "command"},
+    }
+    e = _parse_event(tak_downlink.entity_to_cot(ent, now=_NOW))
+    assert e.get("type") == "a-f-G-U-H"  # 換成指揮所符（非存儲的 a-f-G-I）
+    assert e.find("point") is not None and e.find("detail/shape") is None  # 點路徑
+    assert e.find("detail/contact").get("callsign") == "指揮部"
+
+
+def test_entity_to_cot_node_unknown_type_falls_back():
+    """未列的 node_type → 保留 entity.type（fail-safe，不誤成別的符號）。"""
+    ent = {
+        "uid": "N-2",
+        "type": "a-f-G-I",
+        "lat": 25.0,
+        "lon": 121.0,
+        "attributes": {"kind": "zone", "node_type": "mystery"},
+    }
+    assert _parse_event(tak_downlink.entity_to_cot(ent, now=_NOW)).get("type") == "a-f-G-I"

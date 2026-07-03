@@ -25,6 +25,11 @@ import { authFetch, canCreateEvents, canUseRealModeControls } from './ws.js';
 
 const API_BASE = location.origin;
 
+// #467：TAK 開關狀態（鏡像 map.js:131-132；節點 modal「📡 廣播」鈕的顯示 gate）。
+// document 級事件、不需 import map.js（遵守本模組 import 限制）。
+let _takEnabled = false;
+document.addEventListener('tak:status', (e) => { _takEnabled = !!e.detail?.enabled; });
+
 // ══════════════════════════════════════════════════════════════
 // HTML escape — 用於把值塞進 innerHTML 模板前自衛（review #69：taxonomy label 現自
 // /api/event_taxonomy 載入，render sink 不應只靠後端 denylist，這裡 escape 為縱深防禦）。
@@ -990,9 +995,13 @@ export function _renderZoneModal() {
   // P1-16：on-demand 放置的節點（cop entity，有 uid、非事件、icon='pin'、非 sidebar 虛擬 zone）
   // 可刪除。data-action="deleteNode" 由 main.js 轉派 map.js _deleteNode（cop_stream.deleteEntity）。
   const isCopNode = !!(zone.id && !zone.event_id && zone.icon === 'pin' && !String(zone.id).startsWith('virtual_') && canUseRealModeControls());
+  // #467：節點手動廣播到 TAK（指揮層 + TAK 啟用才顯示；停用時後端亦回 409，故對齊 contact 隱藏）。
+  const shareBtn = (isCopNode && _takEnabled)
+    ? `<button data-action="shareNodeTak" data-id="${_esc(String(zone.id))}" style="padding:6px 12px;background:var(--green);color:#fff;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;font-family:var(--mono);margin-right:8px;">📡 廣播</button>`
+    : '';
   const footer = isCopNode
     ? `<div style="border-top:1px solid var(--border);margin-top:12px;padding-top:10px;display:flex;justify-content:flex-end;">
-         <button data-action="deleteNode" data-id="${_esc(String(zone.id))}" style="padding:6px 12px;background:var(--red);color:#fff;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;font-family:var(--mono);">🗑 刪除節點</button>
+         ${shareBtn}<button data-action="deleteNode" data-id="${_esc(String(zone.id))}" style="padding:6px 12px;background:var(--red);color:#fff;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;font-family:var(--mono);">🗑 刪除節點</button>
        </div>`
     : '';
   el('modal-body').innerHTML = tabsHtml + body + footer;

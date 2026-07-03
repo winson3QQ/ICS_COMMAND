@@ -179,7 +179,10 @@ WARNING_THRESHOLD_SECONDS: int = int(os.getenv("ICS_WARNING_THRESHOLD_SECONDS", 
 # PATCH 2.26.2：security 收緊——#393 通用 /api/config/{key} GET/POST 收成 SYSADMIN_ONLY（原 observer 可讀/
 #               commander 可寫任意 key）；#375 suspend-all 納 _SYSADMIN_GUARD_LOCK + re-assert 發起者仍
 #               active sysadmin（並發 demote 發起者→拒，防達零 sysadmin 自鎖）。
-APP_VERSION = "2.28.1"
+# MINOR 2.29.0：#467 節點推 TAK——出向分享時依 node_type 套 per-type 2525 CoT 符號（tak_downlink
+#               _NODE_COT_TYPE 字典；實作 mil_symbol 預留的 cot_type 字典擴充），現場端可辨指揮部/
+#               醫療組/安全組/前進組/收容組。存儲 type 不動、出向才換（server-authoritative）。設施延後。
+APP_VERSION = "2.29.0"
 
 # CMD_VERSION：前端 UI 功能版本（不同於後端 SemVer APP_VERSION；規則見 CLAUDE.md 版號規則）
 # 兩軌版本命名，不可混用。由 /api/version 提供給前端，是唯一 source-of-truth；release 時更新此值。
@@ -187,7 +190,9 @@ APP_VERSION = "2.28.1"
 #         + 演習/放置/稽核 UI P1-13/14/16/#93 + 分類編輯器 #66）→ 0.x 畢業為 MAJOR 紀元。
 CMD_VERSION: str = os.getenv(
     "CMD_VERSION",
-    "v1.21.2",  # PATCH：#260 D1——route 頂點編輯同步 attributes.link（geoLinks⟷vertices lockstep）→
+    "v1.22.0",  # MINOR：#467 節點手動廣播到 TAK——節點 modal 加「📡 廣播」鈕（指揮層 + TAK 啟用）；
+    # 現場端依 node_type 顯示不同 2525 符號。設施延後（#467 follow-up）。
+    # PATCH v1.21.2：#260 D1——route 頂點編輯同步 attributes.link（geoLinks⟷vertices lockstep）→
     # 修 reshape 後形狀不進 attributes.link、廣播送舊形狀、回灌打回原狀的 round-trip bug（真機 dogfood 定位）。
     # PATCH v1.21.1：#463——通聯 compose 送出框對 operator 顯示（後端同步放寬 WRITE_ROLES）。
     # MINOR v1.21.0：route 命名 waypoint（SP/CP/TGT）顯示成 map marker+label（#260 C2 / #464）——

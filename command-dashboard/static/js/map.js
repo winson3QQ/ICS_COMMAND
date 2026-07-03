@@ -2572,6 +2572,19 @@ export async function _shareContactTak(id) {
   _flashMapMsg(msg);
 }
 
+// #467：節點廣播到 TAK（指揮層動作；重用 share 端點）。不同於 contact 分享——節點 modal 無
+// callsign/remarks input，故**不**呼叫 _persistContactInputs。出向 CoT type 由後端 node_cot_type
+// 依 node_type 換成 per-type 2525 符號（tak_downlink._NODE_COT_TYPE），現場端可辨指揮部/醫療組…。
+export async function _shareNodeTak(id) {
+  if (!canUseRealModeControls()) return;  // 節點=指揮層（對齊放置/刪除權限）
+  const r = await authFetch(`/api/tak/share/${encodeURIComponent(id)}`, { method: 'POST' });
+  _deps.closeModal?.();
+  const msg = r && r.ok
+    ? '✓ 已廣播到 TAK（現場端可見；之後移動/刪除即時同步）'
+    : (r && r.status === 409 ? '✗ TAK 連線已停用，無法廣播' : '✗ 廣播到 TAK 失敗');
+  _flashMapMsg(msg);
+}
+
 function _onRouteClick(e) {
   if (_editingShape) return;  // #257 α-2：頂點編輯中 → 不開詳情（避免覆蓋編輯 banner）
   if (_suppressMarkerClick) { _suppressMarkerClick = false; return; }  // 剛長按進移動 → 吞掉這下 click（否則詳情也彈）
