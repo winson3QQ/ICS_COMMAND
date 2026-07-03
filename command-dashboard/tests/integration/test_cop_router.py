@@ -286,26 +286,27 @@ def _insert_tak_entity(uid: str = "tak:UNIT-1", lat: float = 24.0, lon: float = 
     return uid
 
 
-def test_put_tak_blocked_in_realops(client):
-    """實戰（無 active exercise）：不可 PUT 覆寫 tak 來源 entity（403），位置不被改。"""
+def test_put_tak_editable_in_realops_474(client):
+    """#474：TTX-only 編輯閘已拆——實戰/平時（無 active exercise）也可 PUT 外部 tak entity（協作可編，
+    audit 問責）。取代舊 test_put_tak_blocked_in_realops（403）。"""
     h = _login(client)
     uid = _insert_tak_entity()
     r = client.put(
         f"/api/cop/entities/{uid}",
-        json={"lat": 0.0, "lon": 0.0, "callsign": "SPOOF"},
+        json={"lat": 25.5, "callsign": "CORRECTED"},
         headers={**h, "If-Match": "1"},
     )
-    assert r.status_code == 403, r.text
-    cur = client.get(f"/api/cop/entities/{uid}", headers=h).json()
-    assert cur["lat"] == 24.0 and cur["callsign"] == "REAL-UNIT"  # 沒被覆寫
+    assert r.status_code == 200, r.text
+    assert r.json()["lat"] == 25.5 and r.json()["callsign"] == "CORRECTED"
 
 
-def test_delete_tak_blocked_in_realops(client):
-    """實戰：不可手動 DELETE tak 來源 entity（403）—— 真實單位移除走 stale CoT，非手刪。"""
+def test_delete_tak_editable_in_realops_474(client):
+    """#474：實戰/平時也可 DELETE 外部 tak entity（協作可編，DELETE 記 cop_entity_deleted）。
+    取代舊 test_delete_tak_blocked_in_realops（403）。"""
     h = _login(client)
     uid = _insert_tak_entity(uid="tak:UNIT-2")
     r = client.delete(f"/api/cop/entities/{uid}", headers={**h, "If-Match": "1"})
-    assert r.status_code == 403, r.text
+    assert r.status_code == 200, r.text
 
 
 def test_put_tak_allowed_in_ttx(client, active_exercise):

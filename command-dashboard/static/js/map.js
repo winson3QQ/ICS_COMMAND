@@ -2325,16 +2325,13 @@ export function setExerciseMode(type) {
 }
 
 /**
- * 外部來源（TAK / pi-node / waveink）= 非指揮部自建。是否唯讀 **依模式**：
- *   - manual / command（指揮部自建）：永遠可編。
- *   - 外部來源：**演習(TTX)模式可編**（#258 β-1，COP 雙向對稱）、**實戰模式唯讀**（β-2 再放寬）。
- * 對齊 backend `_require_editable_source`（server 權威依 active exercise type；前端僅 mode-aware 避免露出
- * 會被 403 的鈕）。編輯外部物件**不自動回推 TAK** —— 要上 TAK 走明示「📡 廣播」鈕（避 echo / 不蓋前線真相）。
+ * #474（β-2）：**TTX-only 唯讀閘已拆除**——外部來源（TAK / pi-node / waveink）幾何 + marker 在**任何模式
+ * （TTX/實戰/平時）皆可編**（承 2026-06-14「COP＝共享真實、撤實戰鎖死」；對齊 backend 移除
+ * `_require_editable_source`）。威脅由 audit 問責 + RBAC + `_PUT_FORBIDDEN_FIELDS` 緩解，非模式鎖。
+ * 保留函式（callers 用 `!_isReadonlySource(...)`）恆回 false；編輯外部**不自動回推 TAK**，要走明示「📡 廣播」。
  */
-function _isReadonlySource(entity) {
-  const s = entity?.source;
-  if (!s || s === 'manual' || s === 'command') return false;  // ICS 自建 → 可編
-  return _exerciseMode !== 'ttx';  // 外部來源：TTX 可編、其餘（實戰/無場次）唯讀
+function _isReadonlySource(_entity) {
+  return false;  // #474：所有來源皆可編（唯讀模式鎖已拆，改 audit 問責）
 }
 
 /** 外部來源圖形的唯讀資訊 modal（無刪除鈕）。 */
