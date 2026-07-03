@@ -196,7 +196,10 @@ WARNING_THRESHOLD_SECONDS: int = int(os.getenv("ICS_WARNING_THRESHOLD_SECONDS", 
 #               （TTX/實戰/平時）皆可編/刪（承 2026-06-14「COP＝共享真實、撤實戰鎖死」）。移除
 #               _require_editable_source；威脅改由 audit 問責 + RBAC + _PUT_FORBIDDEN_FIELDS + P2-10 白名單
 #               + 編輯不自動回推 TAK 緩解。threat_model §8.2 TAK-B 改寫。/security-review 5 補償控制守住 0 洩漏。
-APP_VERSION = "2.31.0"
+# PATCH 2.31.1：#473-B1 開場（activate）收 SYSADMIN_ONLY——開場流程含紅藍分隊＝白隊/導調之責
+#               （commander 恆藍不得經手，否則偷紅隊裝置名單、破公平性）。golden RBAC 矩陣同步 +
+#               deny 測試（commander activate→403）；create/archive/status 維持 COMMAND。
+APP_VERSION = "2.31.1"
 
 # CMD_VERSION：前端 UI 功能版本（不同於後端 SemVer APP_VERSION；規則見 CLAUDE.md 版號規則）
 # 兩軌版本命名，不可混用。由 /api/version 提供給前端，是唯一 source-of-truth；release 時更新此值。
@@ -204,7 +207,8 @@ APP_VERSION = "2.31.0"
 #         + 演習/放置/稽核 UI P1-13/14/16/#93 + 分類編輯器 #66）→ 0.x 畢業為 MAJOR 紀元。
 CMD_VERSION: str = os.getenv(
     "CMD_VERSION",
-    "v1.23.2",  # PATCH：#474——_isReadonlySource 恆 false（拆 TTX-only 唯讀閘，外部來源任何模式可編/刪）。
+    "v1.23.3",  # PATCH：#473-B1——演習面板「啟動」鈕收 sysadmin（開場僅白隊，對齊後端 SYSADMIN_ONLY）。
+    # PATCH v1.23.2：#474——_isReadonlySource 恆 false（拆 TTX-only 唯讀閘，外部來源任何模式可編/刪）。
     # PATCH v1.23.1：#472——移除常駐疊看（showStanding）toggle + client filter（可見性軸改 faction，
     # 後端守門，常駐單位恆顯）；cop_stream 不再帶 ?standing/?include_standing。
     # MINOR v1.23.0：#260 D2——route waypoint 命名 UI。頂點編輯加「🏷 命名」徽章 → modal 命名/改名/

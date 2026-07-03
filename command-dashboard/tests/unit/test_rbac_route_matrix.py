@@ -121,7 +121,7 @@ SYSADMIN DELETE /api/exercises/{exercise_id}
 COMMAND  GET    /api/exercises/{exercise_id}
 COMMAND  GET    /api/exercises/{exercise_id}/aar
 COMMAND  POST   /api/exercises/{exercise_id}/aar
-COMMAND  POST   /api/exercises/{exercise_id}/activate
+SYSADMIN POST   /api/exercises/{exercise_id}/activate
 COMMAND  POST   /api/exercises/{exercise_id}/archive
 COMMAND  POST   /api/exercises/{exercise_id}/enroll
 COMMAND  GET    /api/exercises/{exercise_id}/kpis
