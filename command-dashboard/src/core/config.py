@@ -199,7 +199,11 @@ WARNING_THRESHOLD_SECONDS: int = int(os.getenv("ICS_WARNING_THRESHOLD_SECONDS", 
 # PATCH 2.31.1：#473-B1 開場（activate）收 SYSADMIN_ONLY——開場流程含紅藍分隊＝白隊/導調之責
 #               （commander 恆藍不得經手，否則偷紅隊裝置名單、破公平性）。golden RBAC 矩陣同步 +
 #               deny 測試（commander activate→403）；create/archive/status 維持 COMMAND。
-APP_VERSION = "2.31.1"
+# MINOR 2.32.0：#473-B2 開場選擇性清圖——新端點 POST /api/admin/clear-residual（SYSADMIN_ONLY +
+#               confirm）：批量 soft-delete 外部週期性殘留（source 非 manual/command 且 archived=0），
+#               保永久物件（指揮部自建 ＋ archived=1 釘住標記）。方案 A：外部鏡像全清，live 裝置週期
+#               重報自然重建。faction 中立、可逆、廣播 resync。開場精靈第二步的後端（B3 接 UI）。
+APP_VERSION = "2.32.0"
 
 # CMD_VERSION：前端 UI 功能版本（不同於後端 SemVer APP_VERSION；規則見 CLAUDE.md 版號規則）
 # 兩軌版本命名，不可混用。由 /api/version 提供給前端，是唯一 source-of-truth；release 時更新此值。

@@ -42,6 +42,7 @@ _DENY = [
     ("commander", "POST", "/api/admin/reset-db"),
     ("commander", "DELETE", "/api/exercises/1"),
     ("commander", "POST", "/api/exercises/1/activate"),  # #473-B1：開場收 sysadmin（含分隊，白隊之責）
+    ("commander", "POST", "/api/admin/clear-residual"),  # #473-B2：開場選擇性清圖收 sysadmin
     ("commander", "POST", "/api/tak/connection"),
     ("commander", "POST", "/api/event_taxonomy"),
     ("commander", "GET", "/api/admin/audit-log"),

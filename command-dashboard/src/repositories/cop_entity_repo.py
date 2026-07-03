@@ -482,6 +482,42 @@ def delete_cop_entity(
     return update_cop_entity_cas(uid, expected_version_clock, {"deleted": 1, "stale": now}, actor)
 
 
+# #473-B2 選擇性清圖：開場清「殘留」保「永久」的判準（單一 SoT，避免端點/測試各寫一份）。
+#   永久（保留）＝指揮部自建（manual/command，含 route/polygon/事件標記）**或** archived=1
+#     （CoT <archive/> 釘住的放置標記）。
+#   殘留（可清）＝其餘外部週期性鏡像（tak/pi-node/waveink…）且未釘住 —— live 裝置幾秒內重報，
+#     自然重建，故開場全清最乾淨（#473 方案 A，使用者 2026-07-03 拍板）。
+_RESIDUAL_WHERE = "source NOT IN ('manual','command') AND COALESCE(archived, 0) = 0 AND COALESCE(deleted, 0) = 0"
+_PERMANENT_WHERE = "COALESCE(deleted, 0) = 0 AND (source IN ('manual','command') OR COALESCE(archived, 0) = 1)"
+
+
+def clear_residual_entities(actor: str | None = None) -> dict:
+    """開場選擇性清圖（#473-B2 方案 A）：批量 soft-delete 外部週期性殘留、保永久物件。
+
+    語意同 delete_cop_entity 的 TAK 風格 soft-delete（deleted=1 + stale=now + bump
+    version_clock），但**批量、不走 per-entity CAS**——開場是 sysadmin 權威操作，不需樂觀
+    鎖對帳；清的是外部鏡像，live 裝置週期 SA 幾秒內重報自然重建。**soft-delete 可逆**
+    （歷史 row / cop_entity_tracks 全保留，回放/AAR 不受影響）。
+
+    保留集＝指揮部自建（manual/command）＋ archived=1 釘住標記；不碰紅藍（清的是「來源
+    類別 × archived」，faction 中立，不成為偷清對方的漏洞）。
+
+    回傳 {"cleared": n, "kept": m}（供開場精靈預覽/回饋；kept＝清完仍在的非刪除永久物件）。
+    """
+    now = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    with get_conn() as conn:
+        cur = conn.execute(
+            f"UPDATE cop_entities SET deleted = 1, stale = ?, "  # nosec B608 — 常量 WHERE，無外部輸入
+            f"version_clock = version_clock + 1 WHERE {_RESIDUAL_WHERE}",
+            (now,),
+        )
+        cleared = cur.rowcount
+        kept = conn.execute(
+            f"SELECT COUNT(*) FROM cop_entities WHERE {_PERMANENT_WHERE}"  # nosec B608 — 常量 WHERE
+        ).fetchone()[0]
+    return {"cleared": cleared, "kept": kept}
+
+
 # ── cop_entity_tracks ────────────────────────────────────────────────────────
 
 
