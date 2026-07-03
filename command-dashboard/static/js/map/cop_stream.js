@@ -117,6 +117,11 @@ export function createCopStream(deps) {
         // server 端批次清空（admin reset）等不走 per-entity delete 的變動 → 全量對帳，
         // 移除 server 已無者（防護 2 / in-flight 保留邏輯都在 resync 內）。
         resync();
+        // #475：resync 只重取 entity；通聯（chats）走獨立 feed。重分隊會重蓋既有 chats faction →
+        // 派 chat:resync 讓 chat_panel 即時重取（否則要等 30s safety-net poll）→ GeoChat 軸即時。
+        if (typeof document !== "undefined") {
+          document.dispatchEvent(new CustomEvent("chat:resync"));
+        }
         break;
       case "exercise_switched":
         // P1-14：他人 activate/archive 了演習 → active scope 變了。本 session 須重新依新 scope

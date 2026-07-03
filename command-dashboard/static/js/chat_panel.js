@@ -180,6 +180,7 @@ function _el(id) { return document.getElementById(id); }
 export function initChatPanel() {
   document.addEventListener('tak:conn-state', (e) => _applyTakState(e?.detail?.state));
   document.addEventListener('chat:new', (e) => _onLiveChat(e?.detail)); // b2：WS 即時推播
+  document.addEventListener('chat:resync', () => refreshChatNow()); // #475：重分隊改既有 chats faction → 即時重取（顯/藏）
   document.addEventListener('map:unitSelected', (e) => _onUnitSelected(e?.detail)); // b3-1：點 marker 過濾
   document.addEventListener('map:senderNotLocated', (e) => _onUnitSelected(e?.detail)); // b3-2：訊息無座標 → fallback by-sender
   _initCompose(); // #216：出向 compose（依角色顯隱 + Enter 送出）

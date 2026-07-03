@@ -23,6 +23,7 @@ from repositories import (
     exercise_roster_repo,
     tak_device_cert_repo,
 )
+from repositories._helpers import NULL_SCOPE
 from schemas.tak import CoTEventIn
 from services import cop_service, exercise_service, faction_service, tak_group_sync
 
@@ -87,6 +88,66 @@ def test_classify_reresolves_existing_entities(_no_ws):
     assert cop_entity_repo.get_cop_entity("MK-1")["faction"] == "red"
     assert cop_entity_repo.get_cop_entity("MK-2")["faction"] == "red"
     assert "resync" in _no_ws
+
+
+# ── #475：即時重分隊三軸傳播（地圖 entity / GeoChat / resync 廣播）─────────────────
+
+
+def test_classify_restamps_existing_geochat(_no_ws):
+    """#475 GeoChat 軸：改分類 → 該 CN 名下裝置的既有通聯 faction 一併重蓋（顯/藏即時）。"""
+    from repositories import chat_repo
+    from schemas.chat import ChatIn
+
+    _identity("DEV-C", "CN-C")
+    # GeoChat uid 格式 GeoChat.<裝置uid>.<室>.<GUID>；裝置段 DEV-C 對應 CN-C
+    chat_repo.insert_chat(ChatIn(sender_uid="GeoChat.DEV-C.room.g1", message="敵蹤", exercise_id=None, faction=None))
+    res = asyncio.run(faction_service.classify(None, "CN-C", "blue", "CN-C", "admin"))
+    assert res["reresolved_chats"] == 1
+    rows = chat_repo.list_sender_uids_by_exercise(NULL_SCOPE)  # 待命池（exercise_id IS NULL）
+    assert [r["faction"] for r in rows] == ["blue"]  # 既有通聯已重蓋 blue
+
+
+def test_classify_three_axis_one_action(_no_ws):
+    """#475：一個分類動作同時傳三軸——entity（地圖）+ chat（通聯）+ resync（觸發聚合重算）。"""
+    from repositories import chat_repo
+    from schemas.chat import ChatIn
+
+    _identity("DEV-3", "CN-3")
+    _ingest_marker("MK-3", "DEV-3")  # 地圖 entity
+    chat_repo.insert_chat(ChatIn(sender_uid="GeoChat.DEV-3.r.g", message="hi", exercise_id=None, faction=None))
+    res = asyncio.run(faction_service.classify(None, "CN-3", "red", None, "admin"))
+    assert res["reresolved"] == 1 and res["reresolved_chats"] == 1  # 地圖 + 通聯軸
+    assert cop_entity_repo.get_cop_entity("MK-3")["faction"] == "red"
+    assert "resync" in _no_ws  # 廣播 → 前端聚合視圖重算 + chat:resync
+
+
+def test_classify_writes_timeline_audit_with_exercise_scope(_no_ws):
+    """#475：重分隊入 AAR timeline——client_faction_classify audit 帶 exercise_id（原漏傳=None、timeline
+    按場撈不到）。此處驗 audit_log 有帶場別的分類事件。"""
+    from repositories.exercise_repo import create_exercise
+
+    ex = create_exercise({"name": "reclass-timeline", "type": "ttx"})
+    asyncio.run(faction_service.classify(ex["id"], "CN-T", "blue", "CN-T", "admin"))
+    from core.database import get_conn
+
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT exercise_id FROM audit_log WHERE action_type='client_faction_classify' AND target_id='CN-T'"
+        ).fetchone()
+    assert row is not None and row["exercise_id"] == ex["id"]  # 帶場別 → 進該場 timeline
+
+
+def test_compute_unclassified_online(_no_ws, monkeypatch):
+    """#475：未分隊在線＝在線 ∩ 已發證 − 已分類。"""
+    monkeypatch.setattr(
+        faction_service.tak_device_cert_repo,
+        "list_device_certs",
+        lambda: [{"callsign": cn, "status": "active"} for cn in ("CN-A", "CN-B", "CN-C")],
+    )
+    client_faction_repo.upsert_faction(None, "CN-A", "blue", None, "admin")  # 已分類
+    subs = [{"username": "CN-A"}, {"username": "CN-B"}, {"username": "CN-Z"}]  # CN-Z 在線但未發證
+    # 在線∩發證 = {A,B}；扣掉已分類 {A} → 未分類在線 = {B} = 1
+    assert faction_service.compute_unclassified_online(subs, None) == 1
 
 
 def test_ingest_inherits_faction_via_uid_to_cn(_no_ws):

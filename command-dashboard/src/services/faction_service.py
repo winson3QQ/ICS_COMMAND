@@ -24,6 +24,33 @@ from services.realtime_hub import cop_hub
 # 重解析 / 列舉時撈該場 tak entity 的上限（場域 10–30 裝置、數百 entity；含 stale/已刪以求完整盤點）。
 _SCAN_LIMIT = 10000
 
+# #475：未分隊在線裝置計數快取——背景 poller（一次 subscriptions/all poll）更新，端點讀快取（不加 TAK 呼叫）
+# → 演習 chip / 面板顯「⚠ N 台未分隊在線」提示白隊去分類。未分隊 fail-closed（藏）不變，此為提醒非強制。
+_UNCLASSIFIED_ONLINE: dict = {"count": 0, "exercise_id": None}
+
+
+def compute_unclassified_online(subs: list[dict], exercise_id: int | None) -> int:
+    """數「在線 + 已發證 + 未分類（該場）」的裝置。online=subs 的 username 集；issued=active 發證的
+    callsign(=CN)；classified=該場 client_faction。回未分類數。"""
+    online = {s["username"] for s in subs if s.get("username")}
+    issued = {c["callsign"] for c in tak_device_cert_repo.list_device_certs() if c.get("status") == "active"}
+    classified = set(client_faction_repo.get_faction_map(exercise_id).keys())
+    return len(online & issued - classified)
+
+
+def refresh_unclassified_count(subs: list[dict]) -> int:
+    """#475：背景 poller 呼叫——依當前 active 場算未分隊在線數、寫快取。回數。best-effort（poller 已包 try）。"""
+    ex_id = exercise_service.current_exercise_id()
+    n = compute_unclassified_online(subs, ex_id)
+    _UNCLASSIFIED_ONLINE["count"] = n
+    _UNCLASSIFIED_ONLINE["exercise_id"] = ex_id
+    return n
+
+
+def get_unclassified_online() -> dict:
+    """#475：讀未分隊在線快取（端點用，不打 TAK）。回 {count, exercise_id}。"""
+    return dict(_UNCLASSIFIED_ONLINE)
+
 
 def _scope(exercise_id: int | None):
     """exercise_id（admin 指定場）→ repo scope：int → 該場 / None → NULL_SCOPE（實戰池）。"""
@@ -115,19 +142,34 @@ def _reresolve_producer(exercise_id: int | None, client_key: str, faction: str |
     return cop_entity_repo.set_faction_for_uids(uids, faction)
 
 
-async def classify(exercise_id: int | None, client_key: str, faction: str, callsign: str | None, operator: str) -> dict:
-    """指派 / 改 client 陣營。驗場存在（D）→ upsert → 重解析名下 auto entity → resync 廣播。
+def _reresolve_chats(exercise_id: int | None, client_key: str, faction: str | None) -> int:
+    """#475 GeoChat 軸：把該 CN 名下裝置的既有 chats faction 重蓋（對標 _reresolve_producer 之於 entity）。
+    只有改「當前 active 場」的分類才影響 live 通聯可見性（非 active 場回 0）。回影響筆數。"""
+    if exercise_id != exercise_service.current_exercise_id():
+        return 0
+    device_uids = set(client_identity_repo.uids_for_username(client_key))
+    if not device_uids:
+        return 0
+    from services import chat_service
 
-    回 {client_key, faction, exercise_id, reresolved, tak_group}（reresolved=受影響 entity 數；
-    tak_group=TAK 現場層群同步結果，#344）。
+    return chat_service.restamp_chats_for_client(exercise_id, device_uids, faction)
+
+
+async def classify(exercise_id: int | None, client_key: str, faction: str, callsign: str | None, operator: str) -> dict:
+    """指派 / 改 client 陣營。驗場存在（D）→ upsert → 重解析名下 auto entity + 既有 GeoChat → resync 廣播。
+
+    回 {client_key, faction, exercise_id, reresolved, reresolved_chats, tak_group}（reresolved=受影響
+    entity 數、reresolved_chats=受影響通聯數【#475 GeoChat 軸】；tak_group=TAK 現場層群同步結果，#344）。
     """
     if exercise_id is not None and not exercise_service.get(exercise_id):
         from fastapi import HTTPException
 
         raise HTTPException(404, f"演練不存在：{exercise_id}")
     client_faction_repo.upsert_faction(exercise_id, client_key, faction, callsign, operator)
-    n = _reresolve_producer(exercise_id, client_key, faction)
-    # resync：commander 連線重新 GET /api/cop/*（已 faction 過濾）→ 視圖即時增/減。沿用 reset 同管線。
+    n = _reresolve_producer(exercise_id, client_key, faction)  # 地圖軸：entity faction
+    n_chat = _reresolve_chats(exercise_id, client_key, faction)  # #475 GeoChat 軸：既有通聯 faction
+    # resync：commander 連線重新 GET /api/cop/*（已 faction 過濾）→ 地圖 marker + 聚合視圖即時增/減；
+    # 前端 resync 亦觸發 chat:resync → 通聯即時重取（#475 三軸一致）。沿用 reset 同管線。
     await cop_hub.broadcast_all({"op": "resync"})
     # #344：同步到 TAK 現場層 group（一個分類動作、兩層隔離）。client_key 即 cert CN(=TAK username) →
     # 直接傳 username，免再經 subscriptions 解 uid→username。best-effort——未配置 / device 離線 / TAK 錯
@@ -138,6 +180,7 @@ async def classify(exercise_id: int | None, client_key: str, faction: str, calls
         "faction": faction,
         "exercise_id": exercise_id,
         "reresolved": n,
+        "reresolved_chats": n_chat,
         "tak_group": tak_group,
     }
 

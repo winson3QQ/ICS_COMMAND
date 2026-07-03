@@ -967,6 +967,12 @@ export async function admLoadFactions() {
   const resp = await authFetch(API_BASE + '/api/admin/factions/clients' + q);
   if (!resp.ok) { box.innerHTML = '<div style="color:var(--text3);font-size:12px;padding:8px;">無法載入（需系統管理員）</div>'; return; }
   const clients = (await resp.json()).clients || [];
+  // #475：未分隊在線提示——演習中新連入或漏分的裝置對指揮官隱形（fail-closed），白隊需即時分類。
+  const unclassifiedN = clients.filter(c => !c.classified).length;
+  const unclassifiedBanner = unclassifiedN
+    ? '<div style="margin:8px 0;padding:6px 8px;border:1px solid var(--red,#ef4444);border-radius:4px;color:var(--red,#ef4444);font-size:12px;font-weight:600;">⚠ ' +
+      unclassifiedN + ' 台未分隊在線 —— 對指揮官隱形，請盡快分類</div>'
+    : '';
   let head =
     '<div style="font-size:11px;color:var(--text2);line-height:1.6;margin-bottom:10px;max-width:480px;">' +
     '列出<b>發證後且目前在線</b>的 TAK client。顯示<b>角色名</b>（in-app callsign，使用者可改），但分類綁<b>裝置憑證 CN</b>（小字，穩定不變）→ 改 callsign／重裝換 uid 都不丟分類。分類<b>分演習</b>：同一裝置跨場可不同陣營。<br><b>指揮官以下只看得到藍／中立</b>，紅軍與未分類者對其隱藏（fail-closed）。' +
@@ -1032,7 +1038,7 @@ export async function admLoadFactions() {
     '<select id="adm-faction-override-sel"><option value="blue">🔵 藍</option><option value="red">🔴 紅</option><option value="neutral">⚪ 中立</option></select>' +
     '<button class="adm-btn" data-action="adm-faction-override">套用</button></div>' +
     '<div id="adm-faction-override-msg" style="font-size:11px;color:var(--text2);min-height:14px;margin-top:6px;"></div></div>';
-  box.innerHTML = head + rows + override;
+  box.innerHTML = head + unclassifiedBanner + rows + override;
 }
 
 export async function admClassifyFaction(clientKey, faction, callsign) {

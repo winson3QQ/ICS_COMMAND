@@ -27,6 +27,32 @@ def insert_chat(chat: ChatIn) -> dict:
         return row_to_dict(row)
 
 
+def list_sender_uids_by_exercise(exercise_id) -> list[dict]:
+    """#475：回該場全部 chats 的 (id, sender_uid, faction)，供重分隊時依 GeoChat 裝置段重解析 faction。
+    exercise_id 為 int（該場）或 NULL_SCOPE（實戰池 IS NULL）。"""
+    with get_conn() as conn:
+        if exercise_id is NULL_SCOPE:
+            rows = conn.execute("SELECT id, sender_uid, faction FROM chats WHERE exercise_id IS NULL").fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT id, sender_uid, faction FROM chats WHERE exercise_id = ?", (exercise_id,)
+            ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def set_faction_for_ids(ids: list[int], faction: str | None) -> int:
+    """#475：批次把指定 chat id 的 faction 設為新值（重分隊 GeoChat 軸）。回影響筆數。"""
+    if not ids:
+        return 0
+    with get_conn() as conn:
+        qmarks = ",".join("?" * len(ids))
+        cur = conn.execute(
+            f"UPDATE chats SET faction = ? WHERE id IN ({qmarks})",  # nosec B608 — qmarks 僅 ? 佔位
+            [faction, *ids],
+        )
+        return cur.rowcount
+
+
 def chat_exists(sender_uid: str) -> bool:
     """是否已有同 sender_uid 的通聯。GeoChat 的 CoT uid 含訊息 GUID（`GeoChat.<dev>.<room>.<guid>`）
     → 每則訊息唯一。冪等用：TAK 重訂閱 / `/cot/sa` resync 會重播持久化 GeoChat，若不查重會每次

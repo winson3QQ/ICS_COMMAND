@@ -117,6 +117,7 @@ async def _refresh_faction_state_once() -> int:
         # 否則例外逃進週期迴圈把 poller 永久殺掉。
         n = client_identity_repo.upsert_many(uid2cn) if uid2cn else 0
         await faction_service.reconcile_online_groups(subs)  # ② 傳入已抓 subs，免二次 poll
+        faction_service.refresh_unclassified_count(subs)  # #475：③ 順手更新「未分隊在線」計數快取（同一 poll）
         return n
     except Exception:
         log.warning("[faction] 週期刷新（identity + group reconcile）失敗（best-effort，下輪再試）", exc_info=True)

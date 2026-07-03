@@ -192,6 +192,7 @@ export const TYPE_LABELS = {
   decision: '決策',
   command: '指令',
   zone: '區域',
+  classification: '分類變更', // #475：重分隊（含中途改隊）
 };
 
 const _ZONE_OP_LABEL = { created: '建立', updated: '更新', deleted: '刪除' };
