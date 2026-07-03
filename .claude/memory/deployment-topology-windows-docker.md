@@ -29,3 +29,13 @@ metadata:
 4. **裝置憑證綁定**（commander-01/iPhone、windows-01/Windows）在 `ics-data` DB；乾淨 DB 會清掉，須重綁。
 
 **裝置憑證 / iOS / onboarding 踩坑全文** → `deploy/prod/README` 四節 + [[ios-mtls-client-cert-packaging]]。**動 prod 前先讀那份 runbook，別重新推導。**
+
+## ⚠️ 部署驗證陷阱：recreate 完務必核 `/api/version` 的 build（2026-07-03 #467 踩過）
+
+`ics-command:dev` 是**共用 image tag** → 多 session 同時部署會**互相覆蓋**它。#467 部署時，一次普通 `docker build`（帶 cache）竟產出**別 session 的舊碼**（`server_version 2.28.1` / `build d2-260-dogfood`）而非我 pull 的 d921fd4（2.29.0）——BuildKit COPY 層 cache 被污染 / 或對方 build 在我 recreate 前把 tag 重指回他的 image。症狀：**容器 healthy、但跑的是錯的碼**。
+
+**鐵律**：
+1. **部署後一定核 `/api/version`**：`server_version`（=硬編 `APP_VERSION`，最可信）+ `build`（=`--build-arg ICS_BUILD_ID`）要 == 剛 pull 的 commit。不核就會靜默部署到錯的碼。
+2. **build 完、recreate 前先驗 image**：`docker run --rm --entrypoint sh ics-command:dev -c "grep '^APP_VERSION' src/core/config.py"`——隔離「build 正確」vs「tag 被搶」。
+3. **cache 污染 → `docker build --no-cache`**（#467 實測：普通 build 出舊 2.28.1、`--no-cache` 出正確 2.29.0）；recreate 用 `--force-recreate`。
+4. **多 session 別同時部署**（都 build 同一 `ics-command:dev` 會 clobber，prod 靜默落到落後碼）。協調成單一部署者或各用不同 tag。
