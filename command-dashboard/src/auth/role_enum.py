@@ -182,7 +182,12 @@ def allowed_roles_for(method: str, path: str) -> frozenset[str] | None:
     if path == "/api/exercises":
         return READ_ROLES if method == "GET" else COMMAND_ROLES
     if path.startswith("/api/exercises/"):
-        # 刪除（級聯清資料）破壞性最高 → 限 sysadmin；其餘（detail/aar/activate/archive/status）指揮層。
+        # #473-B1（開場精靈）：**開場（activate）收 SYSADMIN_ONLY**——開場流程含紅藍分隊，而分類＝
+        # 白隊/導調（中立裁判）之責、commander 恆藍不得經手（否則偷到紅隊裝置名單，破公平性）→ 只有
+        # 白隊能啟動演習。create（草擬 metadata）/ archive（收場，不含分類）/ status 仍指揮層。
+        if method == "POST" and path.endswith("/activate"):
+            return SYSADMIN_ONLY
+        # 刪除（級聯清資料）破壞性最高 → 限 sysadmin；其餘（detail/aar/archive/status）指揮層。
         return SYSADMIN_ONLY if method == "DELETE" else COMMAND_ROLES
     # #287 H2：TTX inject 編排（建 inject / push 事件·決策·snapshot 進場 / 載情境）＝演習指揮層
     # 活動；inject 為「待推送的演習腳本」，參演的 operator/observer 不應預 see（會破壞演習）。

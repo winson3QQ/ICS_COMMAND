@@ -10,8 +10,8 @@
  *   - 渲染 settings 內的演習管理面板
  *
  * 後端會自動依「當前 active exercise」scope 資料；前端不再送 session_type。
- * RBAC：建立 / 啟動 / 歸檔僅指揮層（sysadmin / commander，後端強制）；
- *       非指揮層 UI 隱藏這些鈕，但仍可看 list。
+ * RBAC：建立 / 歸檔僅指揮層（sysadmin / commander）；**啟動（開場）僅 sysadmin**（#473-B1，開場含
+ *       紅藍分隊＝白隊之責）；刪除僅 sysadmin。皆後端強制；非指揮層 UI 隱藏這些鈕，但仍可看 list。
  *
  * 可 import：ws.js（依既有模組邊界慣例，authFetch / 角色判斷由 ws.js re-export）
  */
@@ -192,7 +192,9 @@ export async function renderExercisePanel() {
       const typeLabel = ex.type === 'real' ? '實兵' : 'TTX';
       let actions = '';
       if (canManage) {
-        if (ex.status !== 'active') {
+        // #473-B1：開場（啟動）收 sysadmin——開場流程含紅藍分隊（白隊之責，commander 恆藍不經手）。
+        // 後端 SYSADMIN_ONLY 為真實邊界；此處隱藏鈕避免 commander 點了吃 403。
+        if (ex.status !== 'active' && hasAnyRole('sysadmin')) {
           actions += `<button class="ex-btn" data-action="exActivate" data-id="${_esc(ex.id)}">啟動</button>`;
         }
         // 歸檔＝結束進行中的演習，故只對 active 顯示（準備中尚未啟動、archived 已歸檔皆不顯）。
