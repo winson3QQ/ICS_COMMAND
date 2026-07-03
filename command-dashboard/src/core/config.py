@@ -203,7 +203,9 @@ WARNING_THRESHOLD_SECONDS: int = int(os.getenv("ICS_WARNING_THRESHOLD_SECONDS", 
 #               confirm）：批量 soft-delete 外部週期性殘留（source 非 manual/command 且 archived=0），
 #               保永久物件（指揮部自建 ＋ archived=1 釘住標記）。方案 A：外部鏡像全清，live 裝置週期
 #               重報自然重建。faction 中立、可逆、廣播 resync。開場精靈第二步的後端（B3 接 UI）。
-APP_VERSION = "2.32.0"
+# PATCH 2.32.1：#473-B3 修 clear-residual 的 `kept` 高估——_PERMANENT_WHERE 補 `stale>now`（manual/
+#               command 需未過期才算），對齊 list 顯示語意，否則開場精靈預覽「保留數」比畫面實見多。
+APP_VERSION = "2.32.1"
 
 # CMD_VERSION：前端 UI 功能版本（不同於後端 SemVer APP_VERSION；規則見 CLAUDE.md 版號規則）
 # 兩軌版本命名，不可混用。由 /api/version 提供給前端，是唯一 source-of-truth；release 時更新此值。
@@ -211,7 +213,9 @@ APP_VERSION = "2.32.0"
 #         + 演習/放置/稽核 UI P1-13/14/16/#93 + 分類編輯器 #66）→ 0.x 畢業為 MAJOR 紀元。
 CMD_VERSION: str = os.getenv(
     "CMD_VERSION",
-    "v1.23.3",  # PATCH：#473-B1——演習面板「啟動」鈕收 sysadmin（開場僅白隊，對齊後端 SYSADMIN_ONLY）。
+    "v1.24.0",  # MINOR：#473-B3 開場精靈——「啟動」改開三段引導 modal（① 紅藍分隊導流 → ② 選擇性
+    # 清圖呼叫 clear-residual、inline 回饋清/留數 → ③ 確認開始記錄）；sysadmin-only、CSP-safe data-action。
+    # PATCH v1.23.3：#473-B1——演習面板「啟動」鈕收 sysadmin（開場僅白隊，對齊後端 SYSADMIN_ONLY）。
     # PATCH v1.23.2：#474——_isReadonlySource 恆 false（拆 TTX-only 唯讀閘，外部來源任何模式可編/刪）。
     # PATCH v1.23.1：#472——移除常駐疊看（showStanding）toggle + client filter（可見性軸改 faction，
     # 後端守門，常駐單位恆顯）；cop_stream 不再帶 ?standing/?include_standing。

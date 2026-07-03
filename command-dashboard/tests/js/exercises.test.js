@@ -22,6 +22,13 @@ vi.mock('../../static/js/ws.js', () => ({
 vi.mock('../../static/js/auth.js', () => ({
   hasAnyRole: (...roles) => (roles.includes('sysadmin') ? _isSysadmin : false),
 }));
+// #473-B3 開場精靈：exercises.js 動態 import cop.js 取 openModal / appConfirm
+const mockOpenModal = vi.fn();
+let _confirmResult = true;
+vi.mock('../../static/js/cop.js', () => ({
+  openModal: (...a) => mockOpenModal(...a),
+  appConfirm: () => Promise.resolve(_confirmResult),
+}));
 
 const HEX_RE = /#[0-9a-fA-F]{3,8}\b/;   // 偵測字面 hex 顏色
 
@@ -53,6 +60,8 @@ function installDom() {
 beforeEach(() => {
   globalThis.location = { origin: 'http://127.0.0.1:8000' };
   mockAuthFetch.mockReset();
+  mockOpenModal.mockReset();
+  _confirmResult = true;
   _canManage = true;
   _isSysadmin = true;
   installDom();
@@ -201,9 +210,9 @@ describe('renderExercisePanel + RBAC', () => {
     await m.renderExercisePanel();
     const html = get('ex-panel-body').innerHTML;
     expect(html).toMatch(/data-action="exCreate"/);
-    expect(html).toMatch(/data-action="exActivate" data-id="2"/);   // setup 可啟動
+    expect(html).toMatch(/data-action="exWizard" data-id="2"/);   // #473-B3：setup 可啟動＝開開場精靈
     expect(html).toMatch(/data-action="exArchive"/);
-    expect(html).not.toMatch(/data-action="exActivate" data-id="1"/); // active 不再顯示啟動
+    expect(html).not.toMatch(/data-action="exWizard" data-id="1"/); // active 不再顯示啟動
     // chip 同步為 active 演習
     expect(get('exercise-chip').textContent).toContain('北區大震演練');
     // 面板輸出不含字面 hex（樣式走 CSS class）
@@ -219,7 +228,7 @@ describe('renderExercisePanel + RBAC', () => {
     const html = get('ex-panel-body').innerHTML;
     expect(html).toContain('北區大震演練');   // list 仍可見
     expect(html).not.toMatch(/data-action="exCreate"/);
-    expect(html).not.toMatch(/data-action="exActivate"/);
+    expect(html).not.toMatch(/data-action="exWizard"/);
     expect(html).not.toMatch(/data-action="exArchive"/);
   });
 
@@ -267,5 +276,57 @@ describe('handleExCreate', () => {
     await m.handleExCreate();
     expect(mockAuthFetch.mock.calls[0][1].method).toBe('POST');
     expect(mockAuthFetch.mock.calls[1][0]).toBe('http://127.0.0.1:8000/api/exercises');
+  });
+});
+
+describe('開場精靈（#473-B3）', () => {
+  test('sysadmin：openExOpenWizard 開三段精靈（含清圖 + 啟動鈕帶 id）', async () => {
+    _isSysadmin = true;
+    const m = await import('../../static/js/exercises.js');
+    await m.openExOpenWizard(7, '化災桌推');
+    expect(mockOpenModal).toHaveBeenCalledTimes(1);
+    const [title, body] = mockOpenModal.mock.calls[0];
+    expect(title).toContain('開場精靈');
+    expect(title).toContain('化災桌推');       // name 走 title（openModal textContent 防 XSS）
+    expect(body).toMatch(/data-action="exWizGoFaction"/);   // ① 分隊導流
+    expect(body).toMatch(/data-action="exWizClear"/);       // ② 清圖
+    expect(body).toMatch(/data-action="exWizStart" data-id="7"/); // ③ 啟動帶 id
+  });
+
+  test('非 sysadmin：不開精靈（gate 在前端，後端 SYSADMIN_ONLY 為真實邊界）', async () => {
+    _isSysadmin = false;
+    const m = await import('../../static/js/exercises.js');
+    await m.openExOpenWizard(7, 'X');
+    expect(mockOpenModal).not.toHaveBeenCalled();
+  });
+
+  test('handleExWizardClear：確認後 POST clear-residual（confirm:RESET），回饋清/留數', async () => {
+    const get = installDom();
+    _confirmResult = true;
+    mockAuthFetch.mockReturnValueOnce(resp(200, { ok: true, cleared: 4, kept: 2 }));
+    const m = await import('../../static/js/exercises.js');
+    await m.handleExWizardClear();
+    expect(mockAuthFetch).toHaveBeenCalledWith(
+      'http://127.0.0.1:8000/api/admin/clear-residual',
+      expect.objectContaining({ method: 'POST', body: JSON.stringify({ confirm: 'RESET' }) }));
+    expect(get('ex-wiz-clear-result').textContent).toContain('已清 4');
+    expect(get('ex-wiz-clear-result').textContent).toContain('保留 2');
+  });
+
+  test('handleExWizardClear：使用者取消 → 不打 API', async () => {
+    _confirmResult = false;
+    const m = await import('../../static/js/exercises.js');
+    await m.handleExWizardClear();
+    expect(mockAuthFetch).not.toHaveBeenCalled();
+  });
+
+  test('handleExActivate：fetch throw（網路失敗）→ 回 false + 寫精靈 warn（不靜默）', async () => {
+    // authFetch 走 fetch()，網路失敗會 throw 而非回 resp.ok=false；精靈「開始」不得靜默無反饋。
+    const get = installDom();
+    mockAuthFetch.mockImplementationOnce(() => { throw new Error('Failed to fetch'); });
+    const m = await import('../../static/js/exercises.js');
+    const ok = await m.handleExActivate(3);
+    expect(ok).toBe(false);
+    expect(get('ex-wiz-start-warn').textContent).toContain('啟動失敗');
   });
 });
