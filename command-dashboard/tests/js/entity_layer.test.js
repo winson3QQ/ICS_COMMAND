@@ -19,6 +19,10 @@ import {
   routeLabelToFeature,
   routeWaypointsToFeatures,
   extractRouteWaypoints,
+  splitRouteLinks,
+  geoLinksAlignVertices,
+  newControlPointLink,
+  reassembleRouteLink,
   infraToFeature,
   copEntityToRoute,
   copEntityToPolygon,
@@ -769,5 +773,72 @@ describe('extractRouteWaypoints / routeWaypointsToFeatures (#260 C2)', () => {
   test('routeWaypointsToFeatures 無 waypoints → []', () => {
     expect(routeWaypointsToFeatures({ id: 'r' })).toEqual([]);
     expect(routeWaypointsToFeatures(null)).toEqual([]);
+  });
+});
+
+describe('splitRouteLinks / newControlPointLink / reassembleRouteLink (#260 D1)', () => {
+  const _link = [
+    { uid: 'w1', callsign: 'SP', type: 'b-m-p-w', point: '24.7,120.9,73', relation: 'c' },
+    { uid: 'c1', callsign: '', type: 'b-m-p-c', point: '24.71,120.94,71', relation: 'c' },
+    { uid: 'pp', type: 'p-p', relation: 'p-p' },   // producer link，無 point → otherLinks
+    { uid: 'w2', callsign: 'TGT', type: 'b-m-p-w', point: '24.72,120.95,87', relation: 'c' },
+  ];
+
+  test('splitRouteLinks：帶 point → geoLinks（保序、深拷貝），無 point → otherLinks', () => {
+    const { geoLinks, otherLinks } = splitRouteLinks(_link);
+    expect(geoLinks.map((l) => l.uid)).toEqual(['w1', 'c1', 'w2']);   // producer 'pp' 排除、順序保留
+    expect(otherLinks.map((l) => l.uid)).toEqual(['pp']);
+    geoLinks[0].callsign = 'MUT';                                      // 深拷貝：不污染原陣列
+    expect(_link[0].callsign).toBe('SP');
+  });
+
+  test('splitRouteLinks：單一 dict / 空 → 正規化', () => {
+    expect(splitRouteLinks({ callsign: 'X', type: 'b-m-p-w', point: '1,2,0' }).geoLinks).toHaveLength(1);
+    expect(splitRouteLinks(null)).toEqual({ geoLinks: [], otherLinks: [] });
+  });
+
+  test('newControlPointLink：b-m-p-c 無名 + 有 uid + relation c', () => {
+    const lk = newControlPointLink();
+    expect(lk.type).toBe('b-m-p-c');
+    expect(lk.callsign).toBe('');
+    expect(lk.relation).toBe('c');
+    expect(typeof lk.uid).toBe('string');
+    expect(lk.uid.length).toBeGreaterThan(0);
+  });
+
+  test('reassembleRouteLink：point 依 vertices 重建、保 callsign/type/uid + hae 尾、接回 otherLinks', () => {
+    const { geoLinks, otherLinks } = splitRouteLinks(_link);   // geo=[w1,c1,w2], other=[pp]
+    // 模擬 reshape：拖動 SP、插入的新 control point、TGT 移位（vertices 與 geoLinks index 對齊）
+    const vertices = [[24.700001, 120.900001], [24.71, 120.94], [24.72, 120.95]];
+    const out = reassembleRouteLink(geoLinks, otherLinks, vertices);
+    expect(out).toHaveLength(4);                                // 3 geo + 1 other
+    expect(out[0]).toMatchObject({ uid: 'w1', callsign: 'SP', type: 'b-m-p-w' });
+    expect(out[0].point).toBe('24.700001,120.900001,73');       // 新座標 + 原 hae 73
+    expect(out[2].point).toBe('24.72,120.95,87');               // TGT 保 hae 87
+    expect(out[3]).toEqual({ uid: 'pp', type: 'p-p', relation: 'p-p' });  // producer 原樣接回
+  });
+
+  test('reassembleRouteLink：新插入 link（point 空）→ hae 退 0', () => {
+    const geo = [newControlPointLink()];
+    const out = reassembleRouteLink(geo, [], [[24.5, 120.5]]);
+    expect(out[0].point).toBe('24.5,120.5,0');
+    expect(out[0].type).toBe('b-m-p-c');
+  });
+
+  test('geoLinksAlignVertices：逐點吻合才對齊（非僅數量）', () => {
+    const geo = [
+      { point: '24.7,120.9,73' },
+      { point: '24.72,120.95,87' },
+    ];
+    // 數量+位置皆吻合 → true
+    expect(geoLinksAlignVertices(geo, [[24.7, 120.9], [24.72, 120.95]])).toBe(true);
+    // 數量吻合但位置對不上（順序顛倒）→ false（防把名字蓋到錯座標）
+    expect(geoLinksAlignVertices(geo, [[24.72, 120.95], [24.7, 120.9]])).toBe(false);
+    // 數量不符 → false
+    expect(geoLinksAlignVertices(geo, [[24.7, 120.9]])).toBe(false);
+    // geoLink point 非法 → false
+    expect(geoLinksAlignVertices([{ point: 'x' }], [[24.7, 120.9]])).toBe(false);
+    // 微小誤差（<0.1m，1e-6 內）→ 仍算對齊
+    expect(geoLinksAlignVertices([{ point: '24.7000005,120.9000005,0' }], [[24.7, 120.9]])).toBe(true);
   });
 });

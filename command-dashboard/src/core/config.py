@@ -187,7 +187,9 @@ APP_VERSION = "2.28.1"
 #         + 演習/放置/稽核 UI P1-13/14/16/#93 + 分類編輯器 #66）→ 0.x 畢業為 MAJOR 紀元。
 CMD_VERSION: str = os.getenv(
     "CMD_VERSION",
-    "v1.21.1",  # PATCH：#463——通聯 compose 送出框對 operator 顯示（後端同步放寬 WRITE_ROLES）。
+    "v1.21.2",  # PATCH：#260 D1——route 頂點編輯同步 attributes.link（geoLinks⟷vertices lockstep）→
+    # 修 reshape 後形狀不進 attributes.link、廣播送舊形狀、回灌打回原狀的 round-trip bug（真機 dogfood 定位）。
+    # PATCH v1.21.1：#463——通聯 compose 送出框對 operator 顯示（後端同步放寬 WRITE_ROLES）。
     # MINOR v1.21.0：route 命名 waypoint（SP/CP/TGT）顯示成 map marker+label（#260 C2 / #464）——
     # 圓點+白字標出戰術 checkpoint（`attributes.link` 的 b-m-p-w+callsign），control point 不畫、
     # 純自建 route 無 link 不顯示（命名/編輯=#260 D）；移動時 waypoint 隨 link 同步位移。真機 4-route dogfood PASS。
