@@ -787,6 +787,15 @@ export function newControlPointLink() {
 }
 
 /**
+ * #260 D2：自建 route（無 attributes.link）首次命名 waypoint 時，從 vertices 合成一份與之對齊的
+ * geoLinks（全 b-m-p-c control point、生 uid；point 於 commit 由 reassembleRouteLink 依 vertices 補）。
+ * caller 之後把被命名的那個改 b-m-p-w + callsign → 自建 route 也能有命名 waypoint（C2 顯示 + 出向送）。
+ */
+export function synthesizeGeoLinks(vertices) {
+  return (Array.isArray(vertices) ? vertices : []).map(() => newControlPointLink());
+}
+
+/**
  * 編輯 commit：geoLinks 的 point 依 vertices（index 對齊）重建，保 callsign/type/uid 與原 hae 尾段，
  * 接回 otherLinks → 新的 attributes.link 陣列。geoLinks.length 須 == vertices.length（caller 保證）。
  * @param {Array<object>} geoLinks
