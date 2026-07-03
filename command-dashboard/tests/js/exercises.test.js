@@ -108,18 +108,18 @@ describe('exercises 純函式', () => {
   });
 });
 
-describe('activeExerciseType（#258 β-1：編輯閘 mode-aware 讀模組快取）', () => {
-  test('active ttx → "ttx"（TTX 才放行編輯外部來源）', async () => {
+describe('activeExerciseType（模組快取；#474 後編輯閘已拆，供 real-mode controls 判別）', () => {
+  test('active ttx → "ttx"', async () => {
     const m = await import('../../static/js/exercises.js');
     m.renderExerciseChip(ACTIVE);  // type='ttx'
     expect(m.activeExerciseType()).toBe('ttx');
   });
-  test('active real → "real"（實戰 → 外部來源唯讀）', async () => {
+  test('active real → "real"', async () => {
     const m = await import('../../static/js/exercises.js');
     m.renderExerciseChip({ id: 3, name: '颱風應變', type: 'real', status: 'active' });
     expect(m.activeExerciseType()).toBe('real');
   });
-  test('無 active / 未設快取 → null（→ 唯讀）', async () => {
+  test('無 active / 未設快取 → null', async () => {
     const m = await import('../../static/js/exercises.js');
     expect(m.activeExerciseType()).toBeNull();   // 預設快取空
     m.renderExerciseChip(null);
