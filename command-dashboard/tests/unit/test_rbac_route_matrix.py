@@ -45,6 +45,7 @@ SYSADMIN POST   /api/admin/backups
 SYSADMIN GET    /api/admin/backups/{name}/preview
 SYSADMIN GET    /api/admin/backups/{name}/restore-cmd
 SYSADMIN POST   /api/admin/backups/{name}/verify
+SYSADMIN POST   /api/admin/clear-residual
 SYSADMIN GET    /api/admin/pi-nodes
 SYSADMIN POST   /api/admin/pi-nodes
 SYSADMIN DELETE /api/admin/pi-nodes/{unit_id}

@@ -45,6 +45,7 @@ from repositories.account_repo import (
     update_account_status,
 )
 from repositories.audit_repo import get_audit_log
+from repositories.cop_entity_repo import clear_residual_entities  # #473-B2 開場選擇性清圖
 from repositories.pi_node_repo import (
     create_pi_node,
     delete_pi_node,
@@ -388,6 +389,24 @@ async def reset_exercise(request: Request):
     # P1-14：strict wants 後改 broadcast_all 確保全連線收到；同 reset-db：各 client 對帳清掉演習場域圖釘
     await cop_hub.broadcast_all({"op": "resync"})
     return {"ok": True, "cleared": cleared, "pre_backup": pre_backup}
+
+
+@router.post("/clear-residual", tags=["system"])
+async def clear_residual(request: Request):
+    """#473-B2 開場選擇性清圖：清外部週期性殘留（tak/pi-node/waveink 未釘住的裝置 SA），
+    保永久物件（指揮部自建 route/polygon/事件標記 ＋ archived=1 釘住標記）。開場精靈第二步的後端。
+
+    SYSADMIN_ONLY（開場＝白隊/導調之責，含紅藍分隊，commander 恆藍不得經手；路徑落
+    `/api/admin/` 自動歸 SYSADMIN_ONLY）＋ body confirm（OP-2 比照 reset-*，後端硬擋誤觸）。
+    soft-delete 可逆 → 不做 L3 pre-backup（reset-* 為 hard delete 才備份）。
+    """
+    sess = _check_system_admin(request)
+    await _require_reset_confirm(request)  # OP-2
+    result = clear_residual_entities(actor=sess["username"])
+    audit(sess["username"], None, "cop_clear_residual", "system", "all", result)
+    # 比照 reset-*：批量 UPDATE 不發 per-entity WS delete → 廣播 resync 讓各 client 對帳重撈。
+    await cop_hub.broadcast_all({"op": "resync"})
+    return {"ok": True, **result}
 
 
 @router.post("/suspend-all")
