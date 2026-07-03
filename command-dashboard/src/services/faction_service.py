@@ -129,6 +129,57 @@ async def classify(exercise_id: int | None, client_key: str, faction: str, calls
     }
 
 
+# ── #477a：開場對齊分類到現場（activate/archive 呼叫）────────────────────────────
+# 修「精靈平時（待命池 NULL scope）分隊、按開始記錄後進紅藍分類全變未選」——開場那刻把待命池
+# 分類**繼承**進這場（各場覆寫語意保留），再由 restamp_all_factions 依這場解析、並推到 TAK 現場群。
+
+
+def seed_exercise_from_baseline(exercise_id: int, operator: str) -> int:
+    """開場繼承：把待命池（NULL scope）分類抄進 `exercise_id`，只填「這場尚未單獨分類」的 client。
+
+    待命池＝全域預設名冊；各場開場時繼承之，之後可在該場單獨改（覆蓋，不回寫待命池）。回 seed 筆數。
+    須在 restamp_all_factions 之前呼叫——restamp 依 current_exercise_id() 的分類解析 entity faction，
+    繼承後這場才有分類可解，否則全部 fail-closed（None）＝紅藍皆藏。
+    """
+    baseline = client_faction_repo.list_factions(None)  # 待命池
+    if not baseline:
+        return 0
+    already = client_faction_repo.get_faction_map(exercise_id)  # 這場已單獨分類者
+    n = 0
+    for row in baseline:
+        ck = row["client_key"]
+        if ck in already:
+            continue  # 各場覆寫：這場已單獨分類 → 不抄
+        client_faction_repo.upsert_faction(exercise_id, ck, row["faction"], row.get("callsign"), operator)
+        n += 1
+    return n
+
+
+async def sync_exercise_tak_groups(exercise_id: int | None, *, to_neutral: bool = False) -> dict:
+    """把某場的分類推到 TAK 現場群（開場對齊 server 端隔離）。逐台 best-effort，個別失敗不中斷。
+
+    to_neutral=True（收場用）→ 全部重置 neutral（現場回統一，不殘留敵我隔離）；否則推各自陣營群。
+    回 {pushed, synced, failed, results}。**注意**：server 端即時，但裝置上「開場前已交換的舊標記」
+    不會被 server 端刪除信號清掉（TAK client 硬限制，見 memory tak-streaming-archive-stale-vs-mission）
+    → 中途改隊需請該裝置重開 app；開場前分隊則無殘影問題。
+    """
+    fmap = client_faction_repo.get_faction_map(exercise_id)
+    results: list[dict] = []
+    synced = 0
+    for client_key, faction in fmap.items():
+        target = "neutral" if to_neutral else faction
+        # per-client 防護：sync_client_faction 已 best-effort，但任何非預期例外都不得中斷整批、
+        # 更不得讓 activate/archive 500（TAK 現場同步永遠是附加動作，不擋開場/收場）。
+        try:
+            r = await tak_group_sync.sync_client_faction(client_key, target, username=client_key)
+        except Exception as exc:  # noqa: BLE001 — 邊界吞例外，best-effort 契約
+            r = {"synced": False, "reason": f"unexpected-error:{exc}"}
+        results.append({"client_key": client_key, "faction": target, **r})
+        if r.get("synced"):
+            synced += 1
+    return {"pushed": len(fmap), "synced": synced, "failed": len(fmap) - synced, "results": results}
+
+
 async def override_entity(uid: str, faction: str, operator: str) -> dict:
     """對單一 entity 手動點陣營（無 producer 可歸屬者，如 iTAK 繪圖）→ resync。回更新後 entity。"""
     from repositories._helpers import audit

@@ -281,3 +281,77 @@ def test_override_entity_bumps_version_clock(_no_ws):
     asyncio.run(faction_service.override_entity("MK-VM", "red", "admin"))
     ent = cop_entity_repo.get_cop_entity("MK-VM")
     assert ent["faction"] == "red" and ent["version_clock"] > v0
+
+
+# ── #477a：開場對齊（待命池繼承 + TAK 群推送/重置）─────────────────────────────
+
+
+def test_seed_exercise_from_baseline_inherits_and_preserves_override():
+    """開場繼承：待命池（平時精靈分隊）抄進這場；這場已單獨分類者不覆蓋（各場覆寫）。
+    修「精靈平時分隊、按開始記錄後紅藍分類全變未選」的根因。"""
+    from repositories.exercise_repo import create_exercise
+
+    client_faction_repo.upsert_faction(None, "CN-A", "blue", "A", "admin")  # 待命池
+    client_faction_repo.upsert_faction(None, "CN-B", "red", "B", "admin")
+    ex = create_exercise({"name": "seed-test", "type": "ttx"})
+    client_faction_repo.upsert_faction(ex["id"], "CN-B", "neutral", "B", "admin")  # 這場單獨改
+
+    n = faction_service.seed_exercise_from_baseline(ex["id"], "admin")
+    assert n == 1  # 只抄 CN-A（CN-B 這場已分類，不覆蓋）
+    fmap = client_faction_repo.get_faction_map(ex["id"])
+    assert fmap["CN-A"] == "blue"  # 繼承待命池
+    assert fmap["CN-B"] == "neutral"  # 各場覆寫保留（非待命池的 red）
+
+
+def test_seed_exercise_from_empty_baseline_noop():
+    from repositories.exercise_repo import create_exercise
+
+    ex = create_exercise({"name": "seed-empty", "type": "ttx"})
+    assert faction_service.seed_exercise_from_baseline(ex["id"], "admin") == 0
+
+
+def test_sync_exercise_tak_groups_pushes_each_classified(monkeypatch):
+    """開場推群：逐台把該場分類推到 TAK 現場群（各自陣營）。"""
+    calls = []
+
+    async def _fake_sync(client_key, faction, *, username=None):
+        calls.append((client_key, faction))
+        return {"synced": True, "reason": "ok", "group": faction}
+
+    monkeypatch.setattr(faction_service.tak_group_sync, "sync_client_faction", _fake_sync)
+    client_faction_repo.upsert_faction(None, "CN-A", "blue", None, "admin")
+    client_faction_repo.upsert_faction(None, "CN-B", "red", None, "admin")
+
+    res = asyncio.run(faction_service.sync_exercise_tak_groups(None))
+    assert res["pushed"] == 2 and res["synced"] == 2 and res["failed"] == 0
+    assert set(calls) == {("CN-A", "blue"), ("CN-B", "red")}
+
+
+def test_sync_exercise_tak_groups_to_neutral_resets_all(monkeypatch):
+    """收場：全部重置 neutral（現場回統一，不殘留敵我隔離）。"""
+    calls = []
+
+    async def _fake_sync(client_key, faction, *, username=None):
+        calls.append((client_key, faction))
+        return {"synced": True}
+
+    monkeypatch.setattr(faction_service.tak_group_sync, "sync_client_faction", _fake_sync)
+    client_faction_repo.upsert_faction(None, "CN-A", "blue", None, "admin")
+    client_faction_repo.upsert_faction(None, "CN-B", "red", None, "admin")
+
+    asyncio.run(faction_service.sync_exercise_tak_groups(None, to_neutral=True))
+    assert set(calls) == {("CN-A", "neutral"), ("CN-B", "neutral")}
+
+
+def test_sync_exercise_tak_groups_best_effort_counts_failures(monkeypatch):
+    """個別失敗（離線/未配置/TAK 錯）不中斷，計入 failed。"""
+
+    async def _fake_sync(client_key, faction, *, username=None):
+        return {"synced": client_key == "CN-A", "reason": "device-offline-or-unknown"}
+
+    monkeypatch.setattr(faction_service.tak_group_sync, "sync_client_faction", _fake_sync)
+    client_faction_repo.upsert_faction(None, "CN-A", "blue", None, "admin")
+    client_faction_repo.upsert_faction(None, "CN-B", "red", None, "admin")
+
+    res = asyncio.run(faction_service.sync_exercise_tak_groups(None))
+    assert res["pushed"] == 2 and res["synced"] == 1 and res["failed"] == 1

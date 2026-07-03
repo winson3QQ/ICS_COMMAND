@@ -69,10 +69,16 @@ async def activate(exercise_id: int, request: Request):
         raise HTTPException(409, str(e)) from e
     # #267 bug 修：active 場改變 → 重 stamp live entity 的 DB scope（名下 CN 在新場 roster+窗 者自動歸位）。
     # 須在 _rescope_and_announce 前（DB scope 先正確，WS rescope/廣播才反映新狀態）。
-    from services import cop_service
+    from services import cop_service, faction_service
 
+    # #477a：開場繼承——把待命池（平時分隊）分類抄進這場，修「精靈平時分隊、開始記錄後全變未選」。
+    # 須在 restamp_all_factions 之前（restamp 依這場分類解析 entity faction，繼承後才有得解）。
+    faction_service.seed_exercise_from_baseline(exercise_id, sess["username"])
     await cop_service.restamp_all_tak_entities()
     await cop_service.restamp_all_factions()  # #473-A：active 場改變 → 依新場分類重解析所有 live entity 的 faction
+    # #477a：把這場分類推到 TAK 現場群（server 端隔離對齊這場，兩層一致）。best-effort，不擋開場；
+    # 裝置上開場前的舊標記為 TAK client 硬限制、需裝置本機重開才清（見 faction_service.sync_exercise_tak_groups）。
+    await faction_service.sync_exercise_tak_groups(exercise_id)
     # P1-14：active 場改變 → 各 session 重新依新 scope 對帳（map/面板/chip 即時反應）。
     # #265：先就地 rescope 跟隨 active 的 WS 連線，再廣播（不靠 client 重連）。
     await _rescope_and_announce()
@@ -93,8 +99,11 @@ async def do_archive(exercise_id: int, request: Request):
         result = {**result, "backup": backup_name} if isinstance(result, dict) else result
     # #267 bug 修（bug 2）：歸檔 → 無 active 場 → 重 stamp 把該場 entity 釋放回 NULL（單位回待命視圖顯示，
     # 不再卡在 archived 場而從地圖消失）。軌跡逐點凍結各自 exercise_id（m038）→ AAR 回放不受影響。
-    from services import cop_service
+    from services import cop_service, faction_service
 
+    # #477a：收場把該場分類過的裝置 TAK 群重置 neutral（現場回統一，不殘留敵我隔離）。best-effort，不擋歸檔。
+    # 在 archive 後、restamp 前後皆可（不動 client_faction）；此處讀該場 fmap 逐台重置。
+    await faction_service.sync_exercise_tak_groups(exercise_id, to_neutral=True)
     await cop_service.restamp_all_tak_entities()
     await cop_service.restamp_all_factions()  # #473-A：active 場改變 → 依新場分類重解析所有 live entity 的 faction
     # 同 activate：歸檔 active 場 → active 變 None（NULL_SCOPE 實戰池），就地 rescope + 廣播（#265）
