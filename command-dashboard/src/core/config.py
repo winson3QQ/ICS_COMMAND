@@ -205,7 +205,12 @@ WARNING_THRESHOLD_SECONDS: int = int(os.getenv("ICS_WARNING_THRESHOLD_SECONDS", 
 #               重報自然重建。faction 中立、可逆、廣播 resync。開場精靈第二步的後端（B3 接 UI）。
 # PATCH 2.32.1：#473-B3 修 clear-residual 的 `kept` 高估——_PERMANENT_WHERE 補 `stale>now`（manual/
 #               command 需未過期才算），對齊 list 顯示語意，否則開場精靈預覽「保留數」比畫面實見多。
-APP_VERSION = "2.32.1"
+# MINOR 2.33.0：#477a 開場對齊分類到現場——activate 時 ① seed_exercise_from_baseline 把待命池（平時分隊）
+#               繼承進這場（修「精靈平時分隊、開始記錄後紅藍分類全變未選」根因，各場覆寫語意保留）→
+#               ② restamp 依這場重解析 entity faction → ③ sync_exercise_tak_groups 把這場分類推到 TAK 現場群
+#               （server 端隔離對齊）；archive 則 to_neutral 重置現場群。best-effort 不擋開場；裝置舊標記為
+#               TAK client 硬限制需本機重開（見 dogfood）。
+APP_VERSION = "2.33.0"
 
 # CMD_VERSION：前端 UI 功能版本（不同於後端 SemVer APP_VERSION；規則見 CLAUDE.md 版號規則）
 # 兩軌版本命名，不可混用。由 /api/version 提供給前端，是唯一 source-of-truth；release 時更新此值。

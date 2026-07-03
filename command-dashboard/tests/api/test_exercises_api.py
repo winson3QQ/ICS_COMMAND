@@ -67,6 +67,18 @@ class TestActivateExercise:
         r = client.post("/api/exercises/9999/activate", json={}, headers=auth)
         assert r.status_code == 404
 
+    def test_activate_inherits_baseline_faction(self, client, auth):
+        """#477a 回歸：平時（待命池 NULL scope）分好的隊，activate 後這場自動繼承——修「精靈平時
+        分隊、按開始記錄後進紅藍分類全變未選」。鎖 activate 有把 seed 接在 restamp 前。"""
+        from repositories import client_faction_repo
+
+        client_faction_repo.upsert_faction(None, "CN-SEED", "blue", "SEED", "admin")  # 待命池（平時）
+        ex_id = client.post("/api/exercises", json={"name": "SeedInherit", "type": "ttx"}, headers=auth).json()["id"]
+        assert client_faction_repo.get_faction_map(ex_id) == {}  # 開場前這場是空的
+        r = client.post(f"/api/exercises/{ex_id}/activate", json={}, headers=auth)
+        assert r.status_code == 200
+        assert client_faction_repo.get_faction_map(ex_id).get("CN-SEED") == "blue"  # 開場後繼承待命池
+
 
 class TestArchiveExercise:
     def test_archive_after_active(self, client, auth, active_exercise):
