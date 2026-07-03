@@ -95,37 +95,43 @@ async def _periodic_retention_cleanup():
         await asyncio.sleep(_RETENTION_INTERVAL)
 
 
-_CLIENT_IDENTITY_INTERVAL = 45  # 秒：刷新 uid→CN 快取的間隔（#344 Slice 2）
+# #477b：合併 #344 Slice 2 的 uid→CN 刷新 + TAK 群 reconcile 成**一次 poll**（同查 subscriptions/all）。
+# 30s（原 45s 調快）：離線→上線裝置最多 ~30s 自動歸位群 + 著色 faction；一個 poll 做兩事、負擔不加倍。
+_FACTION_STATE_INTERVAL = 30  # 秒
 
 
-async def _refresh_client_identity_once() -> int:
-    """#344 Slice 2：單次從 TAK `subscriptions/all` 刷新 `client_identity`（uid→CN）。回寫入筆數。
-
-    TAK admin 未配置 → 跳過（不建 client/session）回 0；其餘錯 best-effort（log 後回 0）→ 下輪再試。"""
+async def _refresh_faction_state_once() -> int:
+    """#477b：單次從 TAK `subscriptions/all` poll，同時做兩件事——
+    ① 刷 `client_identity`（uid→CN 快取，#344 Slice 2）；
+    ② `reconcile_online_groups`（在線裝置實際 TAK 群 ≠ 分類 → 補推，離線→上線自動歸位）。
+    回 identity 寫入筆數。TAK admin 未配置 → 跳過回 0；其餘錯 best-effort（log 回 0）→ 下輪再試。"""
     from repositories import client_identity_repo
-    from services import tak_group_sync
+    from services import faction_service, tak_group_sync
 
     if not tak_group_sync.is_configured():
         return 0
     try:
-        uid2cn = await tak_group_sync.online_uid_to_username()
-        # upsert 也包進 try（review MED）：upsert_many 開 DB 寫，與 ingest 爭用可拋 `database is locked`
-        # 等 OperationalError → 須一併吞掉走 best-effort，否則例外逃進週期迴圈把 poller 永久殺掉。
-        return client_identity_repo.upsert_many(uid2cn) if uid2cn else 0
+        subs = await tak_group_sync.list_online_subscriptions()  # 一次 poll，含 groups
+        uid2cn = {s["client_uid"]: s["username"] for s in subs if s.get("client_uid") and s.get("username")}
+        # upsert 包進 try（review MED）：與 ingest 爭用可拋 `database is locked` → 吞掉走 best-effort，
+        # 否則例外逃進週期迴圈把 poller 永久殺掉。
+        n = client_identity_repo.upsert_many(uid2cn) if uid2cn else 0
+        await faction_service.reconcile_online_groups(subs)  # ② 傳入已抓 subs，免二次 poll
+        return n
     except Exception:
-        log.warning("[faction] client_identity 刷新失敗（best-effort，下輪再試）", exc_info=True)
+        log.warning("[faction] 週期刷新（identity + group reconcile）失敗（best-effort，下輪再試）", exc_info=True)
         return 0
 
 
-async def _periodic_client_identity_refresh():
-    """#344 Slice 2：週期刷新 uid→CN 快取，免「裝置重連換 uid 後須先開紅藍分類面板才著色」的窗口——
-    裝置換 uid 重連後最多一個輪詢週期即自動解析 faction。間隔 45s 對齊 ~60s online 視窗近似。"""
+async def _periodic_faction_state_refresh():
+    """#477b：週期（30s）刷 uid→CN 快取 + reconcile 在線裝置 TAK 群。裝置換 uid 重連自動著色 faction、
+    離線時分類的裝置一連上即自動補推到正確群（免手動重分）。一個 poll 服務兩事，與 ~60s online 視窗近似。"""
     while True:
-        await asyncio.sleep(_CLIENT_IDENTITY_INTERVAL)
+        await asyncio.sleep(_FACTION_STATE_INTERVAL)
         try:  # 迴圈內 try（對齊 sibling 週期任務）：單次失敗不中斷迴圈、不永久殺任務（防 review MED）。
-            await _refresh_client_identity_once()
+            await _refresh_faction_state_once()
         except Exception:
-            log.warning("[faction] client_identity 週期刷新失敗（best-effort，下輪再試）", exc_info=True)
+            log.warning("[faction] 週期刷新失敗（best-effort，下輪再試）", exc_info=True)
 
 
 def _assert_safe_mtls_config() -> None:
@@ -188,8 +194,8 @@ async def lifespan(app: FastAPI):
     _cleanup_task = asyncio.create_task(_periodic_session_cleanup())
     # #207：軌跡 PII TTL 清理（開機 + 每日；開關見 retention_service）
     _retention_task = asyncio.create_task(_periodic_retention_cleanup())
-    # #344 Slice 2：週期刷新 uid→CN 快取（裝置換 uid 重連自動著色 faction，免先開紅藍分類面板）
-    _identity_task = asyncio.create_task(_periodic_client_identity_refresh())
+    # #477b：週期刷 uid→CN 快取 + reconcile TAK 群（一次 poll；離線→上線裝置自動歸位群 + 著色 faction）
+    _identity_task = asyncio.create_task(_periodic_faction_state_refresh())
     # P2-03（#107）：啟動 :8089 CoT 訂閱背景 task（CoT → ingest → COP）。
     # P2-24（#164）：啟停改由 tak_runtime 控制器管（單一 handle，與 runtime toggle 共用）；
     # 開機依 effective_enabled()（持久選擇優先、回退 TAK_ENABLED env）決定是否起。
