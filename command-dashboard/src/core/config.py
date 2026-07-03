@@ -210,7 +210,11 @@ WARNING_THRESHOLD_SECONDS: int = int(os.getenv("ICS_WARNING_THRESHOLD_SECONDS", 
 #               ② restamp 依這場重解析 entity faction → ③ sync_exercise_tak_groups 把這場分類推到 TAK 現場群
 #               （server 端隔離對齊）；archive 則 to_neutral 重置現場群。best-effort 不擋開場；裝置舊標記為
 #               TAK client 硬限制需本機重開（見 dogfood）。
-APP_VERSION = "2.33.0"
+# MINOR 2.34.0：#477b 現場隔離可靠性——① list_clients 加 actual_groups/isolated（面板顯 ⚠ 未隔離）；
+#               ② reconcile_online_groups 背景 reconciler：在線裝置實際 TAK 群 ≠ 分類 → 補推（離線→上線
+#               自動歸位）；③ 合併 #344 Slice 2 的 uid→CN 刷新與群 reconcile 成一次 subscriptions/all poll，
+#               間隔 45s→30s。best-effort。
+APP_VERSION = "2.34.0"
 
 # CMD_VERSION：前端 UI 功能版本（不同於後端 SemVer APP_VERSION；規則見 CLAUDE.md 版號規則）
 # 兩軌版本命名，不可混用。由 /api/version 提供給前端，是唯一 source-of-truth；release 時更新此值。
@@ -218,7 +222,9 @@ APP_VERSION = "2.33.0"
 #         + 演習/放置/稽核 UI P1-13/14/16/#93 + 分類編輯器 #66）→ 0.x 畢業為 MAJOR 紀元。
 CMD_VERSION: str = os.getenv(
     "CMD_VERSION",
-    "v1.24.3",  # PATCH：hotfix——修 CMD_VERSION bump 手滑（舊版字串留成 os.getenv 第三位置參數 →
+    "v1.25.0",  # MINOR：#477b 紅藍分類面板現場隔離指示——每台顯 🛡（已隔離）/ ⚠ 未隔離（分類了但實際
+    # TAK 群不符，含 __ANON__/離線待補）；分類即時回饋（tak_group.synced 沒推成就大聲提示，不再假成功）。
+    # PATCH v1.24.3：hotfix——修 CMD_VERSION bump 手滑（舊版字串留成 os.getenv 第三位置參數 →
     # import 期 TypeError、prod crash-loop）；補 tests/unit/test_config_version 版號常數 sanity 守之。
     # PATCH v1.24.2：#473-B3 開場精靈「前往分隊」回返修正（iPad dogfood）——exWizGoFaction 不再
     # closeModal，讓演習面板（z=290）疊在精靈（z=210）上；分隊完關面板即露出精靈續走 ②/③（閉合迴圈）。

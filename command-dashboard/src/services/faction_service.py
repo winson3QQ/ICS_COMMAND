@@ -50,7 +50,12 @@ async def list_clients(exercise_id: int | None) -> list[dict]:
     **per-exercise**（同一 CN 跨場可不同陣營，由 exercise_id scope 決定）。
     best-effort：TAK 未配置 / 離線 → uid2cn={} → 回 []（前端顯空狀態，指引去開 TAK）。
     """
-    uid2cn = await tak_group_sync.online_uid_to_username()  # {uid: username(CN)}；在線視圖
+    # #477b：改用 list_online_subscriptions（含每台**實際 TAK 群**）——同一 subscriptions/all 視圖，
+    # 順帶拿 groups 做「分類 vs 實際群」比對，讓白隊看得到隔離有沒有真的生效。uid→CN 對照從 subs 派生
+    # （等同舊 online_uid_to_username，同資料源）。
+    subs = await tak_group_sync.list_online_subscriptions()
+    uid2cn = {s["client_uid"]: s["username"] for s in subs if s.get("client_uid") and s.get("username")}
+    cn_groups = {s["username"]: (s.get("groups") or []) for s in subs if s.get("username")}
     client_identity_repo.upsert_many(uid2cn)  # 持久化供 ingest 翻譯（離線裝置的舊對照保留）
     issued = {c["callsign"] for c in tak_device_cert_repo.list_device_certs() if c.get("status") == "active"}
     fmap = client_faction_repo.get_faction_map(exercise_id)
@@ -61,6 +66,12 @@ async def list_clients(exercise_id: int | None) -> list[dict]:
         seen.add(cn)
         ent = cop_entity_repo.get_cop_entity(uid)  # 裝置 self-SA（uid==裝置uid）→ live in-app callsign（角色）
         live_callsign = (ent.get("callsign") if ent else None) or cn
+        faction = fmap.get(cn)
+        groups = cn_groups.get(cn, [])
+        # #477b isolated：已分類者才有隔離期望——「只在自己陣營群」= 正確隔離（sync_client_faction 做
+        # exclusive replace，正確者實際群恰為 [群名]）。非此（含 __ANON__/別群/多群）= 未隔離 → 面板 ⚠。
+        # 未分類 → None（無期望，不顯 ⚠）。群名經 group_name_for 映射（不硬編陣營名==群名，#477b 硬化）。
+        isolated = (groups == [tak_group_sync.group_name_for(faction)]) if cn in fmap else None
         out.append(
             {
                 "client_key": cn,  # 穩定鍵 = cert CN（classify 綁此）
@@ -68,8 +79,10 @@ async def list_clients(exercise_id: int | None) -> list[dict]:
                 "cn": cn,  # 穩定身分（前端與角色名並顯，便於辨識「誰扮這角色」）
                 "last_seen": "",  # 在線視圖即時，無需 last_seen 時效近似
                 "online": True,  # 來源即在線訂閱
-                "faction": fmap.get(cn),
+                "faction": faction,
                 "classified": cn in fmap,
+                "actual_groups": groups,  # #477b：該裝置目前實際訂閱的 TAK 群（供比對顯示）
+                "isolated": isolated,  # #477b：True=正確隔離 / False=分類了但實際群不符（⚠）/ None=未分類
             }
         )
     out.sort(key=lambda d: d["cn"])
@@ -178,6 +191,40 @@ async def sync_exercise_tak_groups(exercise_id: int | None, *, to_neutral: bool 
         if r.get("synced"):
             synced += 1
     return {"pushed": len(fmap), "synced": synced, "failed": len(fmap) - synced, "results": results}
+
+
+async def reconcile_online_groups(subs: list[dict] | None = None) -> dict:
+    """#477b 背景 reconciler：把「在線 + 已分類（當前場）+ 實際 TAK 群 ≠ 分類」的裝置補推群。
+
+    離線時分類 → 群沒推成；此 reconciler 讓裝置**一連上、下一輪即自動歸位**，免手動重分。只在
+    「實際群 ≠ 只在 [faction]」時才補推（省 TAK 寫；steady-state 零動作）。分類來源 = 當前 active 場
+    （平時=待命池），對齊 classify/activate 語意。best-effort。`subs` 可由週期任務傳入（一次 poll 共用，
+    免二次拉 subscriptions），否則自拉。回 {checked, fixed, results}。
+    """
+    if not tak_group_sync.is_configured():
+        return {"checked": 0, "fixed": 0, "reason": "tak-not-configured"}
+    fmap = client_faction_repo.get_faction_map(exercise_service.current_exercise_id())
+    if not fmap:
+        return {"checked": 0, "fixed": 0}
+    if subs is None:
+        subs = await tak_group_sync.list_online_subscriptions()
+    actual = {s["username"]: (s.get("groups") or []) for s in subs if s.get("username")}
+    fixed = 0
+    results: list[dict] = []
+    for cn, faction in fmap.items():
+        groups = actual.get(cn)
+        if groups is None:
+            continue  # 離線 → 這輪跳過（上線後某輪補）
+        if groups == [tak_group_sync.group_name_for(faction)]:
+            continue  # 已正確隔離（實際群==映射群名）→ 不動（#477b 硬化：不硬編陣營名==群名）
+        try:
+            r = await tak_group_sync.sync_client_faction(cn, faction, username=cn)
+        except Exception as exc:  # noqa: BLE001 — best-effort 邊界，個別失敗不中斷整批
+            r = {"synced": False, "reason": f"unexpected-error:{exc}"}
+        results.append({"client_key": cn, "faction": faction, "was": groups, **r})
+        if r.get("synced"):
+            fixed += 1
+    return {"checked": len(fmap), "fixed": fixed, "results": results}
 
 
 async def override_entity(uid: str, faction: str, operator: str) -> dict:

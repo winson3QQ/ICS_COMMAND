@@ -32,6 +32,12 @@ log = logging.getLogger(__name__)
 _FACTION_GROUP: dict[str, str] = {"blue": "blue", "red": "red", "neutral": "neutral"}
 
 
+def group_name_for(faction: str | None) -> str | None:
+    """faction → 對應 TAK 群名（None/未知 → None）。供隔離判定/推群共用單一映射，
+    避免各處硬編「群名==陣營名」的暗假設（#477b review 硬化）。"""
+    return _FACTION_GROUP.get(faction or "")
+
+
 def is_configured() -> bool:
     """是否已配置管理級 cert（未配置 → faction 分類純 ICS 視圖層、不同步 TAK group）。"""
     return bool(config.TAK_MARTI_URL and config.TAK_MARTI_ADMIN_CERT and config.TAK_MARTI_ADMIN_KEY)

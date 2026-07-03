@@ -177,11 +177,15 @@ def test_classify_bumps_version_clock(_no_ws):
 # ── list_clients：online ∩ issued，CN 鍵 ────────────────────────────────────
 
 
-def _mock_subs(monkeypatch, uid2cn):
-    async def _f():
-        return dict(uid2cn)
+def _mock_subs(monkeypatch, uid2cn, groups_by_cn=None):
+    """mock list_online_subscriptions（#477b：list_clients 改吃含 groups 的在線訂閱）。
+    uid2cn={uid: cn}；groups_by_cn={cn: [群名]}（預設空群 → isolated 比對用，不傳則 []）。"""
+    groups_by_cn = groups_by_cn or {}
 
-    monkeypatch.setattr(tak_group_sync, "online_uid_to_username", _f)
+    async def _f():
+        return [{"client_uid": u, "username": n, "groups": groups_by_cn.get(n, [])} for u, n in uid2cn.items()]
+
+    monkeypatch.setattr(tak_group_sync, "list_online_subscriptions", _f)
 
 
 def _mock_issued(monkeypatch, callsigns):
@@ -355,3 +359,69 @@ def test_sync_exercise_tak_groups_best_effort_counts_failures(monkeypatch):
 
     res = asyncio.run(faction_service.sync_exercise_tak_groups(None))
     assert res["pushed"] == 2 and res["synced"] == 1 and res["failed"] == 1
+
+
+# ── #477b：背景 reconciler（分類 vs 實際 TAK 群，補推）─────────────────────────
+
+
+def test_reconcile_pushes_only_mismatched(monkeypatch):
+    """只補推「實際群 ≠ [分類]」的裝置；已正確者不動（省 TAK 寫）、離線者跳過。"""
+    monkeypatch.setattr(faction_service.tak_group_sync, "is_configured", lambda: True)
+    calls = []
+
+    async def _fake_sync(client_key, faction, *, username=None):
+        calls.append((client_key, faction))
+        return {"synced": True}
+
+    monkeypatch.setattr(faction_service.tak_group_sync, "sync_client_faction", _fake_sync)
+    client_faction_repo.upsert_faction(None, "CN-OK", "blue", None, "admin")  # 已正確
+    client_faction_repo.upsert_faction(None, "CN-BAD", "red", None, "admin")  # 群不符 → 補
+    client_faction_repo.upsert_faction(None, "CN-OFF", "blue", None, "admin")  # 離線 → 跳過
+
+    subs = [
+        {"username": "CN-OK", "groups": ["blue"]},  # 正確
+        {"username": "CN-BAD", "groups": ["__ANON__"]},  # 未隔離 → 補
+        # CN-OFF 不在 subs = 離線
+    ]
+    res = asyncio.run(faction_service.reconcile_online_groups(subs))
+    assert res["checked"] == 3 and res["fixed"] == 1
+    assert calls == [("CN-BAD", "red")]  # 只補 CN-BAD；CN-OK 已對不動、CN-OFF 離線跳過
+
+
+def test_reconcile_noop_when_no_classification(monkeypatch):
+    monkeypatch.setattr(faction_service.tak_group_sync, "is_configured", lambda: True)
+    res = asyncio.run(faction_service.reconcile_online_groups([{"username": "CN-X", "groups": ["blue"]}]))
+    assert res == {"checked": 0, "fixed": 0}  # 無分類 → 不動
+
+
+def test_reconcile_skips_when_tak_unconfigured(monkeypatch):
+    monkeypatch.setattr(faction_service.tak_group_sync, "is_configured", lambda: False)
+    client_faction_repo.upsert_faction(None, "CN-A", "blue", None, "admin")
+    res = asyncio.run(faction_service.reconcile_online_groups([]))
+    assert res["fixed"] == 0 and res.get("reason") == "tak-not-configured"
+
+
+def test_list_clients_flags_isolation(monkeypatch):
+    """#477b：list_clients 帶 actual_groups + isolated——分類且實際群=[faction] → True；
+    分類但群不符 → False（面板顯 ⚠）；未分類 → None。"""
+
+    async def _subs():
+        return [
+            {"client_uid": "u-ok", "username": "CN-OK", "groups": ["blue"]},
+            {"client_uid": "u-bad", "username": "CN-BAD", "groups": ["__ANON__"]},
+            {"client_uid": "u-un", "username": "CN-UN", "groups": ["neutral"]},
+        ]
+
+    monkeypatch.setattr(faction_service.tak_group_sync, "list_online_subscriptions", _subs)
+    monkeypatch.setattr(
+        faction_service.tak_device_cert_repo,
+        "list_device_certs",
+        lambda: [{"callsign": cn, "status": "active"} for cn in ("CN-OK", "CN-BAD", "CN-UN")],
+    )
+    client_faction_repo.upsert_faction(None, "CN-OK", "blue", None, "admin")
+    client_faction_repo.upsert_faction(None, "CN-BAD", "red", None, "admin")  # 分類 red 但實際 __ANON__
+
+    by_cn = {c["cn"]: c for c in asyncio.run(faction_service.list_clients(None))}
+    assert by_cn["CN-OK"]["isolated"] is True
+    assert by_cn["CN-BAD"]["isolated"] is False  # 未隔離 → 面板 ⚠
+    assert by_cn["CN-UN"]["isolated"] is None  # 未分類 → 無期望

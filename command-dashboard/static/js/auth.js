@@ -990,6 +990,16 @@ export async function admLoadFactions() {
     const badge = f
       ? '<span style="font-size:10px;font-weight:700;color:' + _FACTION_META[f].color + ';">' + _FACTION_META[f].label + '</span>'
       : '<span style="font-size:10px;color:var(--red,#ef4444);font-weight:700;">⚠ 未分類</span>';
+    // #477b：現場隔離指示——分類了但實際 TAK 群不符 → ⚠ 未隔離（白隊看得到「沒真的隔開」）；
+    // 已對齊 → 🛡；未分類（isolated=null）→ 不顯。
+    let isoBadge = '';
+    if (c.isolated === false) {
+      const g = (c.actual_groups && c.actual_groups.length) ? c.actual_groups.join('/') : '（無/匿名）';
+      isoBadge = '<span style="font-size:10px;font-weight:700;color:var(--red,#ef4444);" title="分類為 ' + _escAudit(f || '?') +
+        ' 但現場實際 TAK 群為 ' + _escAudit(g) + ' → 未隔離。裝置連上後約 30 秒自動補推，或按一次陣營鈕手動補。">⚠ 未隔離</span>';
+    } else if (c.isolated === true) {
+      isoBadge = '<span style="font-size:10px;color:var(--green,#3fb950);" title="現場 TAK 群已對齊分類（隔離生效）">🛡</span>';
+    }
     let btns = '';
     for (const fac of ['blue','red','neutral']) {
       const on = f === fac;
@@ -1004,7 +1014,7 @@ export async function admLoadFactions() {
         _escAudit(c.callsign || c.client_key) +
         ((c.cn && c.cn !== c.callsign) ? '<span style="color:var(--text3);font-size:10px;margin-left:6px;font-family:monospace;">' + _escAudit(c.cn) + '</span>' : '') +
       '</span>' +
-      badge +
+      badge + isoBadge +
       // #389：在線/離線指示（last_seen 時效近似，非真連線態）。
       '<span style="font-size:10px;" title="' + (c.online ? '近期有活動（≈在線）' : '較久無活動（≈離線）') + '">' + (c.online ? '🟢' : '⚪') + '</span>' +
       '<span style="color:var(--text3);font-size:10px;" title="最後活動時間（本地時區）">' + _escAudit(c.last_seen ? fmtLocalDT(c.last_seen) : '') + '</span>' +
@@ -1031,7 +1041,18 @@ export async function admClassifyFaction(clientKey, faction, callsign) {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
   });
   if (!resp.ok) { alert('分類失敗（' + resp.status + '）：' + (await resp.text()).slice(0, 200)); return; }
-  admLoadFactions();  // 重整（後端已 resync 廣播，地圖會自動更新）
+  // #477b：分類即時回饋——ICS 分類必成，但 TAK 現場群同步是 best-effort。讀 tak_group.synced，
+  // 沒推成就大聲講（不再假裝成功）。離線＝預期（會自動補推），語氣緩；其餘＝真問題。
+  let data = null;
+  try { data = await resp.json(); } catch { /* 無 body 就跳過回饋 */ }
+  const tg = data && data.tak_group;
+  if (tg && tg.synced === false) {
+    const r = String(tg.reason || '');
+    alert(r.indexOf('offline') >= 0
+      ? 'ℹ️ 分類已記錄。該裝置目前離線 → TAK 現場隔離會在它連上後約 30 秒自動補推。'
+      : '⚠ 分類已記錄，但 TAK 現場隔離未同步：' + r + '\n（可能 TAK 未配置；裝置在線後約 30 秒自動重試，或稍後再點一次）');
+  }
+  admLoadFactions();  // 重整（後端已 resync 廣播，地圖會自動更新；⚠ 未隔離 指示同步更新）
 }
 
 export async function admOverrideFaction() {
