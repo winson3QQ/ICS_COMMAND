@@ -11,6 +11,7 @@ services/chat_service.py — GeoChat（CoT b-t-f）通聯落地（P2-07，#129�
 import html
 
 from repositories import chat_repo
+from repositories._helpers import NULL_SCOPE
 from schemas.chat import ChatIn
 from schemas.tak import CoTEventIn
 from services import faction_resolve
@@ -28,6 +29,21 @@ def _geochat_client_key(uid: str | None) -> str | None:
     if len(parts) >= 2 and parts[0] == "GeoChat" and parts[1]:
         return parts[1]
     return None
+
+
+def restamp_chats_for_client(exercise_id, device_uids: set[str], faction: str | None) -> int:
+    """#475 GeoChat 軸：把某場內、由 device_uids 任一裝置發出的既有 GeoChat 的 faction 重蓋為新值。
+
+    重分隊即時傳播三軸之一（對標 cop_entity 的 set_faction_for_uids）。chats.sender_uid 是 GeoChat
+    訊息 uid（`GeoChat.<裝置uid>.<室>.<GUID>`），故經 _geochat_client_key 取裝置段比對 device_uids。
+    只改 faction 有變者。回影響筆數。"""
+    if not device_uids:
+        return 0
+    # exercise_id None（平時待命池）→ NULL_SCOPE（repo 走 exercise_id IS NULL；直傳 None 會 `=NULL` 配不到）。
+    scope = NULL_SCOPE if exercise_id is None else exercise_id
+    rows = chat_repo.list_sender_uids_by_exercise(scope)
+    ids = [r["id"] for r in rows if _geochat_client_key(r["sender_uid"]) in device_uids and r["faction"] != faction]
+    return chat_repo.set_faction_for_ids(ids, faction)
 
 
 def _feed_item(row: dict) -> dict:

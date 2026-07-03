@@ -96,5 +96,6 @@ def upsert_faction(
         "client_faction",
         client_key,
         {"exercise_id": exercise_id, "faction": faction, "callsign": callsign},
+        exercise_id=exercise_id,  # #475：帶場別 → 重分隊進該場 AAR timeline（原漏傳=None、timeline 撈不到）
     )
     return dict(row)

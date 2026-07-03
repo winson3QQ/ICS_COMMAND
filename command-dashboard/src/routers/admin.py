@@ -458,6 +458,14 @@ async def faction_entity_override(body: FactionOverrideIn, request: Request):
     return await faction_service.override_entity(body.uid, body.faction, sess["username"])
 
 
+@router.get("/factions/unclassified-count", tags=["faction"])
+def faction_unclassified_count(request: Request):
+    """#475：讀「未分隊在線」計數快取（背景 poller 每 ~30s 更新，不打 TAK）→ 演習 chip/面板顯提示，
+    白隊中途有未分隊新連線即知去分類。未分隊 fail-closed（藏）不變，此為提醒非強制。"""
+    _check_system_admin(request)
+    return faction_service.get_unclassified_online()
+
+
 # ── #267 演習 roster（參與 + 編制；prefix /api/admin → SYSADMIN_ONLY）。敵我另在 /factions（#344），並列。──
 
 

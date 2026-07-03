@@ -214,7 +214,12 @@ WARNING_THRESHOLD_SECONDS: int = int(os.getenv("ICS_WARNING_THRESHOLD_SECONDS", 
 #               ② reconcile_online_groups 背景 reconciler：在線裝置實際 TAK 群 ≠ 分類 → 補推（離線→上線
 #               自動歸位）；③ 合併 #344 Slice 2 的 uid→CN 刷新與群 reconcile 成一次 subscriptions/all poll，
 #               間隔 45s→30s。best-effort。
-APP_VERSION = "2.34.0"
+# MINOR 2.35.0：#475 中途新連線提示 + 即時重分隊三軸——① classify 補 GeoChat 軸（_reresolve_chats：
+#               重蓋該 CN 名下既有 chats faction，顯/藏即時；chat_repo.set_faction_for_ids）＝地圖/GeoChat/
+#               聚合三軸一致；② 重分隊入 AAR timeline（upsert_faction audit 補傳 exercise_id + timeline
+#               白名單加 client_faction_classify→classification）；③ 未分隊在線計數（背景 poller 同一 poll
+#               算快取 + GET /factions/unclassified-count）供 chip/面板提示白隊分類。
+APP_VERSION = "2.35.0"
 
 # CMD_VERSION：前端 UI 功能版本（不同於後端 SemVer APP_VERSION；規則見 CLAUDE.md 版號規則）
 # 兩軌版本命名，不可混用。由 /api/version 提供給前端，是唯一 source-of-truth；release 時更新此值。
@@ -222,7 +227,10 @@ APP_VERSION = "2.34.0"
 #         + 演習/放置/稽核 UI P1-13/14/16/#93 + 分類編輯器 #66）→ 0.x 畢業為 MAJOR 紀元。
 CMD_VERSION: str = os.getenv(
     "CMD_VERSION",
-    "v1.25.0",  # MINOR：#477b 紅藍分類面板現場隔離指示——每台顯 🛡（已隔離）/ ⚠ 未隔離（分類了但實際
+    "v1.26.0",  # MINOR：#475 中途新連線提示 + 重分隊即時傳播——① 紅藍分類面板 ⚠N 未分隊在線 banner +
+    # 演習 chip ⚠N badge（sysadmin poll /factions/unclassified-count）提示白隊分類；② resync 觸發
+    # chat:resync → 重分隊改既有通聯 faction 即時顯/藏（GeoChat 軸）；③ AAR TYPE_LABELS 加「分類變更」。
+    # MINOR v1.25.0：#477b 紅藍分類面板現場隔離指示——每台顯 🛡（已隔離）/ ⚠ 未隔離（分類了但實際
     # TAK 群不符，含 __ANON__/離線待補）；分類即時回饋（tak_group.synced 沒推成就大聲提示，不再假成功）。
     # PATCH v1.24.3：hotfix——修 CMD_VERSION bump 手滑（舊版字串留成 os.getenv 第三位置參數 →
     # import 期 TypeError、prod crash-loop）；補 tests/unit/test_config_version 版號常數 sanity 守之。

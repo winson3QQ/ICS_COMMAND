@@ -33,6 +33,7 @@ _AUDIT_TYPE_MAP = {
     "TAK_DOWNLINK": "command",
     "COP_SHARE_TAK": "command",
     "event_status_updated": "event_status",
+    "client_faction_classify": "classification",  # #475：重分隊（含中途改隊）入 AAR 時間軸
 }
 
 # 同秒多筆的固定 type 優先序（穩定回放次序；track 先於工作流事件，貼近「感知→事→決→行」）

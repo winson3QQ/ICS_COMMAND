@@ -125,14 +125,32 @@ export function exerciseStatusLabel(status) {
  * 更新 header 的 exercise chip。
  * 傳入 activeExercise 則用它；否則用模組快取。
  */
+// #475：未分隊在線數（sysadmin 專屬 poll 更新）——chip 顯 ⚠N 提示白隊有裝置未分類（對指揮官隱形）。
+let _unclassifiedN = 0;
+
 export function renderExerciseChip(activeExercise) {
   if (activeExercise !== undefined) _activeExercise = activeExercise;
   const chip = document.getElementById('exercise-chip');
   if (!chip) return;
   const view = exerciseChipView(_activeExercise);
-  chip.textContent = view.text;
+  // textContent（非 innerHTML）→ 安全；未分隊 badge 直接串進文字。
+  chip.textContent = _unclassifiedN > 0 ? (view.text + ' ⚠' + _unclassifiedN) : view.text;
   chip.className = view.className;
-  chip.title = view.title;
+  chip.title = _unclassifiedN > 0
+    ? (view.title + '\n⚠ ' + _unclassifiedN + ' 台未分隊在線——對指揮官隱形，點開演習面板→紅藍分類去分')
+    : view.title;
+}
+
+// #475：週期（30s，對齊後端 poller）刷「未分隊在線」數，更新 chip badge。僅 sysadmin（端點 403 擋其餘）。
+let _unclassifiedTimer = null;
+async function _pollUnclassified() {
+  if (!hasAnyRole('sysadmin')) { _unclassifiedN = 0; return; }
+  try {
+    const resp = await authFetch(API_BASE + '/api/admin/factions/unclassified-count');
+    if (!resp.ok) return;
+    _unclassifiedN = (await resp.json()).count || 0;
+    renderExerciseChip();
+  } catch { /* best-effort，下輪再試 */ }
 }
 
 // ── 演習管理面板渲染 ────────────────────────────────────────────
@@ -375,4 +393,8 @@ export async function initExerciseChip() {
   const list = await loadExercises();
   _activeExercise = getActiveExercise(list);
   renderExerciseChip(_activeExercise);
+  // #475：sysadmin 未分隊在線 badge——首刷 + 週期（30s）。非 sysadmin 內部早退、不打端點。
+  _pollUnclassified();
+  if (_unclassifiedTimer) clearInterval(_unclassifiedTimer);
+  _unclassifiedTimer = setInterval(_pollUnclassified, 30000);
 }
