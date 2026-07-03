@@ -22,6 +22,7 @@ import {
   splitRouteLinks,
   geoLinksAlignVertices,
   newControlPointLink,
+  synthesizeGeoLinks,
   reassembleRouteLink,
   infraToFeature,
   copEntityToRoute,
@@ -823,6 +824,25 @@ describe('splitRouteLinks / newControlPointLink / reassembleRouteLink (#260 D1)'
     const out = reassembleRouteLink(geo, [], [[24.5, 120.5]]);
     expect(out[0].point).toBe('24.5,120.5,0');
     expect(out[0].type).toBe('b-m-p-c');
+  });
+
+  test('synthesizeGeoLinks（#260 D2）：自建 route 依 vertices 造對齊 control links（全 b-m-p-c、各有 uid）', () => {
+    const verts = [[24.7, 120.9], [24.71, 120.94], [24.72, 120.95]];
+    const geo = synthesizeGeoLinks(verts);
+    expect(geo).toHaveLength(3);
+    geo.forEach((lk) => {
+      expect(lk.type).toBe('b-m-p-c');
+      expect(lk.callsign).toBe('');
+      expect(typeof lk.uid).toBe('string');
+      expect(lk.uid.length).toBeGreaterThan(0);
+    });
+    expect(new Set(geo.map((l) => l.uid)).size).toBe(3);  // uid 互異
+    expect(synthesizeGeoLinks(null)).toEqual([]);
+    // 合成後把某個改 b-m-p-w → reassembleRouteLink 依 vertices 補 point（自建 route 得命名 waypoint）
+    geo[2].type = 'b-m-p-w'; geo[2].callsign = 'TGT';
+    const link = reassembleRouteLink(geo, [], verts);
+    expect(link[2]).toMatchObject({ type: 'b-m-p-w', callsign: 'TGT', point: '24.72,120.95,0' });
+    expect(link[0].type).toBe('b-m-p-c');
   });
 
   test('geoLinksAlignVertices：逐點吻合才對齊（非僅數量）', () => {
