@@ -502,9 +502,25 @@ document.addEventListener('click', function (e) {
       import('./exercises.js').then(m => m.handleExCreate());
       break;
     }
-    case 'exActivate': {
-      if (!canUseRealModeControls()) break;
-      import('./exercises.js').then(m => m.handleExActivate(btn.dataset.id).then(_refreshAfterExerciseSwitch));
+    // #473-B3 開場精靈：「啟動」改開精靈（分隊→清圖→確認開始）。sysadmin gate 在 exercises.js
+    //   openExOpenWizard 內（後端 activate/clear-residual 皆 SYSADMIN_ONLY 為真實邊界）。
+    case 'exWizard': {
+      import('./exercises.js').then(m => m.openExOpenWizard(btn.dataset.id, btn.dataset.name));
+      break;
+    }
+    case 'exWizGoFaction': {  // 精靈①：關精靈、切到既有紅藍分隊分頁（不重造那套 UI）
+      closeModal();
+      import('./auth.js').then(m => m.admExerciseSub('faction'));
+      break;
+    }
+    case 'exWizClear': {  // 精靈②：清除殘留（可跳過），結果 inline 回饋到精靈
+      import('./exercises.js').then(m => m.handleExWizardClear());
+      break;
+    }
+    case 'exWizStart': {  // 精靈③：啟動；只在成功時關精靈 + 刷新場次（失敗留在精靈顯示訊息）
+      import('./exercises.js').then(m => m.handleExActivate(btn.dataset.id).then(ok => {
+        if (ok) { closeModal(); _refreshAfterExerciseSwitch(); }
+      }));
       break;
     }
     case 'exArchive': {

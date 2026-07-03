@@ -597,6 +597,15 @@ body{position:fixed;inset:0;}
 .ex-btn--primary{background:var(--accent);color:var(--surface);border-color:var(--accent);font-weight:600;}
 .ex-btn--danger{color:var(--red);border-color:var(--red);}
 .ex-warn{font-size:var(--fs-nano);color:var(--red);min-height:14px;}
+/* #473-B3 開場精靈：單一 modal 三段清單（分隊→清圖→確認開始）。 */
+.ex-wiz{display:flex;flex-direction:column;gap:10px;}
+.ex-wiz-step{
+  padding:10px;border:1px solid var(--border);border-radius:var(--radius-sm);
+  background:var(--surface);display:flex;flex-direction:column;gap:6px;align-items:flex-start;
+}
+.ex-wiz-h{font-size:var(--fs-micro);font-weight:600;color:var(--text);}
+.ex-wiz-d{font-size:var(--fs-nano);color:var(--text3);line-height:1.5;}
+.ex-wiz-result{font-size:var(--fs-nano);color:var(--text3);min-height:14px;}
 .ex-empty{font-size:var(--fs-micro);color:var(--text3);padding:12px 0;text-align:center;}
 .ex-list{display:flex;flex-direction:column;gap:4px;margin-top:4px;}
 .ex-row{

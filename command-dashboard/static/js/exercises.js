@@ -195,7 +195,8 @@ export async function renderExercisePanel() {
         // #473-B1：開場（啟動）收 sysadmin——開場流程含紅藍分隊（白隊之責，commander 恆藍不經手）。
         // 後端 SYSADMIN_ONLY 為真實邊界；此處隱藏鈕避免 commander 點了吃 403。
         if (ex.status !== 'active' && hasAnyRole('sysadmin')) {
-          actions += `<button class="ex-btn" data-action="exActivate" data-id="${_esc(ex.id)}">啟動</button>`;
+          // #473-B3：「啟動」改開開場精靈（分隊→清圖→確認開始），不再直接 activate。
+          actions += `<button class="ex-btn" data-action="exWizard" data-id="${_esc(ex.id)}" data-name="${_esc(ex.name)}">啟動</button>`;
         }
         // 歸檔＝結束進行中的演習，故只對 active 顯示（準備中尚未啟動、archived 已歸檔皆不顯）。
         if (ex.status === 'active') {
@@ -243,16 +244,85 @@ export async function handleExCreate() {
   await renderExercisePanel();
 }
 
-/** 啟動演習。成功後重渲染；衝突（已有 active）顯示後端訊息。 */
+/**
+ * 啟動演習（開場精靈第③步呼叫）。成功→重渲染面板並回 true；失敗（如衝突：已有 active）→ 顯示
+ * 後端訊息並回 false。錯誤優先寫精靈的 `#ex-wiz-start-warn`（精靈開著時），退回面板的 `#ex-create-warn`。
+ * 回傳 boolean 讓 dispatch 只在成功時關精靈 + 刷新場次。
+ */
 export async function handleExActivate(id) {
   const resp = await activateExercise(id);
   if (!resp.ok) {
     const err = await resp.json().catch(() => ({}));
-    const warn = document.getElementById('ex-create-warn');
+    const warn = document.getElementById('ex-wiz-start-warn') || document.getElementById('ex-create-warn');
     if (warn) warn.textContent = err.detail || '啟動失敗';
-    return;
+    return false;
   }
   await renderExercisePanel();
+  return true;
+}
+
+// ── 開場精靈（#473-B3）──────────────────────────────────────────
+// 把三段既有能力縫成一條開場引導流程：① 紅藍分隊（導流到既有面板，不重造）→ ② 選擇性清圖
+// （呼叫 B2 的 /api/admin/clear-residual，可跳過）→ ③ 確認開始記錄（activate）。單一 modal 三段
+// 清單（非分頁 stepper），全走 data-action 委派（CSP-safe）。sysadmin-only（開場＝白隊之責，#473-B1）。
+
+/**
+ * 開啟開場精靈。id/name 由「啟動」鈕的 data-* 帶入（name 僅顯示，openModal title 用 textContent 防 XSS）。
+ * sysadmin gate 在此（後端 activate/clear-residual 皆 SYSADMIN_ONLY 為真實邊界；此處避免露鈕）。
+ */
+export async function openExOpenWizard(id, name) {
+  if (!hasAnyRole('sysadmin')) return;
+  const { openModal } = await import('./cop.js');
+  const body = `
+    <div class="ex-wiz">
+      <div class="ex-wiz-step">
+        <div class="ex-wiz-h">① 紅藍分隊</div>
+        <div class="ex-wiz-d">把連上的裝置分到紅／藍／中立。指揮官恆為藍隊，分類是白隊（導調）之責。</div>
+        <button class="ex-btn" data-action="exWizGoFaction">前往分隊面板</button>
+      </div>
+      <div class="ex-wiz-step">
+        <div class="ex-wiz-h">② 選擇性清圖（可跳過）</div>
+        <div class="ex-wiz-d">清掉上一場的裝置殘影，保留你自建的路線／區域／釘住標記；仍在線的裝置會自動重報。</div>
+        <button class="ex-btn" data-action="exWizClear">清除殘留</button>
+        <span id="ex-wiz-clear-result" class="ex-wiz-result"></span>
+      </div>
+      <div class="ex-wiz-step">
+        <div class="ex-wiz-h">③ 開始記錄</div>
+        <div class="ex-wiz-d">確認以上就緒後，啟動演習開始記錄。</div>
+        <button class="ex-btn ex-btn--primary" data-action="exWizStart" data-id="${_esc(id)}">開始記錄（啟動）</button>
+        <span id="ex-wiz-start-warn" class="ex-wiz-result"></span>
+      </div>
+    </div>`;
+  const footer = '<button class="ex-btn" data-action="closeModal">取消</button>';
+  openModal('開場精靈 · ' + (name || ''), body, footer);
+}
+
+/** 精靈步驟②：確認後呼叫 clear-residual，把「清了幾個／保留幾個」inline 回饋到精靈。 */
+export async function handleExWizardClear() {
+  const { appConfirm } = await import('./cop.js');
+  const result = document.getElementById('ex-wiz-clear-result');
+  const ok = await appConfirm(
+    '清除殘留',
+    '將清掉外部裝置的殘影（保留你自建的路線／區域／釘住標記）。\n仍在線的裝置會自動重報。\n此操作可復原（軟刪除）。確定清除？'
+  );
+  if (!ok) return;
+  try {
+    const resp = await authFetch(API_BASE + '/api/admin/clear-residual', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      // 後端 OP-2 強制 body confirm:"RESET"（比照 reset-*，不依賴前端 dialog）。
+      body: JSON.stringify({ confirm: 'RESET' }),
+    });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      if (result) result.textContent = '清除失敗：' + (err.detail || resp.status);
+      return;
+    }
+    const data = await resp.json();
+    if (result) result.textContent = `已清 ${data.cleared} 個殘留，保留 ${data.kept} 個永久物件。`;
+  } catch (e) {
+    if (result) result.textContent = '錯誤：' + e.message;
+  }
 }
 
 /** 歸檔演習。成功後重渲染。 */

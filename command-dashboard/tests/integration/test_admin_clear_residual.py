@@ -20,9 +20,16 @@ def _login(client, username: str = "admin", pin: str = "1234") -> dict[str, str]
     return {"X-Session-Token": r.json()["session_id"]}
 
 
-def _seed(uid: str, source: str, *, archived: bool = False, faction: str | None = None) -> None:
+def _seed(
+    uid: str,
+    source: str,
+    *,
+    archived: bool = False,
+    faction: str | None = None,
+    stale: str = "2099-01-01T00:00:00Z",
+) -> None:
     """直插一顆 entity（繞過 /api/cop/entities 只能建 manual 的限制，才能造 tak 殘留樣本）。
-    stale 設遠未來 → 清圖前本應可見（排除「本來就 stale 濾掉」的干擾）。"""
+    stale 預設遠未來 → 清圖前本應可見（排除「本來就 stale 濾掉」的干擾）；測 kept 過濾時可覆寫成過去。"""
     from repositories.cop_entity_repo import insert_cop_entity
     from schemas.cop import CoPEntity
 
@@ -32,7 +39,7 @@ def _seed(uid: str, source: str, *, archived: bool = False, faction: str | None 
             type="a-u-G",
             time="2026-01-01T00:00:00Z",
             start="2026-01-01T00:00:00Z",
-            stale="2099-01-01T00:00:00Z",
+            stale=stale,
             how="m-g",
             lat=24.8,
             lon=121.0,
@@ -79,6 +86,19 @@ def test_clear_residual_is_faction_neutral(client):
     r = client.post("/api/admin/clear-residual", headers=h, json={"confirm": "RESET"})
     assert r.status_code == 200, r.text
     assert r.json()["cleared"] == 3  # 三種 faction 的 tak 殘留全清
+
+
+def test_clear_residual_kept_excludes_stale_expired_permanent(client):
+    """#473-B3 review follow-up：kept＝清完『仍可見』的永久物件。已過期的 manual/command（list
+    本就以 stale>now 濾掉、畫面看不到）不計入，否則開場精靈預覽數字會比實見多。"""
+    h = _login(client)
+    _seed("manual:fresh", "manual")  # 未過期永久 → 計入
+    _seed("manual:expired", "manual", stale="2020-01-01T00:00:00Z")  # 過期永久 → 不計
+    _seed("tak:pin-old", "tak", archived=True, stale="2020-01-01T00:00:00Z")  # archived 豁免 stale → 計入
+
+    r = client.post("/api/admin/clear-residual", headers=h, json={"confirm": "RESET"})
+    assert r.status_code == 200, r.text
+    assert r.json()["kept"] == 2  # manual:fresh + tak:pin-old（archived）；manual:expired 不計
 
 
 def test_clear_residual_requires_confirm(client):

@@ -488,7 +488,13 @@ def delete_cop_entity(
 #   殘留（可清）＝其餘外部週期性鏡像（tak/pi-node/waveink…）且未釘住 —— live 裝置幾秒內重報，
 #     自然重建，故開場全清最乾淨（#473 方案 A，使用者 2026-07-03 拍板）。
 _RESIDUAL_WHERE = "source NOT IN ('manual','command') AND COALESCE(archived, 0) = 0 AND COALESCE(deleted, 0) = 0"
-_PERMANENT_WHERE = "COALESCE(deleted, 0) = 0 AND (source IN ('manual','command') OR COALESCE(archived, 0) = 1)"
+# `kept`＝清完「仍可見」的永久物件（#473-B3 review follow-up：對齊 list_cop_entities 顯示語意，
+# 否則精靈預覽數字會比畫面實見多——manual/command 需 `stale>now` 才顯示，archived=1 豁免 stale 恆顯）。
+_PERMANENT_WHERE = (
+    "COALESCE(deleted, 0) = 0 AND ("
+    "(source IN ('manual','command') AND stale > strftime('%Y-%m-%dT%H:%M:%SZ','now')) "
+    "OR COALESCE(archived, 0) = 1)"
+)
 
 
 def clear_residual_entities(actor: str | None = None) -> dict:
@@ -502,7 +508,8 @@ def clear_residual_entities(actor: str | None = None) -> dict:
     保留集＝指揮部自建（manual/command）＋ archived=1 釘住標記；不碰紅藍（清的是「來源
     類別 × archived」，faction 中立，不成為偷清對方的漏洞）。
 
-    回傳 {"cleared": n, "kept": m}（供開場精靈預覽/回饋；kept＝清完仍在的非刪除永久物件）。
+    回傳 {"cleared": n, "kept": m}（供開場精靈預覽/回饋；kept＝清完「仍可見」的永久物件——
+    manual/command 需未過期 + archived 釘住恆計，對齊 list 顯示，見 _PERMANENT_WHERE）。
     """
     now = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     with get_conn() as conn:
