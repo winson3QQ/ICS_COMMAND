@@ -47,9 +47,7 @@ export function createCopStream(deps) {
     canWrite = () => false,
     WebSocketCtor = (typeof WebSocket !== "undefined" ? WebSocket : null),
     wsUrl = _defaultWsUrl(),
-    // #267 常駐層疊看：true（限指揮層，main.js 注入）→ WS `?standing=1` + resync `?include_standing=1`，
-    // 讓 active 場連線也收 NULL 常駐 entity（後端 gate；非指揮層即使 true 也被擋）。
-    includeStanding = false,
+    // #472：常駐疊看（includeStanding）已移除——cop 可見性軸改 faction，常駐 entity 恆送（後端守門）。
     apiBase = "",
     setTimeoutFn = (typeof setTimeout !== "undefined" ? setTimeout : null),
     clearTimeoutFn = (typeof clearTimeout !== "undefined" ? clearTimeout : null),
@@ -242,8 +240,8 @@ export function createCopStream(deps) {
     // 進入時先快照「已知 uid」。removal 只考慮這批 —— resync 飛行中（GET await 期間）
     // 新建的 entity（如同時 createEntity POST 落地）不在快照內，不會被誤刪。
     const known = new Set(_byUid.keys());
-    // #267：疊看時 resync 也帶 include_standing，與 WS 對等（否則每輪 resync 抹掉 WS 推來的常駐＝鬼影）
-    const resp = await authFetch(`${apiBase}/api/cop/entities${includeStanding ? "?include_standing=1" : ""}`);
+    // #472：resync 全量抓（不再帶 include_standing）——cop 可見性由後端 faction 守門。
+    const resp = await authFetch(`${apiBase}/api/cop/entities`);
     if (!resp.ok) return;
     const data = await resp.json();
     const seen = new Set();
@@ -267,8 +265,8 @@ export function createCopStream(deps) {
     const token = getToken && getToken();
     if (!token || !WebSocketCtor) return;
     let ws;
-    // #267：疊看時 WS 帶 ?standing=1（後端限 COMMAND）。append 而非改 wsUrl（保持注入值不可變）。
-    const url = includeStanding ? `${wsUrl}${wsUrl.includes("?") ? "&" : "?"}standing=1` : wsUrl;
+    // #472：WS 不再帶 ?standing（常駐 cop 恆送、後端 faction 守門）。
+    const url = wsUrl;
     try {
       ws = new WebSocketCtor(url, [WS_SUBPROTOCOL, `ics.session.${token}`]);
     } catch {

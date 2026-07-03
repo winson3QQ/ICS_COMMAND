@@ -98,21 +98,30 @@ def get_cop_entity(uid: str) -> dict | None:
         return d
 
 
-def _faction_clause(visible_factions: frozenset[str] | None, params: list) -> str | None:
+def _faction_clause(
+    visible_factions: frozenset[str] | None, params: list, allow_null_faction: bool = False
+) -> str | None:
     """#343：回傳 faction 過濾 SQL 片段，並 append 對應綁定參數到 params。
 
     - None → 不過濾（sysadmin 全見 / 開關關），回 None。
     - 空集 → 「看不到任何 faction」→ `source != 'tak'`（**fail-closed**，且避開非法 `IN ()`）。
     - 非空 → `(source != 'tak' OR faction IN (...))`：只 source='tak' 受限（#146 所有權：
-      manual/command 自建恆可見）；`faction IS NULL` 的 tak 被排除（未分類 fail-closed）。
+      manual/command 自建恆可見）；`faction IS NULL` 的 tak 預設被排除（未分類 fail-closed）。
+
+    **#472：`allow_null_faction=True`（平時＝無 active 演習）→ 額外放行 `faction IS NULL` 的 tak
+    （未編隊平時可見）；演習中傳 False（未編隊藏，fail-closed）。紅（不在集合、非 NULL）恆排除。**
     """
     if visible_factions is None:
         return None
     if not visible_factions:
-        return "source != 'tak'"
-    ph = ",".join("?" * len(visible_factions))
-    params.extend(sorted(visible_factions))
-    return f"(source != 'tak' OR faction IN ({ph}))"  # nosec B608 — ph 僅 ? 佔位
+        base = "source != 'tak'"
+    else:
+        ph = ",".join("?" * len(visible_factions))
+        params.extend(sorted(visible_factions))
+        base = f"source != 'tak' OR faction IN ({ph})"  # nosec B608 — ph 僅 ? 佔位
+    if allow_null_faction:
+        base = f"{base} OR faction IS NULL"
+    return f"({base})"
 
 
 def list_cop_entities(
@@ -121,6 +130,7 @@ def list_cop_entities(
     include_stale: bool = False,
     limit: int = 500,
     visible_factions: frozenset[str] | None = None,
+    allow_null_faction: bool = False,
 ) -> list[dict]:
     """列出 CoP entity。預設過濾 stale（stale > now）。
 
@@ -136,7 +146,7 @@ def list_cop_entities(
     if source is not None:
         clauses.append("source = ?")
         params.append(source)
-    fac_clause = _faction_clause(visible_factions, params)
+    fac_clause = _faction_clause(visible_factions, params, allow_null_faction)
     if fac_clause:
         clauses.append(fac_clause)
     if exercise_id is NULL_SCOPE:
@@ -249,7 +259,9 @@ def list_shared_tak_entities(limit: int = 1000) -> list[dict]:
         return [_row_to_entity_dict(r) for r in rows]
 
 
-def aggregate_squads(exercise_id=None, visible_factions: frozenset[str] | None = None) -> list[dict]:
+def aggregate_squads(
+    exercise_id=None, visible_factions: frozenset[str] | None = None, allow_null_faction: bool = False
+) -> list[dict]:
     """按 team_color 分組聚合 COP entity，供小隊態勢面板 / dashboard 用（P2-06d，issue #128）。
 
     單句 SQL GROUP BY team_color 一次算齊每組：
@@ -279,7 +291,7 @@ def aggregate_squads(exercise_id=None, visible_factions: frozenset[str] | None =
         clauses.append("exercise_id = ?")
         params.append(exercise_id)
     # #343：紅藍隔離——小隊聚合同樣只算可見 faction，否則 centroid/數量會洩漏紅軍位置/兵力。
-    fac_clause = _faction_clause(visible_factions, params)
+    fac_clause = _faction_clause(visible_factions, params, allow_null_faction)
     if fac_clause:
         clauses.append(fac_clause)
     sql = [
