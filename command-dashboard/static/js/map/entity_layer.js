@@ -739,6 +739,70 @@ export function routeWaypointsToFeatures(route) {
   return out;
 }
 
+// ── #260 D1：route 頂點編輯時的 attributes.link 同步（geoLinks ⟷ vertices 對齊）─────
+//
+// route 有兩套平行幾何：`attributes.vertices`（渲染/編輯用純座標）與 `attributes.link`
+// （CoT 序列，帶 waypoint 名字/type/uid，也是出向 SoT）。ingest 對齊、F1 移動已同步；
+// 頂點編輯（reshape）過去只寫 vertices → link 變 stale（waypoint 回彈 + 出向脫節）。
+// D1 讓編輯把「帶 point 的 link」（geoLinks，index 對齊 vertices）與 vertices lockstep
+// splice，commit 時 point 依 vertices 重建、保 callsign/type/uid，attrs.link=geoLinks+otherLinks。
+
+/**
+ * attributes.link → { geoLinks（帶合法 point，對齊 vertices，深拷貝）, otherLinks（無 point，
+ * 如 producer relation='p-p'，原樣保留） }。單一 dict / 非陣列 → 正規化。
+ */
+export function splitRouteLinks(link) {
+  const arr = Array.isArray(link) ? link : (link ? [link] : []);
+  const geoLinks = [];
+  const otherLinks = [];
+  for (const lk of arr) {
+    if (lk && typeof lk === 'object' && parseWgs84(lk.point)) geoLinks.push({ ...lk });
+    else otherLinks.push(lk);
+  }
+  return { geoLinks, otherLinks };
+}
+
+/**
+ * geoLinks 是否真的與 vertices 對齊——不只比數量，逐一驗座標吻合（~0.1m 內）。
+ * ingest 保證 vertices 與 point-bearing link 同序（皆從同一批 <link point> 依序抽），
+ * 但這裡明證該不變量、不靠假設：任一 geoLinks[i] 座標對不上 vertices[i] → 視為不對齊，
+ * caller 保守不掛 geoLinks（寧可本次不同步 link，也不把 waypoint 名字蓋到錯座標）。
+ */
+export function geoLinksAlignVertices(geoLinks, vertices) {
+  if (!Array.isArray(geoLinks) || !Array.isArray(vertices) || geoLinks.length !== vertices.length) return false;
+  for (let i = 0; i < geoLinks.length; i++) {
+    const c = parseWgs84(geoLinks[i]?.point);
+    const v = vertices[i];
+    if (!c || !Array.isArray(v) || Math.abs(c.lat - v[0]) > 1e-6 || Math.abs(c.lng - v[1]) > 1e-6) return false;
+  }
+  return true;
+}
+
+/** 新插入頂點對應的 control-point link（b-m-p-c，無名；point 於 commit 由 vertices 補）。 */
+export function newControlPointLink() {
+  const uid = (typeof crypto !== 'undefined' && crypto.randomUUID)
+    ? crypto.randomUUID()
+    : `cp-${Math.floor(Math.random() * 1e16).toString(36)}`;
+  return { uid, callsign: '', type: 'b-m-p-c', point: '', relation: 'c' };
+}
+
+/**
+ * 編輯 commit：geoLinks 的 point 依 vertices（index 對齊）重建，保 callsign/type/uid 與原 hae 尾段，
+ * 接回 otherLinks → 新的 attributes.link 陣列。geoLinks.length 須 == vertices.length（caller 保證）。
+ * @param {Array<object>} geoLinks
+ * @param {Array} otherLinks
+ * @param {Array<[number,number]>} vertices [[lat,lng],...]
+ */
+export function reassembleRouteLink(geoLinks, otherLinks, vertices) {
+  const geo = geoLinks.map((lk, i) => {
+    const v = vertices[i];
+    if (!Array.isArray(v) || v.length < 2) return lk;  // 對齊防禦（理論上不觸發）
+    const tail = (typeof lk.point === 'string' ? lk.point.split(',').slice(2).join(',') : '') || '0';
+    return { ...lk, point: `${v[0]},${v[1]},${tail}` };
+  });
+  return [...geo, ...(Array.isArray(otherLinks) ? otherLinks : [])];
+}
+
 /** cop_entity（attributes.kind='polygon'）→ polygonToFeature 吃的 polygon-shape。 */
 export function copEntityToPolygon(entity) {
   return _copEntityToMapObject(entity, 'poly_type', '#888888');

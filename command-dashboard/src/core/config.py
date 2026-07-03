@@ -192,6 +192,8 @@ CMD_VERSION: str = os.getenv(
     "CMD_VERSION",
     "v1.22.0",  # MINOR：#467 節點手動廣播到 TAK——節點 modal 加「📡 廣播」鈕（指揮層 + TAK 啟用）；
     # 現場端依 node_type 顯示不同 2525 符號。設施延後（#467 follow-up）。
+    # PATCH v1.21.2：#260 D1——route 頂點編輯同步 attributes.link（geoLinks⟷vertices lockstep）→
+    # 修 reshape 後形狀不進 attributes.link、廣播送舊形狀、回灌打回原狀的 round-trip bug（真機 dogfood 定位）。
     # PATCH v1.21.1：#463——通聯 compose 送出框對 operator 顯示（後端同步放寬 WRITE_ROLES）。
     # MINOR v1.21.0：route 命名 waypoint（SP/CP/TGT）顯示成 map marker+label（#260 C2 / #464）——
     # 圓點+白字標出戰術 checkpoint（`attributes.link` 的 b-m-p-w+callsign），control point 不畫、
