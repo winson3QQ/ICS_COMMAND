@@ -42,6 +42,10 @@ import {
   routeMidLngLat,
   routeLabelToFeature,
   routeWaypointsToFeatures,
+  splitRouteLinks,
+  geoLinksAlignVertices,
+  newControlPointLink,
+  reassembleRouteLink,
   zoneToNodeFeature,
   copEntityToRoute,
   copEntityToPolygon,
@@ -2884,6 +2888,7 @@ function _deleteVertex(i) {
     return;
   }
   _editingShape.vertices.splice(i, 1);
+  if (_editingShape.geoLinks) _editingShape.geoLinks.splice(i, 1);  // #260 D1：link 同步刪（保對齊）
   _rebuildEditHandles();   // 重置 _delBadgeIdx、重編 index
   _renderEditShape();
 }
@@ -2972,6 +2977,8 @@ function _buildMidpointHandles() {
         const p = map.project(ll);
         if (Math.hypot(p.x - startPt.x, p.y - startPt.y) < 6) return;  // <6px → 視為未拖，不插
         _editingShape.vertices.splice(insertAt, 0, [ll.lat, ll.lng]);  // 跨門檻才插入新頂點
+        // #260 D1：link 同步插入 control-point（b-m-p-c 無名；新插入頂點預設非命名 waypoint，命名=D2）
+        if (_editingShape.geoLinks) _editingShape.geoLinks.splice(insertAt, 0, newControlPointLink());
         inserted = insertAt;
       } else {
         _editingShape.vertices[inserted] = [ll.lat, ll.lng];  // 新頂點跟手
@@ -3001,6 +3008,17 @@ export function _startVertexEdit(uid) {
   const verts = ent.attributes?.vertices;
   if (!Array.isArray(verts) || verts.length < 2) return;
   _editingShape = { uid, kind, vertices: verts.map((v) => [Number(v[0]), Number(v[1])]) };
+  // #260 D1：route 的命名 waypoint 存在 attributes.link；編輯時把「帶 point 的 link」（geoLinks）
+  // 與 vertices 對齊、隨頂點增刪 lockstep splice，commit 同步回寫 → reshape 不再讓 waypoint stale。
+  // 只在對齊成立才掛；不齊 / 無 link（自建）→ 不掛，commit 不碰 link（保守）。
+  if (kind === 'route') {
+    const { geoLinks, otherLinks } = splitRouteLinks(ent.attributes?.link);
+    // 位置驗證（非僅數量）：逐點對齊才掛，避免把 waypoint 名字蓋到錯座標（review F#2）。
+    if (geoLinksAlignVertices(geoLinks, _editingShape.vertices)) {
+      _editingShape.geoLinks = geoLinks;
+      _editingShape.otherLinks = otherLinks;
+    }
+  }
   _rebuildEditHandles();
   const banner = el('vertex-edit-banner');
   if (banner) {
@@ -3023,6 +3041,11 @@ export async function _finishVertexEdit() {
   const ent = _copStream?.getEntity(ed.uid);
   const attrs = { ...(ent?.attributes || {}) };   // 整包：保留 shared_tak 等現值
   attrs.vertices = ed.vertices.map(([la, lo]) => [la, lo]);
+  // #260 D1：geoLinks 隨頂點 lockstep splice 保持對齊 → 依 vertices 重建 point 回寫 attributes.link
+  // （保 waypoint 名字/type/uid + hae；出向 B 讀 attrs.link 忠實 round-trip）。長度不齊 → 不寫（保守）。
+  if (ed.geoLinks && ed.geoLinks.length === ed.vertices.length) {
+    attrs.link = reassembleRouteLink(ed.geoLinks, ed.otherLinks, ed.vertices);
+  }
   const [cLat, cLng] = _polyCentroid(ed.vertices);
   let ok = false;
   try {
