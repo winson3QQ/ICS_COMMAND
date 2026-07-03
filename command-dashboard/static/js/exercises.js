@@ -250,15 +250,22 @@ export async function handleExCreate() {
  * 回傳 boolean 讓 dispatch 只在成功時關精靈 + 刷新場次。
  */
 export async function handleExActivate(id) {
-  const resp = await activateExercise(id);
-  if (!resp.ok) {
-    const err = await resp.json().catch(() => ({}));
-    const warn = document.getElementById('ex-wiz-start-warn') || document.getElementById('ex-create-warn');
-    if (warn) warn.textContent = err.detail || '啟動失敗';
+  const warn = document.getElementById('ex-wiz-start-warn') || document.getElementById('ex-create-warn');
+  try {
+    const resp = await activateExercise(id);
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      if (warn) warn.textContent = err.detail || '啟動失敗';
+      return false;
+    }
+    await renderExercisePanel();
+    return true;
+  } catch (e) {
+    // authFetch 走 fetch()——網路失敗（離線/連線拒絕/DNS）會 throw 而非回 resp.ok=false。
+    // 不 catch 會讓精靈「開始」鈕靜默無反饋（dispatch 的 .then(ok) 收不到 false）。
+    if (warn) warn.textContent = '啟動失敗：' + (e.message || '網路錯誤');
     return false;
   }
-  await renderExercisePanel();
-  return true;
 }
 
 // ── 開場精靈（#473-B3）──────────────────────────────────────────

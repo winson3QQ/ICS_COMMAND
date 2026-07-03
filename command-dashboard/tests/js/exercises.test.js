@@ -319,4 +319,14 @@ describe('開場精靈（#473-B3）', () => {
     await m.handleExWizardClear();
     expect(mockAuthFetch).not.toHaveBeenCalled();
   });
+
+  test('handleExActivate：fetch throw（網路失敗）→ 回 false + 寫精靈 warn（不靜默）', async () => {
+    // authFetch 走 fetch()，網路失敗會 throw 而非回 resp.ok=false；精靈「開始」不得靜默無反饋。
+    const get = installDom();
+    mockAuthFetch.mockImplementationOnce(() => { throw new Error('Failed to fetch'); });
+    const m = await import('../../static/js/exercises.js');
+    const ok = await m.handleExActivate(3);
+    expect(ok).toBe(false);
+    expect(get('ex-wiz-start-warn').textContent).toContain('啟動失敗');
+  });
 });
