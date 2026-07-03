@@ -69,7 +69,7 @@ import {
   _deletePolygon, _deleteRoute, _deleteInfra, _deleteEventZone,
   _deleteContact, _shareContactTak, _saveContactNote, _changeMarkerAffiliation,
   _resetPolyLabelAnchor, _resetRouteLabelAnchor,
-  _startVertexEdit, _finishVertexEdit, _cancelVertexEdit,
+  _startVertexEdit, _finishVertexEdit, _cancelVertexEdit, _saveWaypointName,
   _panToCoordTarget, _mgrsSearch, _toggleCoordMode,
   _populateNapsgCsel,
   onPlaceTypeChange,
@@ -443,6 +443,11 @@ document.addEventListener('click', function (e) {
       break;
     }
     case 'cancelVertexEdit': _cancelVertexEdit(); break;
+    case 'saveWaypointName': {  // #260 D2：命名 modal 儲存（id=頂點 index）
+      if (!canAccessMapObjects()) break;
+      _saveWaypointName(id);
+      break;
+    }
     // P2-34（#220）：放置節點/設施/敵情標記改走長按建立對話框（CreatePopup）；
     // 舊 arm-then-click dispatch（openNodePlace/startNodePlace/openContactPlace/
     // startContactPlace/openInfraForm/startInfraPlace）已隨面板入口退場。

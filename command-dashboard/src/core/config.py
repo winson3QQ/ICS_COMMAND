@@ -190,7 +190,10 @@ APP_VERSION = "2.29.0"
 #         + 演習/放置/稽核 UI P1-13/14/16/#93 + 分類編輯器 #66）→ 0.x 畢業為 MAJOR 紀元。
 CMD_VERSION: str = os.getenv(
     "CMD_VERSION",
-    "v1.22.0",  # MINOR：#467 節點手動廣播到 TAK——節點 modal 加「📡 廣播」鈕（指揮層 + TAK 啟用）；
+    "v1.23.0",  # MINOR：#260 D2——route waypoint 命名 UI。頂點編輯加「🏷 命名」徽章 → modal 命名/改名/
+    # 取消命名（b-m-p-w↔b-m-p-c）；命名頂點白點+label 即時回饋；自建 route 首次命名合成 geoLinks；
+    # commit 走 D1 reassembleRouteLink 回寫 attributes.link → C2 顯示 + 出向送。真機 ATAK dogfood PASS。
+    # MINOR v1.22.0：#467 節點手動廣播到 TAK——節點 modal 加「📡 廣播」鈕（指揮層 + TAK 啟用）；
     # 現場端依 node_type 顯示不同 2525 符號。設施延後（#467 follow-up）。
     # PATCH v1.21.2：#260 D1——route 頂點編輯同步 attributes.link（geoLinks⟷vertices lockstep）→
     # 修 reshape 後形狀不進 attributes.link、廣播送舊形狀、回灌打回原狀的 round-trip bug（真機 dogfood 定位）。

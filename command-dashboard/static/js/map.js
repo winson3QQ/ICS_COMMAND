@@ -45,6 +45,7 @@ import {
   splitRouteLinks,
   geoLinksAlignVertices,
   newControlPointLink,
+  synthesizeGeoLinks,
   reassembleRouteLink,
   zoneToNodeFeature,
   copEntityToRoute,
@@ -2863,33 +2864,106 @@ function _rebuildEditHandles() {
   _buildMidpointHandles();
 }
 
-// 收起目前的 ✕ 刪除徽章。
+// 收起目前頂點的徽章（✕ 刪除 + #260 D2 🏷 命名）。
 function _dismissDelBadge() {
   if (_delBadgeIdx < 0) return;
-  _vertexHandles[_delBadgeIdx]?.getElement()?.querySelector('.vtx-del')?.remove();
+  const elh = _vertexHandles[_delBadgeIdx]?.getElement();
+  elh?.querySelector('.vtx-del')?.remove();
+  elh?.querySelector('.vtx-name')?.remove();  // #260 D2：命名徽章
   _delBadgeIdx = -1;
 }
 
-// #257 α-2b：點頂點 → 掛 ✕ 徽章（再點同頂點 → 收起）。已達下限則不掛、提示。
+// #257 α-2b：點頂點 → 掛徽章（再點同頂點 → 收起）。
+// #260 D2：route 頂點加「🏷 命名」徽章（左上，永遠可用）；「✕ 刪除」（右上）達下限則不掛。
+// handle 由 maplibregl-marker class 設 position:absolute → 即為 badge 的定位容器（不另設 relative，
+// 設了會蓋掉 marker 自身的 transform 定位、害 marker 歸零，見 label_markers.js 留痕）。
 function _toggleDelBadge(handle, i) {
   if (_delBadgeIdx === i) { _dismissDelBadge(); return; }
   _dismissDelBadge();
-  const min = _MIN_VERTS[_editingShape?.kind] || 3;
-  if (!_editingShape || _editingShape.vertices.length <= min) {
+  if (!_editingShape) return;
+  const isRoute = _editingShape.kind === 'route';
+  const min = _MIN_VERTS[_editingShape.kind] || 3;
+  const canDelete = _editingShape.vertices.length > min;
+  if (!isRoute && !canDelete) {  // polygon 達下限：無命名、無刪除 → 維持舊提示
     _flashMapMsg(`✗ 已是最少頂點數（${min}），不可再刪`);
     return;
   }
-  const badge = document.createElement('div');
-  badge.className = 'vtx-del';
-  badge.textContent = '✕';
-  // handle 由 maplibregl-marker class 設 position:absolute → 即為 badge 的定位容器（不另設 relative，
-  // 設了會蓋掉 marker 自身的 transform 定位、害 marker 歸零，見 label_markers.js 留痕）。
-  badge.style.cssText = 'position:absolute;top:-13px;right:-13px;width:20px;height:20px;border-radius:50%;'
-    + 'background:var(--red,#f85149);color:#fff;font-size:12px;font-weight:700;display:flex;'
+  const _badgeCss = (side, bg) => `position:absolute;top:-13px;${side}:-13px;width:20px;height:20px;`
+    + `border-radius:50%;background:${bg};color:#fff;font-size:11px;font-weight:700;display:flex;`
     + 'align-items:center;justify-content:center;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,0.5);z-index:5;';
-  badge.addEventListener('click', (e) => { e.stopPropagation(); _deleteVertex(i); });
-  handle.appendChild(badge);
+  if (isRoute) {  // #260 D2：命名徽章（waypoint 增刪/命名走此入口）
+    const nameBadge = document.createElement('div');
+    nameBadge.className = 'vtx-name';
+    nameBadge.textContent = '🏷';
+    nameBadge.title = '命名航點';
+    // 綠色（高對比）— 不用 --blue（未定義，退預設 #58a6ff 與頂點藍點/藍格線同色會融掉，dogfood 抓出）
+    nameBadge.style.cssText = _badgeCss('left', 'var(--green,#3fb950)');
+    nameBadge.addEventListener('click', (e) => { e.stopPropagation(); _openWaypointNameModal(i); });
+    handle.appendChild(nameBadge);
+  }
+  if (canDelete) {
+    const badge = document.createElement('div');
+    badge.className = 'vtx-del';
+    badge.textContent = '✕';
+    badge.style.cssText = _badgeCss('right', 'var(--red,#f85149)');
+    badge.addEventListener('click', (e) => { e.stopPropagation(); _deleteVertex(i); });
+    handle.appendChild(badge);
+  }
   _delBadgeIdx = i;
+}
+
+// #260 D2：開命名 modal（沿用「新增路線」取名樣式：openModal + input + data-action）。
+// 清空名稱＝取消命名（回 control point）。callsign 半可信 → 入 value 走 _escapeHtml。
+function _openWaypointNameModal(i) {
+  if (!_editingShape || _editingShape.kind !== 'route') return;
+  const gl = _editingShape.geoLinks?.[i];
+  const cur = (gl && gl.type === 'b-m-p-w') ? String(gl.callsign || '') : '';
+  const SEL = 'width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px 8px;border-radius:4px;font-size:12px;';
+  let html = '';
+  html += `<div style="margin-bottom:10px;"><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:4px;">航點名稱（checkpoint）</label>`;
+  html += `<input id="wp-name" value="${_escapeHtml(cur)}" placeholder="例：CP1 / TGT / SP" autocomplete="off" style="${SEL}"></div>`;
+  html += `<div style="font-size:10px;color:var(--text3);margin-bottom:14px;">清空名稱＝取消命名（回控制點，不顯示標記）</div>`;
+  html += `<div style="display:flex;gap:8px;">`;
+  html += `<button data-action="closeModal" style="flex:1;padding:8px;background:transparent;border:1px solid var(--border);color:var(--text2);border-radius:6px;cursor:pointer;font-family:var(--mono);">取消</button>`;
+  html += `<button data-action="saveWaypointName" data-id="${i}" style="flex:2;padding:8px;background:var(--green);color:#fff;border:none;border-radius:6px;font-weight:700;cursor:pointer;font-family:var(--mono);">儲存</button>`;
+  html += `</div>`;
+  _deps.openModal?.('🏷 命名航點', html);
+}
+
+// #260 D2：套用命名。自建 route（無 geoLinks）→ 現場合成對齊 control links 再改被命名者為 b-m-p-w。
+export function _saveWaypointName(idxStr) {
+  if (!_editingShape || _editingShape.kind !== 'route') return;
+  const i = Number(idxStr);
+  if (!Number.isInteger(i) || i < 0 || i >= _editingShape.vertices.length) return;
+  const name = (document.getElementById('wp-name')?.value || '').trim();
+  if (!_editingShape.geoLinks) {
+    // geoLinks 未掛有兩種：(1) 真自建 route（無 link）→ 合成一份對齊 geoLinks；
+    // (2) 有 link 但 D1 對齊檢查沒過（罕見）→ **不可**合成，否則會覆蓋掉原始 waypoint/producer
+    // link（毀 D1 保守契約 + 資料流失，code-review 抓出）→ 拒絕命名、保留原 link 不動。
+    const existing = _copStream?.getEntity(_editingShape.uid)?.attributes?.link;
+    const hasLink = Array.isArray(existing) ? existing.length > 0 : !!existing;
+    if (hasLink) {
+      _deps.closeModal?.();
+      _flashMapMsg('✗ 此路線的航點資料與頂點不對齊，暫不支援命名（避免覆蓋原始資料）');
+      return;
+    }
+    _editingShape.geoLinks = synthesizeGeoLinks(_editingShape.vertices);
+    _editingShape.otherLinks = [];
+  }
+  const gl = _editingShape.geoLinks[i];
+  if (!gl) return;
+  if (name) {
+    gl.type = 'b-m-p-w';
+    gl.callsign = name;
+    if (!gl.uid) gl.uid = newControlPointLink().uid;
+  } else {                        // 清空 → 取消命名（回 control point）
+    gl.type = 'b-m-p-c';
+    gl.callsign = '';
+  }
+  _deps.closeModal?.();
+  _dismissDelBadge();
+  _rebuildEditHandles();  // 重建 handle → 命名頂點白點 + 名字 label 更新
+  _renderEditShape();
 }
 
 // 刪除第 i 個頂點（下限守門）。
@@ -2918,6 +2992,19 @@ function _buildVertexHandles() {
     dot.style.cssText = 'width:13px;height:13px;border-radius:50%;background:rgba(88,166,255,0.95);'
       + 'border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,0.45);pointer-events:none;';
     handle.appendChild(dot);
+    // #260 D2：命名 waypoint 頂點 → 白點區隔 + 名字 label（編輯中回饋；C2 白點編輯時隱藏）。
+    // callsign 半可信 TAK 值 → textContent sink（無 XSS）。
+    const _gl = _editingShape.geoLinks?.[i];
+    const _wpName = (_gl && _gl.type === 'b-m-p-w' && _gl.callsign) ? String(_gl.callsign) : '';
+    if (_wpName) {
+      dot.style.background = 'rgba(255,255,255,0.98)';
+      const lbl = document.createElement('div');
+      lbl.textContent = _wpName;
+      lbl.style.cssText = 'position:absolute;top:-17px;left:50%;transform:translateX(-50%);white-space:nowrap;'
+        + 'font-size:10px;font-weight:700;color:#fff;pointer-events:none;'
+        + 'text-shadow:-1px -1px 0 #0d1117,1px -1px 0 #0d1117,-1px 1px 0 #0d1117,1px 1px 0 #0d1117;';
+      handle.appendChild(lbl);
+    }
     const marker = new window.maplibregl.Marker({ element: handle, draggable: true, anchor: 'center' })
       .setLngLat([v[1], v[0]])
       .addTo(map);
