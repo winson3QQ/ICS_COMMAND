@@ -5,8 +5,8 @@ api/test_squads_query.py — P2-06d 小隊聚合 endpoint（issue #128）
 
 驗 GET /api/cop/squads：
   - READ_ROLES（observer 含在內）→ 200，回 per team_color 聚合
-  - 跨場 isolation：active 場 GET 只看當前場小隊（不洩漏別場）
-  - live vs AAR 歷史場：commander 帶 ?exercise_id 看封存場；observer 被 resolve_scope 擋回 active
+  - #472：可見性軸改 faction（非 exercise scope）→ cop＝跨場共享池，自建小隊跨場都聚合、
+    不再吃 ?exercise_id override；紅方隔離改由 faction 守門（見 test_faction_admin/enforce）
   - 未分隊（team_color 缺）聚成 None 組
 """
 
@@ -60,8 +60,9 @@ def _mk_exercise(client, auth, name):
     return client.post("/api/exercises", json={"name": name, "type": "ttx"}, headers=auth).json()
 
 
-def test_active_scope_excludes_other_exercise(client, auth):
-    # A 啟動→建 A 隊→封存；B 啟動→建 B 隊
+def test_squads_include_cross_exercise_selfbuilt(client, auth):
+    # #472：squads 可見性軸改 faction（非 exercise scope）→ cop＝跨場共享池，自建小隊跨場都聚合。
+    # （team_color Red/Green 是小隊色、非 faction；自建 manual 恆對藍可見。）
     a = _mk_exercise(client, auth, "A")
     client.post(f"/api/exercises/{a['id']}/activate", json={}, headers=auth)
     client.post("/api/cop/entities", json=_mk_cop("a1", "Red"), headers=auth)
@@ -69,29 +70,15 @@ def test_active_scope_excludes_other_exercise(client, auth):
     b = _mk_exercise(client, auth, "B")
     client.post(f"/api/exercises/{b['id']}/activate", json={}, headers=auth)
     client.post("/api/cop/entities", json=_mk_cop("b1", "Green"), headers=auth)
-    # active=B 的預設 GET → 只看到 Green（B），看不到 Red（A）
+    # #472：跨場共享 → Red（A）與 Green（B）都聚合得到
     by = _squads_by_color(client.get("/api/cop/squads", headers=auth).json())
     assert "Green" in by
-    assert "Red" not in by
+    assert "Red" in by
 
 
-# ── live vs AAR 歷史場（commander override / observer 被擋）────────────────────
-
-
-def test_commander_can_query_historical_exercise(client, auth, commander_auth):
-    a = _mk_exercise(client, auth, "A")
-    client.post(f"/api/exercises/{a['id']}/activate", json={}, headers=auth)
-    client.post("/api/cop/entities", json=_mk_cop("a1", "Red"), headers=auth)
-    client.post(f"/api/exercises/{a['id']}/archive", json={}, headers=auth)
-    b = _mk_exercise(client, auth, "B")
-    client.post(f"/api/exercises/{b['id']}/activate", json={}, headers=auth)
-    # commander 帶 ?exercise_id=A（歷史封存場）→ 看得到 A 的 Red 隊
-    by = _squads_by_color(client.get(f"/api/cop/squads?exercise_id={a['id']}", headers=commander_auth).json())
-    assert "Red" in by and by["Red"]["total"] == 1
-
-
-def test_observer_override_blocked_back_to_active(client, auth, observer_auth):
-    # A 啟動→建 A 隊→封存；B 啟動→建 B 隊
+def test_squads_shared_pool_all_read_roles(client, auth, observer_auth):
+    # #472：squads 不再按 exercise scope 過濾，也不吃 ?exercise_id override。observer（READ_ROLES）
+    # 看得到共享池全部自建小隊（自建恆對藍可見；紅方隔離改由 faction 守門，見 test_faction_admin）。
     a = _mk_exercise(client, auth, "A")
     client.post(f"/api/exercises/{a['id']}/activate", json={}, headers=auth)
     client.post("/api/cop/entities", json=_mk_cop("a1", "Red"), headers=auth)
@@ -99,6 +86,5 @@ def test_observer_override_blocked_back_to_active(client, auth, observer_auth):
     b = _mk_exercise(client, auth, "B")
     client.post(f"/api/exercises/{b['id']}/activate", json={}, headers=auth)
     client.post("/api/cop/entities", json=_mk_cop("b1", "Green"), headers=auth)
-    # observer 帶 ?exercise_id=A（歷史）→ resolve_scope 擋回 active=B → 只看 Green
-    by = _squads_by_color(client.get(f"/api/cop/squads?exercise_id={a['id']}", headers=observer_auth).json())
-    assert "Green" in by and "Red" not in by
+    by = _squads_by_color(client.get("/api/cop/squads", headers=observer_auth).json())
+    assert "Green" in by and "Red" in by

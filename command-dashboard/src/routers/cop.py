@@ -43,7 +43,7 @@ from auth.service import check_session
 from core.config import FACTION_ISOLATION_ENABLED
 from core.input_safety import validate_no_unsafe_strings
 from repositories import cop_entity_repo, event_marker_repo, exercise_repo
-from repositories._helpers import NULL_SCOPE, audit
+from repositories._helpers import audit
 from schemas.cop import CoPEntity
 from services import tak_downlink, tak_runtime
 from services.exercise_service import current_exercise_id, resolve_scope
@@ -155,6 +155,7 @@ async def _broadcast(op: str, entity: dict) -> None:
         exercise_id=entity.get("exercise_id"),
         source=entity.get("source"),  # #343：faction 過濾（manual/command 非 tak → 恆送藍方）
         faction=entity.get("faction"),
+        scope_by_exercise=False,  # #472：cop entity＝跨場共享池，只過 faction、不受 exercise scope
     )
 
 
@@ -212,32 +213,35 @@ def _visible_factions(request: Request) -> frozenset[str] | None:
     return visible_factions_for_session(request.state.session)
 
 
+def _allow_unclassified_tak() -> bool:
+    """#472：平時（無 active 演習）→ 放行未編隊 tak（未分隊平時可見）；演習中 → 藏（fail-closed）。
+    紅（有分類、不在可見集）任何時候皆藏——本旗標只放寬 `faction IS NULL`，不影響紅。"""
+    return current_exercise_id() is None
+
+
 @router.get("/entities")
 def list_entities(
     request: Request,
     source: str | None = None,
-    exercise_id: int | None = None,
     include_stale: bool = False,
-    include_standing: bool = False,
     limit: int = 500,
 ):
     """列出 COP entity（預設過濾 stale）。前線 client 啟動 / WS 重連時全量 resync 用。
-    P1-14：預設只回當前 active 場；commander 顯式帶 exercise_id 才看歷史（resolve_scope 守門）。
-    #267：include_standing（限 COMMAND）→ active 場再疊加 NULL 常駐 entity，與 WS `?standing=1`
-    對等（否則 resync 會把 WS 推來的常駐單位刪掉＝鬼影）。"""
-    scope = resolve_scope(request.state.session, exercise_id)
+
+    **#472：地圖可見性軸從 exercise_id scope 改為 faction。** cop entity 不再受 exercise scope
+    過濾（拿掉 resolve_scope）——地圖＝跨場共享池，只看 faction（紅永遠藏、未編隊平時可見/演習中藏）
+    + 自建恆可見。exercise_id 降為記錄歸屬鍵（AAR 用）。**events/decisions/chat 仍走 resolve_scope
+    保跨場隔離（#288），不受此改動影響。** 舊 `exercise_id`/`include_standing` query param 已作廢
+    （FastAPI 忽略多餘 param，不 422）。"""
     vf = _visible_factions(request)  # #343：紅藍過濾（None=全見/開關關）
     entities = cop_entity_repo.list_cop_entities(
-        source=source, exercise_id=scope, include_stale=include_stale, limit=limit, visible_factions=vf
+        source=source,
+        exercise_id=None,  # #472：不再按場過濾
+        include_stale=include_stale,
+        limit=limit,
+        visible_factions=vf,
+        allow_null_faction=_allow_unclassified_tak(),
     )
-    # int scope＝有 active 場；疊加常駐（NULL_SCOPE）。已是 NULL_SCOPE（無 active）者本就看得到常駐、不疊。
-    # SECURITY：限 COMMAND_ROLES（對齊 WS gate）；非指揮層帶 include_standing 也忽略。
-    if include_standing and isinstance(scope, int) and is_role_allowed(request.state.session, COMMAND_ROLES):
-        standing = cop_entity_repo.list_cop_entities(
-            source=source, exercise_id=NULL_SCOPE, include_stale=include_stale, limit=limit, visible_factions=vf
-        )
-        seen = {e["uid"] for e in entities}
-        entities = entities + [e for e in standing if e["uid"] not in seen]
     return {"entities": entities}
 
 
@@ -246,37 +250,33 @@ def get_entity(uid: str, request: Request, response: Response):
     ent = cop_entity_repo.get_cop_entity(uid)
     if ent is None:
         raise HTTPException(404, f"entity 不存在：{uid}")
-    # P1-14：非指揮層只能取當前 scope 內的 entity（防 by-uid 跨場讀取）。
-    # 指揮層（sysadmin/commander）可取任意 uid，對齊 list endpoint 的 ?exercise_id override。
-    # 不在 scope → 404（不洩漏存在性，與 None 同一回應）。
-    if not is_role_allowed(request.state.session, COMMAND_ROLES):
-        scope = resolve_scope(request.state.session, None)  # active id 或 NULL_SCOPE（實戰池）
-        ent_ex = ent.get("exercise_id")
-        in_scope = (ent_ex is None) if scope is NULL_SCOPE else (ent_ex == scope)
-        if not in_scope:
-            raise HTTPException(404, f"entity 不存在：{uid}")
-    # #343：faction 隔離——tak 來源且不在可見 faction（含 NULL fail-closed）→ 404（不洩漏存在性）。
-    # 非 tak（manual/command 自建）不受限（#146 所有權）。sysadmin / 開關關 → vf=None 不過濾。
+    # #472：cop 可見性軸改 faction——拿掉 P1-14「非指揮層只取當前 scope」的 exercise-scope 檢查
+    # （cop 為跨場共享池）。可見性只看 faction。
+    # #343：faction 隔離——tak 來源且不在可見 faction → 404（不洩漏存在性）。非 tak（自建）不受限
+    # （#146 所有權）。sysadmin / 開關關 → vf=None 不過濾。未編隊（faction IS NULL）平時放行、演習中藏（#472）。
     vf = _visible_factions(request)
-    if vf is not None and ent.get("source") == "tak" and ent.get("faction") not in vf:
-        raise HTTPException(404, f"entity 不存在：{uid}")
+    if vf is not None and ent.get("source") == "tak":
+        fac = ent.get("faction")
+        if fac not in vf and not (fac is None and _allow_unclassified_tak()):
+            raise HTTPException(404, f"entity 不存在：{uid}")
     response.headers["ETag"] = _etag(ent["version_clock"])
     return ent
 
 
 @router.get("/squads")
-def list_squads(request: Request, exercise_id: int | None = None):
-    """按 team_color 聚合該場 COP entity → 小隊態勢（total/online/offline/avg_battery/centroid）。
+def list_squads(request: Request):
+    """按 team_color 聚合 COP entity → 小隊態勢（total/online/offline/avg_battery/centroid）。
 
     P2-06d（issue #128）。RBAC：走 allowed_roles_for GET 預設分支 → READ_ROLES（observer 可讀）。
-    P1-14：exercise_id 由 resolve_scope 守門（不直接信 query param；歷史場限 COMMAND_ROLES）。
+    **#472：可見性軸改 faction，聚合不再按 exercise scope（拿掉 resolve_scope）。**
     team_color IS NULL 的 entity 聚成「未分隊」組（team_color=null，排列首）。
-    #343：套 faction 過濾（否則藍方經聚合 centroid/兵力推得紅軍位置）。
+    #343：套 faction 過濾（否則藍方經聚合 centroid/兵力推得紅軍位置）；未編隊平時放行、演習中藏（#472）。
     """
     return {
         "squads": cop_entity_repo.aggregate_squads(
-            exercise_id=resolve_scope(request.state.session, exercise_id),
+            exercise_id=None,  # #472：不再按場過濾
             visible_factions=_visible_factions(request),
+            allow_null_faction=_allow_unclassified_tak(),
         )
     }
 

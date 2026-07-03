@@ -57,33 +57,47 @@ class _Conn:
 
     def _faction_ok(self, msg_source: str | None, msg_faction: str | None) -> bool:
         """#343：本連線是否可見此 entity 的 faction。None visible_factions = 全見。
-        只有 source='tak' 受過濾（#146 所有權：manual/command 自建恆可見）；
-        tak 且 faction 不在集合（含 None fail-closed）→ False。"""
+        只有 source='tak' 受過濾（#146 所有權：manual/command 自建恆可見）；tak 且 faction 不在集合 → False。
+        **#472：未編隊（faction None）平時放行、演習中藏（fail-closed）；紅（有分類、不在集合）恆藏。**"""
         if self.visible_factions is None:
             return True
         if msg_source != "tak":
             return True
-        return msg_faction in self.visible_factions
+        if msg_faction in self.visible_factions:
+            return True
+        if msg_faction is None:  # #472：未編隊——平時（無 active 演習）放行、演習中藏
+            from services.exercise_service import current_exercise_id  # lazy：避免 import 循環
 
-    def wants(self, msg_exercise_id: int | None, msg_source: str | None = None, msg_faction: str | None = None) -> bool:
-        """本連線是否該收到這則 entity 訊息（P1-14 場域 isolation + #343 faction isolation）。
+            return current_exercise_id() is None
+        return False
 
-        連線範圍由 resolve_scope 決定（int 或 NULL_SCOPE）：
+    def wants(
+        self,
+        msg_exercise_id: int | None,
+        msg_source: str | None = None,
+        msg_faction: str | None = None,
+        scope_by_exercise: bool = True,
+    ) -> bool:
+        """本連線是否該收到這則訊息（#343 faction + P1-14 場域 isolation）。
+
+        **#472：`scope_by_exercise=False`（cop entity 訊息）→ 只過 faction，不受 exercise scope
+        （地圖＝跨場共享池）。** `scope_by_exercise=True`（chat 等記錄型訊息，預設）→ 保留 exercise
+        scope（#288 PII 跨場隔離）：
         - NULL_SCOPE（無 active＝實戰池）→ 只收 exercise_id 為 None 的實戰 entity。
-        - int N（active 場 / 指揮層看歷史）→ 收 N 的 entity；若 include_standing 另收 NULL 常駐。
-        - None（內部 overview，client 不會是此值）→ 全收。
-        場域通過後再過 faction（兩道 AND）。⚠ 控制訊息（reset resync）走 broadcast_all，不經本過濾。
+        - int N（active 場 / 指揮層看歷史）→ 收 N；若 include_standing 另收 NULL 常駐。
+        - None（內部 overview）→ 全收。
+        ⚠ 控制訊息（reset resync）走 broadcast_all，不經本過濾。
         """
         if not self._faction_ok(msg_source, msg_faction):
             return False
+        if not scope_by_exercise:  # #472：cop entity——只看 faction
+            return True
         if self.exercise_id is NULL_SCOPE:
             return msg_exercise_id is None
         if self.exercise_id is None:
             return True
         if msg_exercise_id == self.exercise_id:
             return True
-        # #267 常駐層疊看（限 COMMAND）：active 場連線也收 NULL 常駐 entity。仍精確擋別場
-        # M（M≠N、M≠None）→ 演習↔演習隔離不變（#265），只放寬 active↔常駐。
         if self.include_standing and msg_exercise_id is None:
             return True
         return False
@@ -149,11 +163,14 @@ class CopHub:
         exercise_id: int | None = None,
         source: str | None = None,
         faction: str | None = None,
+        scope_by_exercise: bool = True,
     ) -> None:
-        """把 entity message push 給所有符合 exercise + faction filter（wants）的連線。
-        source/faction 供 #343 紅藍過濾（只 source='tak' 受 faction 限；caller 從 entity 帶入）。"""
+        """把 message push 給所有符合 filter（wants）的連線。
+        source/faction 供 #343 紅藍過濾（只 source='tak' 受 faction 限；caller 從 entity 帶入）。
+        **#472：cop entity 廣播傳 `scope_by_exercise=False`（只過 faction、跨場共享）；chat 等記錄型
+        訊息用預設 True（保 exercise scope，#288）。**"""
         async with self._lock:
-            targets = [c for c in self._conns if c.wants(exercise_id, source, faction)]
+            targets = [c for c in self._conns if c.wants(exercise_id, source, faction, scope_by_exercise)]
         await self._send(targets, message)
 
     async def broadcast_all(self, message: dict) -> None:

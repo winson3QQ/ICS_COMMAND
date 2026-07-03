@@ -111,9 +111,7 @@ async function _initCopStream() {
     getToken,
     authFetch,
     canWrite: () => canAccessMapObjects(),
-    // #267 常駐層疊看：指揮層（sysadmin/commander）的連線帶 standing → 演習中也收 NULL 常駐 entity
-    // （後端再 gate 一次）。可見性由地圖圖層 toggle 控（預設關），訂閱恆開、不重連。
-    includeStanding: canUseRealModeControls(),
+    // #472：常駐疊看已移除——cop 可見性軸改 faction（後端守門），常駐 entity 恆送。
   });
   setCopStream(_copStream); // 交給 map.js 訂閱 onChange 即時重繪 route/polygon/event
   _copStream.connect();

@@ -9,12 +9,14 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse
 
+from auth.role_enum import visible_factions_for_session
 from auth.service import check_session
 from core.config import (
     APP_VERSION,
     BUILD_ID,
     CMD_VERSION,
     DB_PATH,
+    FACTION_ISOLATION_ENABLED,
     HEALTH_DB_LATENCY_DEGRADED_MS,
     HEALTH_DISK_DEGRADED_PCT_THRESHOLD,
     SBOM_PATH,
@@ -23,7 +25,7 @@ from core.database import get_health_schema_version, open_readonly_live
 from repositories.audit_repo import get_audit_log
 from repositories.snapshot_repo import get_latest_snapshot
 from services.dashboard_service import build_dashboard
-from services.exercise_service import resolve_scope
+from services.exercise_service import current_exercise_id, resolve_scope
 
 router = APIRouter(tags=["儀表板"])
 
@@ -31,8 +33,15 @@ router = APIRouter(tags=["儀表板"])
 @router.get("/api/dashboard")
 def get_dashboard(request: Request, exercise_id: int | None = None):
     """前端每 10 秒 polling 的主要端點。
-    P1-14：預設只回當前 active 場；commander 顯式帶 exercise_id 才看歷史（resolve_scope 守門）。"""
-    return build_dashboard(resolve_scope(request.state.session, exercise_id))
+    P1-14：events/decisions 等仍走 resolve_scope（跨場隔離）；#472：tak_squads 改 faction 守門。"""
+    # #472 安全補漏：dashboard 的 tak_squads 聚合過去無 faction 過濾（紅隊 centroid/兵力洩漏給
+    # READ_ROLES）→ 補上 visible_factions（sysadmin→全見；藍→{blue,neutral}）+ 平時放行未編隊。
+    vf = visible_factions_for_session(request.state.session) if FACTION_ISOLATION_ENABLED else None
+    return build_dashboard(
+        resolve_scope(request.state.session, exercise_id),
+        visible_factions=vf,
+        allow_null_faction=current_exercise_id() is None,
+    )
 
 
 @router.get("/api/staff", tags=["人員"])

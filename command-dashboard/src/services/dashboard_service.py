@@ -146,8 +146,15 @@ def _enrich_from_pi_batches(unit: str, base_snaps: list, limit: int = 40) -> lis
     return pi_snaps + base_snaps if pi_snaps else base_snaps
 
 
-def build_dashboard(exercise_id: int | None = None) -> dict:
-    """組裝儀表板完整回應"""
+def build_dashboard(
+    exercise_id: int | None = None,
+    visible_factions: frozenset[str] | None = None,
+    allow_null_faction: bool = False,
+) -> dict:
+    """組裝儀表板完整回應。
+
+    #472：`visible_factions`/`allow_null_faction` 供 tak_squads 聚合的 faction 過濾（補既有紅隊洩漏）。
+    events/decisions 等仍依 `exercise_id`（resolve_scope 跨場隔離，不變）。"""
     # 各組最近快照
     med_snaps = _enrich_from_pi_batches("medical", snapshot_repo.get_snapshots("medical", 40, exercise_id))
     sh_snaps = _enrich_from_pi_batches("shelter", snapshot_repo.get_snapshots("shelter", 40, exercise_id))
@@ -194,7 +201,9 @@ def build_dashboard(exercise_id: int | None = None) -> dict:
         "shelter_history": sh_hist,
         "medical_history": med_hist,
         "pi_nodes": pi_node_repo.list_pi_nodes(),
-        # P2-06d（#128）：TAK 小隊聚合，讓 dashboard 對 TAK 不盲視。傳入既有 exercise_id
-        # 參數——可能是 NULL_SCOPE sentinel（無 active 場），aggregate_squads 吃三態。
-        "tak_squads": cop_entity_repo.aggregate_squads(exercise_id=exercise_id),
+        # P2-06d（#128）：TAK 小隊聚合。#472：可見性軸改 faction——不再按 exercise scope（exercise_id=None，
+        # 對齊 /api/cop/squads 為跨場共享池）+ 套 faction 過濾（補紅隊 centroid/兵力洩漏漏洞）。
+        "tak_squads": cop_entity_repo.aggregate_squads(
+            exercise_id=None, visible_factions=visible_factions, allow_null_faction=allow_null_faction
+        ),
     }

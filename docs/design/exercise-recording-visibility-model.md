@@ -120,10 +120,15 @@ NULL（常駐）→ **operator 進演習後整個 COP 空掉**（常駐疊看限
 - **faction 三層強制**：cop.py（REST/WS）、chat.py、tak.py + `visible_factions_for_session` + #343 resync 即時重分隊。
 - **exercise_id 綁定**：ingest `current_exercise_id()`，#267 起可 restamp。
 
+> **⚠️ 2026-07-03 reality check 修正（#472 動工前）：`resolve_scope` 身兼兩職，不可整個換掉。**
+> - **職責 P1（跨場資料隔離）**：events / decisions / chat / manual / audit + #288 寫入 IDOR ——防 operator 讀到別場的工作紀錄/PII。**保留不動**（faction 不適用這些藍方自己的紀錄）。
+> - **職責 P2（地圖單位可見性）**：cop_entities 的 exercise_id scope 把 NULL/常駐藏掉＝Problem 2 病灶。**只改這個 → faction**。
+> **故 #472 精確範圍＝只改 cop_entity 讀取可見性（cop.py REST `list_entities`/`get_entity`/`squads` + WS `wants`），其餘用 resolve_scope 的路一律不碰。** 連帶：cop_entities 變跨場共享池（過去場 blue/自建只要沒清即可見，符合「地圖=共享真實、不清圖」；紅仍藏、stale 灰化 #476）。
+
 **要新增/改：**
 | 項目 | 動作 |
 |---|---|
-| 可見性軸 | `resolve_scope`（exercise_id）**改 faction 為軸**；exercise_id 降記錄歸屬鍵（接 active_intervals 時間窗）；移除常駐疊看 COMMAND-only |
+| 可見性軸（**僅 cop_entity**） | cop_entity 讀取**拿掉 exercise_id scope**（P2）→ 可見性只看 faction + 自建恆可見；`include_standing`（#267）作廢。**events/decisions/chat/manual 的 `resolve_scope` 保留（P1，不碰）** |
 | faction 開關 | `FACTION_ISOLATION_ENABLED` 靜態 env → **狀態驅動**（紅永遠藏、未分隊只演習中藏、平時放行未分隊） |
 | 開場快照 | activate **新增** entity baseline 快照 |
 | 開場精靈 | 串「分隊→選擇性清圖→快照→開始記錄」；分類/reset 機制已在，需串流程 + 選擇性 |

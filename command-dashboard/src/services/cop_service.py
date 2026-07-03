@@ -447,6 +447,7 @@ async def _broadcast_cop(op: str, entity: dict) -> None:
         exercise_id=entity.get("exercise_id"),
         source=entity.get("source"),  # #343：faction 過濾（只 tak 受限）
         faction=entity.get("faction"),
+        scope_by_exercise=False,  # #472：cop entity＝跨場共享池，只過 faction、不受 exercise scope
     )
 
 

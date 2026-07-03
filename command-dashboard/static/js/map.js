@@ -173,9 +173,8 @@ const _MARKER_LONGPRESS_LAYERS = ['tak-units-icon'];
 let _suppressMarkerClick = false;
 // P2-25（#163 系列）：TAK 單位（2525 markers）的地圖篩選器——純前端 view filter（不刪資料）。
 // affiliation 對映 affiliationFromCot 的四態；showStale=false 隱藏過 stale 的活追蹤單位。
-// showStanding（#267）：演習 active 時是否疊顯 NULL 常駐單位。預設關（opt-in，避免平時雜亂）；
-// 無 active 演習時此旗標不生效（常駐單位即主 COP，恆顯，見 _applyTakFilter）。
-const _takFilter = { friendly: true, hostile: true, neutral: true, unknown: true, showStale: true, showStanding: false };
+// #472：常駐疊看（showStanding）已移除——可見性軸改 faction（後端守門），前端不再按 exercise scope 隱藏。
+const _takFilter = { friendly: true, hostile: true, neutral: true, unknown: true, showStale: true };
 
 const _HSINCHU_CENTER = [24.8283, 121.0149];
 const _HSINCHU_ZOOM = 15;
@@ -740,18 +739,14 @@ function _applyTakFilter() {
   const affs = ['friendly', 'hostile', 'neutral', 'unknown'].filter((a) => _takFilter[a]);
   const affClause = ['in', ['get', 'affiliation'], ['literal', affs]];
   const staleClause = _takFilter.showStale ? true : ['!', ['coalesce', ['get', 'stale'], false]];
-  // #267 常駐層疊看：只有「演習 active（_exerciseMode 非 null）且 showStanding 關」才隱藏常駐單位。
-  // 無 active 演習時常駐＝主 COP，恆顯（否則整張地圖空白）。
-  const overlayActive = _exerciseMode != null;
-  const standingClause =
-    !overlayActive || _takFilter.showStanding ? true : ['!', ['coalesce', ['get', 'standing'], false]];
-  map.setFilter('tak-units-icon', ['all', affClause, staleClause, standingClause]);
+  // #472：可見性軸改 faction（後端守門，紅永遠藏、未編隊平時可見/演習中藏）→ 前端不再按「常駐(NULL
+  // exercise_id)」隱藏單位（#267 常駐疊看 client filter 移除）。否則會遮蔽後端的 faction 可見性。
+  map.setFilter('tak-units-icon', ['all', affClause, staleClause]);
 }
 
-/** P2-25：切換 TAK 篩選器某一維度（affiliation 四態 / 'stale' / 'standing' #267）→ 套用 + 重建面板。 */
+/** P2-25：切換 TAK 篩選器某一維度（affiliation 四態 / 'stale'）→ 套用 + 重建面板。 */
 export function toggleTakFilter(key) {
   if (key === 'stale') _takFilter.showStale = !_takFilter.showStale;
-  else if (key === 'standing') _takFilter.showStanding = !_takFilter.showStanding;
   else if (key in _takFilter) _takFilter[key] = !_takFilter[key];
   else return;
   _applyTakFilter();
@@ -929,13 +924,7 @@ function _rebuildLayerPanel() {
       html += `<div class="layer-row" data-action="toggleTakFilter" data-takfilter="stale" style="padding-left:26px;">`;
       html += `<div class="layer-check${_takFilter.showStale ? ' on' : ''}">${_takFilter.showStale ? '✓' : ''}</div>`;
       html += `<span style="font-size:11px;color:${_takFilter.showStale ? 'var(--text)' : 'var(--text3)'};">◌ 含過期(stale)</span></div>`;
-      // #267 常駐層疊看：限指揮層、且演習 active 時才有意義（無 active 時常駐＝主 COP，恆顯）。
-      if (canUseRealModeControls() && _exerciseMode != null) {
-        const sOn = _takFilter.showStanding;
-        html += `<div class="layer-row" data-action="toggleTakFilter" data-takfilter="standing" style="padding-left:26px;">`;
-        html += `<div class="layer-check${sOn ? ' on' : ''}">${sOn ? '✓' : ''}</div>`;
-        html += `<span style="font-size:11px;color:${sOn ? 'var(--text)' : 'var(--text3)'};">⬢ 常駐層疊看</span></div>`;
-      }
+      // #472：常駐層疊看 toggle 已移除（可見性軸改 faction，常駐單位恆顯、後端守門）。
     }
   }
   // P2-34（#220）：放置動作（設施/節點/敵情標記）已移出 filter 面板 → 改由**長按地圖**

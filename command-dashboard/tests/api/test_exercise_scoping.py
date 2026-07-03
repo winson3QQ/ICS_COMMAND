@@ -71,21 +71,19 @@ def _mk_exercise(client, auth, name):
 
 
 class TestCopByUidScope:
-    def test_operator_cannot_read_other_exercise_entity_by_uid(self, client, auth, operator_auth):
-        # A 啟動→建 entity（綁 A）→封存；B 啟動
+    def test_operator_can_read_cross_exercise_selfbuilt_cop(self, client, auth, operator_auth):
+        # #472：cop 可見性軸改 faction（非 exercise scope）→ cop＝跨場共享池；自建（manual）恆對藍可見。
+        # 故 operator 跨場 by-uid 取自建 entity **可讀**（舊行為的 404 已按設計改變；紅方隔離改由 faction
+        # 守門，見 test_faction_admin/test_faction_enforce）。
         a = _mk_exercise(client, auth, "A")
         client.post(f"/api/exercises/{a['id']}/activate", json={}, headers=auth)
         uid_a = client.post("/api/cop/entities", json=_COP, headers=auth).json()["uid"]
         client.post(f"/api/exercises/{a['id']}/archive", json={}, headers=auth)
         b = _mk_exercise(client, auth, "B")
         client.post(f"/api/exercises/{b['id']}/activate", json={}, headers=auth)
-        # operator（scope=B）by-uid 取 A 的 entity → 404（不在 scope，不洩漏存在性）
-        assert client.get(f"/api/cop/entities/{uid_a}", headers=operator_auth).status_code == 404
-        # 指揮層（admin）可取任意 uid（對齊 list override）
+        # #472：operator（在 B）by-uid 取 A 的自建 entity → 200（共享池 + 自建恆藍可見）
+        assert client.get(f"/api/cop/entities/{uid_a}", headers=operator_auth).status_code == 200
         assert client.get(f"/api/cop/entities/{uid_a}", headers=auth).status_code == 200
-        # operator 取當前 scope（B）內 entity → 200
-        uid_b = client.post("/api/cop/entities", json=_COP, headers=auth).json()["uid"]
-        assert client.get(f"/api/cop/entities/{uid_b}", headers=operator_auth).status_code == 200
 
 
 class TestStrictIsolation:
@@ -206,52 +204,43 @@ class TestExerciseDelete:
         assert client.delete(f"/api/exercises/{a['id']}", headers=auth).status_code == 200
 
 
-class TestStandingOverlay:
-    """#267 常駐層疊看 REST 對等：?include_standing（限 COMMAND）→ active 場再疊加 NULL 常駐 entity。
-    與 WS ?standing=1 對等（否則 resync 抹掉 WS 推來的常駐＝鬼影）。"""
+class TestStandingCopVisibility:
+    """#472：cop 可見性軸改 faction（非 exercise scope）→ 常駐（NULL）自建 cop 演習中對**所有角色**可見
+    （解 Problem 2；取代 #267「常駐疊看 COMMAND-only」）。自建恆藍可見、不需 include_standing。"""
 
-    def test_include_standing_command_only(self, client, auth, operator_auth):
-        # 1. 無 active 演習時建 cop entity → 綁 NULL（常駐）
+    def test_standing_selfbuilt_cop_visible_to_all_during_exercise(self, client, auth, operator_auth):
+        # 1. 無 active 時建自建 cop → 綁 NULL（常駐）
         uid = client.post("/api/cop/entities", json={**_COP, "callsign": "STAND-1"}, headers=auth).json()["uid"]
-        # 2. 啟動演習 → active scope = int
+        # 2. 啟動演習
         ex = client.post("/api/exercises", json={"name": "疊看", "type": "ttx"}, headers=auth).json()
         assert client.post(f"/api/exercises/{ex['id']}/activate", json={}, headers=auth).status_code == 200
-        # 3. 預設（無 include_standing）→ 只回 active 場，看不到常駐
-        ents = client.get("/api/cop/entities", headers=auth).json()["entities"]
-        assert not any(e["uid"] == uid for e in ents), "預設不疊常駐"
-        # 4. command + include_standing=1 → 疊到常駐
-        ents = client.get("/api/cop/entities?include_standing=1", headers=auth).json()["entities"]
-        assert any(e["uid"] == uid for e in ents), "command 疊看應收到常駐"
-        # 5. operator + include_standing=1 → SECURITY gate 擋，仍看不到
-        ents = client.get("/api/cop/entities?include_standing=1", headers=operator_auth).json()["entities"]
-        assert not any(e["uid"] == uid for e in ents), "operator 不可疊常駐（gate）"
+        # 3. #472：演習中，常駐自建 cop 對 admin + operator 都可見（不需 include_standing）
+        assert any(e["uid"] == uid for e in client.get("/api/cop/entities", headers=auth).json()["entities"])
+        assert any(e["uid"] == uid for e in client.get("/api/cop/entities", headers=operator_auth).json()["entities"])
 
 
 class TestEnroll:
     """#267 納編/退編：POST /api/exercises/{id}/enroll —— 把 cop entity 移進 active 場 / 退回 NULL。"""
 
     def test_enroll_then_unenroll(self, client, auth):
-        # 1. 無 active 時建 entity → 綁 NULL（常駐候選）
+        # #472：enroll 改 exercise_id＝**記錄歸屬鍵**（AAR 用），**不再影響可見性**（cop 共享池 + 自建恆可見）。
+        # 1. 無 active 時建 entity → 綁 NULL
         uid = client.post("/api/cop/entities", json={**_COP, "callsign": "ENR-1"}, headers=auth).json()["uid"]
         # 2. 啟動演習
         ex = client.post("/api/exercises", json={"name": "納編場", "type": "ttx"}, headers=auth).json()
         assert client.post(f"/api/exercises/{ex['id']}/activate", json={}, headers=auth).status_code == 200
-        # 預設（active scope）看不到常駐
-        assert not any(e["uid"] == uid for e in client.get("/api/cop/entities", headers=auth).json()["entities"])
-        # 3. 納編 → exercise_id = active
+        # #472：自建 cop 恆可見（不論 exercise_id）——納編前就看得到
+        assert any(e["uid"] == uid for e in client.get("/api/cop/entities", headers=auth).json()["entities"])
+        # 3. 納編 → exercise_id = active（記錄歸屬）
         r = client.post(f"/api/exercises/{ex['id']}/enroll", json={"uid": uid, "action": "enroll"}, headers=auth)
         assert r.status_code == 200, r.text
         assert r.json()["exercise_id"] == ex["id"]
-        # 現在 active scope 看得到、不需 include_standing
         assert any(e["uid"] == uid for e in client.get("/api/cop/entities", headers=auth).json()["entities"])
-        # 4. 退編 → 回 NULL
+        # 4. 退編 → 回 NULL；#472：仍可見（自建恆可見，不再靠 include_standing）
         r = client.post(f"/api/exercises/{ex['id']}/enroll", json={"uid": uid, "action": "unenroll"}, headers=auth)
         assert r.status_code == 200, r.text
         assert r.json()["exercise_id"] is None
-        # active scope 又看不到；include_standing 才看得到
-        assert not any(e["uid"] == uid for e in client.get("/api/cop/entities", headers=auth).json()["entities"])
-        ents = client.get("/api/cop/entities?include_standing=1", headers=auth).json()["entities"]
-        assert any(e["uid"] == uid for e in ents)
+        assert any(e["uid"] == uid for e in client.get("/api/cop/entities", headers=auth).json()["entities"])
 
     def test_enroll_only_into_active(self, client, auth):
         # {id} 非當前 active → 409（不可納編進非 active 場）

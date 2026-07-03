@@ -182,7 +182,12 @@ WARNING_THRESHOLD_SECONDS: int = int(os.getenv("ICS_WARNING_THRESHOLD_SECONDS", 
 # MINOR 2.29.0：#467 節點推 TAK——出向分享時依 node_type 套 per-type 2525 CoT 符號（tak_downlink
 #               _NODE_COT_TYPE 字典；實作 mil_symbol 預留的 cot_type 字典擴充），現場端可辨指揮部/
 #               醫療組/安全組/前進組/收容組。存儲 type 不動、出向才換（server-authoritative）。設施延後。
-APP_VERSION = "2.29.0"
+# MINOR 2.30.0：#472 COP 可見性軸從 exercise_id scope 改為 faction——cop entity 讀取（list/get/squads
+#               + WS）不再按場過濾（地圖＝跨場共享池），改 faction 狀態驅動（紅永遠藏、未編隊平時可見/
+#               演習中 fail-closed 藏）；exercise_id 降記錄歸屬鍵。events/decisions/chat 的 resolve_scope
+#               跨場隔離不變（#288）。**含安全補漏**：/api/dashboard 的 tak_squads 過去無 faction 過濾
+#               （紅隊 centroid/兵力洩漏給 READ_ROLES）→ 補 visible_factions。/security-review 過。
+APP_VERSION = "2.30.0"
 
 # CMD_VERSION：前端 UI 功能版本（不同於後端 SemVer APP_VERSION；規則見 CLAUDE.md 版號規則）
 # 兩軌版本命名，不可混用。由 /api/version 提供給前端，是唯一 source-of-truth；release 時更新此值。
@@ -190,7 +195,9 @@ APP_VERSION = "2.29.0"
 #         + 演習/放置/稽核 UI P1-13/14/16/#93 + 分類編輯器 #66）→ 0.x 畢業為 MAJOR 紀元。
 CMD_VERSION: str = os.getenv(
     "CMD_VERSION",
-    "v1.23.0",  # MINOR：#260 D2——route waypoint 命名 UI。頂點編輯加「🏷 命名」徽章 → modal 命名/改名/
+    "v1.23.1",  # PATCH：#472——移除常駐疊看（showStanding）toggle + client filter（可見性軸改 faction，
+    # 後端守門，常駐單位恆顯）；cop_stream 不再帶 ?standing/?include_standing。
+    # MINOR v1.23.0：#260 D2——route waypoint 命名 UI。頂點編輯加「🏷 命名」徽章 → modal 命名/改名/
     # 取消命名（b-m-p-w↔b-m-p-c）；命名頂點白點+label 即時回饋；自建 route 首次命名合成 geoLinks；
     # commit 走 D1 reassembleRouteLink 回寫 attributes.link → C2 顯示 + 出向送。真機 ATAK dogfood PASS。
     # MINOR v1.22.0：#467 節點手動廣播到 TAK——節點 modal 加「📡 廣播」鈕（指揮層 + TAK 啟用）；

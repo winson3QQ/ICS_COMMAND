@@ -37,7 +37,7 @@ def _no_ws(monkeypatch):
     """攔截兩種廣播（per-entity + broadcast_all），不真開 WS。回收集到的 op。"""
     ops = []
 
-    async def _b(message, exercise_id=None, source=None, faction=None):
+    async def _b(message, exercise_id=None, source=None, faction=None, **kwargs):
         ops.append(message.get("op"))
 
     async def _ball(message):
