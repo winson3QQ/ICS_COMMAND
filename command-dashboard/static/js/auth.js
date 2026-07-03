@@ -842,7 +842,8 @@ export function closeAdminPanel() {
 }
 
 // #346：演習面板（設定→演習開）。內含 segmented 子分頁 演習管理/紅藍/回放（跟帳號一致）。
-export function openExercisePanel() {
+// sub：開啟時直接落在哪個子分頁（預設 manage）。#473-B3 開場精靈「前往分隊面板」用 'faction' 直達。
+export function openExercisePanel(sub = 'manage') {
   closeSettings();
   el('exercise-overlay').classList.add('show');
   el('exercise-panel').classList.add('show');
@@ -851,7 +852,7 @@ export function openExercisePanel() {
   if (facSub) facSub.style.display = _isSysadminSession() ? '' : 'none';
   const aarSub = el('ex-subtab-aar');
   if (aarSub) aarSub.style.display = canUseRealModeControls() ? '' : 'none';
-  admExerciseSub('manage');
+  admExerciseSub(sub);  // admExerciseSub 內含 RBAC 兜底（非 sysadmin 的 faction → manage）
 }
 
 export function closeExercisePanel() {

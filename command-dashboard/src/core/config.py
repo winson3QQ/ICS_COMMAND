@@ -213,7 +213,10 @@ APP_VERSION = "2.32.1"
 #         + 演習/放置/稽核 UI P1-13/14/16/#93 + 分類編輯器 #66）→ 0.x 畢業為 MAJOR 紀元。
 CMD_VERSION: str = os.getenv(
     "CMD_VERSION",
-    "v1.24.0",  # MINOR：#473-B3 開場精靈——「啟動」改開三段引導 modal（① 紅藍分隊導流 → ② 選擇性
+    "v1.24.1",  # PATCH：#473-B3 開場精靈 overlay 修正（iPad dogfood）——精靈用通用 modal（z=210）被演習
+    # 面板（z=290）蓋住 → 開精靈前先關演習面板（乾淨浮在地圖上）；「前往分隊面板」改重開演習面板直達
+    # 分隊分頁（openExercisePanel('faction')），修「按了沒動作」（原在已關面板上切分頁）。
+    # MINOR v1.24.0：#473-B3 開場精靈——「啟動」改開三段引導 modal（① 紅藍分隊導流 → ② 選擇性
     # 清圖呼叫 clear-residual、inline 回饋清/留數 → ③ 確認開始記錄）；sysadmin-only、CSP-safe data-action。
     # PATCH v1.23.3：#473-B1——演習面板「啟動」鈕收 sysadmin（開場僅白隊，對齊後端 SYSADMIN_ONLY）。
     # PATCH v1.23.2：#474——_isReadonlySource 恆 false（拆 TTX-only 唯讀閘，外部來源任何模式可編/刪）。

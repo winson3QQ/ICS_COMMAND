@@ -508,9 +508,9 @@ document.addEventListener('click', function (e) {
       import('./exercises.js').then(m => m.openExOpenWizard(btn.dataset.id, btn.dataset.name));
       break;
     }
-    case 'exWizGoFaction': {  // 精靈①：關精靈、切到既有紅藍分隊分頁（不重造那套 UI）
+    case 'exWizGoFaction': {  // 精靈①：關精靈、重開演習面板直達紅藍分隊分頁（不重造那套 UI）
       closeModal();
-      import('./auth.js').then(m => m.admExerciseSub('faction'));
+      import('./auth.js').then(m => m.openExercisePanel('faction'));
       break;
     }
     case 'exWizClear': {  // 精靈②：清除殘留（可跳過），結果 inline 回饋到精靈
