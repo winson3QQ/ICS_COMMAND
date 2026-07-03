@@ -213,9 +213,11 @@ APP_VERSION = "2.32.1"
 #         + 演習/放置/稽核 UI P1-13/14/16/#93 + 分類編輯器 #66）→ 0.x 畢業為 MAJOR 紀元。
 CMD_VERSION: str = os.getenv(
     "CMD_VERSION",
-    "v1.24.2",  # PATCH：#473-B3 開場精靈「前往分隊」回返修正（iPad dogfood）——exWizGoFaction 不再
+    "v1.24.3",  # PATCH：hotfix——修 CMD_VERSION bump 手滑（舊版字串留成 os.getenv 第三位置參數 →
+    # import 期 TypeError、prod crash-loop）；補 tests/unit/test_config_version 版號常數 sanity 守之。
+    # PATCH v1.24.2：#473-B3 開場精靈「前往分隊」回返修正（iPad dogfood）——exWizGoFaction 不再
     # closeModal，讓演習面板（z=290）疊在精靈（z=210）上；分隊完關面板即露出精靈續走 ②/③（閉合迴圈）。
-    "v1.24.1",  # PATCH：#473-B3 開場精靈 overlay 修正（iPad dogfood）——精靈用通用 modal（z=210）被演習
+    # PATCH v1.24.1：#473-B3 開場精靈 overlay 修正（iPad dogfood）——精靈用通用 modal（z=210）被演習
     # 面板（z=290）蓋住 → 開精靈前先關演習面板（乾淨浮在地圖上）；「前往分隊面板」改重開演習面板直達
     # 分隊分頁（openExercisePanel('faction')），修「按了沒動作」（原在已關面板上切分頁）。
     # MINOR v1.24.0：#473-B3 開場精靈——「啟動」改開三段引導 modal（① 紅藍分隊導流 → ② 選擇性
