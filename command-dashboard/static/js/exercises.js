@@ -213,8 +213,14 @@ export async function renderExercisePanel() {
         // #473-B1：開場（啟動）收 sysadmin——開場流程含紅藍分隊（白隊之責，commander 恆藍不經手）。
         // 後端 SYSADMIN_ONLY 為真實邊界；此處隱藏鈕避免 commander 點了吃 403。
         if (ex.status !== 'active' && hasAnyRole('sysadmin')) {
-          // #473-B3：「啟動」改開開場精靈（分隊→清圖→確認開始），不再直接 activate。
-          actions += `<button class="ex-btn" data-action="exWizard" data-id="${_esc(ex.id)}" data-name="${_esc(ex.name)}">啟動</button>`;
+          // 單一 active mutex（後端 set_active 原子鎖）→ 已有進行中場次時，其他場「啟動」禁用 + 提示，
+          // 讓鎖在 UI 就看得到（否則點得下去、走完精靈才 409，跨 session 誤以為能開第二場）。
+          if (_activeExercise) {
+            actions += `<button class="ex-btn" disabled title="需先封存進行中場次「${_esc(_activeExercise.name)}」" style="opacity:.45;cursor:not-allowed;">啟動</button>`;
+          } else {
+            // #473-B3：「啟動」改開開場精靈（分隊→清圖→確認開始），不再直接 activate。
+            actions += `<button class="ex-btn" data-action="exWizard" data-id="${_esc(ex.id)}" data-name="${_esc(ex.name)}">啟動</button>`;
+          }
         }
         // 歸檔＝結束進行中的演習，故只對 active 顯示（準備中尚未啟動、archived 已歸檔皆不顯）。
         if (ex.status === 'active') {

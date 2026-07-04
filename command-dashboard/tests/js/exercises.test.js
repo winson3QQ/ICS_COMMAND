@@ -205,7 +205,7 @@ describe('API dispatch → 正確 endpoint', () => {
 });
 
 describe('renderExercisePanel + RBAC', () => {
-  test('指揮層：渲染建立表單 + 啟動 / 歸檔鈕，chip 同步 active', async () => {
+  test('指揮層 + 已有 active：其他場「啟動」禁用（單一 mutex UI），active 顯歸檔，chip 同步', async () => {
     _canManage = true;
     const get = installDom();
     mockAuthFetch.mockReturnValueOnce(resp(200, [ACTIVE, SETUP]));
@@ -213,13 +213,23 @@ describe('renderExercisePanel + RBAC', () => {
     await m.renderExercisePanel();
     const html = get('ex-panel-body').innerHTML;
     expect(html).toMatch(/data-action="exCreate"/);
-    expect(html).toMatch(/data-action="exWizard" data-id="2"/);   // #473-B3：setup 可啟動＝開開場精靈
+    // 有 active（ACTIVE）→ SETUP 的「啟動」禁用（無 exWizard、顯提示），避免走完精靈才 409
+    expect(html).not.toMatch(/data-action="exWizard"/);
+    expect(html).toMatch(/需先封存進行中場次/);
     expect(html).toMatch(/data-action="exArchive"/);
-    expect(html).not.toMatch(/data-action="exWizard" data-id="1"/); // active 不再顯示啟動
-    // chip 同步為 active 演習
-    expect(get('exercise-chip').textContent).toContain('北區大震演練');
-    // 面板輸出不含字面 hex（樣式走 CSS class）
-    expect(html).not.toMatch(HEX_RE);
+    expect(get('exercise-chip').textContent).toContain('北區大震演練'); // chip 同步 active
+    expect(html).not.toMatch(HEX_RE); // 樣式走 CSS class，無字面 hex
+  });
+
+  test('指揮層 + 無 active：可啟動場顯開場精靈鈕（exWizard）', async () => {
+    _canManage = true;
+    const get = installDom();
+    mockAuthFetch.mockReturnValueOnce(resp(200, [SETUP])); // 無 active
+    const m = await import('../../static/js/exercises.js');
+    await m.renderExercisePanel();
+    const html = get('ex-panel-body').innerHTML;
+    expect(html).toMatch(/data-action="exWizard" data-id="2"/); // 無 active → 可啟動＝開精靈
+    expect(html).not.toMatch(/需先封存進行中場次/);
   });
 
   test('非指揮層：仍可看 list，但不渲染建立 / 啟動 / 歸檔鈕', async () => {

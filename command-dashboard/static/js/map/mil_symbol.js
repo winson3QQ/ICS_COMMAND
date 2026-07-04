@@ -32,6 +32,14 @@ const _COT_AFFILIATION = {
 // 內部 4 態 → 2525C SIDC affiliation code（位 2）。
 const _SIDC_AFFILIATION = { friendly: 'F', hostile: 'H', neutral: 'N', unknown: 'U' };
 
+// #344/faction → 內部 affiliation（4 態）：**faction 才是權威隊別、非 CoT type**（同裝置丟 4 種 type）。
+// 紅=敵、藍=友、中立=中立；未分類/未知 → null（不覆寫、退回 CoT type 判定）。
+// 僅用於 self-SA 單位（有 team_color 的裝置本身）；裝置丟出的敵情標記維持自身 CoT type（不吃 faction）。
+const _FACTION_AFFILIATION = { red: 'hostile', blue: 'friendly', neutral: 'neutral' };
+export function factionToAffiliation(faction) {
+  return _FACTION_AFFILIATION[faction] || null;
+}
+
 // CoT dimension char（type 第 3 段）→ 2525C battle dimension code（位 3）。
 // CoT 與 2525 字母大致一致：P 空間 / A 空中 / G 地面 / S 海面 / U 水下 / F SOF。
 const _SIDC_DIMENSION = { P: 'P', A: 'A', G: 'G', S: 'S', U: 'U', F: 'F' };
@@ -49,11 +57,12 @@ export function affiliationFromCot(cotType) {
  * 回傳 15 字 SIDC：S{affiliation}{dimension}P + generic function（位 5-10 '------'）+ '-----'。
  * 非 atom（b-*）回 null（不套 2525 unit 框 — route/polygon 走 §8 tactical graphics）。
  */
-export function cotToSidc(cotType) {
+export function cotToSidc(cotType, affiliationOverride = null) {
   if (typeof cotType !== 'string') return null;
   const parts = cotType.split('-');
   if (parts[0] !== 'a') return null;
-  const aff = _SIDC_AFFILIATION[affiliationFromCot(cotType)] || 'U';
+  // affiliationOverride（self-SA 單位吃 faction，見 factionToAffiliation）優先；否則從 CoT type 判。
+  const aff = _SIDC_AFFILIATION[affiliationOverride || affiliationFromCot(cotType)] || 'U';
   const dimChar = (parts[2] || '').toUpperCase();
   const dim = _SIDC_DIMENSION[dimChar] || 'G'; // 預設地面
   // 位：1=S(warfighting) 2=affiliation 3=dimension 4=P(present) 5-10=function 11-15=modifier

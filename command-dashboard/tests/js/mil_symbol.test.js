@@ -12,7 +12,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 
-import { affiliationFromCot, cotToSidc, affiliationToCotType, swapCotAffiliation } from '../../static/js/map/mil_symbol.js';
+import { affiliationFromCot, cotToSidc, affiliationToCotType, swapCotAffiliation, factionToAffiliation } from '../../static/js/map/mil_symbol.js';
 
 // 載入 vendored milsymbol（UMD）→ 取 CJS 出口，驗 SIDC 真能渲染
 const _here = dirname(fileURLToPath(import.meta.url));
@@ -65,6 +65,27 @@ describe('cotToSidc', () => {
     expect(cotToSidc('b-m-r')).toBe(null);
     expect(cotToSidc('u-d-f')).toBe(null);
     expect(cotToSidc(null)).toBe(null);
+  });
+  it('affiliationOverride（self-SA 吃 faction）覆寫敵我位（位2）', () => {
+    // 紅隊裝置即使自報友軍 type（a-f）→ override hostile → 敵框 SHGP（位2=H）
+    expect(cotToSidc('a-f-G-U-C', 'hostile')).toBe('SHGP-----------');
+    expect(cotToSidc('a-f-G', 'friendly')).toBe('SFGP-----------');
+    expect(cotToSidc('a-f-G', 'neutral')).toBe('SNGP-----------');
+    // null override → 退回 CoT type 判定（不覆寫）
+    expect(cotToSidc('a-h-G', null)).toBe('SHGP-----------');
+  });
+});
+
+describe('factionToAffiliation（#344：faction 才是權威隊別、非 CoT type）', () => {
+  it('紅=敵、藍=友、中立=中立', () => {
+    expect(factionToAffiliation('red')).toBe('hostile');
+    expect(factionToAffiliation('blue')).toBe('friendly');
+    expect(factionToAffiliation('neutral')).toBe('neutral');
+  });
+  it('未分類/未知 → null（不覆寫，退回 CoT type）', () => {
+    expect(factionToAffiliation(null)).toBe(null);
+    expect(factionToAffiliation(undefined)).toBe(null);
+    expect(factionToAffiliation('yellow')).toBe(null);
   });
 });
 
