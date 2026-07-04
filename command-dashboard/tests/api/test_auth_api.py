@@ -79,3 +79,49 @@ class TestLogout:
         # logout 後同一 token 應無效
         r2 = client.get("/api/exercises", headers=auth)
         assert r2.status_code == 401
+
+
+class TestSessionCookie:
+    """#293：session token 改放 httpOnly cookie（JS 讀不到 → XSS 竊不走）。階段1 相容期 header/cookie 雙認。"""
+
+    def test_login_sets_httponly_cookie(self, client):
+        r = client.post("/api/auth/login", json={"username": "admin", "pin": "1234"})
+        assert r.status_code == 200
+        raw = r.headers.get("set-cookie", "").lower()
+        assert "cmd_session=" in raw
+        assert "httponly" in raw  # JS document.cookie 讀不到 → XSS 竊不走
+        assert "samesite=strict" in raw  # 擋跨站自動帶 cookie
+
+    def test_login_cookie_is_session_scoped(self, client):
+        # #293 階段2：session cookie（無 max-age/expires）→ 關瀏覽器即失效，維持「關分頁＝登出」語意
+        r = client.post("/api/auth/login", json={"username": "admin", "pin": "1234"})
+        raw = r.headers.get("set-cookie", "").lower()
+        assert "max-age" not in raw and "expires" not in raw
+
+    def test_heartbeat_returns_display_name(self, client, auth):
+        # #293 階段2：新分頁/reload 靠 heartbeat（cookie 認）還原顯示態 → 須帶 display_name 補徽章
+        r = client.get("/api/auth/heartbeat", headers=auth)
+        assert r.status_code == 200
+        assert r.json().get("display_name")
+
+    def test_cookie_only_auth_passes(self, client, session_token):
+        # 只帶 cookie、不帶 X-Session-Token header → 仍認證通過（cookie fallback，階段2 前端不帶 header）
+        client.cookies.set("cmd_session", session_token)  # 覆蓋 jar（login 的 Secure cookie 不隨 http 送）
+        r = client.get("/api/exercises")
+        assert r.status_code == 200
+
+    def test_header_still_works_compat(self, client, auth):
+        # 相容期：header 路徑不變（既有前端零改照跑）
+        r = client.get("/api/exercises", headers=auth)
+        assert r.status_code == 200
+
+    def test_bogus_cookie_rejected(self, client):
+        client.cookies.set("cmd_session", "not-a-real-token")
+        r = client.get("/api/exercises")
+        assert r.status_code == 401
+
+    def test_logout_clears_cookie(self, client, session_token):
+        r = client.post("/api/auth/logout", headers={"X-Session-Token": session_token})
+        assert r.status_code == 200
+        raw = r.headers.get("set-cookie", "").lower()
+        assert "cmd_session=" in raw  # delete_cookie 覆蓋一個過期/空的 cmd_session

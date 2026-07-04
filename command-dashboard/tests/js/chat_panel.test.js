@@ -9,7 +9,7 @@ import { describe, expect, test, vi } from 'vitest';
 vi.mock('../../static/js/auth.js', () => ({
   API_BASE: '',
   authFetch: () => Promise.resolve({ ok: true, json: async () => ({ chats: [] }) }),
-  getToken: () => 't',
+  isLoggedIn: () => true,
   hasAnyRole: () => true,
   canSendChat: () => true,
 }));

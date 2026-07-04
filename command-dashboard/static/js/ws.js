@@ -17,7 +17,7 @@
  */
 
 import {
-  getToken,
+  isLoggedIn,
   onAuthChange,
   authFetch,
   canAccessMapObjects,
@@ -101,7 +101,7 @@ function _stopPolling() {
  * 認證後的自動啟動已由 onAuthChange 處理）
  */
 export function connect() {
-  if (getToken()) _startPolling();
+  if (isLoggedIn()) _startPolling();  // #293：登入閘改吃旗標（token 已進 cookie）
 }
 
 /** 手動停止輪詢 */

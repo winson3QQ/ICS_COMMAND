@@ -1,16 +1,19 @@
 # SPDX-License-Identifier: LicenseRef-Proprietary
 # Copyright © 2026 HUANG, JEN-SHENG. All Rights Reserved.
 import structlog
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Response
 
 import core.config as config
 from auth.service import (
+    clear_session_cookie,
     client_cert_cn,
     client_cert_verified,
     create_session,
     destroy_session,
+    extract_token,
     session_remaining,
     session_status,
+    set_session_cookie,
     validate_session,
 )
 from core.pin_policy import validate_pin_strength  # #348-F5 P1
@@ -31,7 +34,7 @@ router = APIRouter(prefix="/api/auth", tags=["認證"])
 
 
 @router.post("/login")
-def login(body: LoginIn, request: Request):
+def login(body: LoginIn, request: Request, response: Response):
     # #275 wave 4 鎖定-DoS 緩解：出示綁定本帳號的有效裝置憑證者，帳號鎖定不擋（合法本人
     # 的裝置永不被攻擊者鎖死；無裝置證者仍受鎖定保護＝反爆破照舊）。在 verify_login 前算，
     # 因鎖定判斷在其內。account_id 由 username 解析（與 verify_login 的帳號查詢正交）。
@@ -75,6 +78,9 @@ def login(body: LoginIn, request: Request):
         else:
             cert_cn = presented
     token = create_session(acct, request, cert_cn=cert_cn)
+    # #293 階段1：同時種 httpOnly cookie（斷 XSS 竊 token）+ 保留 body session_id（前端相容期照舊）。
+    # 階段2 前端改吃 cookie 後，body session_id 才移除（真正斷根，見 #293）。
+    set_session_cookie(response, token)
     audit(acct["username"], None, "login", "accounts", acct["username"], {"role": acct["role"]})
     log.info("login_success", msg="登入成功", user=acct["username"], detail={"role": acct["role"]})
     return {
@@ -118,24 +124,27 @@ def change_initial_pin(body: ChangeInitialPinIn, request: Request):
 
 
 @router.post("/logout")
-def logout(request: Request):
-    token = request.headers.get("X-Session-Token")
+def logout(request: Request, response: Response):
+    token = extract_token(request)
     sess = destroy_session(token) if token else None
     if sess:
         audit(sess["username"], None, "SESSION_LOGOUT", "sessions", sess["username"], {})
+    clear_session_cookie(response)  # #293：清 httpOnly cookie（server session 已 destroy，cookie 也一併退）
     return {"ok": True}
 
 
 @router.get("/heartbeat")
 def heartbeat(request: Request):
     sess = validate_session(request)
-    remaining = session_remaining(request.headers.get("X-Session-Token", ""))
+    remaining = session_remaining(extract_token(request) or "")
     return {
         "ok": True,
         "remaining": remaining,
         "username": sess["username"],
         "role": sess["role"],
         "role_detail": sess.get("role_detail"),
+        # #293 階段2：新分頁/reload 靠 heartbeat（cookie 認）還原顯示態 → 需帶 display_name 補使用者徽章
+        "display_name": sess.get("display_name") or sess["username"],
     }
 
 
@@ -155,5 +164,5 @@ session_router = APIRouter(prefix="/api/session", tags=["session"])
 
 @session_router.get("/status")
 def status(request: Request):
-    token = request.headers.get("X-Session-Token", "")
+    token = extract_token(request) or ""
     return session_status(token)

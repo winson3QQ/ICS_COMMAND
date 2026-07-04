@@ -55,6 +55,15 @@ def test_ws_hello_on_connect(client):
         assert msg["op"] == "hello"
 
 
+def test_ws_auth_via_cookie_fallback(client):
+    # #293：前端改吃 httpOnly cookie 後不再讀 token 組 subprotocol → handshake 靠瀏覽器自動帶的
+    # 同源 cookie 認證。只 offer 常數協定（無 token 子協定）+ 帶 cmd_session cookie → 仍連得上。
+    tok = _login(client)
+    client.cookies.set("cmd_session", tok)
+    with client.websocket_connect("/api/cop/ws/updates", subprotocols=["ics-cop-v1"]) as ws:
+        assert ws.receive_json()["op"] == "hello"
+
+
 def test_ws_receives_create(client):
     tok = _login(client)
     h = {"X-Session-Token": tok}

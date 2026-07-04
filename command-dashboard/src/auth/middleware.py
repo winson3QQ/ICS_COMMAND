@@ -9,7 +9,7 @@ from core.config import AUTH_EXEMPT_EXACT, AUTH_EXEMPT_PREFIXES
 from repositories._helpers import audit
 
 from .role_enum import allowed_roles_for, is_role_allowed
-from .service import check_session
+from .service import check_session, extract_token
 
 # #348-F5 P2a：帳號 is_default_pin=1（待改 admin 給的初始 PIN）時，session 僅准走這些路徑，其餘
 # API 回 423 → server-side 真強制改 PIN（不只靠前端 must_change_pin flow）。改完 default 清即解。
@@ -79,7 +79,7 @@ async def auth_middleware(request: Request, call_next):
         return await call_next(request)
 
     if path.startswith("/api/"):
-        token = request.headers.get("X-Session-Token")
+        token = extract_token(request)  # #293：header 優先、httpOnly cookie 次之
         if not token:
             return JSONResponse({"detail": "missing session"}, status_code=401)
         touch_session = path != "/api/session/status"

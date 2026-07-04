@@ -10,7 +10,7 @@
 // 安全：資料門在 server side（/timeline = COMMAND_ROLES）；渲染一律 textContent /
 // createElement，不以 innerHTML 塞任何 API 資料。登入態沿 dashboard 同分頁 sessionStorage。
 
-import { authFetch, getToken } from '../auth.js';
+import { authFetch, isLoggedIn } from '../auth.js';
 import { initAarMap, setPositions, setTrails, setZones, setEvents, fitToPositions } from './aar_map.js';
 import {
   buildReplayIndex, foldPositionsAt, stepSummary, fmtClock, TYPE_LABELS,
@@ -321,7 +321,7 @@ async function main() {
   _wireKeys();
   _wirePlaybar();
   el('aar-bookmark-btn')?.addEventListener('click', _addBookmark);
-  if (!getToken()) {
+  if (!isLoggedIn()) {  // #293：登入閘改吃旗標（token 已進 cookie，AAR 沿同分頁 sessionStorage 顯示態）
     _showMessage('未登入——請從指揮台（同分頁）進入本頁。');
     return;
   }

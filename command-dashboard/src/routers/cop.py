@@ -39,7 +39,7 @@ from pydantic import ValidationError
 from starlette.websockets import WebSocketDisconnect
 
 from auth.role_enum import COMMAND_ROLES, READ_ROLES, is_role_allowed, visible_factions_for_session
-from auth.service import check_session
+from auth.service import SESSION_COOKIE_NAME, check_session
 from core.config import FACTION_ISOLATION_ENABLED
 from core.input_safety import validate_no_unsafe_strings
 from repositories import cop_entity_repo, event_marker_repo
@@ -448,11 +448,15 @@ _WS_TOKEN_PREFIX = "ics.session."
 
 
 def _ws_token(websocket: WebSocket) -> str | None:
-    """從 offered subprotocols 取 session token（不讀 query param）。"""
+    """取 session token：offered subprotocol 優先，httpOnly cookie 次之（#293）。不讀 query param。
+
+    subprotocol 優先 → 既有前端（cop_stream.js 塞 `ics.session.<token>`）零改照跑；cookie fallback →
+    #293 階段2 前端不再讀 token 組 subprotocol 後，瀏覽器 handshake 自動帶的同源 cookie 仍能認證。
+    """
     for proto in websocket.scope.get("subprotocols", []):
         if proto.startswith(_WS_TOKEN_PREFIX):
             return proto[len(_WS_TOKEN_PREFIX) :]
-    return None
+    return websocket.cookies.get(SESSION_COOKIE_NAME)
 
 
 @router.websocket("/ws/updates")

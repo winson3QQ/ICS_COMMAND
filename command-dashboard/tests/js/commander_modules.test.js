@@ -521,6 +521,7 @@ describe('C1-F commander modules', () => {
     expect(dom.get('cmd-login-warn').textContent).toBe('閒置過久, 請重新登入');
 
     sessionStorage.setItem('cmd_session_id', 'token-2');
+    sessionStorage.setItem('cmd_username', 'admin');  // #293：重登入須設登入旗標（isLoggedIn 據此，前次到期已清）
     fetch.mockResolvedValueOnce(okJson({
       valid: true,
       idle_remaining_seconds: 1,
@@ -533,6 +534,7 @@ describe('C1-F commander modules', () => {
     expect(dom.get('cmd-login-warn').textContent).toBe('Session 已過期, 請重新登入');
 
     sessionStorage.setItem('cmd_session_id', 'token-3');
+    sessionStorage.setItem('cmd_username', 'admin');  // #293：同上，重登入設登入旗標
     fetch.mockRejectedValueOnce(new Error('offline'));
     dom.get('session-warning-logout').focus();
     await auth.logoutFromSessionWarning();
@@ -552,6 +554,7 @@ describe('C1-F commander modules', () => {
     const dom = installSessionWarningDom();
     const auth = await import('../../static/js/auth.js');
     sessionStorage.setItem('cmd_session_id', 'token-bg');
+    sessionStorage.setItem('cmd_username', 'admin');  // #293：isLoggedIn 據 cmd_username 判登入態
     fetch.mockReset();
 
     fetch.mockResolvedValueOnce(okJson({

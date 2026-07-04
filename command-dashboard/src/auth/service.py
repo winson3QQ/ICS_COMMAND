@@ -150,10 +150,47 @@ def create_session(account: dict, request: Request | None = None, cert_cn: str |
     return token
 
 
+# #293：session token cookie 名。httpOnly → JS 讀不到，XSS 竊不走整張 session。
+SESSION_COOKIE_NAME = "cmd_session"
+
+
+def extract_token(request: Request | None) -> str | None:
+    """取 session token：header `X-Session-Token` 優先，httpOnly cookie 次之（#293 過渡雙讀）。
+
+    header 優先 → 既有前端（authFetch 帶 header）零改照跑；cookie fallback → 遷移後前端不帶
+    header 也認得。WS 走另一路（cop.py `_ws_token`：subprotocol 優先、cookie 次之）。
+    """
+    if request is None:
+        return None
+    return request.headers.get("X-Session-Token") or request.cookies.get(SESSION_COOKIE_NAME)
+
+
+def set_session_cookie(response, token: str) -> None:
+    """在回應種 httpOnly session cookie（#293）。JS `document.cookie` 讀不到 → XSS 竊不走。
+
+    SameSite=Strict 擋跨站自動帶 cookie（同源 dashboard 不受影響）；Secure 依 config（prod HTTPS 開）。
+    **不設 max_age → session cookie**：關瀏覽器即失效，維持原 sessionStorage「關分頁＝登出」語意
+    （共用機器較安全）。伺服器端 session 的 idle/逾時另行管有效性（check_session）。
+    """
+    response.set_cookie(
+        key=SESSION_COOKIE_NAME,
+        value=token,
+        httponly=True,
+        secure=config.COOKIE_SECURE,
+        samesite="strict",
+        path="/",
+    )
+
+
+def clear_session_cookie(response) -> None:
+    """logout 時清 session cookie（屬性須與 set 對齊，否則部分瀏覽器不清）。"""
+    response.delete_cookie(key=SESSION_COOKIE_NAME, path="/", httponly=True, samesite="strict")
+
+
 def validate_session(request: Request) -> dict:
     if hasattr(request.state, "session") and request.state.session:
         return request.state.session
-    token = request.headers.get("X-Session-Token")
+    token = extract_token(request)
     if not token:
         raise HTTPException(401, "missing session")
     sess, failure = check_session(token, request=request)
