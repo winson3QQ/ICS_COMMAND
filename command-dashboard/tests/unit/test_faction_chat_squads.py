@@ -137,11 +137,28 @@ def test_geochat_read_filters_red_from_blue():
     assert len(feed_all["chats"]) == 2
 
 
-def test_geochat_unclassified_sender_fail_closed():
-    """發話端無 client_identity 對照（uid 翻不到 CN）→ faction NULL → 藍方看不到（fail-closed）。"""
+def test_geochat_unclassified_sender_state_aware():
+    """未分類發話端（faction NULL）——**演習中藏（fail-closed）、平時放行**（allow_null_faction），
+    對齊 cop entity `_faction_clause` + WS `_faction_ok`。修「未分類 chat WS 先顯、GET 輪詢後消失」的
+    閃現（原 chat GET 一律排除 NULL、比 WS 嚴）。"""
     asyncio.run(chat_service.ingest_chat(_geochat("GeoChat.ANDROID-UNKNOWN.All Chat Rooms.x1", "未分類通聯")))
+    # 演習中（allow_null_faction=False，router 傳 current_exercise_id() is None → False）→ 藍方看不到
     assert chat_service.build_chat_feed(None, visible_factions=BLUE)["chats"] == []
+    # 平時（allow_null_faction=True）→ 藍方看得到（與地圖 marker/WS 推播一致，不再閃現）
+    feed_peace = chat_service.build_chat_feed(None, visible_factions=BLUE, allow_null_faction=True)
+    assert {c["message"] for c in feed_peace["chats"]} == {"未分類通聯"}
+    # 全見（sysadmin/開關關）：恆見
     assert len(chat_service.build_chat_feed(None, visible_factions=None)["chats"]) == 1
+
+
+def test_geochat_allow_null_does_not_leak_red():
+    """allow_null_faction 只放寬 NULL，**不影響紅**——平時放行仍擋紅軍通聯給藍方。"""
+    client_identity_repo.upsert_many({"ANDROID-R": "RedA"})
+    client_faction_repo.upsert_faction(None, "RedA", "red", "敵", "admin")
+    asyncio.run(chat_service.ingest_chat(_geochat("GeoChat.ANDROID-R.All Chat Rooms.r1", "紅軍通聯")))
+    asyncio.run(chat_service.ingest_chat(_geochat("GeoChat.ANDROID-U.All Chat Rooms.u1", "未分類通聯")))
+    feed = chat_service.build_chat_feed(None, visible_factions=BLUE, allow_null_faction=True)
+    assert {c["message"] for c in feed["chats"]} == {"未分類通聯"}  # 未分類放行、紅仍擋
 
 
 def test_geochat_ics_self_origin_classified_blue():

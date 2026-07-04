@@ -68,6 +68,7 @@ def list_chats(
     until: str | None = None,
     cap: int = 200,
     visible_factions: frozenset[str] | None = None,
+    allow_null_faction: bool = False,
 ) -> list[dict]:
     """列出通聯（chats）——GET /api/chat（#213 b1）唯讀投影。
 
@@ -92,14 +93,18 @@ def list_chats(
     if until is not None:
         clauses.append(f"{tcol} <= ?")
         params.append(until)
-    # #343：紅藍隔離——chats 全為 tak 來源（GeoChat），故規則化簡為 faction IN (...)（NULL 排除
-    # = fail-closed）。None=不過濾（sysadmin/開關關）；空集=看不到任何通聯（1=0，避非法 IN ()）。
+    # #343：紅藍隔離——chats 全為 tak 來源（GeoChat），故規則化簡為 faction IN (...)。None=不過濾
+    # （sysadmin/開關關）；空集=看不到任何通聯（1=0，避非法 IN ()）。
+    # #472 一致性修（chat 閃現）：`allow_null_faction`（平時=無 active 演習）→ 併放 `faction IS NULL`
+    #   ——對齊 cop_entity_repo._faction_clause 與 WS `_faction_ok`（未編隊平時放行、演習中藏 fail-closed）。
+    #   原 chat GET 一律排除 NULL → 比 WS 推播嚴 → 未分類 chat「WS 先顯、30s 輪詢重取後消失」的閃現。
     if visible_factions is not None:
         if not visible_factions:
-            clauses.append("1 = 0")
+            clauses.append("faction IS NULL" if allow_null_faction else "1 = 0")
         else:
             ph = ",".join("?" * len(visible_factions))
-            clauses.append(f"faction IN ({ph})")  # nosec B608 — ph 僅 ? 佔位
+            null_or = " OR faction IS NULL" if allow_null_faction else ""
+            clauses.append(f"(faction IN ({ph}){null_or})")  # nosec B608 — ph 僅 ? 佔位
             params.extend(sorted(visible_factions))
     sql = f'SELECT id, sender_uid, callsign, message, "group", lat, lon, {tcol} AS t FROM chats'  # nosec B608 — tcol 常數
     if clauses:

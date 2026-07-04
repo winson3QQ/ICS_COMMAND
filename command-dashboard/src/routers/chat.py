@@ -17,7 +17,7 @@ from auth.role_enum import visible_factions_for_session
 from core.config import FACTION_ISOLATION_ENABLED
 from repositories._helpers import iso_utc
 from services.chat_service import build_chat_feed
-from services.exercise_service import resolve_scope
+from services.exercise_service import current_exercise_id, resolve_scope
 
 router = APIRouter(tags=["通聯"])
 
@@ -58,4 +58,7 @@ def list_chat(
         limit=min(max(limit, 1), 1000),
         # #343：紅軍 GeoChat 不漏給藍方（開關關 → None 不過濾）。
         visible_factions=(visible_factions_for_session(request.state.session) if FACTION_ISOLATION_ENABLED else None),
+        # #472 一致性：平時（無 active 演習）放行未編隊 chat（對齊 WS `_faction_ok` + 地圖 marker），
+        # 演習中藏（fail-closed）——修「未分類 chat WS 先顯、輪詢重取後消失」的閃現。
+        allow_null_faction=(current_exercise_id() is None),
     )

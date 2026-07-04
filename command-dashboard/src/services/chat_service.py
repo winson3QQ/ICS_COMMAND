@@ -132,6 +132,7 @@ def build_chat_feed(
     until: str | None = None,
     limit: int = 200,
     visible_factions: frozenset[str] | None = None,
+    allow_null_faction: bool = False,
 ) -> dict:
     """通聯單一流投影（#213 b1）—— GET /api/chat 的回應主體。
 
@@ -142,7 +143,14 @@ def build_chat_feed(
     回 {meta: {count, truncated}, chats: [{id, sender_uid, callsign, message, group, lat, lon, t}]}。
     """
     probe = limit + 1
-    rows = chat_repo.list_chats(exercise_id, since=since, until=until, cap=probe, visible_factions=visible_factions)
+    rows = chat_repo.list_chats(
+        exercise_id,
+        since=since,
+        until=until,
+        cap=probe,
+        visible_factions=visible_factions,
+        allow_null_faction=allow_null_faction,
+    )
     truncated = len(rows) > limit
     rows = rows[:limit]
     rows.reverse()  # newest-first → 顯示用升序

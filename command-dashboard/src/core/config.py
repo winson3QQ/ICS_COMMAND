@@ -219,7 +219,11 @@ WARNING_THRESHOLD_SECONDS: int = int(os.getenv("ICS_WARNING_THRESHOLD_SECONDS", 
 #               聚合三軸一致；② 重分隊入 AAR timeline（upsert_faction audit 補傳 exercise_id + timeline
 #               白名單加 client_faction_classify→classification）；③ 未分隊在線計數（背景 poller 同一 poll
 #               算快取 + GET /factions/unclassified-count）供 chip/面板提示白隊分類。
-APP_VERSION = "2.35.0"
+# PATCH 2.35.1：修「未分類 GeoChat WS 先顯、GET 輪詢重取後消失」的閃現——chat GET（list_chats）漏了
+#               cop entity 早有的 `allow_null_faction`（平時放 NULL），比 WS `_faction_ok` 嚴 → 兩路不一致。
+#               補 allow_null_faction（router 傳 current_exercise_id() is None）：平時未分類 chat 對 OP
+#               恆顯（對齊地圖 marker + WS）、演習中恆藏（fail-closed）；只放 NULL 不影響紅。
+APP_VERSION = "2.35.1"
 
 # CMD_VERSION：前端 UI 功能版本（不同於後端 SemVer APP_VERSION；規則見 CLAUDE.md 版號規則）
 # 兩軌版本命名，不可混用。由 /api/version 提供給前端，是唯一 source-of-truth；release 時更新此值。
