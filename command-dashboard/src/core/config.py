@@ -231,7 +231,11 @@ APP_VERSION = "2.35.1"
 #         + 演習/放置/稽核 UI P1-13/14/16/#93 + 分類編輯器 #66）→ 0.x 畢業為 MAJOR 紀元。
 CMD_VERSION: str = os.getenv(
     "CMD_VERSION",
-    "v1.26.1",  # PATCH：#471 收尾——隊伍名冊退役 #267 exercise_id「在場/納編/加入全部連線」（#472 後
+    "v1.27.0",  # MINOR：faction 敵我符號 + 開場鈕 mutex UI（現場 dogfood 兩問）——① self-SA 單位（有
+    # team_color 的裝置本身）地圖符號改吃 faction（紅→敵/紅框、藍→友、中立→中立；faction 才是權威隊別、
+    # 非 CoT type），裝置丟的敵情標記不吃 faction 維持原 type；② 已有 active 場時其他場「啟動」鈕禁用 +
+    # 提示「需先封存進行中場次」（後端 set_active mutex 早已擋，此為前端讓鎖可見、免走完精靈才 409）。
+    # PATCH v1.26.1：#471 收尾——隊伍名冊退役 #267 exercise_id「在場/納編/加入全部連線」（#472 後
     # 可見性＝faction、AAR 記錄＝track 自動蓋場，exercise_id「編入」已無實質作用且對 OP 顯「無單位在場」
     # 與已分類可見單位矛盾，dogfood 抓出）；名冊改純以 faction 呈現「連線＋分類＝參與」，頂部顯誠實在線摘要。
     # MINOR v1.26.0：#475 中途新連線提示 + 重分隊即時傳播——① 紅藍分類面板 ⚠N 未分隊在線 banner +

@@ -62,7 +62,7 @@ import {
   pickForeground,
 } from './map/entity_layer.js';
 import { NAPSG_GLYPH_SVG, hasNapsgGlyph } from './map/napsg_glyphs.js';
-import { cotToSidc, affiliationFromCot, affiliationToCotType, swapCotAffiliation } from './map/mil_symbol.js';
+import { cotToSidc, affiliationFromCot, affiliationToCotType, swapCotAffiliation, factionToAffiliation } from './map/mil_symbol.js';
 import { DrawPreview } from './map/draw_tools.js';
 import { LabelMarkerManager } from './map/label_markers.js';
 import { CreatePopup } from './map/create_popup.js';
@@ -700,7 +700,11 @@ function _renderTakUnits() {
     const lat = Number(e.lat);
     const lon = Number(e.lon);
     if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
-    const sidc = cotToSidc(e.type);
+    // #344：**self-SA 單位（裝置本身，有 team_color）的敵我以 faction 為準**（faction 才是權威隊別，
+    // 非 CoT type——紅隊裝置即使自報 a-f 也畫敵/紅框）。裝置丟出的敵情標記（無 team_color）不吃 faction、
+    // 維持自身 CoT type（藍隊標的 a-h 敵蹤仍是敵，不因發話者藍而變友）。未分類 → 退回 CoT type。
+    const affOverride = e.team_color ? factionToAffiliation(e.faction) : null;
+    const sidc = cotToSidc(e.type, affOverride);
     if (!sidc) continue;         // 非 atom（route/polygon 等）→ 走既有渲染
     sidcs.add(sidc);
     features.push({
@@ -709,7 +713,7 @@ function _renderTakUnits() {
       properties: {
         id: e.uid,
         iconId: 'mil-' + sidc,
-        affiliation: affiliationFromCot(e.type),  // 預留 hover/filter（icon 色已由 SIDC 內建）
+        affiliation: affOverride || affiliationFromCot(e.type),  // 供 hover/filter（icon 色已由 SIDC 內建）
         label: e.callsign || e.uid,
         // TAK parity（#161）：archived（<archive/>）持久不灰；非 archived 過 CoT stale → 變灰（見 _isAging）。
         // feature property 沿用名 `stale`（paint 表達式吃它），語意 = 此 entity 是否該 dim。
