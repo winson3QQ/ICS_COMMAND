@@ -470,6 +470,11 @@ async def cop_ws_updates(websocket: WebSocket):
     斷線 / 重連策略：client 重連後應 GET /api/cop/entities 全量 resync（version_clock
     merge idempotent），不在 WS 內補發歷史。
     """
+    # #293 sec-review：WS handshake 不受 CORS 管，cookie 認證下 SameSite 是唯一防線 → 補 Sec-Fetch-Site
+    # 擋跨站發起的連線（Cross-Site WebSocket Hijacking）。非瀏覽器無此 header → 不擋（仍須過 token/session）。
+    if (websocket.headers.get("sec-fetch-site") or "").lower() == "cross-site":
+        await websocket.close(code=_WS_UNAUTHORIZED)
+        return
     token = _ws_token(websocket)
     if not token:
         await websocket.close(code=_WS_UNAUTHORIZED)

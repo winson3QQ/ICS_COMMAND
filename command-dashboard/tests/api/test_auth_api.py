@@ -125,3 +125,31 @@ class TestSessionCookie:
         assert r.status_code == 200
         raw = r.headers.get("set-cookie", "").lower()
         assert "cmd_session=" in raw  # delete_cookie 覆蓋一個過期/空的 cmd_session
+
+    def test_login_cookie_auth_roundtrip_no_manual_inject(self, client):
+        # #293 hardening（code-review HIGH）：http（TestClient 無 TLS）下 login 應種「非 Secure」cookie →
+        # jar 存得住 → 下一請求不手動塞 cookie 也認得。防「Secure cookie 在 HTTP 部署被丟→登入迴圈」回歸。
+        r = client.post("/api/auth/login", json={"username": "admin", "pin": "1234"})
+        assert r.status_code == 200
+        assert "secure" not in r.headers.get("set-cookie", "").lower()  # http scheme → 自動非 Secure
+        r2 = client.get("/api/exercises")  # 不帶 header、不手動塞 cookie → 靠 jar 內 login cookie 認證
+        assert r2.status_code == 200
+
+    def test_cross_site_state_change_refused(self, client, auth):
+        # #293 sec-review：cookie 認證下 CSRF 縱深——Sec-Fetch-Site: cross-site 的 state-changing → 403（認證前擋）
+        r = client.post(
+            "/api/exercises", json={"name": "x", "type": "ttx"}, headers={**auth, "Sec-Fetch-Site": "cross-site"}
+        )
+        assert r.status_code == 403
+
+    def test_same_origin_state_change_allowed(self, client, auth):
+        # 同源（Sec-Fetch-Site: same-origin）不受 CSRF 守門影響 → 正常操作照跑
+        r = client.post(
+            "/api/exercises", json={"name": "ok", "type": "ttx"}, headers={**auth, "Sec-Fetch-Site": "same-origin"}
+        )
+        assert r.status_code in (200, 201)
+
+    def test_non_browser_state_change_allowed(self, client, auth):
+        # 非瀏覽器客戶端不帶 Sec-Fetch-Site → 不受 CSRF 守門影響（header 認證本就非 CSRF 可利用）
+        r = client.post("/api/exercises", json={"name": "nb", "type": "ttx"}, headers=auth)
+        assert r.status_code in (200, 201)

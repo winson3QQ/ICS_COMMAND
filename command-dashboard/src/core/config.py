@@ -60,9 +60,14 @@ IDLE_TIMEOUT: int = int(os.getenv("ICS_IDLE_TIMEOUT_SECONDS", "900"))
 WARNING_THRESHOLD_SECONDS: int = int(os.getenv("ICS_WARNING_THRESHOLD_SECONDS", "120"))
 # 注意：PinLock（UI 層 idle 鎖定）是獨立機制，與此 server-side timeout 無關
 
-# #293：session token 改放 httpOnly cookie（JS 讀不到 → XSS 竊不走）。Secure 預設開（prod HTTPS）；
-# dev/CI 走 http 時瀏覽器不儲存 Secure cookie → 設 ICS_COOKIE_SECURE=0 放行本機測試。
-COOKIE_SECURE: bool = os.getenv("ICS_COOKIE_SECURE", "true").lower() in ("1", "true", "yes")
+# #293：session token 改放 httpOnly cookie（JS 讀不到 → XSS 竊不走）。
+# COOKIE_SECURE_OVERRIDE：ICS_COOKIE_SECURE 未設 → None＝**依請求 scheme 自動判斷**（HTTPS 發 Secure、
+# 純 HTTP 發非 Secure）。code-review HIGH：原預設硬 true → 純 HTTP LAN 部署（本專案支援）Secure cookie 被
+# 瀏覽器丟棄、前端又不再存 token → 登入迴圈。改自動判斷免 ops 記旗標；仍可用 ICS_COOKIE_SECURE=1/0 強制。
+_cookie_secure_env = os.getenv("ICS_COOKIE_SECURE")
+COOKIE_SECURE_OVERRIDE: bool | None = (
+    None if _cookie_secure_env is None else _cookie_secure_env.lower() in ("1", "true", "yes")
+)
 
 # ── App ───────────────────────────────────
 # MINOR：P2-30 part 3（#180）—— 廣播放寬 operator+（role_enum 窄洞 /api/tak/share/→WRITE_ROLES）
@@ -236,7 +241,11 @@ COOKIE_SECURE: bool = os.getenv("ICS_COOKIE_SECURE", "true").lower() in ("1", "t
 #               （SameSite=Strict、無 max-age＝關瀏覽器登出）+ logout 清 cookie + WS handshake 認 cookie
 #               + heartbeat 補 display_name（新分頁/reload 靠 cookie 還原顯示態）。前端不再存 token（斷根）；
 #               header 認證路徑保留（測試/相容）。ICS_COOKIE_SECURE 開關（dev http 設 0）。
-APP_VERSION = "2.36.0"
+# PATCH 2.36.1：#293 review hardening——① COOKIE_SECURE 改依連線 scheme 自動（純 HTTP 部署發非 Secure
+#               cookie，修 code-review HIGH「Secure cookie 被 HTTP 瀏覽器丟→前端不存 token→登入迴圈」）；
+#               ② CSRF 縱深——state-changing HTTP + WS handshake 擋 Sec-Fetch-Site: cross-site（cookie 認證下
+#               SameSite 外第二層，sec-review MED）；③ authInit 只在有殘留登入態才 clearSession（免假 logout）。
+APP_VERSION = "2.36.1"
 
 # CMD_VERSION：前端 UI 功能版本（不同於後端 SemVer APP_VERSION；規則見 CLAUDE.md 版號規則）
 # 兩軌版本命名，不可混用。由 /api/version 提供給前端，是唯一 source-of-truth；release 時更新此值。
@@ -244,7 +253,9 @@ APP_VERSION = "2.36.0"
 #         + 演習/放置/稽核 UI P1-13/14/16/#93 + 分類編輯器 #66）→ 0.x 畢業為 MAJOR 紀元。
 CMD_VERSION: str = os.getenv(
     "CMD_VERSION",
-    "v1.27.2",  # PATCH v1.27.2：#293 階段2——session token 從 sessionStorage 搬進 httpOnly cookie（斷 XSS
+    "v1.27.3",  # PATCH v1.27.3：#293 review hardening——authInit 只在有殘留登入態才 clearSession（code-review
+    # LOW：免每次未登入首載都發一次假 logout 事件）；順帶移除多餘裸區塊。後端另有 CSRF/Secure hardening。
+    # PATCH v1.27.2：#293 階段2——session token 從 sessionStorage 搬進 httpOnly cookie（斷 XSS
     # 竊 token）；登入閘改 isLoggedIn（cmd_username 旗標，非 token）、WS 丟 `ics.session.<token>` 子協定改吃
     # cookie handshake、authInit 靠 heartbeat(cookie) 還原 session。session cookie（關瀏覽器即登出，語意不變）。
     # PATCH v1.27.1：AAR 回放版面修（dogfood）——iPad 上時間軸越長地圖被壓越小。#aar-root 改
