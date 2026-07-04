@@ -74,7 +74,9 @@ NULL（常駐）→ **operator 進演習後整個 COP 空掉**（常駐疊看限
 - **停記錄**：關 `exercise_active_intervals` 該區間。
 - **NULL 復見**：平時規則生效（未分隊可見、紅仍藏）。
 - **AAR 開放**：對 **command+**（現況已是）開全貌——**繞過 faction 過濾**（唯一一處紅方對藍指揮曝光、且是事後）。
-- **不清圖**：地圖 entity 保留（平時延續 + 下場開場快照的來源）。**stale 須自動灰化/過期**，免平時地圖被上場殘渣塞滿、免污染下場 baseline。
+- **不清圖**：地圖 entity 保留（平時延續）。**stale 須自動灰化/過期**，免平時地圖被上場殘渣塞滿、免污染下場 baseline。
+
+> **[2026-07-04 #476 結案——本節多已由既有機制滿足 + 開場快照作廢]**：① **平時 stale 灰化**已由 **#160/#161** 落地（前端 `_isAging` 過 stale → dim；後端 list `stale>now` 過濾移除，灰化為移除前過渡）。② **「開場快照 baseline」整個作廢**——#473-B1 reality check 砍除快照（AAR＝`timeline_service` 由 track 逐點衍生、無 snapshot 輸入），故 §3.1 步驟 3「抓快照」、本節「下場開場快照來源/baseline」、下表「開場快照」列**皆不做**。③ **不污染下場**改由：**#473-B2 `clear-residual`（開場明示清殘留）＋ AAR 軌跡按 `t.exercise_id`（m038 per-point，ingest 凍結）開窗** → 上場（exercise_id=A）殘渣不進下場（B）AAR。已測：`test_timeline_api.py::test_cross_exercise_isolated` + `test_track_timeline_survives_entity_restamp_not_pollute_next`。**#476 無新功能，收尾＝驗證 + 鎖測試 + 本註記。**
 
 ---
 
