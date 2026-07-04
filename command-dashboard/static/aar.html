@@ -11,9 +11,11 @@
   :root { color-scheme: dark; }
   * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; background: var(--bg, #0d1117); color: var(--text, #e6edf3);
-    font-family: 'JetBrains Mono', ui-monospace, monospace; }
+    font-family: 'JetBrains Mono', ui-monospace, monospace; overflow: hidden; }
   /* layout：header + 主區（地圖 60% / 面板 40%，row 規格） */
-  #aar-root { display: flex; flex-direction: column; height: 100%; }
+  /* #aar-root 用 dvh（動態視窗高）給確定高度——iOS Safari `height:100%` 鏈條在動態工具列下不穩，
+     會讓 #aar-body 拿不到確定高、地圖 flex-basis 55% 失效被列表撐小（dogfood：時間軸越長地圖越小）。*/
+  #aar-root { display: flex; flex-direction: column; height: 100vh; height: 100dvh; overflow: hidden; }
   header { display: flex; align-items: center; gap: 12px; padding: 8px 12px;
     border-bottom: 1px solid var(--border, #30363d); flex: 0 0 auto; }
   header a.back { color: var(--yellow, #e3b341); text-decoration: none; font-weight: 700;
@@ -64,7 +66,7 @@
   /* 窄螢幕（iPad 直立以下）：上下疊（地圖上 55% / 面板下） */
   @media (max-width: 900px) {
     #aar-body { flex-direction: column; }
-    #aar-map { flex: 0 0 55%; }
+    #aar-map { flex: 0 0 55%; min-height: 180px; }  /* 防塌floor：即使 flex-basis 失效也不被列表壓沒 */
     #aar-panel { border-left: none; border-top: 1px solid var(--border, #30363d); }
   }
 </style>

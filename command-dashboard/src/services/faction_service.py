@@ -206,7 +206,10 @@ def seed_exercise_from_baseline(exercise_id: int, operator: str) -> int:
         ck = row["client_key"]
         if ck in already:
             continue  # 各場覆寫：這場已單獨分類 → 不抄
-        client_faction_repo.upsert_faction(exercise_id, ck, row["faction"], row.get("callsign"), operator)
+        # action_type=seed：開場繼承是批次動作、非真人逐台重分隊 → 不進 AAR timeline（免灌爆同一時刻）。
+        client_faction_repo.upsert_faction(
+            exercise_id, ck, row["faction"], row.get("callsign"), operator, action_type="client_faction_seed"
+        )
         n += 1
     return n
 

@@ -223,7 +223,11 @@ WARNING_THRESHOLD_SECONDS: int = int(os.getenv("ICS_WARNING_THRESHOLD_SECONDS", 
 #               cop entity 早有的 `allow_null_faction`（平時放 NULL），比 WS `_faction_ok` 嚴 → 兩路不一致。
 #               補 allow_null_faction（router 傳 current_exercise_id() is None）：平時未分類 chat 對 OP
 #               恆顯（對齊地圖 marker + WS）、演習中恆藏（fail-closed）；只放 NULL 不影響紅。
-APP_VERSION = "2.35.1"
+# PATCH 2.35.2：AAR timeline seed 灌爆修——#477a 開場繼承（seed 待命池→這場）每台呼 upsert_faction
+#               各寫一筆 client_faction_classify → 開場 N 台全灌進 AAR timeline 同一時刻（dogfood「10:38
+#               十幾筆分類變更」）。改：upsert_faction 加 action_type，seed 用 `client_faction_seed`（非
+#               timeline 白名單）；真人中途重分隊仍走 classify、留 timeline。
+APP_VERSION = "2.35.2"
 
 # CMD_VERSION：前端 UI 功能版本（不同於後端 SemVer APP_VERSION；規則見 CLAUDE.md 版號規則）
 # 兩軌版本命名，不可混用。由 /api/version 提供給前端，是唯一 source-of-truth；release 時更新此值。
@@ -231,7 +235,10 @@ APP_VERSION = "2.35.1"
 #         + 演習/放置/稽核 UI P1-13/14/16/#93 + 分類編輯器 #66）→ 0.x 畢業為 MAJOR 紀元。
 CMD_VERSION: str = os.getenv(
     "CMD_VERSION",
-    "v1.27.0",  # MINOR：faction 敵我符號 + 開場鈕 mutex UI（現場 dogfood 兩問）——① self-SA 單位（有
+    "v1.27.1",  # PATCH：AAR 回放版面修（dogfood）——iPad 上時間軸越長地圖被壓越小。#aar-root 改
+    # height:100dvh（iOS Safari `height:100%` 鏈條在動態工具列下不穩 → #aar-body 拿不到確定高、地圖
+    # flex-basis 55% 失效）；#aar-map 加 min-height:180px 防塌；body/root overflow:hidden 只讓步驟列捲。
+    # MINOR v1.27.0：faction 敵我符號 + 開場鈕 mutex UI（現場 dogfood 兩問）——① self-SA 單位（有
     # team_color 的裝置本身）地圖符號改吃 faction（紅→敵/紅框、藍→友、中立→中立；faction 才是權威隊別、
     # 非 CoT type），裝置丟的敵情標記不吃 faction 維持原 type；② 已有 active 場時其他場「啟動」鈕禁用 +
     # 提示「需先封存進行中場次」（後端 set_active mutex 早已擋，此為前端讓鎖可見、免走完精靈才 409）。

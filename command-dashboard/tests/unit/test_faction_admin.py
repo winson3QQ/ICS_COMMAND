@@ -375,6 +375,31 @@ def test_seed_exercise_from_empty_baseline_noop():
     assert faction_service.seed_exercise_from_baseline(ex["id"], "admin") == 0
 
 
+def test_seed_audits_as_seed_not_classify_stays_out_of_timeline():
+    """開場繼承 seed 寫 `client_faction_seed`（非 `client_faction_classify`）→ 不進 AAR timeline
+    白名單，免開場 N 台待命池分類灌爆同一時刻（dogfood「10:38 十幾筆分類變更」）。真人重分隊仍走
+    classify、留在 timeline。"""
+    from core.database import get_conn
+    from repositories.exercise_repo import create_exercise
+
+    client_faction_repo.upsert_faction(None, "CN-A", "blue", "A", "admin")  # 待命池
+    client_faction_repo.upsert_faction(None, "CN-B", "red", "B", "admin")
+    ex = create_exercise({"name": "seed-audit", "type": "ttx"})
+    faction_service.seed_exercise_from_baseline(ex["id"], "admin")
+
+    with get_conn() as conn:
+        seed_n = conn.execute(
+            "SELECT COUNT(*) FROM audit_log WHERE action_type='client_faction_seed' AND exercise_id=?",
+            (ex["id"],),
+        ).fetchone()[0]
+        classify_n = conn.execute(
+            "SELECT COUNT(*) FROM audit_log WHERE action_type='client_faction_classify' AND exercise_id=?",
+            (ex["id"],),
+        ).fetchone()[0]
+    assert seed_n == 2  # 兩台繼承皆記 seed
+    assert classify_n == 0  # 無 classify → timeline（白名單只收 classify）不被灌爆
+
+
 def test_sync_exercise_tak_groups_pushes_each_classified(monkeypatch):
     """開場推群：逐台把該場分類推到 TAK 現場群（各自陣營）。"""
     calls = []
