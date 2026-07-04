@@ -63,10 +63,15 @@ def upsert_faction(
     faction: str,
     callsign: str | None,
     operator: str,
+    action_type: str = "client_faction_classify",
 ) -> dict:
     """指派 / 改 client 陣營（per-exercise upsert）。回完整列。
 
     手動 upsert（非 ON CONFLICT）以正確處理 exercise_id NULL 的唯一性（複合鍵含 NULL 坑）。
+
+    action_type：audit 動作型（預設 client_faction_classify＝真人重分隊，進 AAR timeline）。
+    #477a 開場繼承 seed 用 `client_faction_seed`（非 timeline 白名單）——否則開場 N 台待命池分類
+    各寫一筆 classify、灌爆 AAR timeline 同一時刻（dogfood 抓出「10:38 十幾筆分類變更」）。
     """
     now = _iso_now()
     with get_conn() as conn:
@@ -92,7 +97,7 @@ def upsert_faction(
     audit(
         operator,
         None,
-        "client_faction_classify",
+        action_type,
         "client_faction",
         client_key,
         {"exercise_id": exercise_id, "faction": faction, "callsign": callsign},
