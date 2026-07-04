@@ -137,6 +137,22 @@ class TestScopeIsolation:
         assert out_b["items"] == [] and out_b["meta"]["count"] == 0
         assert out_b["meta"]["t_start"] is None
 
+    def test_track_timeline_survives_entity_restamp_not_pollute_next(self, tmp_db):
+        """#476/#267：A 收場 archive → entity 重 stamp（exercise_id 變/回 NULL），但**軌跡自身
+        exercise_id（m038 denormalize，ingest 時凍結）不動** → ① A 場 AAR 軌跡不被抹（timeline 查
+        t.exercise_id 非 e.exercise_id）② 不污染下場 B（stale 政策「收場不清圖」的不污染保證）。"""
+        ex_a = _mk_exercise("A 場")
+        ex_b = _mk_exercise("B 場")
+        # entity 已 restamp 回 NULL（模擬 A 收場後），但其軌跡 exercise_id 仍凍結在 A
+        _mk_entity("u-a", None, callsign="A1")
+        cop_entity_repo.insert_cop_track(
+            CoPEntityTrack(uid="u-a", t=_T.format(h=2), lat=24.1, lon=120.1, exercise_id=ex_a)
+        )
+        # ① A 場 AAR 仍含該軌跡（查 t.exercise_id，不因 entity restamp 回 NULL 而空白）
+        assert any(it["type"] == "track" for it in build_timeline(ex_a)["items"])
+        # ② B 場乾淨——A 的殘留不污染下場 baseline
+        assert build_timeline(ex_b)["items"] == []
+
     def test_empty_exercise(self, tmp_db):
         exid = _mk_exercise()
         out = build_timeline(exid)
