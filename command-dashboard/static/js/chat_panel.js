@@ -17,7 +17,7 @@
  * 範圍邊界（移出 b1，各自後置）：b3 marker 連結 / 欄位盤點(#193) / O/C 識別與限可見 / b2 即時 WS。
  */
 
-import { authFetch, canSendChat, getToken } from './auth.js';
+import { authFetch, canSendChat, isLoggedIn } from './auth.js';
 
 // 同 cop.js 慣例：各模組各自定義（auth.js 的 API_BASE 非 export）。typeof 守門讓純函式
 // 能在無 location 的 vitest node 環境被 import（不影響瀏覽器：location 必存在）。
@@ -334,7 +334,7 @@ function _applyTakState(state) {
 }
 
 async function _poll() {
-  if (_takDisabled || !getToken()) return;
+  if (_takDisabled || !isLoggedIn()) return;  // #293：登入閘改吃旗標（token 已進 cookie）
   try {
     const resp = await authFetch(API_BASE + '/api/chat?limit=200', { signal: AbortSignal.timeout(5000) });
     if (!resp.ok) return; // 靜默（含 first-run 423 / 403）；不污染畫面

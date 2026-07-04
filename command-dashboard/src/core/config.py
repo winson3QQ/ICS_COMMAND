@@ -60,6 +60,10 @@ IDLE_TIMEOUT: int = int(os.getenv("ICS_IDLE_TIMEOUT_SECONDS", "900"))
 WARNING_THRESHOLD_SECONDS: int = int(os.getenv("ICS_WARNING_THRESHOLD_SECONDS", "120"))
 # 注意：PinLock（UI 層 idle 鎖定）是獨立機制，與此 server-side timeout 無關
 
+# #293：session token 改放 httpOnly cookie（JS 讀不到 → XSS 竊不走）。Secure 預設開（prod HTTPS）；
+# dev/CI 走 http 時瀏覽器不儲存 Secure cookie → 設 ICS_COOKIE_SECURE=0 放行本機測試。
+COOKIE_SECURE: bool = os.getenv("ICS_COOKIE_SECURE", "true").lower() in ("1", "true", "yes")
+
 # ── App ───────────────────────────────────
 # MINOR：P2-30 part 3（#180）—— 廣播放寬 operator+（role_enum 窄洞 /api/tak/share/→WRITE_ROLES）
 # + 廣播後即時同步（shared_tak json_set + move 重推 CoT）+ CoT remarks 標 source: ICS。
@@ -227,7 +231,12 @@ WARNING_THRESHOLD_SECONDS: int = int(os.getenv("ICS_WARNING_THRESHOLD_SECONDS", 
 #               各寫一筆 client_faction_classify → 開場 N 台全灌進 AAR timeline 同一時刻（dogfood「10:38
 #               十幾筆分類變更」）。改：upsert_faction 加 action_type，seed 用 `client_faction_seed`（非
 #               timeline 白名單）；真人中途重分隊仍走 classify、留 timeline。
-APP_VERSION = "2.35.2"
+# MINOR 2.36.0：#293 session token → httpOnly cookie（XSS 竊 token 斷根）。extract_token 雙讀
+#               （header 優先→cookie 次之，全 HTTP + WS 認證點收斂）+ login 種 httpOnly session cookie
+#               （SameSite=Strict、無 max-age＝關瀏覽器登出）+ logout 清 cookie + WS handshake 認 cookie
+#               + heartbeat 補 display_name（新分頁/reload 靠 cookie 還原顯示態）。前端不再存 token（斷根）；
+#               header 認證路徑保留（測試/相容）。ICS_COOKIE_SECURE 開關（dev http 設 0）。
+APP_VERSION = "2.36.0"
 
 # CMD_VERSION：前端 UI 功能版本（不同於後端 SemVer APP_VERSION；規則見 CLAUDE.md 版號規則）
 # 兩軌版本命名，不可混用。由 /api/version 提供給前端，是唯一 source-of-truth；release 時更新此值。
@@ -235,7 +244,10 @@ APP_VERSION = "2.35.2"
 #         + 演習/放置/稽核 UI P1-13/14/16/#93 + 分類編輯器 #66）→ 0.x 畢業為 MAJOR 紀元。
 CMD_VERSION: str = os.getenv(
     "CMD_VERSION",
-    "v1.27.1",  # PATCH：AAR 回放版面修（dogfood）——iPad 上時間軸越長地圖被壓越小。#aar-root 改
+    "v1.27.2",  # PATCH v1.27.2：#293 階段2——session token 從 sessionStorage 搬進 httpOnly cookie（斷 XSS
+    # 竊 token）；登入閘改 isLoggedIn（cmd_username 旗標，非 token）、WS 丟 `ics.session.<token>` 子協定改吃
+    # cookie handshake、authInit 靠 heartbeat(cookie) 還原 session。session cookie（關瀏覽器即登出，語意不變）。
+    # PATCH v1.27.1：AAR 回放版面修（dogfood）——iPad 上時間軸越長地圖被壓越小。#aar-root 改
     # height:100dvh（iOS Safari `height:100%` 鏈條在動態工具列下不穩 → #aar-body 拿不到確定高、地圖
     # flex-basis 55% 失效）；#aar-map 加 min-height:180px 防塌；body/root overflow:hidden 只讓步驟列捲。
     # MINOR v1.27.0：faction 敵我符號 + 開場鈕 mutex UI（現場 dogfood 兩問）——① self-SA 單位（有

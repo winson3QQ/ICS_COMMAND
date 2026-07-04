@@ -10,7 +10,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse
 
 from auth.role_enum import visible_factions_for_session
-from auth.service import check_session
+from auth.service import check_session, extract_token
 from core.config import (
     APP_VERSION,
     BUILD_ID,
@@ -133,7 +133,7 @@ def health(request: Request):
         "timestamp": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
     }
     # 已登入（帶有效 session token）才附詳細運維數據
-    token = request.headers.get("X-Session-Token")
+    token = extract_token(request)  # #293：header 優先、httpOnly cookie 次之
     if token:
         sess, failure = check_session(token, touch=False)
         if sess and not failure:

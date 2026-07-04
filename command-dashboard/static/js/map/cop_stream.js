@@ -32,7 +32,7 @@ const STALE_REFRESH_MS = 20000;
 
 /**
  * @param {object} deps
- *  - getToken: () => string|null
+ *  - isLoggedIn: () => boolean（#293：登入閘；token 已進 httpOnly cookie，handshake 自動帶）
  *  - authFetch: (url, opts) => Promise<Response>
  *  - canWrite: () => boolean（operator+ 才可建立/拖/刪）
  *  - WebSocketCtor: WebSocket 建構子（注入便於測試）
@@ -42,7 +42,7 @@ const STALE_REFRESH_MS = 20000;
  */
 export function createCopStream(deps) {
   const {
-    getToken,
+    isLoggedIn,
     authFetch,
     canWrite = () => false,
     WebSocketCtor = (typeof WebSocket !== "undefined" ? WebSocket : null),
@@ -267,13 +267,13 @@ export function createCopStream(deps) {
     _stopped = false;
     // 已連線 / 連線中 → 不重複開（防 onEnterDashboard + onAuthChange('login') 雙呼叫疊 socket）
     if (_ws && (_ws.readyState === 0 || _ws.readyState === 1)) return;
-    const token = getToken && getToken();
-    if (!token || !WebSocketCtor) return;
+    if (!(isLoggedIn && isLoggedIn()) || !WebSocketCtor) return;
     let ws;
     // #472：WS 不再帶 ?standing（常駐 cop 恆送、後端 faction 守門）。
     const url = wsUrl;
     try {
-      ws = new WebSocketCtor(url, [WS_SUBPROTOCOL, `ics.session.${token}`]);
+      // #293：token 不再塞子協定（JS 讀不到 cookie）；handshake 由瀏覽器自動帶同源 cookie，後端 _ws_token 認。
+      ws = new WebSocketCtor(url, [WS_SUBPROTOCOL]);
     } catch {
       _scheduleReconnect();
       return;

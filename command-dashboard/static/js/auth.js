@@ -45,8 +45,16 @@ export function onAuthChange(cb) {
 }
 
 // ── token 存取 ─────────────────────────────────────────────────
+// #293：session token 改放 httpOnly cookie（JS 讀不到）→ getToken() 平時回 null，僅測試手動塞時有值。
+// 認證改由瀏覽器自動帶的同源 cookie 承載；getToken 保留供「若有值才附 header」的相容分支（authFetch）。
 export function getToken() {
   return sessionStorage.getItem('cmd_session_id');
+}
+
+// #293：登入態判斷（非秘密）。原本全前端拿「有沒有 token」當「登入了嗎」的代理，token 藏進 cookie
+// 後改用顯示用的 cmd_username（登入時寫、登出時清）當旗標。所有登入閘（WS/poll/chat/aar）改吃此函式。
+export function isLoggedIn() {
+  return !!sessionStorage.getItem('cmd_username');
 }
 
 export function getRoleDetail() {
@@ -270,7 +278,7 @@ function _showSessionWarning(idleRemainingSeconds) {
 }
 
 async function _pollSessionStatus() {
-  if (!getToken()) return;
+  if (!isLoggedIn()) return;  // #293：登入閘改吃非秘密旗標（token 已進 cookie，getToken 平時為 null）
   let resp;
   try {
     resp = await authFetch(API_BASE + '/api/session/status');
@@ -372,7 +380,8 @@ export async function handleCmdLogin() {
       return;
     }
     const data = await resp.json();
-    sessionStorage.setItem('cmd_session_id', data.session_id);
+    // #293 階段2：session token 已由伺服器種進 httpOnly cookie（Set-Cookie）→ 前端不再存 token
+    // （sessionStorage 存 token = XSS 可讀，正是本單要斷的根）。以下 cmd_* 為顯示資料，非憑證，保留。
     sessionStorage.setItem('cmd_username', data.username);
     sessionStorage.setItem('cmd_role', data.role);
     sessionStorage.setItem('cmd_role_detail', data.role_detail || '');
@@ -456,10 +465,8 @@ function _showInitialPinChangeForm(username, currentPin) {
     try {
       const resp = await fetch(API_BASE + '/api/auth/change-initial-pin', {
         method:  'POST',
-        headers: {
-          'Content-Type':   'application/json',
-          'X-Session-Token': sessionStorage.getItem('cmd_session_id') || '',
-        },
+        headers: { 'Content-Type': 'application/json' },
+        // #293：認證靠登入時種下的 httpOnly cookie（同源自動帶），不再手動附 token header
         body: JSON.stringify({current_pin: currentPin, new_pin: newPin}),
       });
       if (!resp.ok) {
@@ -2482,12 +2489,11 @@ document.addEventListener('keydown', e => {
 // ── 認證初始化（供 main.js 呼叫）───────────────────────────────
 export async function authInit(options = {}) {
   _onEnterDashboard = options.onEnterDashboard || null;
-  const token = sessionStorage.getItem('cmd_session_id');
-  if (token) {
+  // #293 階段2：session token 在 httpOnly cookie（JS 讀不到）→ 靠呼叫 heartbeat（同源自動帶 cookie）
+  // 判斷是否仍登入，並由回應還原顯示態（新分頁/reload 皆適用；未登入回 401 → 落到登入頁）。
+  {
     try {
-      const resp = await fetch(API_BASE + '/api/auth/heartbeat', {
-        headers: {'X-Session-Token': token}
-      });
+      const resp = await fetch(API_BASE + '/api/auth/heartbeat');
       if (resp.ok) {
         const data = await resp.json().catch(() => ({}));
         if (data.username) sessionStorage.setItem('cmd_username', data.username);

@@ -25,7 +25,7 @@ import {
   unlockPinLock, setModalHandlers,
   canAccessMapObjects, canCreateEvents, canUseRealModeControls,
   startSessionStatusPolling, continueSessionFromWarning, logoutFromSessionWarning,
-  getToken, authFetch, onAuthChange,
+  isLoggedIn, authFetch, onAuthChange,
 } from './auth.js';
 import {
   setPollActive, forcePoll,
@@ -108,7 +108,7 @@ async function _initCopStream() {
   // 渲染由 map.js 的 setCopStream→onChange 負責，render 函式自身對圖層未就緒容錯。
   const { createCopStream } = await import('./map/cop_stream.js');
   _copStream = createCopStream({
-    getToken,
+    isLoggedIn,  // #293：WS 連線閘改吃登入旗標（token 已進 cookie，handshake 自動帶）
     authFetch,
     canWrite: () => canAccessMapObjects(),
     // #472：常駐疊看已移除——cop 可見性軸改 faction（後端守門），常駐 entity 恆送。

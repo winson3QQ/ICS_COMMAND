@@ -31,7 +31,7 @@ function makeStream(over = {}) {
     return over.fetchImpl ? over.fetchImpl(url, opts) : _resp(200, {});
   });
   const stream = createCopStream({
-    getToken: () => "tok",
+    isLoggedIn: () => true,
     authFetch,
     canWrite: over.canWrite || (() => true),
     WebSocketCtor: function () {},
@@ -287,7 +287,7 @@ describe("週期 resync（軟 stale 移除 + 變灰）", () => {
     });
     let fires = 0;
     const stream = createCopStream({
-      getToken: () => "tok",
+      isLoggedIn: () => true,
       authFetch,
       canWrite: () => true,
       WebSocketCtor: Ctor,
@@ -327,7 +327,7 @@ describe("週期 resync（軟 stale 移除 + 變灰）", () => {
     };
     const cleared = [];
     const stream = createCopStream({
-      getToken: () => "tok",
+      isLoggedIn: () => true,
       authFetch: () => _resp(200, { entities: [] }),
       canWrite: () => true,
       WebSocketCtor: Ctor,
@@ -355,7 +355,7 @@ describe("reconnect / onclose hardening (#265)", () => {
       sockets.push(this);
     };
     const stream = createCopStream({
-      getToken: () => "tok",
+      isLoggedIn: () => true,
       authFetch: () => _resp(200, { entities: [] }),
       canWrite: () => true,
       WebSocketCtor: Ctor,
@@ -409,7 +409,7 @@ describe("#472：不再帶 standing 參數（常駐疊看移除、可見性軸�
       this.readyState = 1;
     };
     const stream = createCopStream({
-      getToken: () => "tok",
+      isLoggedIn: () => true,
       authFetch: (url) => {
         fetchUrls.push(url);
         return _resp(200, { entities: [] });
