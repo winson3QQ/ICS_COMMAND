@@ -165,18 +165,34 @@ def extract_token(request: Request | None) -> str | None:
     return request.headers.get("X-Session-Token") or request.cookies.get(SESSION_COOKIE_NAME)
 
 
-def set_session_cookie(response, token: str) -> None:
+def _connection_is_https(request: Request | None) -> bool:
+    """判斷 client↔server 連線是否 HTTPS（決定 Secure cookie）。反代後讀 nginx 的 X-Forwarded-Proto，
+    直連讀 request.url.scheme。無 request context → 保守回 True（傾向發 Secure）。"""
+    if request is None:
+        return True
+    if config.ICS_BEHIND_PROXY:
+        xfp = (request.headers.get("X-Forwarded-Proto") or "").split(",")[0].strip().lower()
+        if xfp:
+            return xfp == "https"
+    return request.url.scheme == "https"
+
+
+def set_session_cookie(response, token: str, request: Request | None = None) -> None:
     """在回應種 httpOnly session cookie（#293）。JS `document.cookie` 讀不到 → XSS 竊不走。
 
-    SameSite=Strict 擋跨站自動帶 cookie（同源 dashboard 不受影響）；Secure 依 config（prod HTTPS 開）。
-    **不設 max_age → session cookie**：關瀏覽器即失效，維持原 sessionStorage「關分頁＝登出」語意
-    （共用機器較安全）。伺服器端 session 的 idle/逾時另行管有效性（check_session）。
+    SameSite=Strict 擋跨站自動帶 cookie（同源 dashboard 不受影響）。**不設 max_age → session cookie**：
+    關瀏覽器即失效，維持原 sessionStorage「關分頁＝登出」語意；伺服器端 idle/逾時另管（check_session）。
+    Secure：ICS_COOKIE_SECURE 明設則強制，否則**依連線 scheme 自動**（code-review HIGH——純 HTTP 部署
+    發 Secure cookie 會被瀏覽器丟、前端又不存 token → 登入迴圈；自動判斷免 ops 記旗標）。
     """
+    secure = config.COOKIE_SECURE_OVERRIDE
+    if secure is None:
+        secure = _connection_is_https(request)
     response.set_cookie(
         key=SESSION_COOKIE_NAME,
         value=token,
         httponly=True,
-        secure=config.COOKIE_SECURE,
+        secure=secure,
         samesite="strict",
         path="/",
     )

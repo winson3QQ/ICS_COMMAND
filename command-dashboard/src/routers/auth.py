@@ -80,7 +80,7 @@ def login(body: LoginIn, request: Request, response: Response):
     token = create_session(acct, request, cert_cn=cert_cn)
     # #293 階段1：同時種 httpOnly cookie（斷 XSS 竊 token）+ 保留 body session_id（前端相容期照舊）。
     # 階段2 前端改吃 cookie 後，body session_id 才移除（真正斷根，見 #293）。
-    set_session_cookie(response, token)
+    set_session_cookie(response, token, request)  # request → Secure 依連線 scheme 自動（#293 hardening）
     audit(acct["username"], None, "login", "accounts", acct["username"], {"role": acct["role"]})
     log.info("login_success", msg="登入成功", user=acct["username"], detail={"role": acct["role"]})
     return {

@@ -11,6 +11,12 @@ from repositories._helpers import audit
 from .role_enum import allowed_roles_for, is_role_allowed
 from .service import check_session, extract_token
 
+# #293 sec-review：改 cookie 認證後，原本「必帶自訂 X-Session-Token header」的隱性 CSRF 屏障消失，
+# SameSite=Strict 成唯一防線。對 state-changing 方法補 Sec-Fetch-Site 檢查（現代瀏覽器必帶），擋
+# 「跨站發起」的請求＝SameSite 之外第二層。非瀏覽器客戶端不帶此 header → 不擋（header 認證本就非
+# CSRF 可利用）。舊瀏覽器無 Sec-Fetch-Site → 退回單靠 SameSite（純新增、無回歸）。
+_STATE_CHANGING = frozenset({"POST", "PUT", "PATCH", "DELETE"})
+
 # #348-F5 P2a：帳號 is_default_pin=1（待改 admin 給的初始 PIN）時，session 僅准走這些路徑，其餘
 # API 回 423 → server-side 真強制改 PIN（不只靠前端 must_change_pin flow）。改完 default 清即解。
 _PIN_CHANGE_ALLOWED = frozenset(
@@ -79,6 +85,9 @@ async def auth_middleware(request: Request, call_next):
         return await call_next(request)
 
     if path.startswith("/api/"):
+        # #293 sec-review：CSRF 縱深——跨站發起的 state-changing 請求擋於認證前（cookie 認證下 SameSite 外第二層）
+        if method in _STATE_CHANGING and (request.headers.get("Sec-Fetch-Site") or "").lower() == "cross-site":
+            return JSONResponse({"detail": "cross-site request refused"}, status_code=403)
         token = extract_token(request)  # #293：header 優先、httpOnly cookie 次之
         if not token:
             return JSONResponse({"detail": "missing session"}, status_code=401)

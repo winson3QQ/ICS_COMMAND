@@ -2491,22 +2491,21 @@ export async function authInit(options = {}) {
   _onEnterDashboard = options.onEnterDashboard || null;
   // #293 階段2：session token 在 httpOnly cookie（JS 讀不到）→ 靠呼叫 heartbeat（同源自動帶 cookie）
   // 判斷是否仍登入，並由回應還原顯示態（新分頁/reload 皆適用；未登入回 401 → 落到登入頁）。
-  {
-    try {
-      const resp = await fetch(API_BASE + '/api/auth/heartbeat');
-      if (resp.ok) {
-        const data = await resp.json().catch(() => ({}));
-        if (data.username) sessionStorage.setItem('cmd_username', data.username);
-        if (data.role) sessionStorage.setItem('cmd_role', data.role);
-        if (data.role_detail) sessionStorage.setItem('cmd_role_detail', data.role_detail);
-        if (data.display_name) sessionStorage.setItem('cmd_display_name', data.display_name);
-        _resetSessionLocalIdle();
-        _enterDashboard();
-        return 'ok';
-      }
-    } catch(e) {}
-    clearSession();
-  }
+  try {
+    const resp = await fetch(API_BASE + '/api/auth/heartbeat');
+    if (resp.ok) {
+      const data = await resp.json().catch(() => ({}));
+      if (data.username) sessionStorage.setItem('cmd_username', data.username);
+      if (data.role) sessionStorage.setItem('cmd_role', data.role);
+      if (data.role_detail) sessionStorage.setItem('cmd_role_detail', data.role_detail);
+      if (data.display_name) sessionStorage.setItem('cmd_display_name', data.display_name);
+      _resetSessionLocalIdle();
+      _enterDashboard();
+      return 'ok';
+    }
+  } catch(e) {}
+  // #293 hardening（code-review LOW）：只有殘留登入態才清（免每次未登入首載發一次假 logout 事件）
+  if (isLoggedIn()) clearSession();
   el('login-screen').style.display = '';
   return 'need-login';
 }
