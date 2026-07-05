@@ -67,7 +67,10 @@ from schemas.admin import (
     SuspendAllIn,
     TakRevokeByFingerprintIn,
 )
-from services import faction_service  # #343 紅藍隔離 admin 分類
+from services import (
+    cert_issuance,  # #232軌1-S1：撤銷同步 step-ca
+    faction_service,  # #343 紅藍隔離 admin 分類
+)
 from services.realtime_hub import cop_hub  # issue #29 PR-G1b：reset 後廣播 resync
 
 log = structlog.get_logger()
@@ -708,11 +711,12 @@ def issue_account_cert(username: str, body: AccountCertBindIn, request: Request,
     )
 
     try:
-        p12, p12_pass = issue_p12(cn)
+        p12, p12_pass, serial = issue_p12(cn)
         root_pem = fetch_root_ca_pem() if fmt in ("mobileconfig", "zip") else None
     except CertIssuanceError as e:
         raise HTTPException(502, f"發證失敗：{e}") from e
-    bind_cert(account_id, cn, body.label, sess["username"])
+    # #232軌1-S1：存簽出證的 serial → 撤銷時同步 step-ca revoke（進 CRL）。手動綁定路徑（無簽發）不帶 serial。
+    bind_cert(account_id, cn, body.label, sess["username"], serial=serial)
     # #307：密碼不進 audit / log（與 p12/描述檔同走 TLS 回管理者）。
     audit(
         sess["username"],
@@ -794,7 +798,26 @@ def revoke_account_cert(username: str, cert_id: int, request: Request):
     result = revoke_cert(cert_id, sess["username"], account_id=account_id)
     if result is None:
         raise HTTPException(404, "active cert binding not found")
-    return result
+    # #232軌1-S1：App 層撤銷（上方，即時失效）後，同步向 step-ca 撤銷該 serial（記進 CA db，供軌1-S2 CRL
+    # 在握手層擋）。best-effort——step-ca 失敗不 raise、不回滾 App 層撤銷（撤銷不因 CA 不可達而失效）。
+    # serial 缺（S1 前發的舊證未存 serial）→ 跳過。
+    ca_revoked = False
+    serial = result.get("serial")
+    if serial:
+        ca_revoked = cert_issuance.revoke_at_step_ca(serial)
+        audit(
+            sess["username"],
+            None,
+            "cert_ca_revoke",
+            "account_certs",
+            str(cert_id),
+            {
+                "serial": serial,
+                "ca_revoked": ca_revoked,
+                "decision": "ok" if ca_revoked else "ca_unreachable_or_rejected",
+            },
+        )
+    return {**result, "ca_revoked": ca_revoked}
 
 
 @router.post("/tak/device-cert", tags=["account-admin"])

@@ -84,7 +84,7 @@ class TestOnlineIssue:
         import services.cert_issuance as ci
 
         monkeypatch.setattr(config, "step_ca_configured", lambda: True)
-        monkeypatch.setattr(ci, "issue_p12", lambda cn: (b"PKCS12-FAKE-BYTES", "rand-pw-xyz"))
+        monkeypatch.setattr(ci, "issue_p12", lambda cn: (b"PKCS12-FAKE-BYTES", "rand-pw-xyz", "SERIAL-A"))
         _mk_account(client, auth, "grace")
         r = client.post(
             "/api/admin/accounts/grace/certs/issue", json={"cert_cn": "grace-laptop", "label": "工作機"}, headers=auth
@@ -105,7 +105,7 @@ class TestOnlineIssue:
         import services.cert_issuance as ci
 
         monkeypatch.setattr(config, "step_ca_configured", lambda: True)
-        monkeypatch.setattr(ci, "issue_p12", lambda cn: (b"P12", "embedded-pw"))
+        monkeypatch.setattr(ci, "issue_p12", lambda cn: (b"P12", "embedded-pw", "SERIAL-B"))
         monkeypatch.setattr(ci, "fetch_root_ca_pem", lambda: "-----BEGIN CERTIFICATE-----X")
         monkeypatch.setattr(ci, "build_mobileconfig", lambda cn, p12, pw, root, url: b"<plist>MC</plist>")
         _mk_account(client, auth, "iris")
@@ -130,7 +130,7 @@ class TestOnlineIssue:
         import services.cert_issuance as ci
 
         monkeypatch.setattr(config, "step_ca_configured", lambda: True)
-        monkeypatch.setattr(ci, "issue_p12", lambda cn: (b"P12-BYTES", "secret-pw-123"))
+        monkeypatch.setattr(ci, "issue_p12", lambda cn: (b"P12-BYTES", "secret-pw-123", "SERIAL-C"))
         monkeypatch.setattr(ci, "fetch_root_ca_pem", lambda: "-----BEGIN CERTIFICATE-----ROOT")
         _mk_account(client, auth, "kelly")
         r = client.post("/api/admin/accounts/kelly/certs/issue?fmt=zip", json={"cert_cn": "kelly-pc"}, headers=auth)
@@ -159,7 +159,7 @@ class TestOnlineIssue:
         import services.cert_issuance as ci
 
         monkeypatch.setattr(config, "step_ca_configured", lambda: True)
-        monkeypatch.setattr(ci, "issue_p12", lambda cn: (b"X", "pw"))
+        monkeypatch.setattr(ci, "issue_p12", lambda cn: (b"X", "pw", "SERIAL-D"))
         _mk_account(client, auth, "heidi")
         client.post("/api/admin/accounts/heidi/certs", json={"cert_cn": "dupe-cn"}, headers=auth)
         r = client.post("/api/admin/accounts/heidi/certs/issue", json={"cert_cn": "dupe-cn"}, headers=auth)

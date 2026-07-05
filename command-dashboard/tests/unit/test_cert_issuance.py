@@ -75,6 +75,101 @@ class TestMobileconfig:
         assert "a&amp;b" in out and "p&lt;w&gt;&amp;" in out  # XML 注入防護
 
 
+class TestRevokeAtStepCa:
+    """#232軌1-S1：撤銷同步 step-ca（best-effort、不持 CA 鑰、token 兩步 token→revoke）。"""
+
+    def _cfg(self, monkeypatch, tmp_path):
+        import core.config as config
+
+        pw = tmp_path / "pw"
+        pw.write_text("p", encoding="ascii")
+        monkeypatch.setattr(config, "step_ca_configured", lambda: True)
+        monkeypatch.setattr(config, "STEP_CA_PROVISIONER_PASSWORD_FILE", str(pw))
+        monkeypatch.setattr(config, "STEP_CA_URL", "https://step-ca:9000")
+        monkeypatch.setattr(config, "STEP_CA_PROVISIONER", "ics")
+        monkeypatch.setattr(config, "step_ca_fingerprint", lambda: "FP")
+
+    def _mk_run(self, results):
+        import subprocess
+
+        calls = []
+
+        def _run(args):
+            calls.append(args)
+            rc, out = results.get(args[1], (0, ""))  # args=[ca, <sub>, ...]
+            return subprocess.CompletedProcess(args, rc, stdout=out, stderr="")
+
+        return _run, calls
+
+    def test_not_configured_false(self, monkeypatch):
+        import core.config as config
+        from services.cert_issuance import revoke_at_step_ca
+
+        monkeypatch.setattr(config, "step_ca_configured", lambda: False)
+        assert revoke_at_step_ca("ABC123") is False
+
+    def test_empty_serial_false(self, monkeypatch, tmp_path):
+        from services.cert_issuance import revoke_at_step_ca
+
+        self._cfg(monkeypatch, tmp_path)
+        assert revoke_at_step_ca("   ") is False
+
+    def test_happy_path_two_step(self, monkeypatch, tmp_path):
+        import services.cert_issuance as ci
+
+        self._cfg(monkeypatch, tmp_path)
+        run, calls = self._mk_run({"root": (0, ""), "token": (0, "REVOKE_OTT\n"), "revoke": (0, "")})
+        monkeypatch.setattr(ci, "_run", run)
+        assert ci.revoke_at_step_ca("SERIAL9") is True
+        tok = next(c for c in calls if c[1] == "token")
+        assert "SERIAL9" in tok and "--revoke" in tok  # 產撤銷 token 帶 serial
+        rev = next(c for c in calls if c[1] == "revoke")
+        assert "SERIAL9" in rev and "--token" in rev and "REVOKE_OTT" in rev  # 憑 token 撤銷
+
+    def test_token_failure_best_effort_false(self, monkeypatch, tmp_path):
+        import services.cert_issuance as ci
+
+        self._cfg(monkeypatch, tmp_path)
+        run, _ = self._mk_run({"root": (0, ""), "token": (1, "")})  # token 產生失敗
+        monkeypatch.setattr(ci, "_run", run)
+        assert ci.revoke_at_step_ca("S") is False  # 不 raise
+
+    def test_revoke_failure_best_effort_false(self, monkeypatch, tmp_path):
+        import services.cert_issuance as ci
+
+        self._cfg(monkeypatch, tmp_path)
+        run, _ = self._mk_run({"root": (0, ""), "token": (0, "OTT"), "revoke": (1, "denied")})
+        monkeypatch.setattr(ci, "_run", run)
+        assert ci.revoke_at_step_ca("S") is False
+
+    def test_run_timeout_swallowed_false(self, monkeypatch, tmp_path):
+        """review-fix #2：daemon 卡住 → _run 拋 TimeoutExpired 須被吞成 False（不逃逸成 500、
+        不破壞已 commit 的 App 層撤銷）。"""
+        import subprocess
+
+        import services.cert_issuance as ci
+
+        self._cfg(monkeypatch, tmp_path)
+
+        def _boom(args):
+            raise subprocess.TimeoutExpired(cmd=args, timeout=30)
+
+        monkeypatch.setattr(ci, "_run", _boom)
+        assert ci.revoke_at_step_ca("S") is False  # 不 raise
+
+    def test_run_oserror_swallowed_false(self, monkeypatch, tmp_path):
+        """step binary 缺（OSError）同樣吞成 False。"""
+        import services.cert_issuance as ci
+
+        self._cfg(monkeypatch, tmp_path)
+
+        def _boom(args):
+            raise OSError("step: not found")
+
+        monkeypatch.setattr(ci, "_run", _boom)
+        assert ci.revoke_at_step_ca("S") is False
+
+
 class TestFingerprintResolution:
     def test_env_fingerprint_wins(self, monkeypatch):
         import core.config as config
