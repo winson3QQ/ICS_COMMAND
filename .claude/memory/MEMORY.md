@@ -5,6 +5,9 @@ ICS_DMAS 的 memory（行為規則、架構決策、HTTPS 決策、Remote SoT、
 
 ## 本 repo 特有
 
+- [tak-filestore-image-uplink](tak-filestore-image-uplink.md) — TAK file store 圖片上下傳(#503)：讀側契約(search 回 **data 鍵**非 results)/上傳 legacy servlet 待真機/faction 綁 marker 可見度(ICS READ cert 全見)；**真機 dogfood 修正：ATAK 附件走 Mission 非 Enterprise Sync、8443 未轉發是根因(已修)**→照片連結交棒 #506
+- [tak-mission-datasync-plane](tak-mission-datasync-plane.md) — **TAK 第三資料平面 Mission/Data Sync：ICS 零消費(#506)**；三平面分工(stream/enterprise-sync/mission)；ATAK 附件走此；M0-M4 建置計畫(讀取地基→消費進 COP→照片 pivot→上傳→可靠刪除)；= TAK 版 COP「共享真實」
+
 - [precommit-ruff-config-cwd](precommit-ruff-config-cwd.md) — pre-commit cd 進 command-dashboard/，root-level 腳本須 line-length=120（ruff 0.11.7）否則 commit 中止（stash 衝突回滾）
 - [tak-cert-access-control](tak-cert-access-control.md) — TAK 存取控制兩層解：源碼定讞 TAK 對 CA 信任證**永不拒絕**(無群落 __ANON__)→CoreConfig 白名單擋連死路。**層1 group 隔離**(producer 不掛 __ANON__；#404 已 merge：偵測 in_anon/anon_users/online_anon + 一鍵 strip + admin REST-only 豁免；backend-v2.20.0/frontend-v1.16.0)。**層2 撤銷**(#318：**CRL 只擋:8443 不擋:8089 串流**→推翻 issue 規劃；**DB 撤銷=INSERT certificate(hash+revocation_date)+x509checkRevocation 唯一覆蓋:8089+live 免重啟**=定案，代價 ICS 直寫 TAK postgres)。刪 managed user≠擋(仍匿名連)、auth=file 打死憑證 client、ics-tak-admin 恆 __ANON__ 但 REST-only 良性
 - [tak-enrollment-working](tak-enrollment-working.md) — TAK Certificate Enrollment(:8446)端到端 + #429 面板主導發證：VPN 先關公網→CA 上線→CoreConfig <certificateSigning>+UserManager bcrypt 帳號；面板代理 enrollment(new-user→CSR→signClient 解 JSON signedCert)。坑：手寫明文密碼 401/Invalid salt、密碼≥15特殊符、CSR 須含 O/OU、new-user 三 group 欄、signClient/v2 回 JSON 非 PEM、connectString 用 WG IP
