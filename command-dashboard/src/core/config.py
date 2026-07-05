@@ -245,7 +245,7 @@ COOKIE_SECURE_OVERRIDE: bool | None = (
 #               cookie，修 code-review HIGH「Secure cookie 被 HTTP 瀏覽器丟→前端不存 token→登入迴圈」）；
 #               ② CSRF 縱深——state-changing HTTP + WS handshake 擋 Sec-Fetch-Site: cross-site（cookie 認證下
 #               SameSite 外第二層，sec-review MED）；③ authInit 只在有殘留登入態才 clearSession（免假 logout）。
-APP_VERSION = "2.36.1"
+APP_VERSION = "2.37.0"
 
 # CMD_VERSION：前端 UI 功能版本（不同於後端 SemVer APP_VERSION；規則見 CLAUDE.md 版號規則）
 # 兩軌版本命名，不可混用。由 /api/version 提供給前端，是唯一 source-of-truth；release 時更新此值。
@@ -253,7 +253,10 @@ APP_VERSION = "2.36.1"
 #         + 演習/放置/稽核 UI P1-13/14/16/#93 + 分類編輯器 #66）→ 0.x 畢業為 MAJOR 紀元。
 CMD_VERSION: str = os.getenv(
     "CMD_VERSION",
-    "v1.27.3",  # PATCH v1.27.3：#293 review hardening——authInit 只在有殘留登入態才 clearSession（code-review
+    "v1.28.0",  # MINOR v1.28.0：#503/#506 地點型雙向照片——TAK marker 詳情顯示 file store 附件照片
+    # （上行 uid-search 下載，authFetch→blob 顯示）+ 指揮層「上傳照片」按鈕（下行 M3 推現場照掛 marker，
+    # TTX 白隊情境注入）。faction 安全（顯示綁 marker 可見度、下載 per-hash gating、上傳 magic-byte 驗）。
+    # PATCH v1.27.3：#293 review hardening——authInit 只在有殘留登入態才 clearSession（code-review
     # LOW：免每次未登入首載都發一次假 logout 事件）；順帶移除多餘裸區塊。後端另有 CSRF/Secure hardening。
     # PATCH v1.27.2：#293 階段2——session token 從 sessionStorage 搬進 httpOnly cookie（斷 XSS
     # 竊 token）；登入閘改 isLoggedIn（cmd_username 旗標，非 token）、WS 丟 `ics.session.<token>` 子協定改吃
