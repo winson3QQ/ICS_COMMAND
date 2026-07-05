@@ -178,6 +178,51 @@ class TakRestClient:
                 await _backoff_sleep(attempt)
         raise TakRestError(f"Marti {path} 重試 {self._max_retries} 次耗盡") from last_exc
 
+    async def _fetch_bytes(self, path: str, params: dict | None, max_bytes: int) -> tuple[int, bytes]:
+        """單次 HTTP GET → (status, body bytes)。抽出供測試注入。
+
+        max_bytes 保護：邊讀邊累計，超過即中止並拋 TakRestError（免惡意/巨檔灌爆記憶體，
+        #503 檔案下載走此路；TAK file store 圖片有界，預設上限見 tak_files）。"""
+        session = await self._ensure_session()
+        url = _join_url(self._base_url, path)
+        async with session.get(url, params=params) as resp:
+            if resp.status >= 300:
+                # 非 2xx：讀文字給錯誤訊息用（錯誤頁通常小，不套 max_bytes）
+                return resp.status, (await resp.text())[:200].encode("utf-8", "replace")
+            buf = bytearray()
+            async for chunk in resp.content.iter_chunked(65536):
+                buf += chunk
+                if len(buf) > max_bytes:
+                    raise TakRestError(f"Marti {path} 下載超過上限 {max_bytes}B（中止，防灌爆記憶體）")
+            return resp.status, bytes(buf)
+
+    async def get_bytes(
+        self, path: str, params: dict | None = None, *, max_bytes: int = 32 * 1024 * 1024
+    ) -> bytes | None:
+        """GET path → 回原始 body bytes（binary 端點用，如 `/Marti/api/files/{hash}` 檔案下載）。
+
+        rate-limit + 指數退避重試（連線錯 / 5xx）；4xx 不重試立即拋。
+        回傳：body bytes；204 / 空 body 回 None。max_bytes 上限保護（超過拋 TakRestError）。
+        """
+        last_exc: Exception | None = None
+        for attempt in range(self._max_retries):
+            await self._rate_limit()
+            try:
+                status, data = await self._fetch_bytes(path, params, max_bytes)
+            except (TimeoutError, aiohttp.ClientError) as exc:
+                last_exc = exc
+                if attempt < self._max_retries - 1:
+                    await _backoff_sleep(attempt)
+                continue
+            if status < 300:
+                return data if data else None
+            if 400 <= status < 500:
+                raise TakRestError(f"Marti {path} HTTP {status}（用戶端錯，不重試）：{data.decode('utf-8', 'replace')}")
+            last_exc = TakRestError(f"Marti {path} HTTP {status}：{data.decode('utf-8', 'replace')}")
+            if attempt < self._max_retries - 1:
+                await _backoff_sleep(attempt)
+        raise TakRestError(f"Marti {path} 重試 {self._max_retries} 次耗盡") from last_exc
+
     async def get_json(self, path: str, params: dict | None = None):
         """GET path → 解析 JSON。rate-limit + 指數退避重試（連線錯 / 5xx）。
 
@@ -237,6 +282,42 @@ class TakRestClient:
             try:
                 session = await self._ensure_session()
                 async with session.post(url, json=body) as resp:
+                    status, text = resp.status, await resp.text()
+            except (TimeoutError, aiohttp.ClientError) as exc:
+                last_exc = exc
+                if attempt < self._max_retries - 1:
+                    await _backoff_sleep(attempt)
+                continue
+            if status < 300:
+                if not text.strip():
+                    return None
+                try:
+                    return json.loads(text)
+                except json.JSONDecodeError:
+                    return None  # 2xx 但非 JSON → 視為成功無內容
+            if 400 <= status < 500:
+                raise TakRestError(f"Marti POST {path} HTTP {status}（用戶端錯，不重試）：{text[:200]}")
+            last_exc = TakRestError(f"Marti POST {path} HTTP {status}：{text[:200]}")
+            if attempt < self._max_retries - 1:
+                await _backoff_sleep(attempt)
+        raise TakRestError(f"Marti POST {path} 重試 {self._max_retries} 次耗盡") from last_exc
+
+    async def post_bytes(
+        self, path: str, content: bytes, *, params: dict | None = None, content_type: str = "application/octet-stream"
+    ):
+        """POST path（**raw bytes body** + query params）→ 回應 JSON（或空/非 JSON→None）。
+
+        #506 M3：Enterprise Sync 上傳（`/Marti/sync/upload`，raw 檔案 body + name/creatorUid query）。
+        語意同 post_json 差在 body 是原始 bytes（非 JSON）。raise TakRestError：4xx（不重試）/ 重試耗盡。
+        """
+        last_exc: Exception | None = None
+        url = _join_url(self._base_url, path)
+        headers = {"Content-Type": content_type}
+        for attempt in range(self._max_retries):
+            await self._rate_limit()
+            try:
+                session = await self._ensure_session()
+                async with session.post(url, params=params, data=content, headers=headers) as resp:
                     status, text = resp.status, await resp.text()
             except (TimeoutError, aiohttp.ClientError) as exc:
                 last_exc = exc

@@ -152,6 +152,79 @@ def test_get_text_4xx_no_retry(monkeypatch, no_sleep):
     assert calls["n"] == 1  # 不重試
 
 
+# ── get_bytes（binary body，#503 檔案下載用）────────────────────────────────
+
+
+def test_get_bytes_returns_binary(monkeypatch):
+    # /Marti/api/files/{hash} 回原始 bytes → get_bytes 原樣回
+    blob = b"\x89PNG\r\n\x1a\n" + b"\x00" * 32
+
+    async def _f(path, params, max_bytes):
+        return 200, blob
+
+    c = _client(monkeypatch, lambda *a, **k: None)
+    monkeypatch.setattr(c, "_fetch_bytes", _f)
+    assert _run(c.get_bytes("/Marti/api/files/deadbeef")) == blob
+
+
+def test_get_bytes_empty_body_none(monkeypatch):
+    async def _f(path, params, max_bytes):
+        return 204, b""
+
+    c = _client(monkeypatch, lambda *a, **k: None)
+    monkeypatch.setattr(c, "_fetch_bytes", _f)
+    assert _run(c.get_bytes("/x")) is None
+
+
+def test_get_bytes_4xx_no_retry(monkeypatch, no_sleep):
+    calls = {"n": 0}
+
+    async def _f(path, params, max_bytes):
+        calls["n"] += 1
+        return 404, b"Not Found"
+
+    c = _client(monkeypatch, lambda *a, **k: None)
+    monkeypatch.setattr(c, "_fetch_bytes", _f)
+    with pytest.raises(TakRestError):
+        _run(c.get_bytes("/Marti/api/files/x"))
+    assert calls["n"] == 1  # 4xx 不重試
+
+
+def test_fetch_bytes_enforces_max_bytes(monkeypatch):
+    """_fetch_bytes 邊讀邊累計，超過 max_bytes 立即中止拋（防惡意/巨檔灌爆記憶體）。"""
+
+    class _FakeResp:
+        status = 200
+
+        def __init__(self):
+            self.content = self
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        async def iter_chunked(self, n):
+            for _ in range(10):
+                yield b"A" * 100  # 累計 1000B，遠超下方 max_bytes=256
+
+        async def text(self):
+            return ""
+
+    class _FakeSession:
+        def get(self, url, params=None):
+            return _FakeResp()
+
+    async def _sess():
+        return _FakeSession()
+
+    c = _client(monkeypatch, lambda *a, **k: None)
+    monkeypatch.setattr(c, "_ensure_session", _sess)
+    with pytest.raises(TakRestError, match="超過上限"):
+        _run(c.get_bytes("/Marti/api/files/x", max_bytes=256))
+
+
 # ── get_json retry / 狀態碼 ───────────────────────────────────────────────
 
 

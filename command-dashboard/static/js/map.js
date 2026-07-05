@@ -19,6 +19,7 @@
  */
 
 import { authFetch, canAccessMapObjects, canCreateEvents, canUseRealModeControls } from './ws.js';
+import { takPhotoSectionHtml, createTakPhotoLoader } from './map/tak_photos.js';
 import {
   initMaplibre,
   getMap as _getMap,
@@ -2396,6 +2397,9 @@ function _onContactClick(e) {
 
 // #213 b3-1：點 TAK 單位 → 派 DOM 事件給 chat_panel 過濾通聯（by-sender）。讀動作不設
 // canAccessMapObjects 守門（通聯顯示是 READ_ROLES）；解耦不直接呼叫 chat 模組。
+// #503 上行：照片附件 loader（authFetch 注入；詳情面板開啟後 .load(uid) 非同步填縮圖）。
+const _takPhotoLoader = createTakPhotoLoader({ authFetch });
+
 // #193：點 TAK 單位 → 開唯讀詳情（與 contact click→詳情一致）。長按才篩通聯（onLongPress 閘）。
 function _onTakUnitClick(e) {
   if (_suppressMarkerClick) { _suppressMarkerClick = false; return; }  // 剛長按過 → 吞掉這下 click
@@ -2434,7 +2438,10 @@ function _openTakUnitDetail(id) {
   // 生命週期：archived（CoT <archive/>）= 持久標記，過 stale 也保留（#161）。
   body += row('狀態', ent.archived ? '持久（archived）' : '');
   body += `<div style="font-size:10px;color:var(--text3);margin-top:8px;">來源：TAK · 唯讀</div>`;
+  body += takPhotoSectionHtml(canUseRealModeControls());  // #503 上行顯示 + #506 M3 下行上傳（指揮層）
   _deps.openModal?.(`${affZh}單位 ${ent.callsign || ''}`, body);
+  _takPhotoLoader.load(id);
+  if (canUseRealModeControls()) _takPhotoLoader.bindUpload(id);
 }
 // 開 detail modal（給左鍵 click 與右鍵 menu「編輯註記」共用）。
 export function _openContactDetail(id) {
@@ -2475,7 +2482,14 @@ export function _openContactDetail(id) {
     body += `<button data-action="shareContactTak" data-id="${_escapeHtml(String(id))}" style="${BTN}background:var(--green,#2e8b57);">📡 廣播</button>`;
   }
   body += `<button data-action="deleteContact" data-id="${_escapeHtml(String(id))}" style="${BTN}background:var(--red);">🗑 刪除標記</button>`;
+  // #503 上行：TAK 來源標記才有 file store 附件（本機 manual 標記 uid 不在 TAK，省一次無謂查詢）
+  const _hasTakPhotos = ent.source === 'tak';
+  if (_hasTakPhotos) body += takPhotoSectionHtml(canUseRealModeControls());
   _deps.openModal?.(`${affZh}接觸 ${ent.callsign || ''}　·　左鍵拖曳可移動`, body);
+  if (_hasTakPhotos) {
+    _takPhotoLoader.load(id);
+    if (canUseRealModeControls()) _takPhotoLoader.bindUpload(id);
+  }
 }
 
 // P2-30 part 3：右鍵 → 廣播 menu（issue 5 可發現性，單一動作）。move 改走左鍵拖曳、編輯/刪除走
