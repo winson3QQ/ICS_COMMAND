@@ -47,10 +47,11 @@ def _p12_password() -> str:
     return config.STEP_CLIENT_CERT_P12_PASS or secrets.token_urlsafe(12)
 
 
-def issue_p12(cert_cn: str) -> tuple[bytes, str]:
-    """向 step-ca daemon 簽一張 CN=cert_cn 的 client 憑證，回傳 (p12 bytes, 匯入密碼)。
+def issue_p12(cert_cn: str) -> tuple[bytes, str, str]:
+    """向 step-ca daemon 簽一張 CN=cert_cn 的 client 憑證，回傳 (p12 bytes, 匯入密碼, serial)。
 
-    密碼預設每張隨機（呼叫端負責顯示給管理者轉交）；不寫 log、不進 audit。
+    serial（#232軌1-S1）= 簽出證的 serial number，供綁定存入 account_certs → 撤銷時同步 step-ca；
+    擷取失敗回 ""（不擋發證）。密碼預設每張隨機（呼叫端負責顯示給管理者轉交）；不寫 log、不進 audit。
     raise CertIssuanceError：未配置、daemon 不可達、或簽發被 CA 拒絕。
     """
     if not config.step_ca_configured():
@@ -112,8 +113,101 @@ def issue_p12(cert_cn: str) -> tuple[bytes, str]:
         if r.returncode != 0:
             raise CertIssuanceError(f"p12 打包失敗：{_tail(r.stderr)}")
 
+        # #232軌1-S1：擷取簽出證的 serial（供撤銷時同步 step-ca revoke → CRL）。best-effort——擷取失敗
+        # 回 ""（不擋發證；該證即無 CRL 撤銷、仍靠 App 層 status='revoked' 即時失效）。
+        serial = _cert_serial(crt)
         with open(p12, "rb") as f:
-            return f.read(), p12_pass
+            return f.read(), p12_pass, serial
+
+
+def _cert_serial(crt_path: str) -> str:
+    """由簽出的 PEM 證擷 serial（step inspect JSON 的 serial_number；step 自己的表示法，餵回 step ca
+    revoke 自洽）。失敗回 ""（best-effort，不擋發證）。"""
+    r = _run(["certificate", "inspect", crt_path, "--format", "json"])
+    if r.returncode != 0:
+        return ""
+    try:
+        import json
+
+        return str(json.loads(r.stdout).get("serial_number", "")).strip()
+    except Exception:  # noqa: BLE001 - 擷 serial 失敗不擋發證
+        return ""
+
+
+def revoke_at_step_ca(serial: str, reason: str = "ICS admin revocation") -> bool:
+    """#232軌1-S1：向 step-ca daemon 撤銷指定 serial（passive revocation，記進 CA badger db，
+    供後續 CRL（軌1-S2）曝露）。**best-effort**——未配置 / daemon 不可達 / 撤銷被拒 → 回 False（不 raise），
+    App 層撤銷（`account_certs`）不受影響（撤銷即時失效不依賴 CA 可達）。
+
+    不持 CA 鑰：經 provisioner token 兩步（`ca token <serial> --revoke` → `ca revoke <serial> --token`），
+    與 issue_p12 同一組 provisioner 認證（STEP_CA_PROVISIONER + 密碼檔）。
+    回 True＝step-ca 已記撤銷；False＝未配置或失敗。
+    """
+    serial = (serial or "").strip()
+    if not serial or not config.step_ca_configured():
+        return False
+    pw_file = config.STEP_CA_PROVISIONER_PASSWORD_FILE
+    if not os.path.isfile(pw_file):
+        return False
+    # review-fix #2：整段包 try/except——_run 的 subprocess.TimeoutExpired（daemon 卡住）/ OSError
+    # （step binary 缺）等皆不得逃逸成 500、破壞已 commit 的 App 層撤銷（best-effort 契約，docstring 承諾）。
+    try:
+        with tempfile.TemporaryDirectory(prefix="ics-revoke-") as td:
+            root = os.path.join(td, "root.crt")
+            # 0. 取 root（fingerprint 驗證，建立對 daemon 的信任）
+            r = _run(
+                [
+                    "ca",
+                    "root",
+                    root,
+                    "--ca-url",
+                    config.STEP_CA_URL,
+                    "--fingerprint",
+                    config.step_ca_fingerprint(),
+                    "-f",
+                ]
+            )
+            if r.returncode != 0:
+                return False
+            # 1. 產撤銷 token（provisioner 授權；revoke 子命令不吃 --provisioner，須先換 token）
+            r = _run(
+                [
+                    "ca",
+                    "token",
+                    serial,
+                    "--revoke",
+                    "--provisioner",
+                    config.STEP_CA_PROVISIONER,
+                    "--provisioner-password-file",
+                    pw_file,
+                    "--ca-url",
+                    config.STEP_CA_URL,
+                    "--root",
+                    root,
+                ]
+            )
+            if r.returncode != 0 or not (r.stdout or "").strip():
+                return False
+            token = r.stdout.strip().splitlines()[-1].strip()
+            # 2. 憑 token 撤銷（記進 CA db → 供 CRL）
+            r = _run(
+                [
+                    "ca",
+                    "revoke",
+                    serial,
+                    "--token",
+                    token,
+                    "--reason",
+                    reason,
+                    "--ca-url",
+                    config.STEP_CA_URL,
+                    "--root",
+                    root,
+                ]
+            )
+            return r.returncode == 0
+    except Exception:  # noqa: BLE001 - best-effort：timeout/OSError 等皆吞成 False，不破壞 App 層撤銷
+        return False
 
 
 def fetch_root_ca_pem() -> str:

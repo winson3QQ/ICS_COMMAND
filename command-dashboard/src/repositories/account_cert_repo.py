@@ -61,11 +61,16 @@ def account_id_for_username(username: str) -> int | None:
     return row["id"] if row else None
 
 
-def bind_cert(account_id: int, cert_cn: str, label: str | None, operator: str) -> dict:
-    """為帳號綁定一張裝置憑證 CN。CN 已有 active 綁定 → 拋 ValueError（唯一索引亦會擋）。"""
+def bind_cert(account_id: int, cert_cn: str, label: str | None, operator: str, serial: str | None = None) -> dict:
+    """為帳號綁定一張裝置憑證 CN。CN 已有 active 綁定 → 拋 ValueError（唯一索引亦會擋）。
+
+    serial（#232軌1-S1）：線上發證時帶簽出證的 serial number，存入供撤銷同步 step-ca（→ CRL）；
+    手動綁定（離線簽）不帶 → NULL（該證無 CRL 撤銷，仍靠 App 層 status='revoked'）。
+    """
     cert_cn = (cert_cn or "").strip()
     if not cert_cn:
         raise ValueError("cert_cn 不可為空")
+    serial = (serial or "").strip() or None
     with get_conn() as conn:
         acct = conn.execute("SELECT username FROM accounts WHERE id=?", (account_id,)).fetchone()
         if acct is None:
@@ -76,8 +81,9 @@ def bind_cert(account_id: int, cert_cn: str, label: str | None, operator: str) -
         if existing is not None:
             raise ValueError("cert_cn 已被 active 綁定")
         cur = conn.execute(
-            "INSERT INTO account_certs (account_id, cert_cn, label, status, issued_at) VALUES (?, ?, ?, 'active', ?)",
-            (account_id, cert_cn, label, _iso_now()),
+            "INSERT INTO account_certs (account_id, cert_cn, label, status, issued_at, serial) "
+            "VALUES (?, ?, ?, 'active', ?, ?)",
+            (account_id, cert_cn, label, _iso_now(), serial),
         )
         cert_id = cur.lastrowid
         row = conn.execute("SELECT * FROM account_certs WHERE id=?", (cert_id,)).fetchone()

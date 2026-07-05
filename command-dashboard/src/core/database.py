@@ -1708,6 +1708,17 @@ def _m040_release_archived_exercise_entities_down(conn: sqlite3.Connection) -> N
     pass  # 不還原（一次性資料收斂，無對應反向；重綁需經正常 restamp 流程）
 
 
+def _m041_account_certs_serial(conn: sqlite3.Connection) -> None:
+    """#232軌1-S1：account_certs 加 serial——線上發證時擷取 step-ca 簽出的 cert serial 存入，供撤銷時
+    同步呼 step-ca revoke（serial 進 CA CRL、握手層擋，見 cert_issuance.revoke_at_step_ca）。既有列 +
+    手動綁定（離線簽）= NULL（無 serial → CRL 不涵蓋，仍靠 App 層 status='revoked' 即時失效）。"""
+    _add_column_if_missing(conn, "account_certs", "serial", "TEXT")
+
+
+def _m041_account_certs_serial_down(conn: sqlite3.Connection) -> None:
+    pass  # serial 留著無害（NULL-able、無索引）；SQLite 舊版無 DROP COLUMN，down 為 no-op。
+
+
 _MIGRATIONS: list[tuple[int, str, object]] = [
     (1, "events_columns", _m001_events_columns),
     (2, "decisions_columns", _m002_decisions_columns),
@@ -1749,6 +1760,7 @@ _MIGRATIONS: list[tuple[int, str, object]] = [
     (38, "cop_tracks_exercise_id", _m038_cop_tracks_exercise_id),
     (39, "audit_log_drop_exercise_fk", _m039_audit_log_drop_exercise_fk),
     (40, "release_archived_exercise_entities", _m040_release_archived_exercise_entities),
+    (41, "account_certs_serial", _m041_account_certs_serial),
 ]
 
 
