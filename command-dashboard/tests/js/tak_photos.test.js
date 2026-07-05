@@ -13,7 +13,12 @@
  */
 
 import { describe, test, expect, beforeEach, vi } from 'vitest';
-import { takPhotoSectionHtml, createTakPhotoLoader, TAK_PHOTO_GRID_ID } from '../../static/js/map/tak_photos.js';
+import {
+  takPhotoSectionHtml,
+  createTakPhotoLoader,
+  TAK_PHOTO_GRID_ID,
+  TAK_PHOTO_UPLOAD_ID,
+} from '../../static/js/map/tak_photos.js';
 
 // ── Minimal fake DOM（注入 doc，不引 jsdom）──
 function makeFakeEl(tag) {
@@ -39,6 +44,13 @@ function makeFakeEl(tag) {
     },
     querySelector(sel) {
       return this.querySelectorAll(sel)[0] || null;
+    },
+    _listeners: {},
+    addEventListener(type, fn) {
+      (this._listeners[type] ??= []).push(fn);
+    },
+    async _fire(type) {
+      for (const fn of this._listeners[type] || []) await fn();
     },
   };
   Object.defineProperty(el, 'textContent', {
@@ -193,5 +205,59 @@ describe('createTakPhotoLoader', () => {
     await loader.load('U-2');
     await flush();
     expect(revoked).toContain(created[0]);
+  });
+});
+
+// ── #506 M3 下行：upload / bindUpload ──
+describe('takPhotoSectionHtml upload 控制', () => {
+  test('canUpload=true 含上傳控制', () => {
+    const h = takPhotoSectionHtml(true);
+    expect(h).toContain(`id="${TAK_PHOTO_UPLOAD_ID}"`);
+    expect(h).toContain('上傳照片');
+  });
+  test('canUpload=false（預設）不含上傳控制', () => {
+    expect(takPhotoSectionHtml(false)).not.toContain(TAK_PHOTO_UPLOAD_ID);
+    expect(takPhotoSectionHtml()).not.toContain(TAK_PHOTO_UPLOAD_ID);
+  });
+});
+
+describe('upload / bindUpload', () => {
+  test('upload POST multipart 到 /api/tak/files/upload', async () => {
+    let captured;
+    const af = vi.fn(async (url, opts) => {
+      captured = { url, opts };
+      return { ok: true };
+    });
+    const loader = createTakPhotoLoader({ authFetch: af, doc });
+    const ok = await loader.upload('U-1', new Blob([new Uint8Array([1, 2])], { type: 'image/png' }));
+    expect(ok).toBe(true);
+    expect(captured.url).toBe('/api/tak/files/upload');
+    expect(captured.opts.method).toBe('POST');
+    expect(captured.opts.body).toBeInstanceOf(FormData);
+    expect(captured.opts.body.get('marker_uid')).toBe('U-1');
+  });
+
+  test('bindUpload：選檔 → 上傳成功 → reload', async () => {
+    const input = makeFakeEl('input');
+    input.files = [new Blob([new Uint8Array([1])], { type: 'image/png' })];
+    input.value = 'x';
+    doc._register(TAK_PHOTO_UPLOAD_ID, input);
+    const calls = [];
+    const af = vi.fn(async (url) => {
+      calls.push(url);
+      if (url.includes('/upload')) return { ok: true };
+      return { ok: true, status: 200, json: async () => ({ files: [] }) }; // reload → for-entity
+    });
+    const loader = createTakPhotoLoader({ authFetch: af, doc });
+    loader.bindUpload('U-1');
+    await input._fire('change');
+    expect(calls.some((u) => u.includes('/api/tak/files/upload'))).toBe(true);
+    expect(calls.some((u) => u.includes('/for-entity/U-1'))).toBe(true); // 上傳後 reload
+    expect(input.value).toBe(''); // 清空允許再傳
+  });
+
+  test('bindUpload：無 input → 安全 no-op', () => {
+    const loader = createTakPhotoLoader({ authFetch: vi.fn(), doc });
+    loader.bindUpload('U-1'); // 沒註冊 input → 不拋
   });
 });

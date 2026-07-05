@@ -2438,9 +2438,10 @@ function _openTakUnitDetail(id) {
   // 生命週期：archived（CoT <archive/>）= 持久標記，過 stale 也保留（#161）。
   body += row('狀態', ent.archived ? '持久（archived）' : '');
   body += `<div style="font-size:10px;color:var(--text3);margin-top:8px;">來源：TAK · 唯讀</div>`;
-  body += takPhotoSectionHtml();  // #503 上行：附件照片區塊（openModal 後非同步填入）
+  body += takPhotoSectionHtml(canUseRealModeControls());  // #503 上行顯示 + #506 M3 下行上傳（指揮層）
   _deps.openModal?.(`${affZh}單位 ${ent.callsign || ''}`, body);
   _takPhotoLoader.load(id);
+  if (canUseRealModeControls()) _takPhotoLoader.bindUpload(id);
 }
 // 開 detail modal（給左鍵 click 與右鍵 menu「編輯註記」共用）。
 export function _openContactDetail(id) {
@@ -2483,9 +2484,12 @@ export function _openContactDetail(id) {
   body += `<button data-action="deleteContact" data-id="${_escapeHtml(String(id))}" style="${BTN}background:var(--red);">🗑 刪除標記</button>`;
   // #503 上行：TAK 來源標記才有 file store 附件（本機 manual 標記 uid 不在 TAK，省一次無謂查詢）
   const _hasTakPhotos = ent.source === 'tak';
-  if (_hasTakPhotos) body += takPhotoSectionHtml();
+  if (_hasTakPhotos) body += takPhotoSectionHtml(canUseRealModeControls());
   _deps.openModal?.(`${affZh}接觸 ${ent.callsign || ''}　·　左鍵拖曳可移動`, body);
-  if (_hasTakPhotos) _takPhotoLoader.load(id);
+  if (_hasTakPhotos) {
+    _takPhotoLoader.load(id);
+    if (canUseRealModeControls()) _takPhotoLoader.bindUpload(id);
+  }
 }
 
 // P2-30 part 3：右鍵 → 廣播 menu（issue 5 可發現性，單一動作）。move 改走左鍵拖曳、編輯/刪除走

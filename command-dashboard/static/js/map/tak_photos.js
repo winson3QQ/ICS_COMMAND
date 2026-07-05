@@ -15,17 +15,26 @@
  */
 
 export const TAK_PHOTO_GRID_ID = 'tak-photo-grid';
+export const TAK_PHOTO_UPLOAD_ID = 'tak-photo-upload';
+const _UPLOAD_STATUS_ID = 'tak-photo-upload-status';
 const _CELL_STYLE =
   'display:flex;align-items:center;justify-content:center;width:72px;height:72px;' +
   'border:1px solid var(--border);border-radius:6px;overflow:hidden;background:var(--surface);text-decoration:none;';
 const _IMG_STYLE = 'width:100%;height:100%;object-fit:cover;';
 
-/** 詳情面板照片區塊的靜態 HTML（無使用者資料）。openModal 後由 loader 非同步填 grid。 */
-export function takPhotoSectionHtml() {
+/** 詳情面板照片區塊的靜態 HTML（無使用者資料）。openModal 後由 loader 非同步填 grid。
+ *  canUpload=true（指揮層）→ 附「上傳照片」控制（#506 M3 下行：推現場照掛此 marker）。 */
+export function takPhotoSectionHtml(canUpload = false) {
+  const upload = canUpload
+    ? '<div style="margin-top:8px;font-size:11px;">' +
+      `<label style="cursor:pointer;color:var(--accent,#2b6cd9);">📤 上傳照片<input type="file" id="${TAK_PHOTO_UPLOAD_ID}" accept="image/*" style="display:none"></label>` +
+      `<span id="${_UPLOAD_STATUS_ID}" style="margin-left:8px;color:var(--text3);"></span></div>`
+    : '';
   return (
     '<div style="margin-top:12px;border-top:1px solid var(--border);padding-top:8px;">' +
     '<div style="font-size:11px;color:var(--text3);margin-bottom:6px;">📷 TAK 照片附件</div>' +
     `<div id="${TAK_PHOTO_GRID_ID}" style="display:flex;flex-wrap:wrap;gap:6px;font-size:11px;color:var(--text3);">載入中…</div>` +
+    upload +
     '</div>'
   );
 }
@@ -116,5 +125,36 @@ export function createTakPhotoLoader({ authFetch, doc } = {}) {
     }
   }
 
-  return { load, _revokeAll };
+  // #506 M3 下行：上傳一張照片掛到 marker → POST /api/tak/files/upload（multipart）。
+  // 同源 POST（Sec-Fetch-Site same-origin，過 #293 CSRF 守門）+ cookie/token auth（authFetch）。
+  async function upload(uid, file) {
+    const fd = new FormData();
+    fd.append('marker_uid', uid);
+    fd.append('file', file);
+    const r = await authFetch('/api/tak/files/upload', { method: 'POST', body: fd });
+    return r.ok;
+  }
+
+  // 綁定上傳控制（openModal 後呼叫）：選檔 → 上傳 → 成功後 reload 顯示。CSP 安全（addEventListener，非 inline）。
+  function bindUpload(uid) {
+    const input = _doc.getElementById(TAK_PHOTO_UPLOAD_ID);
+    if (!input || !uid) return;
+    const status = _doc.getElementById(_UPLOAD_STATUS_ID);
+    input.addEventListener('change', async () => {
+      const file = input.files && input.files[0];
+      if (!file) return;
+      if (status) status.textContent = '上傳中…';
+      let ok = false;
+      try {
+        ok = await upload(uid, file);
+      } catch (_) {
+        ok = false;
+      }
+      input.value = ''; // 清掉，允許再上傳同一檔
+      if (status) status.textContent = ok ? '✓ 已上傳' : '✕ 上傳失敗';
+      if (ok) await load(uid); // 重載顯示新照片
+    });
+  }
+
+  return { load, upload, bindUpload, _revokeAll };
 }
