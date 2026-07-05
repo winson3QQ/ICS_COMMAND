@@ -178,40 +178,42 @@ async def sync_mission_once(client, name: str) -> dict:
         else:
             ingested += 1
 
-    removed = await _apply_mission_removes(client, name, current_uids)  # #506 M4 可靠刪除
+    removed = await _reconcile_mission_removes(name, current_uids)  # #506 M4 可靠刪除
     summary = {"fetched": len(events), "ingested": ingested, "skipped": skipped, "errors": errors, "removed": removed}
     log.info("tak.mission.sync_done", mission=name, **summary)
     return summary
 
 
-async def _apply_mission_removes(client, name: str, current_uids: set) -> int:
-    """#506 M4 可靠刪除：mission `/changes` 的 REMOVE_CONTENT，若該 uid **不在當前 `/cot`**
-    （未被重新加入）→ 軟刪對應 cop_entity（source=tak 守門、冪等，共用
+# 每 mission 上輪 /cot 見過的 uid（M4 /cot-diff baseline，in-memory、per-process）。
+_mission_last_uids: dict[str, set[str]] = {}
+
+
+async def _reconcile_mission_removes(name: str, current_uids: set) -> int:
+    """#506 M4 可靠刪除（**/cot-diff**）：與上輪該 mission `/cot` 的 uid 比對，**上輪有、這輪沒**
+    ＝從 mission 移除 → 軟刪對應 cop_entity（source=tak 守門、冪等，共用
     `cop_service.soft_delete_tak_entity`）。回刪除筆數。
 
-    reality-check 定調（#506）：`/changes` 發 `REMOVE_CONTENT` 帶 `contentUid`=marker uid、
-    **最終一致性 ~1-3s**（延遲登記，下一輪 poll 會補到）；`/cot` 才是「當前存在」權威 → 用
-    「removed − current」避免 remove-then-readd 誤刪（重加入者仍在 /cot → 排除）。這給了
-    P2-14 串流做不到的「ICS **自身 COP** 可靠刪除」（server-authoritative；client 端 iTAK
-    不 honor server 刪除是另一回事、client 硬限制，非此處可解）。
+    **為何 /cot-diff 而非 /changes（code-review 抓到的 over-delete 修正）**：`/changes` 的
+    `REMOVE_CONTENT` 會含「掛過又拿掉的**裸 uid 參照**」，那些 uid 可能是 general :8089 串流的
+    **live entity、本非此 mission 交付物** → 用 `/changes` + 全域 by-uid 刪除會**誤刪非本 mission
+    擁有的 live marker**。`/cot` **只含真正投遞進 mission 的 marker**（reality-check 實證）→ 只
+    diff 這批、不碰串流 live entity。這給了 P2-14 串流做不到的「ICS **自身 COP** 可靠刪除」
+    （server-authoritative；client 端 iTAK 不 honor server 刪除是 client 硬限制，非此可解）。
 
-    best-effort：`/changes` 拉取失敗只 log 不拋——不因刪除半失敗拖垮 `/cot` upsert；單筆刪除
-    失敗只記 log。
+    邊界：**首輪無 baseline → 不刪**（要有前後兩輪才 diff）。in-memory state：程序重啟後
+    baseline 清空，停機期間的移除會漏（marker 殘留＝**偏保守·不誤刪**，可接受）。單筆刪除失敗
+    只記 log 不拖垮整批。
     """
-    try:
-        changes = await get_mission_changes(client, name)
-    except (TakRestError, TakMissionError) as e:
-        log.warning("tak.mission.changes_failed", mission=name, error=str(e))
-        return 0
-    removed_uids = {c.get("contentUid") for c in changes if c.get("type") == "REMOVE_CONTENT" and c.get("contentUid")}
-    to_delete = removed_uids - (current_uids or set())
+    last = _mission_last_uids.get(name, set())
+    removed = last - (current_uids or set())
     count = 0
-    for uid in to_delete:
+    for uid in removed:
         try:
             if await cop_service.soft_delete_tak_entity(uid):
                 count += 1
         except Exception:  # noqa: BLE001 — 單筆刪除失敗不拖垮整批
             log.warning("tak.mission.remove_failed", mission=name, uid=uid, exc_info=True)
+    _mission_last_uids[name] = set(current_uids or set())
     return count
 
 

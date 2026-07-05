@@ -200,7 +200,15 @@ def test_sync_mission_rejects_bad_name_before_client():
         _run(tak_missions.sync_mission_once(_FakeClient(text_ret="<events/>"), "../x"))
 
 
-# ── M4 可靠刪除：mission REMOVE_CONTENT → 軟刪（removed − current 對帳）─────────
+# ── M4 可靠刪除：/cot-diff（上輪有這輪沒 → 軟刪；只碰 mission /cot 交付物）───────────
+
+
+@pytest.fixture(autouse=True)
+def _reset_mission_state():
+    """清 M4 的 in-memory /cot-diff baseline，避免跨測試污染。"""
+    tak_missions._mission_last_uids.clear()
+    yield
+    tak_missions._mission_last_uids.clear()
 
 
 def _patch_removes(monkeypatch, existing_tak_uids):
@@ -216,57 +224,68 @@ def _patch_removes(monkeypatch, existing_tak_uids):
     return called
 
 
-def test_sync_mission_removes_gone_uid(monkeypatch):
-    # /cot 當前有 U-HERE；/changes REMOVE_CONTENT U-GONE（不在 /cot）→ 軟刪 U-GONE
-    _patch_sync(monkeypatch, [_ev("U-HERE")], [{"uid": "U-HERE"}])
-    deleted = _patch_removes(monkeypatch, {"U-GONE"})
-    client = _FakeClient(
-        text_ret="<events/>",
-        json_ret={
-            "data": [
-                {"type": "REMOVE_CONTENT", "contentUid": "U-GONE"},
-                {"type": "ADD_CONTENT", "contentUid": "U-HERE"},
-            ]
-        },
-    )
-    out = _run(tak_missions.sync_mission_once(client, "ICS"))
+def _patch_cot_seq(monkeypatch, event_sets):
+    """parse_cot_events 依序回 event_sets 每組（模擬連續 poll 的不同 /cot）；ingest 一律成功。"""
+    seq = iter(event_sets)
+    monkeypatch.setattr(tak_missions.tak_service, "parse_cot_events", lambda raw: next(seq))
+
+    async def _ingest(event):
+        return {"uid": getattr(event, "uid", None)}
+
+    monkeypatch.setattr(tak_missions.cop_service, "ingest_cot_event", _ingest)
+
+
+def test_reconcile_first_poll_no_baseline_no_delete(monkeypatch):
+    # 首輪無 baseline → 不刪（即使 /cot 有 uid），只建 baseline
+    _patch_cot_seq(monkeypatch, [[_ev("U1"), _ev("U2")]])
+    deleted = _patch_removes(monkeypatch, {"U1", "U2"})
+    out = _run(tak_missions.sync_mission_once(_FakeClient(text_ret="<events/>"), "ICS"))
+    assert out["removed"] == 0
+    assert deleted == []
+    assert tak_missions._mission_last_uids["ICS"] == {"U1", "U2"}  # baseline 建立
+
+
+def test_reconcile_deletes_gone_uid(monkeypatch):
+    # 上輪 /cot={U1,U2}、這輪={U1} → U2 從 mission 消失 → 軟刪 U2
+    _patch_cot_seq(monkeypatch, [[_ev("U1"), _ev("U2")], [_ev("U1")]])
+    deleted = _patch_removes(monkeypatch, {"U2"})
+    client = _FakeClient(text_ret="<events/>")
+    _run(tak_missions.sync_mission_once(client, "ICS"))  # baseline {U1,U2}
+    out = _run(tak_missions.sync_mission_once(client, "ICS"))  # {U1} → U2 gone
     assert out["removed"] == 1
-    assert deleted == ["U-GONE"]  # 只刪不在 /cot 的，ADD_CONTENT 不算刪
+    assert deleted == ["U2"]
 
 
-def test_sync_mission_skips_remove_if_readded(monkeypatch):
-    # U-X 在 REMOVE_CONTENT 但也在當前 /cot（remove-then-readd）→ removed − current 排除 → 不刪
-    _patch_sync(monkeypatch, [_ev("U-X")], [{"uid": "U-X"}])
-    deleted = _patch_removes(monkeypatch, {"U-X"})
-    client = _FakeClient(text_ret="<events/>", json_ret={"data": [{"type": "REMOVE_CONTENT", "contentUid": "U-X"}]})
+def test_reconcile_no_delete_if_still_present(monkeypatch):
+    # 兩輪都有 U1 → 不刪
+    _patch_cot_seq(monkeypatch, [[_ev("U1")], [_ev("U1")]])
+    deleted = _patch_removes(monkeypatch, {"U1"})
+    client = _FakeClient(text_ret="<events/>")
+    _run(tak_missions.sync_mission_once(client, "ICS"))
     out = _run(tak_missions.sync_mission_once(client, "ICS"))
     assert out["removed"] == 0
     assert deleted == []
 
 
-def test_sync_mission_remove_noop_not_counted(monkeypatch):
-    # soft_delete 回 None（entity 不存在/非 tak）→ 有嘗試但不計數
-    _patch_sync(monkeypatch, [], [])
-    deleted = _patch_removes(monkeypatch, set())
-    client = _FakeClient(text_ret=None, json_ret={"data": [{"type": "REMOVE_CONTENT", "contentUid": "U-GONE"}]})
+def test_reconcile_never_touches_non_mission_uid(monkeypatch):
+    # 修正核心：從沒進 mission /cot 的 uid（live 串流 entity）永不被此 mission 刪
+    _patch_cot_seq(monkeypatch, [[_ev("U1")], [_ev("U1")]])
+    deleted = _patch_removes(monkeypatch, {"STREAM-LIVE"})  # 假設它是別處的 live entity
+    client = _FakeClient(text_ret="<events/>")
+    _run(tak_missions.sync_mission_once(client, "ICS"))
+    _run(tak_missions.sync_mission_once(client, "ICS"))
+    assert deleted == []  # STREAM-LIVE 從沒在 baseline → soft_delete 完全沒被呼叫
+
+
+def test_reconcile_noop_not_counted(monkeypatch):
+    # 上輪有 U1、這輪沒；但 soft_delete 回 None（entity 已不存在/非 tak）→ 嘗試但不計數
+    _patch_cot_seq(monkeypatch, [[_ev("U1")], []])
+    deleted = _patch_removes(monkeypatch, set())  # 一律回 None
+    client = _FakeClient(text_ret="<events/>")
+    _run(tak_missions.sync_mission_once(client, "ICS"))
     out = _run(tak_missions.sync_mission_once(client, "ICS"))
     assert out["removed"] == 0
-    assert deleted == ["U-GONE"]  # 嘗試過、但 soft_delete 回 None
-
-
-def test_sync_mission_removes_changes_failure_best_effort(monkeypatch):
-    # /changes 拉取失敗（TakRestError）→ _apply_mission_removes 吞、removed=0，不拖垮 /cot
-    from services.tak_rest_client import TakRestError
-
-    _patch_sync(monkeypatch, [], [])
-    _patch_removes(monkeypatch, set())
-
-    class _C(_FakeClient):
-        async def get_json(self, path, params=None):
-            raise TakRestError("changes down")
-
-    out = _run(tak_missions.sync_mission_once(_C(text_ret=None), "ICS"))
-    assert out["removed"] == 0  # 不拋
+    assert deleted == ["U1"]  # 嘗試過、None 不計數
 
 
 # ── M1 wiring：config 清單 + run_mission_sync ────────────────────────────
