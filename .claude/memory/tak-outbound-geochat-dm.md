@@ -16,6 +16,8 @@ ICS→TAK 出向文字通聯（GeoChat `b-t-f`）= `services/tak_downlink.build_
 
 **入向 DM → ICS 結構性不通（→ [#397](https://github.com/winson3QQ/ICS_COMMAND/issues/397)）**：ICS 是被動 :8089 訂閱者、**不自報 SA/presence**（非 GPS 裝置 doctrine，見 [[event-symbology-classification]] 的反偽造遙測）→ ① 現場端聯絡人清單裡沒 ICS、選不到當收件人；② ICS 連線 cert 身分（CN `ics-cot`）≠ 出向掛的 senderCallsign（operator display_name）→ server 找不到對應 client 投不到。**廣播進得來**（ICS 從串流收所有 b-t-f），uid/callsign 定向 DM 進不來。要通 = ICS 得 announce 可定址 contact endpoint（牴觸非 GPS doctrine，待決）。
 
+**[2026-07-05 dogfood 確認精確 server 機制]** 不對稱實測：ICS→iTAK DM ✅、廣播雙向 ✅、**iTAK→ICS DM ❌ 掉**。takserver `messaging.log` 佐證＝**ICS 訂閱恆匿名**：所有 `Set client for subscription ... to <callsign>(<uid>)`（具名）都是現場裝置（經 WG gw 172.19.0.3），**ICS（172.19.0.4）訂閱只有 Added→即刻 Removed、從未拿到具名 callsign**。故 takserver 路由 dest-addressed DM 時在 `com.bbn.cot.filter.StreamingEndpointRewriteFilter.filter`（BrokerService input queue）**NPE `Cannot read field "clientUid" because "sub" is null`** → 該筆 DM 丟棄（broker 未死、廣播照流，只掉這筆）＝「ICS 無可定址 presence」的 server 端具體現形。**排除**：非 takserver crash、非 ICS 串流斷、與 #293 cookie deploy 無關。**修法**（同上）：ICS pytak 連上送 identity CoT 取得具名訂閱。**debug 坑**：takserver 容器走 UTC、host 走本地（差一時區），別把 UTC log 誤判成「凍結/串流死」。
+
 通聯時間顯示：`chat_panel._shortTime` 原直接切 ISO 字串 → 顯示 UTC、比 header 時鐘（`toTimeString`=本地）慢一個時區；改 `new Date(t).toTimeString()`（CoT/received_at 皆帶 Z=UTC）對齊本地。
 
 版本落地：backend-v2.17.0（#214 出向 `<__group>` + #216 GeoChat）/ v2.17.1（DM marti）；frontend-v1.13.0（compose 面板）/ v1.13.1（時間本地化）。真機抓包基準 `tests/fixtures/cot/geochat_btf.xml`。相關 [[tak-marti-authz-model]]、[[tak-streaming-archive-stale-vs-mission]]。

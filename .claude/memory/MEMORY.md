@@ -31,3 +31,4 @@ ICS_DMAS 的 memory（行為規則、架構決策、HTTPS 決策、Remote SoT、
 - [worktree-stale-target-main](worktree-stale-target-main.md) — 稽核/修補/review 前**必確認 worktree 是否 stale**；prod SoT=主 repo，worktree 易落後
 - [worktree-basemap-pmtiles-junction](worktree-basemap-pmtiles-junction.md) — 新 worktree 無底圖；junction `static/tiles` 到主 repo pmtiles(底圖/DB 不隨 git)
 - [no-trailing-offer-tails](no-trailing-offer-tails.md) — **feedback**：回覆結尾不要掛「要不要我…/還是…？」可選小尾巴；決定後直接做或直說
+- [ics-mtls-crl-revocation-infeasible](ics-mtls-crl-revocation-infeasible.md) — #232軌1 握手層撤銷(nginx ssl_crl)在 2 層 step-ca PKI 下不可行(CRL_CHECK_ALL 缺 root CRL + CA 鑰隔離)；App 層撤銷+WG 撤 peer 為機制；S1/S2/S3 留 dormant 地基
