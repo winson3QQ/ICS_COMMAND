@@ -200,6 +200,88 @@ def test_sync_mission_rejects_bad_name_before_client():
         _run(tak_missions.sync_mission_once(_FakeClient(text_ret="<events/>"), "../x"))
 
 
+# ── M1 wiring：config 清單 + run_mission_sync ────────────────────────────
+
+
+def test_configured_mission_names_parses_dedups_validates(monkeypatch):
+    monkeypatch.setattr(tak_missions.config, "TAK_MISSION_FEEDS", " ICS , OpX ,ICS, a/b , ,Good_1")
+    # 去空白 + 保序去重 + 略去非法（a/b 斜線）與空項
+    assert tak_missions.configured_mission_names() == ["ICS", "OpX", "Good_1"]
+
+
+def test_configured_mission_names_empty():
+    # 直接呼叫（無 monkeypatch）預設 env 空 → []
+    import os
+
+    if not os.getenv("TAK_MISSION_FEEDS"):
+        assert tak_missions.configured_mission_names() == []
+
+
+def test_mission_sync_enabled_needs_feeds_and_certs(monkeypatch):
+    monkeypatch.setattr(tak_missions.config, "TAK_MARTI_URL", "https://tak:8443")
+    monkeypatch.setattr(tak_missions.config, "TAK_MARTI_READ_CERT", "/c.pem")
+    monkeypatch.setattr(tak_missions.config, "TAK_MARTI_READ_KEY", "/k.pem")
+    monkeypatch.setattr(tak_missions.config, "TAK_MISSION_FEEDS", "ICS")
+    assert tak_missions.mission_sync_enabled()
+    monkeypatch.setattr(tak_missions.config, "TAK_MISSION_FEEDS", "")  # 無 feed → 停用
+    assert not tak_missions.mission_sync_enabled()
+
+
+def _enable_sync(monkeypatch, feeds):
+    monkeypatch.setattr(tak_missions.config, "TAK_MARTI_URL", "https://tak:8443")
+    monkeypatch.setattr(tak_missions.config, "TAK_MARTI_READ_CERT", "/c.pem")
+    monkeypatch.setattr(tak_missions.config, "TAK_MARTI_READ_KEY", "/k.pem")
+    monkeypatch.setattr(tak_missions.config, "TAK_MISSION_FEEDS", feeds)
+
+    closed = {"n": 0}
+
+    class _Client:
+        async def close(self):
+            closed["n"] += 1
+
+    monkeypatch.setattr(tak_missions, "_build_read_client", lambda: _Client())
+    return closed
+
+
+def test_run_mission_sync_disabled_when_not_configured(monkeypatch):
+    monkeypatch.setattr(tak_missions.config, "TAK_MISSION_FEEDS", "")
+    out = _run(tak_missions.run_mission_sync())
+    assert out["enabled"] is False and out["missions"] == {}
+
+
+def test_run_mission_sync_aggregates_per_mission(monkeypatch):
+    closed = _enable_sync(monkeypatch, "A,B")
+
+    async def _fake_sync(client, name):
+        return (
+            {"fetched": 2, "ingested": 1, "skipped": 1, "errors": 0}
+            if name == "A"
+            else {"fetched": 3, "ingested": 3, "skipped": 0, "errors": 0}
+        )
+
+    monkeypatch.setattr(tak_missions, "sync_mission_once", _fake_sync)
+    out = _run(tak_missions.run_mission_sync())
+    assert out["enabled"] is True
+    assert out["missions"]["A"]["ingested"] == 1 and out["missions"]["B"]["ingested"] == 3
+    assert out["fetched"] == 5 and out["ingested"] == 4 and out["skipped"] == 1
+    assert closed["n"] == 1  # client 有 close
+
+
+def test_run_mission_sync_one_mission_failure_isolated(monkeypatch):
+    _enable_sync(monkeypatch, "A,B")
+
+    async def _fake_sync(client, name):
+        if name == "A":
+            raise TakMissionError("boom")  # A 失敗
+        return {"fetched": 1, "ingested": 1, "skipped": 0, "errors": 0}
+
+    monkeypatch.setattr(tak_missions, "sync_mission_once", _fake_sync)
+    out = _run(tak_missions.run_mission_sync())
+    # A 記 1 error、不中斷 B
+    assert out["missions"]["A"]["errors"] == 1 and out["missions"]["B"]["ingested"] == 1
+    assert out["errors"] == 1 and out["ingested"] == 1
+
+
 # ── missions_enabled 設定閘 ──────────────────────────────────────────────
 
 

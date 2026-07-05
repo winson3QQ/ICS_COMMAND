@@ -489,6 +489,11 @@ TAK_MARTI_URL: str = os.getenv("TAK_MARTI_URL", "")  # https://<host>:8443
 TAK_MARTI_MIN_INTERVAL_S: float = float(os.getenv("TAK_MARTI_MIN_INTERVAL_S", "1.0"))
 TAK_MARTI_MAX_RETRIES: int = int(os.getenv("TAK_MARTI_MAX_RETRIES", "3"))
 
+# #506 M1：ICS 消費的 Data Sync mission 名清單（逗號分隔）。空 → mission 消費停用。
+# **只消費明列的 feed**（不自動全訂閱，避免拉入非預期 mission）；mission /cot 逐筆走既有
+# cop_service.ingest_cot_event 縫補進 COP（services/tak_missions.run_mission_sync）。
+TAK_MISSION_FEEDS: str = os.getenv("TAK_MISSION_FEEDS", "")
+
 # ── TAK Marti 服務 cert：讀/寫身分分離（#177 L1；cert-role 見 #176）──────────────
 # 兩張 step-ca 簽的 Marti REST cert，由 deploy/tak-server/pki/issue-tak-certs.sh 產出。
 #   讀 cert → P2-14 DataSync / resync（/cot/sa、/cot、/changes）

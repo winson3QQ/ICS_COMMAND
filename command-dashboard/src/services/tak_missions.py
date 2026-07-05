@@ -26,7 +26,7 @@ import structlog
 
 from core import config
 from services import cop_service, tak_service
-from services.tak_rest_client import build_tak_rest_client
+from services.tak_rest_client import TakRestError, build_tak_rest_client
 
 log = structlog.get_logger()
 
@@ -179,3 +179,54 @@ async def sync_mission_once(client, name: str) -> dict:
     summary = {"fetched": len(events), "ingested": ingested, "skipped": skipped, "errors": errors}
     log.info("tak.mission.sync_done", mission=name, **summary)
     return summary
+
+
+def configured_mission_names() -> list[str]:
+    """從 `TAK_MISSION_FEEDS`（逗號分隔）解出要消費的 mission name 清單。
+
+    去空白 + **驗白名單**（擋設定注入）+ 去重、保序。非法/空項目略去。
+    """
+    names: list[str] = []
+    seen: set[str] = set()
+    for part in (config.TAK_MISSION_FEEDS or "").split(","):
+        n = part.strip()
+        if n and is_valid_mission_name(n) and n not in seen:
+            seen.add(n)
+            names.append(n)
+    return names
+
+
+def mission_sync_enabled() -> bool:
+    """mission 消費是否可用：讀取地基可用（URL+讀 cert）+ 至少配置一個合法 mission feed。"""
+    return missions_enabled() and bool(configured_mission_names())
+
+
+async def run_mission_sync() -> dict:
+    """config 驅動的 mission 消費入口：對每個配置的 mission `sync_mission_once` → 聚合（對稱 run_resync）。
+
+    未啟用（缺 URL/讀 cert 或無配置 feed）→ 回 `{"enabled": False, ...}`。
+    **單一 mission 失敗不中斷其他**（HTTP/解析/name 錯只記入該 mission 的 error）。
+    回 `{"enabled", "missions": {name: summary}, "fetched", "ingested", "skipped", "errors"}`。
+    """
+    if not mission_sync_enabled():
+        log.info("tak.mission.sync_skipped_not_configured")
+        return {"enabled": False, "missions": {}, "fetched": 0, "ingested": 0, "skipped": 0, "errors": 0}
+
+    names = configured_mission_names()
+    client = _build_read_client()
+    per: dict[str, dict] = {}
+    agg = {"fetched": 0, "ingested": 0, "skipped": 0, "errors": 0}
+    try:
+        for name in names:
+            try:
+                s = await sync_mission_once(client, name)
+            except (TakRestError, tak_service.CoTParseError, TakMissionError) as e:
+                # 單一 mission 失敗（HTTP 4xx/5xx、畸形 <events>、name 非法）不拖垮其他 mission。
+                log.warning("tak.mission.sync_failed", mission=name, error=str(e))
+                s = {"fetched": 0, "ingested": 0, "skipped": 0, "errors": 1}
+            per[name] = s
+            for k in agg:
+                agg[k] += s.get(k, 0)
+    finally:
+        await client.close()
+    return {"enabled": True, "missions": per, **agg}

@@ -28,7 +28,7 @@ from core.input_safety import validate_no_unsafe_strings
 from repositories import cop_entity_repo
 from repositories._helpers import audit
 from schemas.tak import ChatSendIn, CoTEventIn, DownlinkCommandIn, TakConnectionToggleIn
-from services import cop_service, tak_downlink, tak_resync, tak_runtime, tak_service
+from services import cop_service, tak_downlink, tak_missions, tak_resync, tak_runtime, tak_service
 from services.exercise_service import current_exercise_id
 from services.tak_rest_client import TakRestError
 from services.tak_service import CoTParseError
@@ -265,6 +265,37 @@ async def resync_from_tak(request: Request):
         # HTTP 層失敗（TakRestError）或 server 回畸形/超大 `<events>`（CoTParseError）→ 乾淨 503
         # （非未處理 500）。稽核已在前面 audit-first 留下 resync 意圖。
         raise HTTPException(503, f"Marti resync 失敗：{e}") from e
+    return {"ok": True, **summary}
+
+
+@router.post("/mission-sync")
+async def mission_sync_from_tak(request: Request):
+    """#506 M1：消費配置的 Data Sync mission（`TAK_MISSION_FEEDS`）→ 拉 `/cot` 補進 COP。
+
+    對稱 resync，只換來源（mission `/cot` 取代 `/cot/sa`）：對每個配置的 mission 逐筆走既有
+    ingest 縫（只 upsert 不刪，faction/場域歸屬沿用）。mission `/cot` **只含真正投遞進 mission
+    的 CoT**（reality-check #506 實證），故消費的是現場真加進 feed 的 marker。
+
+    RBAC = COMMAND_ROLES（role_enum 中央 gate：POST /api/tak/* → COMMAND_ROLES）。讀身分用
+    TAK_MARTI_READ_CERT。audit-first。未配置（缺 URL/讀 cert 或無 TAK_MISSION_FEEDS）→ 422；
+    HTTP/解析失敗 → 503（單一 mission 失敗已在 service 層吞為該 mission 的 error，不整批 503）。
+    """
+    operator = request.state.session["username"]
+    if not tak_missions.mission_sync_enabled():
+        raise HTTPException(422, "Mission 消費未配置（缺 TAK_MARTI_URL/讀 cert 或 TAK_MISSION_FEEDS）")
+    audit(
+        operator,
+        None,
+        "TAK_MISSION_SYNC",
+        "tak",
+        "missions",
+        {"feeds": tak_missions.configured_mission_names()},
+        exercise_id=current_exercise_id(),
+    )
+    try:
+        summary = await tak_missions.run_mission_sync()
+    except (TakRestError, CoTParseError) as e:
+        raise HTTPException(503, f"Mission 同步失敗：{e}") from e
     return {"ok": True, **summary}
 
 
