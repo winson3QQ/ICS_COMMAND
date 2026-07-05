@@ -51,6 +51,12 @@ dnat() {  # $1=dport $2=dest_ip $3=dest_port
 }
 dnat 8089 "$TAK_IP" 8089
 dnat 8446 "$TAK_IP" 8446
+# 8443 = Marti REST API（mission / Data Sync / Enterprise Sync 附件上傳 / 頻道）——TAK 標準 client 面
+# 埠，非純 admin。現場 ATAK 分享附件、建 Data Sync feed 皆需之（#503 上行實證：不開則附件永遠上
+# 不了 server、ICS 拉不到）。安全＝三重閘：WG-only（-i wg0 非公網）+ 強制 mTLS（8443 拒無 client
+# cert，實測 TLSV13_ALERT_CERTIFICATE_REQUIRED）+ Marti group/role 授權（admin 端點仍需 admin cert）。
+# 與已開放的 :8089 同一種 mTLS 保護。
+dnat 8443 "$TAK_IP" 8443
 dnat 443  "$NGINX_IP" 443
 iptables -A FORWARD -i "$IFACE" -j ACCEPT
 iptables -A FORWARD -o "$IFACE" -m state --state RELATED,ESTABLISHED -j ACCEPT

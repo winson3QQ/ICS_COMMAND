@@ -6,7 +6,11 @@
 #   dev 單機全上:        同上（--profile tak）
 #
 # 全服務同一張 icsnet → TAK on 時 ics-command 以容器名 takserver:8089 / :8443 直連（內網，不經公網 IP）。
-# 對外（單一公網 IP 多 port）：443→nginx(ICS mTLS)、8089/8446→takserver（現場 ATAK）；8443 admin 不轉發。
+# 對外（單一公網 IP 多 port）：443→nginx(ICS mTLS)、8089/8446/8443→takserver（現場 ATAK）。
+# [#503 修正] 8443（Marti REST API）改為對 WG 裝置轉發：原註「admin 不轉發」誤把 8443 當純 admin，
+# 實為 mission/Data Sync/Enterprise Sync 附件上傳的 client 面埠——不轉發則現場 ATAK 附件永遠上不了
+# server、ICS 拉不到現場照片。安全＝WG-only + 強制 mTLS（8443 拒無 cert）+ Marti 授權，同 8089。
+# WG 轉發規則見 deploy/perimeter/wireguard/container/entrypoint.sh。
 #
 # 前置 1（build）：#300 OneDrive reparse 殘渣已解，Desktop 現可直接 build。僅當 repo 再被 OneDrive
 #                  同步污染才會 invalid file request → 屆時見 deploy/build-env.md（移非同步路徑或重 clone）。
@@ -212,8 +216,10 @@ services:
     ports:
       - "${TAK_STREAMING_PORT:-8089}:8089"   # CoT 串流（現場 ATAK；對外轉發）
       - "${TAK_CERTENROLL_PORT:-8446}:8446"  # 憑證註冊（managed cert 才需；對外轉發）
-      # 8443 admin web：刻意不對外（留內網/本機管理，減攻擊面）。需要時自行加：
-      # - "${TAK_WEBUI_PORT:-8443}:8443"
+      # 8443（Marti REST API）**不對 host 公網發佈**（不加 ports 對映）——公網僅 443/8089/8446。
+      # 但 [#503] 經 **WG 隧道 DNAT** 轉發給現場裝置（見 entrypoint.sh dnat 8443）：mission/Data
+      # Sync/附件上傳需之，且只有已發證的 WG peer + mTLS 過得了 → 比公網發佈安全。故此處維持不加：
+      # - "${TAK_WEBUI_PORT:-8443}:8443"   # ← 刻意不開；8443 只走 WG 隧道，非公網
     networks: [icsnet]
 
   # ── #344 TAK 裝置 enrollment registrar ───────────────────────────────────────────
