@@ -149,6 +149,57 @@ def test_get_mission_changes_parses_data():
     assert client.calls[0] == ("get_json", "/Marti/api/missions/ICS/changes")
 
 
+# ── sync_mission_once（M1a：mission CoT → COP，複用 resync 縫）──────────────
+
+
+def _ev(uid):
+    return type("E", (), {"uid": uid})()
+
+
+def _patch_sync(monkeypatch, events, ingest_results):
+    """mock parse_cot_events → 回 events；ingest_cot_event → 依序回 ingest_results（dict/None/raise）。"""
+    monkeypatch.setattr(tak_missions.tak_service, "parse_cot_events", lambda raw: events)
+    it = iter(ingest_results)
+
+    async def _ingest(event):
+        r = next(it)
+        if isinstance(r, Exception):
+            raise r
+        return r
+
+    monkeypatch.setattr(tak_missions.cop_service, "ingest_cot_event", _ingest)
+
+
+def test_sync_mission_counts_ingested_skipped(monkeypatch):
+    # 3 筆：ingested / skipped(None) / ingested
+    _patch_sync(monkeypatch, [_ev("U1"), _ev("U2"), _ev("U3")], [{"uid": "U1"}, None, {"uid": "U3"}])
+    client = _FakeClient(text_ret="<events><event uid='U1'/></events>")
+    out = _run(tak_missions.sync_mission_once(client, "ICS"))
+    assert out == {"fetched": 3, "ingested": 2, "skipped": 1, "errors": 0}
+    assert client.calls[0] == ("get_text", "/Marti/api/missions/ICS/cot")
+
+
+def test_sync_mission_best_effort_single_failure(monkeypatch):
+    # 中間一筆 ingest 拋 → errors 記數、不中斷後續
+    _patch_sync(monkeypatch, [_ev("U1"), _ev("U2"), _ev("U3")], [{"uid": "U1"}, RuntimeError("boom"), {"uid": "U3"}])
+    out = _run(tak_missions.sync_mission_once(_FakeClient(text_ret="<events/>"), "ICS"))
+    assert out == {"fetched": 3, "ingested": 2, "skipped": 0, "errors": 1}
+
+
+def test_sync_mission_empty_cot_zero(monkeypatch):
+    # 空 mission → get_text None → 不呼叫 parse/ingest、回 0
+    called = {"parse": False}
+    monkeypatch.setattr(tak_missions.tak_service, "parse_cot_events", lambda raw: called.update(parse=True) or [])
+    out = _run(tak_missions.sync_mission_once(_FakeClient(text_ret=None), "ICS"))
+    assert out == {"fetched": 0, "ingested": 0, "skipped": 0, "errors": 0}
+    assert called["parse"] is False  # 空 body 直接短路，不進 parse
+
+
+def test_sync_mission_rejects_bad_name_before_client():
+    with pytest.raises(TakMissionError):
+        _run(tak_missions.sync_mission_once(_FakeClient(text_ret="<events/>"), "../x"))
+
+
 # ── missions_enabled 設定閘 ──────────────────────────────────────────────
 
 

@@ -25,6 +25,7 @@ import re
 import structlog
 
 from core import config
+from services import cop_service, tak_service
 from services.tak_rest_client import build_tak_rest_client
 
 log = structlog.get_logger()
@@ -141,3 +142,40 @@ async def get_mission_changes(client, name: str) -> list[dict]:
     n = _require_valid_name(name)
     data = await client.get_json(f"{_MISSIONS_PATH}/{n}/changes")
     return _parse_data(data)
+
+
+async def sync_mission_once(client, name: str) -> dict:
+    """拉一個 mission 的 CoT 快照 → 逐筆 ingest 進 COP（#506 M1a）。
+
+    **複用 resync 那條縫**（`tak_service.parse_cot_events` + `cop_service.ingest_cot_event`）：
+    mission `/cot` 回 `<events>` 格式（live reality-check 已驗），且**只含真正投遞進 mission 的
+    marker**（掛 uid 參照不算，reality-check 實證）→ 消費的是現場真的加進 feed 的物件。
+    normalize / 場域歸屬 / CAS / WS 廣播 / faction 全沿用既有 ingest 接縫，本函式只負責
+    「拉 + 拆集合 + 餵接縫」（對稱 tak_resync.resync_once）。
+
+    best-effort 逐筆：單筆 ingest 失敗只記數不中斷（一顆壞 event 不拖垮整個 mission 同步）。
+    client 由 caller 注入（生產走 _build_read_client；測試注入 mock）。name 先驗白名單。
+    回 {"fetched", "ingested", "skipped", "errors"}。raise TakMissionError（name 非法）/
+    TakRestError（HTTP）/ CoTParseError（server 回畸形 <events>）。
+    """
+    raw = await get_mission_cot(client, name)
+    if not raw:  # 空 mission → <events></events> 或空 body，視同 0 筆
+        return {"fetched": 0, "ingested": 0, "skipped": 0, "errors": 0}
+
+    events = tak_service.parse_cot_events(raw)
+    ingested = skipped = errors = 0
+    for event in events:
+        try:
+            result = await cop_service.ingest_cot_event(event)
+        except Exception:  # noqa: BLE001 — 單筆失敗不拖垮整批（best-effort，對齊 resync）
+            errors += 1
+            log.warning("tak.mission.ingest_failed", mission=name, uid=getattr(event, "uid", None), exc_info=True)
+            continue
+        if result is None:  # 重送 / 亂序 / GeoChat 分流 / t-x-d-d → 非錯，正常跳過
+            skipped += 1
+        else:
+            ingested += 1
+
+    summary = {"fetched": len(events), "ingested": ingested, "skipped": skipped, "errors": errors}
+    log.info("tak.mission.sync_done", mission=name, **summary)
+    return summary
