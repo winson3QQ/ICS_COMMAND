@@ -11,7 +11,6 @@
 set -u
 CRL_URL="${CRL_URL:-https://step-ca:9000/crl}"
 CRL_OUT="${CRL_OUT:-/crl-data/crl.pem}"
-SSL_CRL_CONF="${SSL_CRL_CONF:-/crl-data/ssl_crl.conf}" # #232軌1-S4：nginx include 的 ssl_crl 開關檔
 
 log() { echo "[crl-refresh $(date -u +%FT%TZ)] $*"; }
 
@@ -38,35 +37,22 @@ if ! { echo "-----BEGIN X509 CRL-----"; base64 "$D"; echo "-----END X509 CRL----
     exit 1
 fi
 
-CHANGED=0
-
-# 4. 僅內容有變才覆蓋 crl.pem（step-ca 24h 內給同一份 → 無變動不重寫，省無謂 reload）
-mkdir -p "$(dirname "$CRL_OUT")"
-if [ ! -f "$CRL_OUT" ] || ! cmp -s "$P" "$CRL_OUT"; then
-    if ! cp "$P" "$CRL_OUT"; then
-        log "WRITE-FAIL 寫入 $CRL_OUT 失敗 → 保留 last-good"
-        exit 1
-    fi
-    log "UPDATED CRL 已更新（$(wc -c <"$CRL_OUT")B）"
-    CHANGED=1
-fi
-
-# 5. S4：確保 ssl_crl.conf 啟用（crl.pem 已驗證有效存在）——idempotent，缺/不符才寫。
-#    fail-safe：本步只在「已成功取得有效 CRL」的路徑執行；fetch/驗證失敗會在前面提早 exit，
-#    故**不會**在缺 CRL 時把 ssl_crl 打開（避免指向不存在檔 → nginx reload 失敗 / 起不來）。
-DESIRED="ssl_crl $CRL_OUT;"
-if [ ! -f "$SSL_CRL_CONF" ] || [ "$(cat "$SSL_CRL_CONF" 2>/dev/null)" != "$DESIRED" ]; then
-    if printf '%s\n' "$DESIRED" >"$SSL_CRL_CONF"; then
-        log "ssl_crl 啟用（include → $CRL_OUT）"
-        CHANGED=1
-    fi
-fi
-
-# 6. 有變動才 reload（crl.pem 或 ssl_crl.conf 任一改動）
-if [ "$CHANGED" = "0" ]; then
+# 4. 僅內容有變才覆蓋 + reload（step-ca 24h 內給同一份 → 無變動即跳過，省無謂 reload）
+if [ -f "$CRL_OUT" ] && cmp -s "$P" "$CRL_OUT"; then
     log "OK CRL 無變動"
-elif nginx -s reload 2>/dev/null; then
+    exit 0
+fi
+
+mkdir -p "$(dirname "$CRL_OUT")"
+if ! cp "$P" "$CRL_OUT"; then
+    log "WRITE-FAIL 寫入 $CRL_OUT 失敗 → 保留 last-good"
+    exit 1
+fi
+log "UPDATED CRL 已更新（$(wc -c <"$CRL_OUT")B）"
+
+# 5. reload nginx（S4 掛上 ssl_crl 後才實際生效；nginx 未起 / 未設 ssl_crl 時 reload 失敗無害）
+if nginx -s reload 2>/dev/null; then
     log "RELOADED nginx"
 else
-    log "reload skipped（nginx 未起——啟動時由 entrypoint 負責首次載入）"
+    log "reload skipped（nginx 未起或尚未設 ssl_crl）"
 fi
