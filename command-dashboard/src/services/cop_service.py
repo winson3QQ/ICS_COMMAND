@@ -540,31 +540,44 @@ def _record_track(entity: dict) -> None:
         log.warning("[tak] 軌跡寫入失敗（不擋同步）uid=%s：%s", entity.get("uid"), e)
 
 
+async def soft_delete_tak_entity(uid: str) -> dict | None:
+    """軟刪一個 source='tak' 的 entity（墓碑 deleted=1）+ 廣播 op=delete。**共用刪除核心**：
+    t-x-d-d 串流刪除命令（`_handle_tak_delete`）與 #506 M4 mission REMOVE_CONTENT 都走此。
+
+    來源所有權守門：**只准刪 source='tak'**（防偽造刪本地 manual 標繪）。目標不存在 / 已刪 /
+    非 tak → None（no-op，**冪等**：重送 / 重複 poll 不重複廣播）。CAS conflict / notfound
+    （別人剛改過 / 剛被刪）→ None，不重試（下一筆會校正）。回軟刪後的 entity row 或 None。
+    """
+    if not uid:
+        return None
+    existing = cop_entity_repo.get_cop_entity(uid)
+    if existing is None or existing.get("deleted"):
+        return None  # 目標未收過 / 早已刪除
+    if existing.get("source") != "tak":
+        log.warning("[tak] 拒刪非 tak 來源 entity uid=%s source=%s", uid, existing.get("source"))
+        return None
+    res = cop_entity_repo.delete_cop_entity(uid, existing["version_clock"], actor="tak")
+    if res["status"] == "ok":
+        await _broadcast_cop("delete", res["entity"])
+        return res["entity"]
+    return None
+
+
 async def _handle_tak_delete(event: CoTEventIn) -> dict | None:
     """TAK `t-x-d-d` 刪除命令 → 軟刪目標 entity（墓碑 deleted=1）+ 廣播 op=delete。
 
-    目標 uid 取自 CoT `<link uid=...>`（_extract_detail 收成 detail['link']）。
-    來源所有權守門：只准刪 source='tak' 的 entity（防偽造 t-x-d-d 刪本地 manual 標繪）。
-    目標不存在 / 無 link / 已刪 / 非 tak 來源 → None（不動作）。t-x-d-d 本身不進主表。
+    目標 uid 取自 CoT `<link uid=...>`（_extract_detail 收成 detail['link']）。刪除核心
+    共用 `soft_delete_tak_entity`（source 守門 / 冪等 / 廣播）。無 link → 忽略。
     """
     link = _dict_child(dict(event.detail or {}), "link")
     target = link.get("uid") if isinstance(link, dict) else None
     if not target:
         log.info("[tak] 收到 t-x-d-d 但無 link uid，忽略")
         return None
-    existing = cop_entity_repo.get_cop_entity(target)
-    if existing is None or existing.get("deleted"):
-        return None  # 目標未收過 / 早已刪除（重送 t-x-d-d 不重複廣播）
-    if existing.get("source") != "tak":
-        log.warning("[tak] t-x-d-d 指向非 tak 來源 entity，拒刪 uid=%s source=%s", target, existing.get("source"))
-        return None
-    res = cop_entity_repo.delete_cop_entity(target, existing["version_clock"], actor="tak")
-    if res["status"] == "ok":
-        await _broadcast_cop("delete", res["entity"])
+    res = await soft_delete_tak_entity(target)
+    if res is not None:
         log.info("[tak] t-x-d-d → 軟刪 uid=%s", target)
-        return res["entity"]
-    # conflict（別人剛改過）/ notfound（剛被刪）→ 不重試，下一筆會校正
-    return None
+    return res
 
 
 async def ingest_cot_event(event: CoTEventIn) -> dict | None:

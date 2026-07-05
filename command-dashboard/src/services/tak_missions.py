@@ -160,26 +160,59 @@ async def sync_mission_once(client, name: str) -> dict:
     TakRestError（HTTP）/ CoTParseError（server 回畸形 <events>）。
     """
     raw = await get_mission_cot(client, name)
-    if not raw:  # 空 mission → <events></events> 或空 body，視同 0 筆
-        return {"fetched": 0, "ingested": 0, "skipped": 0, "errors": 0}
-
-    events = tak_service.parse_cot_events(raw)
+    events = tak_service.parse_cot_events(raw) if raw else []  # 空 mission → <events></events> 或空 body
+    current_uids: set[str] = set()  # 當前 /cot 存在的 uid（M4 reconcile 用：removed − current）
     ingested = skipped = errors = 0
     for event in events:
+        uid = getattr(event, "uid", None)
+        if uid:
+            current_uids.add(uid)
         try:
             result = await cop_service.ingest_cot_event(event)
         except Exception:  # noqa: BLE001 — 單筆失敗不拖垮整批（best-effort，對齊 resync）
             errors += 1
-            log.warning("tak.mission.ingest_failed", mission=name, uid=getattr(event, "uid", None), exc_info=True)
+            log.warning("tak.mission.ingest_failed", mission=name, uid=uid, exc_info=True)
             continue
         if result is None:  # 重送 / 亂序 / GeoChat 分流 / t-x-d-d → 非錯，正常跳過
             skipped += 1
         else:
             ingested += 1
 
-    summary = {"fetched": len(events), "ingested": ingested, "skipped": skipped, "errors": errors}
+    removed = await _apply_mission_removes(client, name, current_uids)  # #506 M4 可靠刪除
+    summary = {"fetched": len(events), "ingested": ingested, "skipped": skipped, "errors": errors, "removed": removed}
     log.info("tak.mission.sync_done", mission=name, **summary)
     return summary
+
+
+async def _apply_mission_removes(client, name: str, current_uids: set) -> int:
+    """#506 M4 可靠刪除：mission `/changes` 的 REMOVE_CONTENT，若該 uid **不在當前 `/cot`**
+    （未被重新加入）→ 軟刪對應 cop_entity（source=tak 守門、冪等，共用
+    `cop_service.soft_delete_tak_entity`）。回刪除筆數。
+
+    reality-check 定調（#506）：`/changes` 發 `REMOVE_CONTENT` 帶 `contentUid`=marker uid、
+    **最終一致性 ~1-3s**（延遲登記，下一輪 poll 會補到）；`/cot` 才是「當前存在」權威 → 用
+    「removed − current」避免 remove-then-readd 誤刪（重加入者仍在 /cot → 排除）。這給了
+    P2-14 串流做不到的「ICS **自身 COP** 可靠刪除」（server-authoritative；client 端 iTAK
+    不 honor server 刪除是另一回事、client 硬限制，非此處可解）。
+
+    best-effort：`/changes` 拉取失敗只 log 不拋——不因刪除半失敗拖垮 `/cot` upsert；單筆刪除
+    失敗只記 log。
+    """
+    try:
+        changes = await get_mission_changes(client, name)
+    except (TakRestError, TakMissionError) as e:
+        log.warning("tak.mission.changes_failed", mission=name, error=str(e))
+        return 0
+    removed_uids = {c.get("contentUid") for c in changes if c.get("type") == "REMOVE_CONTENT" and c.get("contentUid")}
+    to_delete = removed_uids - (current_uids or set())
+    count = 0
+    for uid in to_delete:
+        try:
+            if await cop_service.soft_delete_tak_entity(uid):
+                count += 1
+        except Exception:  # noqa: BLE001 — 單筆刪除失敗不拖垮整批
+            log.warning("tak.mission.remove_failed", mission=name, uid=uid, exc_info=True)
+    return count
 
 
 def configured_mission_names() -> list[str]:
@@ -211,12 +244,12 @@ async def run_mission_sync() -> dict:
     """
     if not mission_sync_enabled():
         log.info("tak.mission.sync_skipped_not_configured")
-        return {"enabled": False, "missions": {}, "fetched": 0, "ingested": 0, "skipped": 0, "errors": 0}
+        return {"enabled": False, "missions": {}, "fetched": 0, "ingested": 0, "skipped": 0, "errors": 0, "removed": 0}
 
     names = configured_mission_names()
     client = _build_read_client()
     per: dict[str, dict] = {}
-    agg = {"fetched": 0, "ingested": 0, "skipped": 0, "errors": 0}
+    agg = {"fetched": 0, "ingested": 0, "skipped": 0, "errors": 0, "removed": 0}
     try:
         for name in names:
             try:
@@ -224,7 +257,7 @@ async def run_mission_sync() -> dict:
             except (TakRestError, tak_service.CoTParseError, TakMissionError) as e:
                 # 單一 mission 失敗（HTTP 4xx/5xx、畸形 <events>、name 非法）不拖垮其他 mission。
                 log.warning("tak.mission.sync_failed", mission=name, error=str(e))
-                s = {"fetched": 0, "ingested": 0, "skipped": 0, "errors": 1}
+                s = {"fetched": 0, "ingested": 0, "skipped": 0, "errors": 1, "removed": 0}
             per[name] = s
             for k in agg:
                 agg[k] += s.get(k, 0)

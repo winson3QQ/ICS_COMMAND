@@ -175,7 +175,7 @@ def test_sync_mission_counts_ingested_skipped(monkeypatch):
     _patch_sync(monkeypatch, [_ev("U1"), _ev("U2"), _ev("U3")], [{"uid": "U1"}, None, {"uid": "U3"}])
     client = _FakeClient(text_ret="<events><event uid='U1'/></events>")
     out = _run(tak_missions.sync_mission_once(client, "ICS"))
-    assert out == {"fetched": 3, "ingested": 2, "skipped": 1, "errors": 0}
+    assert out == {"fetched": 3, "ingested": 2, "skipped": 1, "errors": 0, "removed": 0}
     assert client.calls[0] == ("get_text", "/Marti/api/missions/ICS/cot")
 
 
@@ -183,7 +183,7 @@ def test_sync_mission_best_effort_single_failure(monkeypatch):
     # 中間一筆 ingest 拋 → errors 記數、不中斷後續
     _patch_sync(monkeypatch, [_ev("U1"), _ev("U2"), _ev("U3")], [{"uid": "U1"}, RuntimeError("boom"), {"uid": "U3"}])
     out = _run(tak_missions.sync_mission_once(_FakeClient(text_ret="<events/>"), "ICS"))
-    assert out == {"fetched": 3, "ingested": 2, "skipped": 0, "errors": 1}
+    assert out == {"fetched": 3, "ingested": 2, "skipped": 0, "errors": 1, "removed": 0}
 
 
 def test_sync_mission_empty_cot_zero(monkeypatch):
@@ -191,13 +191,82 @@ def test_sync_mission_empty_cot_zero(monkeypatch):
     called = {"parse": False}
     monkeypatch.setattr(tak_missions.tak_service, "parse_cot_events", lambda raw: called.update(parse=True) or [])
     out = _run(tak_missions.sync_mission_once(_FakeClient(text_ret=None), "ICS"))
-    assert out == {"fetched": 0, "ingested": 0, "skipped": 0, "errors": 0}
+    assert out == {"fetched": 0, "ingested": 0, "skipped": 0, "errors": 0, "removed": 0}
     assert called["parse"] is False  # 空 body 直接短路，不進 parse
 
 
 def test_sync_mission_rejects_bad_name_before_client():
     with pytest.raises(TakMissionError):
         _run(tak_missions.sync_mission_once(_FakeClient(text_ret="<events/>"), "../x"))
+
+
+# ── M4 可靠刪除：mission REMOVE_CONTENT → 軟刪（removed − current 對帳）─────────
+
+
+def _patch_removes(monkeypatch, existing_tak_uids):
+    """mock cop_service.soft_delete_tak_entity → 對 existing_tak_uids 回 truthy（模擬成功軟刪
+    tak entity）、其餘 None（不存在/非 tak）。回記錄的被呼叫 uid 清單。"""
+    called = []
+
+    async def _del(uid):
+        called.append(uid)
+        return {"uid": uid} if uid in existing_tak_uids else None
+
+    monkeypatch.setattr(tak_missions.cop_service, "soft_delete_tak_entity", _del)
+    return called
+
+
+def test_sync_mission_removes_gone_uid(monkeypatch):
+    # /cot 當前有 U-HERE；/changes REMOVE_CONTENT U-GONE（不在 /cot）→ 軟刪 U-GONE
+    _patch_sync(monkeypatch, [_ev("U-HERE")], [{"uid": "U-HERE"}])
+    deleted = _patch_removes(monkeypatch, {"U-GONE"})
+    client = _FakeClient(
+        text_ret="<events/>",
+        json_ret={
+            "data": [
+                {"type": "REMOVE_CONTENT", "contentUid": "U-GONE"},
+                {"type": "ADD_CONTENT", "contentUid": "U-HERE"},
+            ]
+        },
+    )
+    out = _run(tak_missions.sync_mission_once(client, "ICS"))
+    assert out["removed"] == 1
+    assert deleted == ["U-GONE"]  # 只刪不在 /cot 的，ADD_CONTENT 不算刪
+
+
+def test_sync_mission_skips_remove_if_readded(monkeypatch):
+    # U-X 在 REMOVE_CONTENT 但也在當前 /cot（remove-then-readd）→ removed − current 排除 → 不刪
+    _patch_sync(monkeypatch, [_ev("U-X")], [{"uid": "U-X"}])
+    deleted = _patch_removes(monkeypatch, {"U-X"})
+    client = _FakeClient(text_ret="<events/>", json_ret={"data": [{"type": "REMOVE_CONTENT", "contentUid": "U-X"}]})
+    out = _run(tak_missions.sync_mission_once(client, "ICS"))
+    assert out["removed"] == 0
+    assert deleted == []
+
+
+def test_sync_mission_remove_noop_not_counted(monkeypatch):
+    # soft_delete 回 None（entity 不存在/非 tak）→ 有嘗試但不計數
+    _patch_sync(monkeypatch, [], [])
+    deleted = _patch_removes(monkeypatch, set())
+    client = _FakeClient(text_ret=None, json_ret={"data": [{"type": "REMOVE_CONTENT", "contentUid": "U-GONE"}]})
+    out = _run(tak_missions.sync_mission_once(client, "ICS"))
+    assert out["removed"] == 0
+    assert deleted == ["U-GONE"]  # 嘗試過、但 soft_delete 回 None
+
+
+def test_sync_mission_removes_changes_failure_best_effort(monkeypatch):
+    # /changes 拉取失敗（TakRestError）→ _apply_mission_removes 吞、removed=0，不拖垮 /cot
+    from services.tak_rest_client import TakRestError
+
+    _patch_sync(monkeypatch, [], [])
+    _patch_removes(monkeypatch, set())
+
+    class _C(_FakeClient):
+        async def get_json(self, path, params=None):
+            raise TakRestError("changes down")
+
+    out = _run(tak_missions.sync_mission_once(_C(text_ret=None), "ICS"))
+    assert out["removed"] == 0  # 不拋
 
 
 # ── M1 wiring：config 清單 + run_mission_sync ────────────────────────────
