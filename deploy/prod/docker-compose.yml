@@ -140,8 +140,14 @@ services:
     environment:
       - ICS_PROXY_SHARED_SECRET=${ICS_PROXY_SHARED_SECRET:?ICS_PROXY_SHARED_SECRET 必須設定}
       - NGINX_ENVSUBST_FILTER=ICS_PROXY_SHARED_SECRET
+      - CRL_REFRESH_INTERVAL=${CRL_REFRESH_INTERVAL:-14400}   # #232軌1-S3 CRL 刷新週期(秒)，預設 4h
+    # #232軌1-S3：包裝 entrypoint——背景跑 CRL 自刷新，前景交還官方 entrypoint（保留 envsubst template）
+    entrypoint: ["/bin/sh", "/nginx-entrypoint.sh"]
     volumes:
       - ../ics-validation/mtls/nginx.mtls.conf:/etc/nginx/templates/default.conf.template:ro
+      - ./crl-refresh.sh:/crl-refresh.sh:ro          # #232軌1-S3 CRL 刷新腳本
+      - ./nginx-entrypoint.sh:/nginx-entrypoint.sh:ro
+      - crl-data:/crl-data                           # #232軌1-S3 CRL 落檔（可寫；/pki 唯讀）
       - pki:/pki:ro
     networks: [icsnet]
 
@@ -275,6 +281,7 @@ volumes:
   tak-registrar-queue:                       # #344 ics-command ↔ tak-registrar enrollment 佇列
   wg-queue:                                  # #434 ics-command ↔ ics-wg peer 控制佇列
   wg-data:                                   # #434 ics-wg server 私鑰 + wg0.conf 持久化
+  crl-data:                                  # #232軌1-S3 nginx CRL 自刷新落檔（/pki 唯讀，另用可寫卷）
   ics-data:
     external: true                          # 沿用既有 ics-data（runtime 資料；勿隨棧刪）
   ics-tiles:
