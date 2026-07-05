@@ -25,7 +25,10 @@ from repositories import config_repo
 log = structlog.get_logger()
 
 _CONFIG_KEY = "tak.connection_enabled"
-_handle: tuple[asyncio.Task, asyncio.Event] | None = None
+# (subscribe_task, mission_poll_task|None, stop_event)。#506 M1：mission 背景 poll task 與訂閱
+# task 共用同一 stop_event、同生共死（start 一起建、stop 一起收）。poll task 未配置 mission
+# feed 時為 None。is_running 仍以 subscribe task（[0]）為準。
+_handle: tuple[asyncio.Task, asyncio.Task | None, asyncio.Event] | None = None
 _lock = asyncio.Lock()
 # #222：on_connect resync/對帳互斥——flap（server 反覆關開）時上一輪未跑完就跳過，避免疊跑。
 _on_connect_lock = asyncio.Lock()
@@ -85,12 +88,13 @@ async def _on_reconnect_resync_reconcile() -> None:
         return  # 上一輪 resync/對帳還在跑（flap）→ 跳過避免疊跑
     async with _on_connect_lock:
         try:
-            from services import tak_resync
+            from services import tak_missions, tak_resync
 
             await tak_resync.resync_on_connect()  # 內部已吞例外 + 受 TAK_RESYNC_ON_CONNECT 開關
             await tak_resync.reconcile_shared_outbound()  # 內部 best-effort + 未配置 no-op
-        except Exception:  # noqa: BLE001 — 背景 resync/對帳絕不拖垮訂閱
-            log.warning("[tak] 重連 resync/reconcile 背景任務異常", exc_info=True)
+            await tak_missions.run_mission_sync()  # #506 M1：on-connect 即時同步 mission（未配置 no-op）
+        except Exception:  # noqa: BLE001 — 背景 resync/對帳/mission 絕不拖垮訂閱
+            log.warning("[tak] 重連 resync/reconcile/mission 背景任務異常", exc_info=True)
 
 
 async def start() -> bool:
@@ -123,7 +127,18 @@ async def start() -> bool:
         except Exception:  # noqa: BLE001 — TAK 選配，啟動失敗只 log 不擋呼叫端
             log.warning("[tak] CoT 訂閱啟動失敗（config/import/task）", exc_info=True)
             return False
-        _handle = (task, stop_event)
+        # #506 M1：mission 背景週期 poll（配了 TAK_MISSION_FEEDS 才起；共用 stop_event）。
+        # 啟動失敗不擋訂閱（mission 消費為附加能力，失敗只 log）。
+        poll_task = None
+        try:
+            from services import tak_missions
+
+            if tak_missions.mission_sync_enabled():
+                poll_task = asyncio.create_task(tak_missions.mission_poll_loop(stop_event))
+                log.info("[tak] mission 背景 poll task 啟動：%s", tak_missions.configured_mission_names())
+        except Exception:  # noqa: BLE001 — mission poll 為附加能力，啟動失敗不擋訂閱
+            log.warning("[tak] mission poll task 啟動失敗", exc_info=True)
+        _handle = (task, poll_task, stop_event)
         log.info("[tak] CoT 訂閱背景 task 啟動：%s", config.TAK_COT_URL)
         return True
 
@@ -135,12 +150,16 @@ async def stop() -> bool:
     async with _lock:
         if _handle is None:
             return False
-        task, stop_event = _handle
+        task, poll_task, stop_event = _handle
         _handle = None
-        stop_event.set()  # 軟停：停止重連
+        stop_event.set()  # 軟停：停止重連 + 喚醒 poll loop 的 wait
         task.cancel()  # 硬停：中斷卡在 readcot 的 await
         with suppress(asyncio.CancelledError):
             await task
+        if poll_task is not None:  # #506 M1：mission poll task 同收（避免 pending task 殘留）
+            poll_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await poll_task
         log.info("[tak] CoT 訂閱背景 task 已停止")
         return True
 

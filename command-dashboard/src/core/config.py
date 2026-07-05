@@ -493,6 +493,9 @@ TAK_MARTI_MAX_RETRIES: int = int(os.getenv("TAK_MARTI_MAX_RETRIES", "3"))
 # **只消費明列的 feed**（不自動全訂閱，避免拉入非預期 mission）；mission /cot 逐筆走既有
 # cop_service.ingest_cot_event 縫補進 COP（services/tak_missions.run_mission_sync）。
 TAK_MISSION_FEEDS: str = os.getenv("TAK_MISSION_FEEDS", "")
+# #506 M1：mission 背景週期 poll 間隔（秒）。mission 內容不保證走 :8089（scoped）→ 需週期補齊，
+# 不像 resync 只 on-connect。預設 60s；≤0 → 關週期（只留 on-connect 即時同步）。
+TAK_MISSION_POLL_INTERVAL_S: float = float(os.getenv("TAK_MISSION_POLL_INTERVAL_S", "60"))
 
 # ── TAK Marti 服務 cert：讀/寫身分分離（#177 L1；cert-role 見 #176）──────────────
 # 兩張 step-ca 簽的 Marti REST cert，由 deploy/tak-server/pki/issue-tak-certs.sh 產出。

@@ -282,6 +282,51 @@ def test_run_mission_sync_one_mission_failure_isolated(monkeypatch):
     assert out["errors"] == 1 and out["ingested"] == 1
 
 
+# ── mission_poll_loop（M1 背景週期 poll）─────────────────────────────────
+
+
+def test_poll_loop_disabled_when_interval_zero(monkeypatch):
+    monkeypatch.setattr(tak_missions.config, "TAK_MISSION_POLL_INTERVAL_S", 0)
+    calls = {"n": 0}
+
+    async def _fake():
+        calls["n"] += 1
+
+    monkeypatch.setattr(tak_missions, "run_mission_sync", _fake)
+    _run(tak_missions.mission_poll_loop(asyncio.Event()))  # 立即返回
+    assert calls["n"] == 0  # interval≤0 → 不跑週期
+
+
+def test_poll_loop_runs_then_stops_on_event(monkeypatch):
+    monkeypatch.setattr(tak_missions.config, "TAK_MISSION_POLL_INTERVAL_S", 0.01)
+    ev = asyncio.Event()
+    calls = {"n": 0}
+
+    async def _fake():
+        calls["n"] += 1
+        ev.set()  # 第一輪後 set → loop 下個 wait 立即醒、退出
+
+    monkeypatch.setattr(tak_missions, "run_mission_sync", _fake)
+    _run(tak_missions.mission_poll_loop(ev))
+    assert calls["n"] >= 1
+
+
+def test_poll_loop_best_effort_survives_failure(monkeypatch):
+    monkeypatch.setattr(tak_missions.config, "TAK_MISSION_POLL_INTERVAL_S", 0.01)
+    ev = asyncio.Event()
+    calls = {"n": 0}
+
+    async def _fake():
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("boom")  # 第一輪炸 → 不得中斷 loop
+        ev.set()  # 第二輪停
+
+    monkeypatch.setattr(tak_missions, "run_mission_sync", _fake)
+    _run(tak_missions.mission_poll_loop(ev))  # 不拋
+    assert calls["n"] >= 2  # 失敗後有續跑
+
+
 # ── missions_enabled 設定閘 ──────────────────────────────────────────────
 
 

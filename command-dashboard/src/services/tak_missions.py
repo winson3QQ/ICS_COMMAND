@@ -20,6 +20,7 @@ CoT 容器；ATAK 分享 marker 附件（照片）走此機制而非單純 Enter
 及附件連結抽取為 M1+（需 live 驗 change shape，本檔不猜）。
 """
 
+import asyncio
 import re
 
 import structlog
@@ -230,3 +231,30 @@ async def run_mission_sync() -> dict:
     finally:
         await client.close()
     return {"enabled": True, "missions": per, **agg}
+
+
+async def mission_poll_loop(stop_event: asyncio.Event, *, interval_s: float | None = None) -> None:
+    """背景週期 poll：每 interval 跑 `run_mission_sync`，直到 `stop_event` set（#506 M1）。
+
+    為何需要（對比 resync 只 on-connect）：mission 內容 scoped、**不保證走 ICS 的 :8089 串流**
+    → 連線期間 feed 新增的 marker 需週期補齊。ingest 冪等（version_clock 守門）→ 即使 marker
+    也走 :8089，重複 poll 亦無害。
+
+    best-effort：單輪失敗只 log 不中斷（背景 poll 絕不因單輪拖垮）。未配置 feed → `run_mission_sync`
+    自身 no-op。`interval_s` 預設取 `TAK_MISSION_POLL_INTERVAL_S`；**≤0 → 不跑週期**（只靠
+    on-connect），立即返回。等待用 `stop_event.wait(timeout)` → stop 即時生效（非死等整個 interval）。
+    生命週期由 caller（tak_runtime.start/stop）以 stop_event + task cancel 管理。
+    """
+    interval = config.TAK_MISSION_POLL_INTERVAL_S if interval_s is None else interval_s
+    if interval <= 0:
+        log.info("tak.mission.poll_disabled")  # 只留 on-connect
+        return
+    while not stop_event.is_set():
+        try:
+            await run_mission_sync()
+        except Exception:  # noqa: BLE001 — 背景 poll 絕不因單輪失敗中斷
+            log.warning("tak.mission.poll_failed", exc_info=True)
+        try:
+            await asyncio.wait_for(stop_event.wait(), timeout=interval)
+        except TimeoutError:
+            pass  # 到 interval → 下一輪（stop 期間會提早醒）
