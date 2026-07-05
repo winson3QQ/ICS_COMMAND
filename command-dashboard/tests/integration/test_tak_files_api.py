@@ -291,3 +291,48 @@ def test_upload_rbac_operator_forbidden(client, monkeypatch):
 
 def test_upload_requires_auth(client):
     assert client.post("/api/tak/files/upload", data={"marker_uid": "X"}, files=_png_file()).status_code != 200
+
+
+# ── review 修正：magic-byte 上傳驗證 + per-hash faction gating 下載 ──
+
+
+def test_upload_rejects_spoofed_content_type(client, auth, monkeypatch):
+    # content_type 偽造成 image/png、但內容非圖片 magic → 415（magic-byte 擋）
+    _mk_entity("U-UP", "blue")
+    monkeypatch.setattr(tak_files, "filestore_write_enabled", lambda: True)
+    monkeypatch.setattr(tak_files, "_build_write_client", lambda: _DummyWriteClient())
+    called = {"n": 0}
+
+    async def _fake_upload(*a, **k):
+        called["n"] += 1
+        return {"Hash": _VALID_HASH}
+
+    monkeypatch.setattr(tak_files, "upload_file", _fake_upload)
+    r = client.post(
+        "/api/tak/files/upload",
+        data={"marker_uid": "U-UP"},
+        files={"file": ("evil.png", b"MZ\x90\x00not-an-image", "image/png")},
+        headers=auth,
+    )
+    assert r.status_code == 415
+    assert called["n"] == 0  # magic 擋在上傳前
+
+
+def test_download_faction_gated_by_file_marker_uid(client, filestore, monkeypatch):
+    # 檔案 Resource.uid 掛在紅方 marker → commander（見藍）下載 → 404（per-hash faction gating）
+    _mk_entity("U-RED", "red")
+    filestore["meta"] = {"uid": "U-RED", "mimeType": "image/jpeg", "name": "secret.jpg"}
+    filestore["data"] = b"\xff\xd8\xffredphoto"
+    auth = _cmdr_auth(client)
+    r = client.get(f"/api/tak/files/{_VALID_HASH}", headers=auth)
+    assert r.status_code == 404  # 反查 marker 不可見 → 擋
+
+
+def test_download_visible_marker_file_ok(client, auth, filestore):
+    # 藍方 marker 的檔案，admin(全見) 下載 → 200
+    _mk_entity("U-BLUE", "blue")
+    filestore["meta"] = {"uid": "U-BLUE", "mimeType": "image/jpeg"}
+    filestore["data"] = b"\xff\xd8\xffok"
+    r = client.get(f"/api/tak/files/{_VALID_HASH}", headers=auth)
+    assert r.status_code == 200
+    assert r.content == b"\xff\xd8\xffok"

@@ -395,6 +395,15 @@ async def download_tak_file(file_hash: str, request: Request):
         await client.close()
     if data is None:
         raise HTTPException(404, "TAK file store 查無此檔")
+    # per-hash faction gating（#506 review 修，取代原 slice-1 缺口）：檔案 Resource 的 uid＝所掛
+    # marker（上傳/ATAK 附件皆設此）→ 只准看得到該 marker 的 session 下載；反查 entity 不可見 →
+    # 404 不洩存在。entity 不在 ICS（無從判 faction）→ 退回 login+hash 不可猜守門（serve）。
+    file_marker = (meta or {}).get("uid") or (meta or {}).get("UID")
+    if file_marker:
+        ent = cop_entity_repo.get_cop_entity(file_marker)
+        vis = visible_factions_for_session(request.state.session)
+        if ent and vis is not None and ent.get("faction") not in vis:
+            raise HTTPException(404, "找不到該檔案")
     content_type = (tak_files.extract_mimetype(meta) if meta else None) or "application/octet-stream"
     filename = _safe_filename(tak_files.extract_name(meta) if meta else "")
     audit(
@@ -414,6 +423,16 @@ async def download_tak_file(file_hash: str, request: Request):
 
 
 _MAX_UPLOAD_BYTES = 32 * 1024 * 1024  # 上傳單檔上限（照片有界，防灌爆）
+# 圖片 magic bytes（JPEG/PNG/GIF/WebP）——不信 client 的 Content-Type（可偽造），驗真實內容，
+# 防指揮層把非圖片內容夾帶進 TAK file store 標成 image/*（security-review）。
+_IMAGE_MAGIC = (b"\xff\xd8\xff", b"\x89PNG\r\n\x1a\n", b"GIF87a", b"GIF89a")
+
+
+def _looks_like_image(content: bytes) -> bool:
+    """檢查檔案內容前綴是否為已知圖片格式（magic bytes）。WebP＝RIFF….WEBP 另判。"""
+    if any(content.startswith(sig) for sig in _IMAGE_MAGIC):
+        return True
+    return content[:4] == b"RIFF" and content[8:12] == b"WEBP"  # WebP
 
 
 @router.post("/files/upload")
@@ -442,6 +461,9 @@ async def upload_tak_file(request: Request, marker_uid: str = Form(...), file: U
         raise HTTPException(400, "空檔案")
     if len(content) > _MAX_UPLOAD_BYTES:
         raise HTTPException(413, f"檔案過大（上限 {_MAX_UPLOAD_BYTES} bytes）")
+    # 不信 client Content-Type（可偽造）——驗真實 magic bytes（security-review）
+    if not _looks_like_image(content):
+        raise HTTPException(415, "檔案內容非圖片（magic bytes 不符）")
     operator = request.state.session["username"]
     audit(
         operator,
