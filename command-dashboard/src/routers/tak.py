@@ -20,7 +20,7 @@ chat #463 放寬 WRITE_ROLES，清單見 role_enum 的 /api/tak/ 各 case）。
 
 import uuid
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Response
 
 from auth.role_enum import visible_factions_for_session
 from core import config
@@ -28,8 +28,9 @@ from core.input_safety import validate_no_unsafe_strings
 from repositories import cop_entity_repo
 from repositories._helpers import audit
 from schemas.tak import ChatSendIn, CoTEventIn, DownlinkCommandIn, TakConnectionToggleIn
-from services import cop_service, tak_downlink, tak_resync, tak_runtime, tak_service
+from services import cop_service, tak_downlink, tak_files, tak_resync, tak_runtime, tak_service
 from services.exercise_service import current_exercise_id
+from services.tak_files import TakFilestoreError
 from services.tak_rest_client import TakRestError
 from services.tak_service import CoTParseError
 
@@ -266,6 +267,119 @@ async def resync_from_tak(request: Request):
         # （非未處理 500）。稽核已在前面 audit-first 留下 resync 意圖。
         raise HTTPException(503, f"Marti resync 失敗：{e}") from e
     return {"ok": True, **summary}
+
+
+# ── #503 上行（TAK→ICS）：file store 照片下載 ──────────────────────────────
+#
+# 地點型雙向照片的「上行」半：現場（ATAK/iTAK）把照片存進 TAK Enterprise Sync file store，
+# ICS 主動拉下來在 COP 顯示。讀側協定已驗（tak_files；下載/搜尋/metadata），上傳（下行）另計。
+#
+# faction 安全設計：**不做全庫通搜**（會跨陣營洩圖）。列表端點綁在「本 session 看得到的
+# cop_entity」下 → 繼承該 marker 的 faction 可見度（看不到的 entity 一律 404、不洩存在）。
+# ICS 為指揮站、單一 READ cert 跨群落全見，故 faction 邊界**只能由 ICS 這側施加**，非靠 TAK
+# group（READ cert 全見）。
+
+_IMAGE_MIME_PREFIX = "image/"
+_CONTENT_DISPOSITION_SAFE = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._- "
+
+
+def _safe_filename(name: str) -> str:
+    """清出可安全放進 Content-Disposition 的檔名（擋 header 注入：CR/LF/引號/非白名單字元）。
+
+    檔名源自 TAK metadata（可能被現場裝置左右）→ 只留白名單字元，空則回退 'file'。"""
+    cleaned = "".join(c for c in (name or "") if c in _CONTENT_DISPOSITION_SAFE).strip()
+    return cleaned[:120] or "file"
+
+
+def _file_meta_public(meta: dict) -> dict:
+    """把 TAK Resource metadata 收斂為前端要的安全子集（不外拋 groups/creatorUid 等內部欄位）。"""
+    return {
+        "hash": tak_files.extract_hash(meta),
+        "name": tak_files.extract_name(meta),
+        "mimeType": tak_files.extract_mimetype(meta),
+        "size": meta.get("size"),
+        "submissionTime": meta.get("submissionTime"),
+        "submitter": meta.get("submitter"),
+    }
+
+
+@router.get("/files/for-entity/{uid}")
+async def list_entity_files(uid: str, request: Request):
+    """#503 上行：列出某 COP marker 在 TAK file store 的附件照片（地點型）。
+
+    RBAC = READ_ROLES（中央 gate：GET /api/tak/* → READ_ROLES）。
+    faction 安全：只回「本 session 看得到的 entity」之附件（繼承 marker 可見度）；
+    看不到 / 不存在的 entity 一律 404（不洩存在）。未配置 file store → 422。
+
+    附件↔marker 連結：以 marker uid 打 `/sync/search?uid=`（TAK Enterprise Sync 慣例）。
+    只回 image/* 附件（照片）。回 hash 供前端向下方下載端點取圖。
+    """
+    if not tak_files.filestore_enabled():
+        raise HTTPException(422, "TAK file store 未配置（缺 TAK_MARTI_URL 或讀 cert）")
+    entity = cop_entity_repo.get_cop_entity(uid)
+    vis = visible_factions_for_session(request.state.session)
+    # 不存在，或存在但本 session 不可見（faction）→ 同一 404，不區分（不洩存在）
+    if not entity or (vis is not None and entity.get("faction") not in vis):
+        raise HTTPException(404, "找不到該 COP 物件")
+    client = tak_files._build_read_client()
+    try:
+        results = await tak_files.search_files(client, uid=uid)
+    except TakRestError as e:
+        raise HTTPException(503, f"TAK file store 查詢失敗：{e}") from e
+    finally:
+        await client.close()
+    images = [
+        _file_meta_public(m)
+        for m in results
+        if (tak_files.extract_mimetype(m) or "").startswith(_IMAGE_MIME_PREFIX) and tak_files.extract_hash(m)
+    ]
+    return {"uid": uid, "files": images}
+
+
+@router.get("/files/{file_hash}")
+async def download_tak_file(file_hash: str, request: Request):
+    """#503 上行：下載 TAK file store 單檔（照片）→ 原樣回傳 bytes（inline 顯示）。
+
+    RBAC = READ_ROLES。hash 先驗 SHA-256（擋 path 注入/遍歷）。每次下載強制 audit（可追）。
+    未配置 → 422；hash 非法 → 400；查無 → 404；TAK HTTP 失敗 → 503。
+
+    faction 邊界（slice-1）：hash 為不可猜 SHA-256、僅經上方 faction-gated 列表取得，
+    故實務上使用者只會拿到看得到之 marker 的附件 hash。**嚴格 per-hash faction gating**
+    （反查附件所屬 marker 是否可見）待附件↔marker 連結真機確認後補（follow-up #503）。
+    """
+    if not tak_files.filestore_enabled():
+        raise HTTPException(422, "TAK file store 未配置（缺 TAK_MARTI_URL 或讀 cert）")
+    if not tak_files.is_valid_hash(file_hash):
+        raise HTTPException(400, "非法檔案 hash（須 SHA-256 hex）")
+    operator = request.state.session["username"]
+    client = tak_files._build_read_client()
+    try:
+        meta = await tak_files.get_file_metadata(client, file_hash)
+        data = await tak_files.download_file(client, file_hash)
+    except TakFilestoreError as e:
+        raise HTTPException(400, str(e)) from e
+    except TakRestError as e:
+        raise HTTPException(503, f"TAK file store 下載失敗：{e}") from e
+    finally:
+        await client.close()
+    if data is None:
+        raise HTTPException(404, "TAK file store 查無此檔")
+    content_type = (tak_files.extract_mimetype(meta) if meta else None) or "application/octet-stream"
+    filename = _safe_filename(tak_files.extract_name(meta) if meta else "")
+    audit(
+        operator,
+        None,
+        "TAK_FILE_DOWNLOAD",
+        "tak",
+        file_hash,
+        {"bytes": len(data), "mime": content_type},
+        exercise_id=current_exercise_id(),
+    )
+    return Response(
+        content=data,
+        media_type=content_type,
+        headers={"Content-Disposition": f'inline; filename="{filename}"'},
+    )
 
 
 @router.get("/status")

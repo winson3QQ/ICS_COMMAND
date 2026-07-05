@@ -155,6 +155,8 @@ WRITE    POST   /api/tak/chat
 SYSADMIN POST   /api/tak/connection
 COMMAND  POST   /api/tak/downlink
 COMMAND  POST   /api/tak/events
+READ     GET    /api/tak/files/for-entity/{uid}
+READ     GET    /api/tak/files/{file_hash}
 COMMAND  POST   /api/tak/resync
 WRITE    POST   /api/tak/share/{uid}
 READ     GET    /api/tak/status
