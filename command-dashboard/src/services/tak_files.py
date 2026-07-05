@@ -4,20 +4,19 @@
 
 定位：ICS↔TAK 圖片/附件交換的**共用底層**（#503 地點型雙向照片 + #505 圖型訊息雙向
 兩軸都建在這層上）。TAK 把附件（照片、data package…）存在 Enterprise Sync file store，
-以 **SHA-256 hash 定址**；本檔封裝對它的「搜尋 / metadata / 下載」（讀側，協定已驗）與
-「上傳」（寫側，格式待真機 ATAK 抓包定，見下）。
+以 **SHA-256 hash 定址**；本檔封裝對它的「搜尋 / metadata / 下載」（讀側）與「上傳」（寫側）。
 
-端點契約（官方 5.7 OpenAPI `docs/reference/takserver-5.7-openapispec.json`）：
+端點契約（官方 5.7 OpenAPI `docs/reference/takserver-5.7-openapispec.json` + #506 reality-check）：
 - 搜尋   GET  /Marti/api/sync/search           —— box/circle/uid/keyword/mimetype/mission… filter → JSON
-- metadata GET /Marti/api/files/{hash}/metadata —— 單檔 metadata
+- metadata 走 **search?hash=**（`/files/{hash}/metadata` 實測回 405，見 get_file_metadata）
 - 下載   GET  /Marti/api/files/{hash}           —— 原始 bytes（*/*）
 - 刪除   DELETE /Marti/api/files/{hash}
-- 上傳   **不在 /Marti/api spec 內**（整份 spec 唯一 POST 是 /files/api/config）——
-         上傳走**未進 OpenAPI 的 legacy servlet**（`/Marti/sync/upload`），multipart 格式
-         需真機 ATAK 傳圖抓封包定死（之前手打 400，根因即格式未定）→ 見 upload_file 留樁。
+- 上傳   **不在 /Marti/api spec 內**——走 legacy servlet `POST /Marti/sync/upload?name=&creatorUid=`
+         + raw body（#506 reality-check 定死格式：檔名須 ASCII、無多餘 hash 參數；掛 uid=marker
+         → search?uid= 撈得到）。見 upload_file。
 
-認證：下載/搜尋皆為**讀**，用 `TAK_MARTI_READ_CERT/KEY`（truststore 信任即通、毋須 register、
-不卡 write gate，對齊 tak_resync）。複用 P2-11 `tak_rest_client`（cert mTLS + retry + rate-limit）。
+認證：讀（搜尋/下載）用 `TAK_MARTI_READ_CERT/KEY`（truststore 信任即通）；**寫（上傳）用
+`TAK_MARTI_WRITE_CERT/KEY`**（讀 client 無寫權）。複用 P2-11 `tak_rest_client`（cert mTLS + retry）。
 
 安全：hash 進 URL path 前一律驗 SHA-256 hex（`_require_valid_hash`）——附件 hash 可能源自
 現場裝置 CoT（不可信），杜絕 path 注入 / 遍歷。下載走 `get_bytes` 的 max_bytes 上限防灌爆。
@@ -137,13 +136,15 @@ async def search_files(client, **filters) -> list[dict]:
 
 
 async def get_file_metadata(client, file_hash: str) -> dict | None:
-    """取單檔 metadata（GET /Marti/api/files/{hash}/metadata）。hash 先驗 SHA-256。
+    """取單檔 metadata（Resource：mimeType/name/uid/keywords…）。hash 先驗 SHA-256。
 
-    回傳 dict；查無回 None。raise TakFilestoreError（hash 非法）/ TakRestError（HTTP）。
+    **走 `GET /Marti/api/sync/search?hash=`**（非 `/files/{hash}/metadata`——後者實測回 405
+    Method Not Allowed，#506 reality-check）；search 回同一份 Resource metadata。查無回 None。
+    raise TakFilestoreError（hash 非法）/ TakRestError（HTTP）。
     """
     h = _require_valid_hash(file_hash)
-    data = await client.get_json(f"/Marti/api/files/{h}/metadata")
-    return data if isinstance(data, dict) else None
+    results = await search_files(client, hash=h)
+    return results[0] if results else None
 
 
 async def download_file(client, file_hash: str, *, max_bytes: int = _MAX_DOWNLOAD_BYTES) -> bytes | None:
@@ -156,17 +157,56 @@ async def download_file(client, file_hash: str, *, max_bytes: int = _MAX_DOWNLOA
     return await client.get_bytes(f"/Marti/api/files/{h}", max_bytes=max_bytes)
 
 
-async def upload_file(client, *, content: bytes, filename: str, mimetype: str) -> str:
-    """上傳檔案到 file store → 回檔案 hash。**留樁：待真機定 legacy servlet 格式。**
+_UPLOAD_PATH = "/Marti/sync/upload"  # legacy Enterprise Sync 上傳 servlet（不在 /Marti/api OpenAPI）
+# 上傳檔名須純 ASCII 安全字元——server ESAPI 擋重音/標點/非 ASCII（#506 reality-check 實測 400）。
+_UNSAFE_NAME_RE = re.compile(r"[^A-Za-z0-9._-]")
 
-    上傳端點**不在 /Marti/api OpenAPI spec 內**（見模組 docstring）：走 legacy 的
-    `/Marti/sync/upload` servlet，multipart/form-data 欄位順序、必填 param（hash 預算、
-    creatorUid、keywords…）需真機 ATAK 傳圖**抓封包**才能定死——之前手打得 400 即格式未定。
 
-    故此處**刻意不猜格式**（猜錯的上傳碼比空樁更糟：假裝能用、真機一到就得重寫）。
-    #503/#505 動工需上傳時，於真機 dogfood 定格式後在此落地。
-    """
-    raise TakFilestoreError(
-        "TAK file store 上傳待真機定格式（legacy /Marti/sync/upload servlet 之 multipart "
-        "欄位/必填 param 未進 OpenAPI，需 ATAK 抓包定死）——見 tak_files.upload_file docstring 與 #503"
+def filestore_write_enabled() -> bool:
+    """file store 上傳是否可用：需 Marti URL + **寫 cert**（缺任一則停用）。"""
+    return bool(config.TAK_MARTI_URL and config.TAK_MARTI_WRITE_CERT and config.TAK_MARTI_WRITE_KEY)
+
+
+def _safe_upload_name(name: str) -> str:
+    """檔名清成純 ASCII 安全字元（server ESAPI 擋非 ASCII/標點；#506 reality-check）。"""
+    cleaned = _UNSAFE_NAME_RE.sub("_", (name or "").strip())
+    return cleaned[:120] or "upload.bin"
+
+
+def _build_write_client():
+    """建寫身分（WRITE_CERT/KEY）的 Marti REST client（上傳用）。caller 負責 close。"""
+    return build_tak_rest_client(
+        base_url=config.TAK_MARTI_URL,
+        client_cert=config.TAK_MARTI_WRITE_CERT,
+        client_key=config.TAK_MARTI_WRITE_KEY,
+        cafile=config.TAK_CAFILE,
+        allow_insecure_tls=config.TAK_ALLOW_INSECURE_TLS,
+        min_interval_s=config.TAK_MARTI_MIN_INTERVAL_S,
+        max_retries=config.TAK_MARTI_MAX_RETRIES,
     )
+
+
+async def upload_file(
+    client, *, content: bytes, filename: str, mimetype: str, creator_uid: str, marker_uid: str | None = None
+) -> dict:
+    """上傳檔案到 Enterprise Sync（POST /Marti/sync/upload）→ 回 server JSON（含 Hash/UID/…）。
+
+    **格式（#506 reality-check 定死、非猜）**：`POST /Marti/sync/upload?name=<ASCII檔名>&
+    creatorUid=<uid>[&uid=<marker>&keywords=<marker>]`，body=raw bytes（Content-Type=mimetype）。
+    坑：**檔名須 ASCII、不帶多餘 `hash` 參數**（server ESAPI 擋非 ASCII/多餘參數，實測 400）。
+    掛 `marker_uid` → 檔案 Resource 的 uid/keywords 設為該 marker → 之後 `search?uid=<marker>`
+    撈得到（地點型連結，#503/M1b live 實證）。
+
+    client 由 caller 注入（生產走 _build_write_client；WRITE cert，讀 client 無寫權）。
+    raise TakRestError（HTTP，含 400 格式錯）/ TakFilestoreError（回應無 Hash）。
+    """
+    params = {"name": _safe_upload_name(filename), "creatorUid": creator_uid}
+    if marker_uid:
+        params["uid"] = marker_uid  # 地點型連結：search?uid=<marker> 撈得到
+        params["keywords"] = marker_uid
+    result = await client.post_bytes(
+        _UPLOAD_PATH, content, params=params, content_type=mimetype or "application/octet-stream"
+    )
+    if not isinstance(result, dict) or not extract_hash(result):
+        raise TakFilestoreError(f"上傳回應無 Hash（格式異常）：{str(result)[:200]}")
+    return result

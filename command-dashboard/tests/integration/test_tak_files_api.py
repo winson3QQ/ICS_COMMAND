@@ -200,3 +200,94 @@ def test_files_endpoints_require_auth(client, filestore):
     _mk_entity("U-BLUE", "blue")
     assert client.get("/api/tak/files/for-entity/U-BLUE").status_code != 200
     assert client.get(f"/api/tak/files/{_VALID_HASH}").status_code != 200
+
+
+# ── #506 M3 下行：POST /api/tak/files/upload（上傳照片掛 marker）──────────────
+
+
+class _DummyWriteClient:
+    async def close(self):
+        return None
+
+
+def _cmdr_auth(client):
+    from auth.role_enum import ROLE_COMMANDER_ZH as _CMD
+
+    create_account("cmdr2", "1234", role=_CMD)
+    r = client.post("/api/auth/login", json={"username": "cmdr2", "pin": "1234"})
+    assert r.status_code == 200, r.text
+    return {"X-Session-Token": r.json()["session_id"]}
+
+
+def _png_file():
+    return {"file": ("photo.png", b"\x89PNG\r\n\x1a\n", "image/png")}
+
+
+def test_upload_success_and_audits(client, auth, monkeypatch):
+    _mk_entity("U-UP", "blue")
+    monkeypatch.setattr(tak_files, "filestore_write_enabled", lambda: True)
+    monkeypatch.setattr(tak_files, "_build_write_client", lambda: _DummyWriteClient())
+
+    async def _fake_upload(client_, *, content, filename, mimetype, creator_uid, marker_uid=None):
+        return {"Hash": _VALID_HASH, "UID": marker_uid}
+
+    monkeypatch.setattr(tak_files, "upload_file", _fake_upload)
+    r = client.post("/api/tak/files/upload", data={"marker_uid": "U-UP"}, files=_png_file(), headers=auth)
+    assert r.status_code == 200, r.text
+    assert r.json()["hash"] == _VALID_HASH and r.json()["marker_uid"] == "U-UP"
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT 1 FROM audit_log WHERE action_type='TAK_FILE_UPLOAD' AND target_id='U-UP'"
+        ).fetchall()
+    assert len(rows) == 1
+
+
+def test_upload_write_disabled_422(client, auth, monkeypatch):
+    _mk_entity("U-UP", "blue")
+    monkeypatch.setattr(tak_files, "filestore_write_enabled", lambda: False)
+    r = client.post("/api/tak/files/upload", data={"marker_uid": "U-UP"}, files=_png_file(), headers=auth)
+    assert r.status_code == 422
+
+
+def test_upload_non_image_415(client, auth, monkeypatch):
+    _mk_entity("U-UP", "blue")
+    monkeypatch.setattr(tak_files, "filestore_write_enabled", lambda: True)
+    r = client.post(
+        "/api/tak/files/upload",
+        data={"marker_uid": "U-UP"},
+        files={"file": ("doc.pdf", b"%PDF", "application/pdf")},
+        headers=auth,
+    )
+    assert r.status_code == 415
+
+
+def test_upload_marker_not_visible_404(client, monkeypatch):
+    _mk_entity("U-RED", "red")
+    monkeypatch.setattr(tak_files, "filestore_write_enabled", lambda: True)
+    called = {"n": 0}
+
+    async def _fake_upload(*a, **k):
+        called["n"] += 1
+        return {"Hash": _VALID_HASH}
+
+    monkeypatch.setattr(tak_files, "upload_file", _fake_upload)
+    auth = _cmdr_auth(client)
+    r = client.post("/api/tak/files/upload", data={"marker_uid": "U-RED"}, files=_png_file(), headers=auth)
+    assert r.status_code == 404
+    assert called["n"] == 0
+
+
+def test_upload_rbac_operator_forbidden(client, monkeypatch):
+    from auth.role_enum import ROLE_OPERATOR_ZH
+
+    _mk_entity("U-UP", "blue")
+    monkeypatch.setattr(tak_files, "filestore_write_enabled", lambda: True)
+    create_account("op2", "1234", role=ROLE_OPERATOR_ZH)
+    r0 = client.post("/api/auth/login", json={"username": "op2", "pin": "1234"})
+    op_auth = {"X-Session-Token": r0.json()["session_id"]}
+    r = client.post("/api/tak/files/upload", data={"marker_uid": "U-UP"}, files=_png_file(), headers=op_auth)
+    assert r.status_code == 403
+
+
+def test_upload_requires_auth(client):
+    assert client.post("/api/tak/files/upload", data={"marker_uid": "X"}, files=_png_file()).status_code != 200

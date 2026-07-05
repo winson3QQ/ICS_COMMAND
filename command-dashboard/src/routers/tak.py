@@ -20,7 +20,7 @@ chat #463 放寬 WRITE_ROLES，清單見 role_enum 的 /api/tak/ 各 case）。
 
 import uuid
 
-from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi import APIRouter, File, Form, HTTPException, Request, Response, UploadFile
 
 from auth.role_enum import visible_factions_for_session
 from core import config
@@ -411,6 +411,64 @@ async def download_tak_file(file_hash: str, request: Request):
         media_type=content_type,
         headers={"Content-Disposition": f'inline; filename="{filename}"'},
     )
+
+
+_MAX_UPLOAD_BYTES = 32 * 1024 * 1024  # 上傳單檔上限（照片有界，防灌爆）
+
+
+@router.post("/files/upload")
+async def upload_tak_file(request: Request, marker_uid: str = Form(...), file: UploadFile = File(...)):
+    """#506 M3 下行：上傳一張照片到 TAK Enterprise Sync、掛在某 COP marker 上（地點型情境注入，
+    如 TTX 白隊推現場照給藍隊）。上傳後檔案 Resource 的 uid=marker_uid → `GET /files/for-entity/
+    {marker_uid}` 即看得到（與上行同一條顯示路徑）。
+
+    RBAC = COMMAND_ROLES（推內容到 TAK＝指揮動作，中央 gate：POST /api/tak/* → COMMAND_ROLES）。
+    faction 安全：只准掛在**本 session 看得到的 marker**（繼承 for-entity 同守門；看不到/不存在
+    → 404 不洩存在）。audit-first。未配置寫 cert → 422；非圖片 → 415；空/過大 → 400/413；
+    上傳格式錯/回應異常 → 502；HTTP 失敗 → 503。
+    """
+    if not tak_files.filestore_write_enabled():
+        raise HTTPException(422, "TAK file store 上傳未配置（缺 TAK_MARTI_URL 或寫 cert）")
+    # faction 安全：marker 必須存在且本 session 可見（繼承 for-entity 守門）
+    entity = cop_entity_repo.get_cop_entity(marker_uid)
+    vis = visible_factions_for_session(request.state.session)
+    if not entity or (vis is not None and entity.get("faction") not in vis):
+        raise HTTPException(404, "找不到該 COP 物件")
+    mimetype = file.content_type or ""
+    if not mimetype.startswith("image/"):
+        raise HTTPException(415, "只接受 image/* 照片")
+    content = await file.read()
+    if not content:
+        raise HTTPException(400, "空檔案")
+    if len(content) > _MAX_UPLOAD_BYTES:
+        raise HTTPException(413, f"檔案過大（上限 {_MAX_UPLOAD_BYTES} bytes）")
+    operator = request.state.session["username"]
+    audit(
+        operator,
+        None,
+        "TAK_FILE_UPLOAD",
+        "tak",
+        marker_uid,
+        {"name": file.filename, "mime": mimetype, "bytes": len(content)},
+        exercise_id=current_exercise_id(),
+    )
+    client = tak_files._build_write_client()
+    try:
+        result = await tak_files.upload_file(
+            client,
+            content=content,
+            filename=file.filename or "photo.jpg",
+            mimetype=mimetype,
+            creator_uid="ICS-CMD",
+            marker_uid=marker_uid,
+        )
+    except TakFilestoreError as e:
+        raise HTTPException(502, f"TAK 上傳回應異常：{e}") from e
+    except TakRestError as e:
+        raise HTTPException(503, f"TAK file store 上傳失敗：{e}") from e
+    finally:
+        await client.close()
+    return {"ok": True, "hash": tak_files.extract_hash(result), "marker_uid": marker_uid}
 
 
 @router.get("/status")

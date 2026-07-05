@@ -8,7 +8,8 @@ tests/unit/test_tak_files.py — #503：TAK file store client（ICS↔TAK 圖片
 - search_files：None/空 filter 自動略去；回應結構跨版本容錯（{results}/裸 list/垃圾→[]）
 - download_file / get_file_metadata：合法 hash 才打；hash 進 path 前已驗
 - extract_hash/name/mimetype：跨版本大小寫欄位容錯
-- upload_file：留樁——明確拋（待真機定 legacy servlet 格式，不猜）
+- get_file_metadata：走 search?hash=（/files/{hash}/metadata 回 405）
+- upload_file：POST /Marti/sync/upload（#506 reality-check 定死格式）——ASCII 檔名、掛 marker uid、回 Hash
 - filestore_enabled：Marti URL + 讀 cert 缺任一則停用
 """
 
@@ -27,9 +28,10 @@ def _run(coro):
 class _FakeClient:
     """記錄呼叫的 fake Marti client：get_json / get_bytes 回預設值並記 path/params。"""
 
-    def __init__(self, *, json_ret=None, bytes_ret=None):
+    def __init__(self, *, json_ret=None, bytes_ret=None, post_ret=None):
         self._json_ret = json_ret
         self._bytes_ret = bytes_ret
+        self._post_ret = post_ret
         self.calls = []
 
     async def get_json(self, path, params=None):
@@ -39,6 +41,10 @@ class _FakeClient:
     async def get_bytes(self, path, params=None, *, max_bytes=None):
         self.calls.append(("get_bytes", path, params))
         return self._bytes_ret
+
+    async def post_bytes(self, path, content, *, params=None, content_type=None):
+        self.calls.append(("post_bytes", path, params, content_type, content))
+        return self._post_ret
 
 
 _VALID = "a" * 64  # 合法 SHA-256 hex
@@ -95,11 +101,13 @@ def test_download_valid_hash_hits_correct_path():
     assert client.calls == [("get_bytes", f"/Marti/api/files/{_VALID}", None)]
 
 
-def test_metadata_valid_hash_returns_dict():
-    client = _FakeClient(json_ret={"Name": "photo.jpg", "Hash": _VALID})
+def test_metadata_valid_hash_via_search():
+    # metadata 走 search?hash=（非 /files/{hash}/metadata，後者 405）
+    client = _FakeClient(json_ret={"data": [{"name": "photo.jpg", "Hash": _VALID, "mimeType": "image/jpeg"}]})
     out = _run(tak_files.get_file_metadata(client, _VALID))
-    assert out["Name"] == "photo.jpg"
-    assert client.calls[0][1] == f"/Marti/api/files/{_VALID}/metadata"
+    assert out["name"] == "photo.jpg" and out["mimeType"] == "image/jpeg"
+    assert client.calls[0][1] == "/Marti/api/sync/search"  # 走 search 端點
+    assert client.calls[0][2] == {"hash": _VALID}
 
 
 def test_metadata_non_dict_returns_none():
@@ -172,14 +180,60 @@ def test_extract_helpers_cross_version_keys():
     assert tak_files.extract_hash({"nope": 1}) is None
 
 
-# ── upload 留樁 ───────────────────────────────────────────────────────────
+# ── upload（#506 M3：/Marti/sync/upload，reality-check 定死格式）──────────────
 
 
-def test_upload_is_stub_pending_device():
-    """上傳留樁：明確拋（待真機定 legacy servlet 格式，不猜格式）。"""
-    client = _FakeClient()
-    with pytest.raises(TakFilestoreError, match="待真機定格式"):
-        _run(tak_files.upload_file(client, content=b"x", filename="a.jpg", mimetype="image/jpeg"))
+def test_upload_posts_correct_format_and_returns_hash():
+    client = _FakeClient(post_ret={"Hash": _VALID, "UID": "U1", "MIMEType": "image/png"})
+    out = _run(
+        tak_files.upload_file(
+            client,
+            content=b"\x89PNG",
+            filename="photo.png",
+            mimetype="image/png",
+            creator_uid="ICS-CMD",
+            marker_uid="MARK-1",
+        )
+    )
+    assert tak_files.extract_hash(out) == _VALID
+    method, path, params, ctype, body = client.calls[0]
+    assert method == "post_bytes" and path == "/Marti/sync/upload"
+    assert params == {"name": "photo.png", "creatorUid": "ICS-CMD", "uid": "MARK-1", "keywords": "MARK-1"}
+    assert ctype == "image/png" and body == b"\x89PNG"
+
+
+def test_upload_sanitizes_non_ascii_filename():
+    # server ESAPI 擋非 ASCII/標點 → 檔名清成安全字元
+    client = _FakeClient(post_ret={"Hash": _VALID})
+    _run(
+        tak_files.upload_file(
+            client, content=b"x", filename="現場-A@!.png", mimetype="image/png", creator_uid="ICS-CMD"
+        )
+    )
+    name = client.calls[0][2]["name"]
+    assert all(c.isascii() and (c.isalnum() or c in "._-") for c in name)  # 純 ASCII 安全字元
+
+
+def test_upload_no_marker_omits_uid_keywords():
+    client = _FakeClient(post_ret={"Hash": _VALID})
+    _run(tak_files.upload_file(client, content=b"x", filename="a.png", mimetype="image/png", creator_uid="ICS-CMD"))
+    params = client.calls[0][2]
+    assert "uid" not in params and "keywords" not in params  # 無 marker → 不掛連結鍵
+
+
+def test_upload_no_hash_in_response_raises():
+    client = _FakeClient(post_ret={"UID": "U1"})  # 回應無 Hash
+    with pytest.raises(TakFilestoreError, match="無 Hash"):
+        _run(tak_files.upload_file(client, content=b"x", filename="a.png", mimetype="image/png", creator_uid="ICS-CMD"))
+
+
+def test_filestore_write_enabled_requires_write_cert(monkeypatch):
+    monkeypatch.setattr(tak_files.config, "TAK_MARTI_URL", "https://tak:8443")
+    monkeypatch.setattr(tak_files.config, "TAK_MARTI_WRITE_CERT", "/w.pem")
+    monkeypatch.setattr(tak_files.config, "TAK_MARTI_WRITE_KEY", "/wk.pem")
+    assert tak_files.filestore_write_enabled()
+    monkeypatch.setattr(tak_files.config, "TAK_MARTI_WRITE_CERT", "")
+    assert not tak_files.filestore_write_enabled()
 
 
 # ── filestore_enabled 設定閘 ─────────────────────────────────────────────

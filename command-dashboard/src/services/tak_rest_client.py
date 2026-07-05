@@ -302,6 +302,42 @@ class TakRestClient:
                 await _backoff_sleep(attempt)
         raise TakRestError(f"Marti POST {path} 重試 {self._max_retries} 次耗盡") from last_exc
 
+    async def post_bytes(
+        self, path: str, content: bytes, *, params: dict | None = None, content_type: str = "application/octet-stream"
+    ):
+        """POST path（**raw bytes body** + query params）→ 回應 JSON（或空/非 JSON→None）。
+
+        #506 M3：Enterprise Sync 上傳（`/Marti/sync/upload`，raw 檔案 body + name/creatorUid query）。
+        語意同 post_json 差在 body 是原始 bytes（非 JSON）。raise TakRestError：4xx（不重試）/ 重試耗盡。
+        """
+        last_exc: Exception | None = None
+        url = _join_url(self._base_url, path)
+        headers = {"Content-Type": content_type}
+        for attempt in range(self._max_retries):
+            await self._rate_limit()
+            try:
+                session = await self._ensure_session()
+                async with session.post(url, params=params, data=content, headers=headers) as resp:
+                    status, text = resp.status, await resp.text()
+            except (TimeoutError, aiohttp.ClientError) as exc:
+                last_exc = exc
+                if attempt < self._max_retries - 1:
+                    await _backoff_sleep(attempt)
+                continue
+            if status < 300:
+                if not text.strip():
+                    return None
+                try:
+                    return json.loads(text)
+                except json.JSONDecodeError:
+                    return None  # 2xx 但非 JSON → 視為成功無內容
+            if 400 <= status < 500:
+                raise TakRestError(f"Marti POST {path} HTTP {status}（用戶端錯，不重試）：{text[:200]}")
+            last_exc = TakRestError(f"Marti POST {path} HTTP {status}：{text[:200]}")
+            if attempt < self._max_retries - 1:
+                await _backoff_sleep(attempt)
+        raise TakRestError(f"Marti POST {path} 重試 {self._max_retries} 次耗盡") from last_exc
+
     async def poll(
         self,
         path: str,
