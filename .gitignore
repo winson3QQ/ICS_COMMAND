@@ -88,3 +88,4 @@ server.log.err
 
 # runtime DB 備份（P1-12b 自動備份，不入 git；user-data 邊界）
 deploy/prod/_db_backups/
+deploy/prod/_dbbackup/
