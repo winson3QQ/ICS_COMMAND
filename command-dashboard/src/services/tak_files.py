@@ -90,6 +90,18 @@ def extract_mimetype(meta: dict) -> str | None:
     return _first(meta, _MIME_KEYS)
 
 
+def extract_keywords(meta: dict) -> list[str]:
+    """從 search 結果取 keywords（跨版本 Keywords/keywords；可能是 list 或逗號字串）→ 正規化為 list。
+    現場分享的 mission-package 帶 `missionpackage` keyword（#509-P2 輪詢用它辨識、避開 ICS 自傳的
+    #503 檔——後者 keyword=marker_uid）。"""
+    raw = meta.get("keywords") or meta.get("Keywords") or []
+    if isinstance(raw, str):
+        return [k.strip() for k in raw.split(",") if k.strip()]
+    if isinstance(raw, list | tuple):
+        return [str(k).strip() for k in raw if str(k).strip()]
+    return []
+
+
 def _build_read_client():
     """建讀身分（READ_CERT/KEY）的 Marti REST client。caller 負責 close。"""
     return build_tak_rest_client(

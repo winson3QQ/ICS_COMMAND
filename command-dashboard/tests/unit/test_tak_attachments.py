@@ -138,3 +138,128 @@ def test_handle_fileshare_no_sha_skips(tmp_path, monkeypatch):
         detail={},  # 無 fileshare
     )
     asyncio.run(tak_attachments.handle_fileshare(event))  # 不拋、no-op
+
+
+# ── #509-P2：Enterprise Sync 主動輪詢橋 ────────────────────────────────────────────
+
+
+def _fake_client():
+    class _C:
+        async def close(self):
+            pass
+
+    return _C()
+
+
+def test_poll_bridges_missionpackage_skips_others_and_seen(tmp_path, monkeypatch):
+    """輪詢：只橋帶 `missionpackage` keyword 者（跳過 ICS 自傳 #503 檔）；已見過的 hash 不重橋。"""
+    from core import config
+    from repositories.cop_entity_repo import get_cop_entity
+
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
+    monkeypatch.setattr(tak_files, "_build_read_client", _fake_client)
+    tak_attachments._seen_hashes.clear()
+
+    async def _fake_search(client, **kw):
+        return [
+            {"Hash": "c" * 64, "Keywords": ["missionpackage"], "Name": "field.zip"},
+            {"Hash": "d" * 64, "Keywords": ["MK-99"], "Name": "ics-upload.jpg"},  # #503 自傳 → 跳過
+        ]
+
+    async def _fake_dl(client, h, **kw):
+        return _mk_mission_package() if h == "c" * 64 else None
+
+    monkeypatch.setattr(tak_files, "search_files", _fake_search)
+    monkeypatch.setattr(tak_files, "download_content", _fake_dl)
+
+    n = asyncio.run(tak_attachments.poll_filestore_once())
+    assert n == 1  # 只橋 missionpackage 那筆
+    assert get_cop_entity("IMG-MARKER-1") is not None
+    assert len(tak_attachments.list_local_attachments("IMG-MARKER-1")) == 1
+
+    # 第二輪：兩個 hash 都已 seen → 不重橋、不重複附件
+    n2 = asyncio.run(tak_attachments.poll_filestore_once())
+    assert n2 == 0
+    assert len(tak_attachments.list_local_attachments("IMG-MARKER-1")) == 1
+
+
+def test_bridge_attaches_even_when_package_cot_older(tmp_path, monkeypatch):
+    """時序差異：live marker 較新 → ingest 回 None，但 marker 仍在 → 照片照樣掛（poll 關鍵韌性）。"""
+    from core import config
+
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
+    # 先 ingest 一個較「新」的同 uid marker（package 內 CoT time=2026-06-05，故此為更新）
+    newer = CoTEventIn(
+        uid="IMG-MARKER-1",
+        type="a-u-G",
+        time="2027-01-01T00:00:00Z",
+        start="2027-01-01T00:00:00Z",
+        stale="2099-01-01T00:00:00Z",
+        how="m-g",
+        lat=24.7,
+        lon=121.0,
+    )
+    asyncio.run(cop_service.ingest_cot_event(newer))
+
+    async def _fake_dl(client, h, **kw):
+        return _mk_mission_package()
+
+    monkeypatch.setattr(tak_files, "download_content", _fake_dl)
+    res = asyncio.run(tak_attachments._bridge_package_by_hash(_fake_client(), "e" * 64))
+    assert res == "IMG-MARKER-1"  # ingest no-op（舊）但 marker 存在 → 仍回 marker
+    assert len(tak_attachments.list_local_attachments("IMG-MARKER-1")) == 1
+
+
+def test_poll_transient_download_error_not_marked_seen(tmp_path, monkeypatch):
+    """下載層錯（網路/HTTP）→ 不標 seen，下一輪會重試（現場照片不因暫斷永久漏）。"""
+    from core import config
+
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
+    monkeypatch.setattr(tak_files, "_build_read_client", _fake_client)
+    tak_attachments._seen_hashes.clear()
+
+    async def _fake_search(client, **kw):
+        return [{"Hash": "c" * 64, "Keywords": ["missionpackage"], "Name": "field.zip"}]
+
+    calls = {"n": 0}
+
+    async def _flaky_dl(client, h, **kw):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("transient network")
+        return _mk_mission_package()
+
+    monkeypatch.setattr(tak_files, "search_files", _fake_search)
+    monkeypatch.setattr(tak_files, "download_content", _flaky_dl)
+
+    assert asyncio.run(tak_attachments.poll_filestore_once()) == 0  # 首輪下載炸 → 未橋、未標 seen
+    assert ("c" * 64) not in tak_attachments._seen_hashes
+    assert asyncio.run(tak_attachments.poll_filestore_once()) == 1  # 次輪重試成功
+
+
+def test_handle_fileshare_transient_download_not_marked_seen(tmp_path, monkeypatch):
+    """announce 路徑下載暫斷 → 不標 seen，讓主動輪詢仍能後備（review S1 回歸）。"""
+    from core import config
+
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
+    monkeypatch.setattr(tak_files, "filestore_enabled", lambda: True)
+    monkeypatch.setattr(tak_files, "_build_read_client", _fake_client)
+    tak_attachments._seen_hashes.clear()
+
+    async def _boom_dl(client, h, **kw):
+        raise RuntimeError("transient")
+
+    monkeypatch.setattr(tak_files, "download_content", _boom_dl)
+    event = CoTEventIn(
+        uid="FS-3",
+        type="b-f-t-r",
+        time="2026-06-05T04:00:00Z",
+        start="2026-06-05T04:00:00Z",
+        stale="2099-01-01T00:00:00Z",
+        how="h-e",
+        lat=0.0,
+        lon=0.0,
+        detail={"fileshare": {"sha256": "c" * 64, "filename": "x.zip"}},
+    )
+    asyncio.run(tak_attachments.handle_fileshare(event))  # 不拋
+    assert ("c" * 64) not in tak_attachments._seen_hashes  # 暫斷未標 seen → 輪詢仍會撿

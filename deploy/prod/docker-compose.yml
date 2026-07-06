@@ -113,6 +113,16 @@ services:
       - TAK_DB_NAME=${TAK_DB_NAME:-cot}
       - TAK_DB_USER=${TAK_DB_USER:-martiuser}
       - TAK_DB_PASSWORD=${TAK_DB_PASSWORD:-}     # ⚠ 汰 dev takdevpass123（threat_model §8.4 at-rest）
+      # #507 P4 presence beacon：ICS 以固定指揮部 self-marker 出現在現場 Contacts（無假遙測 #214）。
+      - TAK_PRESENCE_ENABLED=${TAK_PRESENCE_ENABLED:-false}
+      - TAK_PRESENCE_CALLSIGN=${TAK_PRESENCE_CALLSIGN:-ICS-Command}
+      - TAK_PRESENCE_LAT=${TAK_PRESENCE_LAT:-0}    # 指揮部固定座標（非 GPS）
+      - TAK_PRESENCE_LON=${TAK_PRESENCE_LON:-0}
+      - TAK_PRESENCE_INTERVAL_S=${TAK_PRESENCE_INTERVAL_S:-60}
+      # #509-P2 Enterprise Sync 主動輪詢橋：週期撈 missionpackage → 現場照片自動上 COP（補 ATAK 不廣播
+      # b-f-t-r 之漏；iTAK/ATAK 一視同仁）。預設 OFF。
+      - TAK_FILESTORE_POLL_ENABLED=${TAK_FILESTORE_POLL_ENABLED:-false}
+      - TAK_FILESTORE_POLL_INTERVAL_S=${TAK_FILESTORE_POLL_INTERVAL_S:-60}
       # #434 容器化 WireGuard：ICS 經共享卷佇列驅動 ics-wg 加/刪 peer + 發證連帶配 VPN。
       # 空 WG_QUEUE_DIR → 停用（發證仍出 TAK 證、不配 WG，零影響）。啟用時設 /wg-queue + 跑 --profile wg。
       - WG_QUEUE_DIR=${WG_QUEUE_DIR:-}                  # 與 ics-wg 共享佇列；空=停用

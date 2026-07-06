@@ -257,7 +257,11 @@ COOKIE_SECURE_OVERRIDE: bool | None = (
 #               #509 縫C 現場照片附件模型——`b-f-t-r` fileshare → 抓 mission-package zip（zip-slip/magic/
 #               size 縱深防護）→ ingest 內含 b-i-x-i 影像 marker 上圖 + 抽照片存本地（檔名=sha256）掛
 #               marker，經既有 #503 面板顯示（faction 守門於 marker 可見度）。現場分享/廣播照片自動上 COP。
-APP_VERSION = "2.39.0"
+# MINOR 2.40.0：#509-P2 Enterprise Sync 主動輪詢橋——週期列舉 file store 的 missionpackage → 對未見過的
+#               zip 走 #509 同一套（抓→解→ingest marker→掛照片）。補被動 `b-f-t-r` 之漏：現場照片都上
+#               Enterprise Sync，但通告定址因 client 而異（iTAK 廣播到得了 ICS、ATAK 不廣播 → 等不到），
+#               主動輪詢對 iTAK/ATAK 一視同仁。dogfood 定讞（真機直查 Enterprise Sync resource 表）。
+APP_VERSION = "2.40.0"
 
 # CMD_VERSION：前端 UI 功能版本（不同於後端 SemVer APP_VERSION；規則見 CLAUDE.md 版號規則）
 # 兩軌版本命名，不可混用。由 /api/version 提供給前端，是唯一 source-of-truth；release 時更新此值。
@@ -524,6 +528,13 @@ TAK_PRESENCE_INTERVAL_S: int = int(os.getenv("TAK_PRESENCE_INTERVAL_S", "60"))  
 TAK_PRESENCE_CALLSIGN: str = os.getenv("TAK_PRESENCE_CALLSIGN", "ICS-Command")  # Contacts 顯示名
 TAK_PRESENCE_LAT: float = float(os.getenv("TAK_PRESENCE_LAT", "0") or "0")  # 指揮部固定座標（非 GPS）
 TAK_PRESENCE_LON: float = float(os.getenv("TAK_PRESENCE_LON", "0") or "0")
+
+# #509-P2 Enterprise Sync 主動輪詢橋：週期列舉 file store 的 missionpackage → 對未見過的 zip 走
+# handle_fileshare 同一套（抓→解→ingest marker→掛照片）。補 #509 被動路徑之不足——現場照片會上
+# Enterprise Sync，但 `b-f-t-r` 通告的定址因 client 而異（iTAK 廣播到得了 ICS、ATAK 不廣播），只靠
+# 等通告會漏；主動輪詢對 iTAK/ATAK 一視同仁。預設 OFF（opt-in，同 presence/mission）。
+TAK_FILESTORE_POLL_ENABLED: bool = os.getenv("TAK_FILESTORE_POLL_ENABLED", "false").lower() == "true"
+TAK_FILESTORE_POLL_INTERVAL_S: int = int(os.getenv("TAK_FILESTORE_POLL_INTERVAL_S", "60"))  # 輪詢週期（秒）
 
 # ── TAK Marti 服務 cert：讀/寫身分分離（#177 L1；cert-role 見 #176）──────────────
 # 兩張 step-ca 簽的 Marti REST cert，由 deploy/tak-server/pki/issue-tak-certs.sh 產出。
