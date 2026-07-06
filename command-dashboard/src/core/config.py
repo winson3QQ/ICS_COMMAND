@@ -500,6 +500,16 @@ TAK_MISSION_FEEDS: str = os.getenv("TAK_MISSION_FEEDS", "")
 # 不像 resync 只 on-connect。預設 60s；≤0 → 關週期（只留 on-connect 即時同步）。
 TAK_MISSION_POLL_INTERVAL_S: float = float(os.getenv("TAK_MISSION_POLL_INTERVAL_S", "60"))
 
+# #507 Phase4：ICS 自報 SA presence（下行定址）——週期送自我 SA CoT，讓 ICS 現身現場 ATAK/iTAK
+# 的 Contacts，供派工/指定通訊/指定傳檔。預設 **OFF**（opt-in：會對外廣播 ICS 節點，由 deployment
+# 明確開啟）。誠實原則（#214，見 tak_downlink.build_command_cot doc）：只送固定指揮部座標 + contact
+# endpoint + 隊伍色，**不送偽造遙測**（takv/battery/track/precisionlocation-GPS——ICS 非 GPS 裝置）。
+TAK_PRESENCE_ENABLED: bool = os.getenv("TAK_PRESENCE_ENABLED", "false").lower() == "true"
+TAK_PRESENCE_INTERVAL_S: int = int(os.getenv("TAK_PRESENCE_INTERVAL_S", "60"))  # SA 週期（秒）；stale=3×
+TAK_PRESENCE_CALLSIGN: str = os.getenv("TAK_PRESENCE_CALLSIGN", "ICS-Command")  # Contacts 顯示名
+TAK_PRESENCE_LAT: float = float(os.getenv("TAK_PRESENCE_LAT", "0") or "0")  # 指揮部固定座標（非 GPS）
+TAK_PRESENCE_LON: float = float(os.getenv("TAK_PRESENCE_LON", "0") or "0")
+
 # ── TAK Marti 服務 cert：讀/寫身分分離（#177 L1；cert-role 見 #176）──────────────
 # 兩張 step-ca 簽的 Marti REST cert，由 deploy/tak-server/pki/issue-tak-certs.sh 產出。
 #   讀 cert → P2-14 DataSync / resync（/cot/sa、/cot、/changes）

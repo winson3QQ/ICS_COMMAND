@@ -25,10 +25,10 @@ from repositories import config_repo
 log = structlog.get_logger()
 
 _CONFIG_KEY = "tak.connection_enabled"
-# (subscribe_task, mission_poll_task|None, stop_event)。#506 M1：mission 背景 poll task 與訂閱
-# task 共用同一 stop_event、同生共死（start 一起建、stop 一起收）。poll task 未配置 mission
-# feed 時為 None。is_running 仍以 subscribe task（[0]）為準。
-_handle: tuple[asyncio.Task, asyncio.Task | None, asyncio.Event] | None = None
+# (subscribe_task, mission_poll_task|None, presence_beacon_task|None, stop_event)。#506 M1 / #507 P4：
+# mission poll 與 presence beacon 背景 task 與訂閱 task 共用同一 stop_event、同生共死（start 一起建、
+# stop 一起收）。未配置 mission feed / presence OFF 時對應槽為 None。is_running 仍以 subscribe task（[0]）為準。
+_handle: tuple[asyncio.Task, asyncio.Task | None, asyncio.Task | None, asyncio.Event] | None = None
 _lock = asyncio.Lock()
 # #222：on_connect resync/對帳互斥——flap（server 反覆關開）時上一輪未跑完就跳過，避免疊跑。
 _on_connect_lock = asyncio.Lock()
@@ -138,7 +138,18 @@ async def start() -> bool:
                 log.info("[tak] mission 背景 poll task 啟動：%s", tak_missions.configured_mission_names())
         except Exception:  # noqa: BLE001 — mission poll 為附加能力，啟動失敗不擋訂閱
             log.warning("[tak] mission poll task 啟動失敗", exc_info=True)
-        _handle = (task, poll_task, stop_event)
+        # #507 P4：presence beacon（配了 TAK_PRESENCE_ENABLED 才起；共用 stop_event）。
+        # 啟動失敗不擋訂閱（presence 為附加下行能力，失敗只 log）。
+        beacon_task = None
+        try:
+            from services import tak_downlink
+
+            if tak_downlink.presence_enabled():
+                beacon_task = asyncio.create_task(tak_downlink.presence_beacon_loop(stop_event))
+                log.info("[tak] presence beacon task 啟動：callsign=%s", config.TAK_PRESENCE_CALLSIGN)
+        except Exception:  # noqa: BLE001 — presence 為附加能力，啟動失敗不擋訂閱
+            log.warning("[tak] presence beacon task 啟動失敗", exc_info=True)
+        _handle = (task, poll_task, beacon_task, stop_event)
         log.info("[tak] CoT 訂閱背景 task 啟動：%s", config.TAK_COT_URL)
         return True
 
@@ -150,9 +161,9 @@ async def stop() -> bool:
     async with _lock:
         if _handle is None:
             return False
-        task, poll_task, stop_event = _handle
+        task, poll_task, beacon_task, stop_event = _handle
         _handle = None
-        stop_event.set()  # 軟停：停止重連 + 喚醒 poll loop 的 wait
+        stop_event.set()  # 軟停：停止重連 + 喚醒 poll/beacon loop 的 wait
         task.cancel()  # 硬停：中斷卡在 readcot 的 await
         with suppress(asyncio.CancelledError):
             await task
@@ -160,6 +171,10 @@ async def stop() -> bool:
             poll_task.cancel()
             with suppress(asyncio.CancelledError):
                 await poll_task
+        if beacon_task is not None:  # #507 P4：presence beacon task 同收
+            beacon_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await beacon_task
         log.info("[tak] CoT 訂閱背景 task 已停止")
         return True
 

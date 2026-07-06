@@ -386,3 +386,85 @@ def test_entity_to_cot_node_unknown_type_falls_back():
         "attributes": {"kind": "zone", "node_type": "mystery"},
     }
     assert _parse_event(tak_downlink.entity_to_cot(ent, now=_NOW)).get("type") == "a-f-G-I"
+
+
+# ── #507 Phase4：presence beacon（ICS 自報 SA，下行定址）──────────────────────────
+
+
+def test_build_presence_cot_structure():
+    cot = tak_downlink.build_presence_cot(callsign="ICS-Command", lat=24.8, lon=121.0, now=_NOW)
+    e = _parse(cot)
+    assert e.get("uid") == "ICS-CMD"  # 站台身分
+    assert e.get("type") == "a-f-G-U-C"  # 友軍地面單位 SA
+    assert e.get("how") == "m-g"  # machine-generated（誠實非 human-input）
+    pt = e.find("point")
+    assert float(pt.get("lat")) == 24.8 and float(pt.get("lon")) == 121.0
+    c = e.find("detail/contact")
+    assert c.get("callsign") == "ICS-Command"
+    assert c.get("endpoint") == "*:-1:stcp"  # 經 server 連我（定向走 server 中介、非 P2P）
+    assert e.find("detail/__group") is not None
+    assert "source: ICS" in e.find("detail/remarks").text
+
+
+def test_build_presence_cot_honesty_no_fake_telemetry():
+    """#214 誠實原則：ICS 非 GPS 裝置，不送偽造遙測（takv/battery/track/precisionlocation）。"""
+    cot = tak_downlink.build_presence_cot(callsign="ICS-Command", lat=0, lon=0, now=_NOW)
+    e = _parse(cot)
+    assert e.find("detail/takv") is None
+    assert e.find("detail/status") is None
+    assert e.find("detail/track") is None
+    assert e.find("detail/precisionlocation") is None
+
+
+def test_build_presence_cot_stale_from_seconds():
+    cot = tak_downlink.build_presence_cot(callsign="X", lat=0, lon=0, stale_seconds=180, now=_NOW)
+    e = _parse(cot)
+    assert e.get("time") == "2026-06-09T05:00:00.000Z"
+    assert e.get("stale") == "2026-06-09T05:03:00.000Z"  # +180s
+
+
+def test_build_presence_cot_escapes_callsign():
+    # 惡意 callsign 經 quoteattr 跳脫 → 仍能 parse（不破 XML）。
+    cot = tak_downlink.build_presence_cot(callsign='"><evil', lat=0, lon=0, now=_NOW)
+    assert _parse(cot).find("detail/contact").get("callsign") == '"><evil'
+
+
+def test_presence_enabled_reflects_config(monkeypatch):
+    monkeypatch.setattr(config, "TAK_PRESENCE_ENABLED", False)
+    assert tak_downlink.presence_enabled() is False
+    monkeypatch.setattr(config, "TAK_PRESENCE_ENABLED", True)
+    assert tak_downlink.presence_enabled() is True
+
+
+def test_presence_beacon_loop_sends_then_stops(monkeypatch):
+    sent: list = []
+    stop = asyncio.Event()
+
+    async def fake_send(cot):
+        sent.append(cot)
+        stop.set()  # 送一次後停 → 下一輪頂端退出
+
+    monkeypatch.setattr(tak_downlink, "send_cot", fake_send)
+    monkeypatch.setattr(config, "TAK_PRESENCE_INTERVAL_S", 10)
+    monkeypatch.setattr(config, "TAK_PRESENCE_CALLSIGN", "ICS-Command")
+    monkeypatch.setattr(config, "TAK_PRESENCE_LAT", 24.8)
+    monkeypatch.setattr(config, "TAK_PRESENCE_LON", 121.0)
+    asyncio.run(tak_downlink.presence_beacon_loop(stop))
+    assert len(sent) == 1
+    assert "a-f-G-U-C" in sent[0] and "ICS-Command" in sent[0]
+
+
+def test_presence_beacon_loop_best_effort_on_send_failure(monkeypatch):
+    """單次送失敗只 log、迴圈不炸、不外拋（best-effort）。"""
+    calls: list = []
+    stop = asyncio.Event()
+
+    async def failing_send(cot):
+        calls.append(1)
+        stop.set()  # 設停（下一輪頂端退出）
+        raise RuntimeError("boom")  # 但本次拋錯
+
+    monkeypatch.setattr(tak_downlink, "send_cot", failing_send)
+    monkeypatch.setattr(config, "TAK_PRESENCE_INTERVAL_S", 10)
+    asyncio.run(tak_downlink.presence_beacon_loop(stop))  # 不得外拋
+    assert len(calls) == 1
