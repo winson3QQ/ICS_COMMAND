@@ -5,8 +5,8 @@ ICS_DMAS 的 memory（行為規則、架構決策、HTTPS 決策、Remote SoT、
 
 ## 本 repo 特有
 
-- [tak-filestore-image-uplink](tak-filestore-image-uplink.md) — TAK file store 圖片上下傳(#503)：讀側契約(search 回 **data 鍵**非 results)/上傳 legacy servlet 待真機/faction 綁 marker 可見度(ICS READ cert 全見)；**真機 dogfood 修正：ATAK 附件走 Mission 非 Enterprise Sync、8443 未轉發是根因(已修)**→照片連結交棒 #506
-- [tak-mission-datasync-plane](tak-mission-datasync-plane.md) — **TAK 第三資料平面 Mission/Data Sync：ICS 零消費(#506)**；三平面分工(stream/enterprise-sync/mission)；ATAK 附件走此；M0-M4 建置計畫(讀取地基→消費進 COP→照片 pivot→上傳→可靠刪除)；= TAK 版 COP「共享真實」
+- [tak-filestore-image-uplink](tak-filestore-image-uplink.md) — TAK file store 圖片上下傳(#503)：讀側契約(search 回 **data 鍵**非 results)/faction 綁 marker；**[2026-07-06 定讞·#507 已上 prod] 現場照片確實在 Enterprise Sync(直查 DB)，ICS 抓 404 真因=group 隔離(read cert 不在 blue)非 P2P/非 mission——推翻 07-05 判斷。#507「兩面一軸」修：read/write 補進三群(backend-v2.38.1)，實測抓現場照 200；照片自動上 COP 還差 #508/#509。presence beacon 交付(預設 OFF)**
+- [tak-mission-datasync-plane](tak-mission-datasync-plane.md) — **TAK 第三資料平面 Mission/Data Sync：ICS 零消費(#506)**；三平面分工(stream/enterprise-sync/mission)；M0-M4 建置計畫；**[2026-07-06 修正] M2「讀 mission 拿照片」前提作廢——照片走 fileshare→Enterprise Sync 非 mission(#507 group 權限修已上 prod)；mission 平面本身仍有值(作戰圖/協作/AAR)但非照片路，#506 降為非照片消費**
 
 - [precommit-ruff-config-cwd](precommit-ruff-config-cwd.md) — pre-commit cd 進 command-dashboard/，root-level 腳本須 line-length=120（ruff 0.11.7）否則 commit 中止（stash 衝突回滾）
 - [tak-cert-access-control](tak-cert-access-control.md) — TAK 存取控制兩層解：源碼定讞 TAK 對 CA 信任證**永不拒絕**(無群落 __ANON__)→CoreConfig 白名單擋連死路。**層1 group 隔離**(producer 不掛 __ANON__；#404 已 merge：偵測 in_anon/anon_users/online_anon + 一鍵 strip + admin REST-only 豁免；backend-v2.20.0/frontend-v1.16.0)。**層2 撤銷**(#318：**CRL 只擋:8443 不擋:8089 串流**→推翻 issue 規劃；**DB 撤銷=INSERT certificate(hash+revocation_date)+x509checkRevocation 唯一覆蓋:8089+live 免重啟**=定案，代價 ICS 直寫 TAK postgres)。刪 managed user≠擋(仍匿名連)、auth=file 打死憑證 client、ics-tak-admin 恆 __ANON__ 但 REST-only 良性

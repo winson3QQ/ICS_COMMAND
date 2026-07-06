@@ -17,6 +17,8 @@ metadata:
 
 **🔑 為何非 Mission 不可（2026-07-05 真機實證）**：ATAK 分享 marker 照片**走 Data Sync/Mission，非單純 Enterprise Sync 上傳**——無 mission 則附件留手機（file store 恆 0）。故 #503「按 uid 搜 Enterprise Sync」錯；**正解＝讀 mission contents（marker↔附件 hash 明寫）**。詳見 [[tak-filestore-image-uplink]]。
 
+**🧱🧱 [2026-07-06 二輪 dogfood 推翻上一段——#507 已上 prod]**：上面「照片非 Mission 不可／file store 恆 0」＝**誤判**。**直查 prod `cot.resource` 表**證實現場照片**確實在 Enterprise Sync**（atak4 17 檔/itak3 10 檔），走 fileshare `b-f-t-r` → `/Marti/sync/content?hash=`。當初「file store 恆 0」的真因＝**ICS `ics-marti-read` 不在 `blue` group（不在 UserAuthenticationFile）只讀 public → 看不到現場檔**，非「照片沒上 server」。→ **M2「讀 mission contents 拿照片」前提垮掉；照片正解＝group 權限修（#507 已上 prod：backend-v2.38.1，read cert 補進三群、實測抓現場照 200）+ 後續 #508/#509 附件顯示線**。**mission 平面本身仍有值**（作戰圖/管制/協作/AAR），但**不是照片路**——#506 降為「非照片的 mission 消費」；M2 作廢。詳見 [[tak-filestore-image-uplink]]。
+
 **建置計畫 M0-M4（先建不吃真機、server 端自驗的地基；mission 讀走內網 takserver:8443 已通，不依賴裝置端 WG 8443）**：
 - **M0** Mission 讀取地基 `services/tak_missions.py`（架 tak_rest_client）：GET /missions、/{name}、/{name}/contents、/changes。驗：server PUT 測試 mission → 讀回。不吃真機。
 - **M1** 訂閱 + 消費進 COP：poll contents → 走既有 `cop_service.ingest_cot_event`；抽附件 hash 掛 entity（可靠連結）。不吃真機。
