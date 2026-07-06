@@ -249,7 +249,11 @@ COOKIE_SECURE_OVERRIDE: bool | None = (
 #               registrar 多群 register + 編排 reconcile/apply（開機 best-effort 警示 + sysadmin 一鍵對帳
 #               端點 + 消費半身面板）+ presence beacon（下行定址，預設 OFF opt-in）。修「ics-marti-read
 #               不在任何 TAK 群 → 只讀 public → 現場 blue 群照片 404」根因（reality-check 直查 DB 定讞）。
-APP_VERSION = "2.38.0"
+# PATCH 2.38.1：#507 hotfix——`tak_revocation._cert_sha256_fingerprint` 對 fullchain（leaf+intermediate）
+#               只切第一張證再解（原用 ssl.PEM_cert_to_DER_cert 對整檔多張證 base64 併解、長度非 4 倍數
+#               即拋 → None）。修 prod 一鍵對帳 ics-marti-write「no-fingerprint」註冊失敗（read 僥倖過關、
+#               write 中招）；連帶修 infra_fingerprints 撤銷保護一直漏 write 的潛在 bug。
+APP_VERSION = "2.38.1"
 
 # CMD_VERSION：前端 UI 功能版本（不同於後端 SemVer APP_VERSION；規則見 CLAUDE.md 版號規則）
 # 兩軌版本命名，不可混用。由 /api/version 提供給前端，是唯一 source-of-truth；release 時更新此值。

@@ -33,15 +33,27 @@ def is_configured() -> bool:
 
 def _cert_sha256_fingerprint(pem_path: str) -> str | None:
     """算 PEM 證 leaf 的 SHA-256 fingerprint（冒號分隔大寫）= `openssl -fingerprint -sha256` = TAK
-    `certificate.hash` 鍵。純 stdlib（`ssl.PEM_cert_to_DER_cert` 取首證 DER + `hashlib`），讀不到回 None。"""
+    `certificate.hash` 鍵。純 stdlib，讀不到回 None。
+
+    **只切出第一張證（leaf）再解**：檔案是 fullchain（leaf + intermediate）時，`ssl.PEM_cert_to_DER_cert`
+    對整檔會把多張 base64 併成一塊解 → 長度非 4 倍數即 `Invalid base64` 拋（#507 dogfood：ics-marti-write
+    fullchain 中招回 None、ics-marti-read 僥倖過關）。先抓第一 BEGIN..END 區塊 → 對單張證解就穩。"""
     import hashlib
     import ssl
 
+    _BEGIN = "-----BEGIN CERTIFICATE-----"
+    _END = "-----END CERTIFICATE-----"
     try:
         with open(pem_path) as f:
-            der = ssl.PEM_cert_to_DER_cert(f.read())
+            data = f.read()
+        i = data.find(_BEGIN)
+        j = data.find(_END, i)
+        if i < 0 or j < 0:
+            return None
+        leaf_pem = data[i : j + len(_END)] + "\n"  # 只留 leaf 那一張，去掉後續 intermediate
+        der = ssl.PEM_cert_to_DER_cert(leaf_pem)
         h = hashlib.sha256(der).hexdigest().upper()
-        return ":".join(h[i : i + 2] for i in range(0, len(h), 2))
+        return ":".join(h[k : k + 2] for k in range(0, len(h), 2))
     except Exception:
         return None
 

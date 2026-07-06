@@ -81,3 +81,64 @@ def test_best_effort_on_connect_error(_cfg, monkeypatch):
     monkeypatch.setattr(tak_revocation, "_connect", _boom)
     out = tak_revocation.revoke_in_tak("AA:BB")
     assert out["ok"] is False and out["reason"].startswith("tak-db-error:")  # 連不上也不 raise
+
+
+# ── #507 hotfix：_cert_sha256_fingerprint 對 fullchain 只取 leaf ─────────────────
+
+
+def _mk_self_signed(cn):
+    """產一張自簽 EC 證（測試用）。回 cryptography Certificate。"""
+    import datetime
+
+    from cryptography import x509
+    from cryptography.hazmat.primitives import hashes
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from cryptography.x509.oid import NameOID
+
+    key = ec.generate_private_key(ec.SECP256R1())
+    name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, cn)])
+    base = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
+    return (
+        x509.CertificateBuilder()
+        .subject_name(name)
+        .issuer_name(name)
+        .public_key(key.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(base)
+        .not_valid_after(base + datetime.timedelta(days=365))
+        .sign(key, hashes.SHA256())
+    )
+
+
+def test_cert_sha256_fingerprint_fullchain_returns_leaf(tmp_path):
+    """#507 迴歸：fullchain（leaf + intermediate）→ 回 **leaf** 的 fp（非 None、非 intermediate）。
+    修前 `ssl.PEM_cert_to_DER_cert` 對整檔多張證會 base64 併解、長度非 4 倍數即拋 → None
+    （真機 ics-marti-write fullchain 中招）。修後只切第一 BEGIN..END 區塊解。"""
+    from cryptography.hazmat.primitives import hashes, serialization
+
+    leaf = _mk_self_signed("leaf")
+    inter = _mk_self_signed("intermediate")
+    leaf_pem = leaf.public_bytes(serialization.Encoding.PEM).decode()
+    inter_pem = inter.public_bytes(serialization.Encoding.PEM).decode()
+    p = tmp_path / "fullchain.pem"
+    p.write_text(leaf_pem + inter_pem)  # fullchain：leaf 先、intermediate 後
+
+    expected = ":".join(f"{b:02X}" for b in leaf.fingerprint(hashes.SHA256()))
+    got = tak_revocation._cert_sha256_fingerprint(str(p))
+    assert got is not None, "fullchain 不該回 None（修前的 bug）"
+    assert got == expected, "須回 leaf 的 fp（非 intermediate、非併解垃圾）"
+
+
+def test_cert_sha256_fingerprint_single_cert(tmp_path):
+    """單張證（非 fullchain）仍正確。"""
+    from cryptography.hazmat.primitives import hashes, serialization
+
+    cert = _mk_self_signed("solo")
+    p = tmp_path / "leaf.pem"
+    p.write_text(cert.public_bytes(serialization.Encoding.PEM).decode())
+    expected = ":".join(f"{b:02X}" for b in cert.fingerprint(hashes.SHA256()))
+    assert tak_revocation._cert_sha256_fingerprint(str(p)) == expected
+
+
+def test_cert_sha256_fingerprint_missing_file():
+    assert tak_revocation._cert_sha256_fingerprint("/no/such/cert.pem") is None
