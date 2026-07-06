@@ -126,3 +126,27 @@ class TestCheckDrift:
         rows = tak_identity.check_drift([_row("ics-cot", None)])
         # 其餘三張未列 → read/write=unregistered（算漂移），但單看 unknown 那張不算
         assert _find(rows, "ics-cot")["status"] == "unknown"
+
+
+class TestParallelSotConsistency:
+    def test_infra_list_matches_registrar_bash_denylist(self):
+        """兩份平行 infra SoT 須一致：Python ICS_INFRA_IDENTITY vs registrar.sh is_infra_user 的
+        deregister denylist。防未來只改一邊漂移（review 建議；bash 改了 Python 不會 CI fail 的破口）。"""
+        import re
+        from pathlib import Path
+
+        # test 在 <root>/command-dashboard/tests/unit/ → 上溯 3 層到 repo root。
+        sh = Path(__file__).resolve().parents[3] / "deploy" / "tak-server" / "registrar" / "registrar.sh"
+        if not sh.exists():
+            import pytest
+
+            pytest.skip(f"registrar.sh 不在預期路徑（部署佈局差異）：{sh}")
+        text = sh.read_text(encoding="utf-8")
+        # 只鎖 is_infra_user 的 case（非 valid_group 的 case）：非貪婪從函式名走到其 case "$1" in ...)
+        m = re.search(r'is_infra_user\(\)\s*\{.*?case\s+"\$1"\s+in\s+([^)]+)\)', text, re.S)
+        assert m, "無法從 registrar.sh 解析 is_infra_user case（格式可能已變，需同步本測試）"
+        bash_users = {u.strip() for u in m.group(1).split("|") if u.strip()}
+        assert bash_users == set(tak_identity.infra_callsigns()), (
+            f"registrar.sh is_infra_user {sorted(bash_users)} "
+            f"≠ tak_identity.infra_callsigns() {sorted(tak_identity.infra_callsigns())}——兩份 SoT 漂移"
+        )

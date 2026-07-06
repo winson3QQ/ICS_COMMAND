@@ -1292,10 +1292,13 @@ def reconcile_tak_device_certs(request: Request):
         m = _ics_match(cs, fp)
         # #404：per-user 群清單 + in_anon 旗標。groups=None（舊式 registrar 未回群）→ False（不誤判）；
         # 含 __ANON__ 或空群（runtime 落 __ANON__）→ True（producer 與任何 CA 證同頻＝隔離破口）。
-        # anon_exempt＝在 __ANON__ 但屬 REST-only infra（admin，不 stream）→ 良性、不算破口、不給 strip 鈕。
+        # anon_exempt＝在 __ANON__ 但屬 REST-only infra **且宣告不需任何 faction 群**（＝admin）→ 良性、
+        # 不算破口、不給 strip 鈕。#507：ics-marti-read/write 雖也 REST-only，但**宣告全群**（落 __ANON__＝
+        # 讀不到 blue 現場檔的真漂移，正是 #507 要修的）→ 不豁免、須在 anon_users 提醒補群，否則面板會把
+        # 該修的當良性藏起來（與 tak_identity.check_drift 判 missing 矛盾）。
         groups = u.get("groups")
         in_anon = groups is not None and ("__ANON__" in groups or len(groups) == 0)
-        anon_exempt = in_anon and _is_rest_only_infra(cs)
+        anon_exempt = in_anon and _is_rest_only_infra(cs) and not tak_identity.required_groups(cs)
         annotated.append(
             {
                 "callsign": cs,
