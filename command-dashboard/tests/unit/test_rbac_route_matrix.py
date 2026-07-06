@@ -80,6 +80,7 @@ SYSADMIN POST   /api/admin/tak/revocations/backfill
 SYSADMIN POST   /api/admin/tak/revocations/by-fingerprint
 SYSADMIN POST   /api/admin/tak/users/{callsign}/deregister
 SYSADMIN POST   /api/admin/tak/users/{callsign}/strip-anon
+SYSADMIN POST   /api/admin/tak/infra-groups/reconcile
 SYSADMIN GET    /api/admin/user-data-backups
 SYSADMIN POST   /api/admin/user-data-backups
 SYSADMIN GET    /api/admin/user-data-backups/{name}/download
