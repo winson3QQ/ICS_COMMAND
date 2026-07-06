@@ -61,10 +61,13 @@ log() { echo "[registrar $(date -u +%FT%TZ)] $*"; }
 
 valid_group() { case "$1" in neutral | red | blue) return 0 ;; *) return 1 ;; esac; }
 
-# #398 review：infra cert-user 防護線——ICS 自身連線(ics-cot)/管理(ics-tak-admin) 證**不可**被
-# deregister（usermod -D）。即使上游 dashboard 已擋，本容器跑 root usermod = 敏感，且佇列 0777
-# 共享、被攻陷的 web tier 可直寫請求 → 此處獨立 denylist 防「刪掉 ICS 自己的 TAK 身分」blast radius。
-is_infra_user() { case "$1" in ics-cot | ics-tak-admin) return 0 ;; *) return 1 ;; esac; }
+# #398 review / #507：infra cert-user 防護線——ICS 自身連線(ics-cot)/讀寫(ics-marti-read/write)/
+# 管理(ics-tak-admin) 證**不可**被 deregister（usermod -D）。即使上游 dashboard 已擋，本容器跑 root
+# usermod = 敏感，且佇列 0777 共享、被攻陷的 web tier 可直寫請求 → 此處獨立 denylist 防「刪掉 ICS 自己的
+# TAK 身分」blast radius。**須與 services/tak_identity.ICS_INFRA_IDENTITY 保持一致**（Python SoT 平行）。
+is_infra_user() {
+  case "$1" in ics-cot | ics-marti-read | ics-marti-write | ics-tak-admin) return 0 ;; *) return 1 ;; esac
+}
 
 # #433：探測共享 netns 是否還活著＝本 netns 看不看得到 takserver 的 PROBE_PORT（stale netns 看不到任何埠）。
 probe_ipc() { { netstat -tln 2>/dev/null || ss -tln 2>/dev/null; } | grep -q ":${PROBE_PORT} "; }
@@ -88,21 +91,30 @@ while true; do
     callsign="${L[0]:-}"
     fp="${L[1]:-}"
     group="${L[2]:-neutral}"
+    group="${group%$'\r'}"  # #507：防 CRLF 殘留（group 現會被逗號分割成多群，戒慎）
     op="${L[3]:-register}"
     op="${op%$'\r'}"  # 防 CRLF 殘留（ICS 寫 \n，但戒慎）
     # 請求檔 .req 在「結果寫完後」才刪（見各分支末），達 at-least-once：crash 重跑（usermod 冪等）不丟件。
 
     case "$op" in
       register)
-        # usermod -f <fp> -g <group> <callsign>：建/改 cert-user（-g = in+out 群權限）。連本機 IPC 熱套用。
-        if ! [[ "$callsign" =~ $CN_RE ]] || ! [[ "$fp" =~ $FP_RE ]] || ! valid_group "$group"; then
+        # usermod -f <fp> -g <group>… <callsign>：建/改 cert-user（-g = in+out 群權限）。連本機 IPC 熱套用。
+        # #507：group 欄可為**逗號分隔多群**（ICS infra 證需一次設 blue,red,neutral；單群向後相容）。
+        # 逐群過 valid_group 白名單後展開成多個 -g（injection-safe）；任一群非法或全空即 reject。
+        gargs=()
+        groups_ok=1
+        IFS=',' read -ra _grps <<<"$group"
+        for g in "${_grps[@]}"; do
+          if valid_group "$g"; then gargs+=(-g "$g"); else groups_ok=0; fi
+        done
+        if ! [[ "$callsign" =~ $CN_RE ]] || ! [[ "$fp" =~ $FP_RE ]] || [ "$groups_ok" -ne 1 ] || [ "${#gargs[@]}" -eq 0 ]; then
           log "reject $id: bad-input (register callsign/fp/group 格式不符)"
           echo "ERR bad-input" >"$RES_DIR/$id.res.tmp" && mv "$RES_DIR/$id.res.tmp" "$RES_DIR/$id.res"
         else
-          out="$(cd /opt/tak && java -jar "$JAR" usermod -f "$fp" -g "$group" "$callsign" 2>&1)"
+          out="$(cd /opt/tak && java -jar "$JAR" usermod -f "$fp" "${gargs[@]}" "$callsign" 2>&1)"
           rc=$?
           if [ "$rc" -eq 0 ]; then
-            log "registered $callsign -> group=$group"
+            log "registered $callsign -> groups=$group"
             echo "OK $group" >"$RES_DIR/$id.res.tmp" && mv "$RES_DIR/$id.res.tmp" "$RES_DIR/$id.res"
           else
             msg="${out//$'\n'/ }"

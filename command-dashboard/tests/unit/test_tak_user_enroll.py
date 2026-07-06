@@ -109,6 +109,55 @@ def test_timeout_when_no_registrar_and_cleans_request(queue, monkeypatch):
     assert glob.glob(os.path.join(queue, "requests", "*.req")) == []
 
 
+# ── #507：enroll_infra_groups（ICS 自身 infra 證多群註冊）──────────────────────
+
+
+def test_enroll_infra_groups_multi_group_sorted(queue):
+    """多群 → 排序去空白逗號 join（registrar 逐群展開 -g）；請求協定 op=register。"""
+    cap: list = []
+    stop = threading.Event()
+    t = threading.Thread(target=_fake_registrar, args=(queue, "OK blue,neutral,red", cap, stop))
+    t.start()
+    try:
+        out = tak_user_enroll.enroll_infra_groups("ics-marti-read", "FC:BB", {"neutral", "blue", "red"})
+    finally:
+        stop.set()
+        t.join()
+    assert out["enrolled"] is True
+    assert out["groups"] == "blue,neutral,red"  # sorted、無空白
+    lines = cap[0].splitlines()
+    assert lines[0] == "ics-marti-read" and lines[1] == "FC:BB"
+    assert lines[2] == "blue,neutral,red" and lines[3] == "register"
+
+
+def test_enroll_infra_groups_strips_whitespace_and_dedup(queue):
+    """群集清洗：strip 空白 + 去重 → registrar 才不會對 ' red' fail-closed。"""
+    cap: list = []
+    stop = threading.Event()
+    t = threading.Thread(target=_fake_registrar, args=(queue, "OK blue,red", cap, stop))
+    t.start()
+    try:
+        out = tak_user_enroll.enroll_infra_groups("ics-marti-write", "AA:BB", {"blue ", " blue", "red"})
+    finally:
+        stop.set()
+        t.join()
+    assert out["enrolled"] is True
+    assert cap[0].splitlines()[2] == "blue,red"  # dedup + strip
+
+
+def test_enroll_infra_groups_empty_no_request(queue):
+    """空群集 → no-groups，不寫請求（不送空 register）。"""
+    out = tak_user_enroll.enroll_infra_groups("ics-marti-read", "FC:BB", set())
+    assert out == {"enrolled": False, "reason": "no-groups"}
+    assert glob.glob(os.path.join(queue, "requests", "*.req")) == []
+
+
+def test_enroll_infra_groups_not_configured(monkeypatch):
+    monkeypatch.setattr(config, "TAK_ENROLL_QUEUE_DIR", "")
+    out = tak_user_enroll.enroll_infra_groups("ics-marti-read", "FC:BB", {"blue"})
+    assert out == {"enrolled": False, "reason": "enroll-not-configured"}
+
+
 # ── #398 Slice 2：deregister + reconcile ──────────────────────────────────────
 
 
