@@ -67,7 +67,10 @@ from schemas.admin import (
     SuspendAllIn,
     TakRevokeByFingerprintIn,
 )
-from services import faction_service  # #343 紅藍隔離 admin 分類
+from services import (
+    faction_service,  # #343 紅藍隔離 admin 分類
+    tak_identity,  # #507 縫A：ICS infra 證身分 SoT（兩面一軸·消費半身）
+)
 from services.realtime_hub import cop_hub  # issue #29 PR-G1b：reset 後廣播 resync
 
 log = structlog.get_logger()
@@ -947,25 +950,22 @@ def _bundle_with_wg(tak_pkg: bytes, callsign: str, mode: str, wg_conf: str, wg_q
     return buf.getvalue()
 
 
-# #398 B：TAK 上非 dashboard-發的 cert-user（ICS 自身連線 / 管理 cert）——對帳時標 infra 非殭屍。
-_TAK_INFRA_USERS = frozenset({"ics-cot", "ics-tak-admin"})
-
-# #404：REST-only infra——只打 Marti REST（subscriptions/all、update-groups…，ROLE_ADMIN gate）、
-# **不訂閱 :8089 串流**，故其 __ANON__ 群**不洩漏串流資料 = 良性**，且移除唯一群會 bounce 回（usermod
-# 行為）→ 不列為隔離破口、不給 strip 鈕。⚠ ics-cot 雖也是 infra 但**是 streaming producer**，其 __ANON__
-# 仍是真破口，**不在此豁免**（差別＝會不會 stream，非 infra 與否）。
-_TAK_REST_ONLY_INFRA = frozenset({"ics-tak-admin"})
+# #398 B / #507：ICS 自身 infra cert-user 清單的 SoT 收斂到 services/tak_identity（宣告式「兩面一軸」
+# 消費半身）。原硬編 {ics-cot, ics-tak-admin} → 擴含 ics-marti-read/write：它們也是 ICS 自身證、不可
+# deregister，且 #507 起應在全群（blue/red/neutral）才讀得到現場 blue 檔。對帳時標 infra 非殭屍、防誤撤。
+# （tak_identity import 於檔頂 import 區。）
 
 
 def _is_infra_callsign(cn: str | None) -> bool:
     """是否為 ICS 保留身分（不可發/撤/移除）。**大小寫不敏感**——review 硬化：若 TAK usermod 視
     `ICS-COT`==`ics-cot`，精確比對會被大小寫變體繞過去刪掉 ics-cot；統一 lower 比對堵死。"""
-    return (cn or "").strip().lower() in _TAK_INFRA_USERS
+    return tak_identity.is_infra(cn)
 
 
 def _is_rest_only_infra(cn: str | None) -> bool:
-    """#404：REST-only infra（admin cert）—— __ANON__ 良性、不算破口（見 _TAK_REST_ONLY_INFRA）。"""
-    return (cn or "").strip().lower() in _TAK_REST_ONLY_INFRA
+    """#404：REST-only infra（不訂閱 :8089 串流）—— __ANON__ 對串流良性、不算破口。⚠ ics-cot 是
+    streaming producer，其 __ANON__ 仍是真破口，不在此豁免（差別＝會不會 stream，見 tak_identity）。"""
+    return tak_identity.is_rest_only(cn)
 
 
 @router.get("/tak/device-certs", tags=["account-admin"])
