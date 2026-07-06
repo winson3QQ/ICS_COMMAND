@@ -271,7 +271,11 @@ COOKIE_SECURE_OVERRIDE: bool | None = (
 #               情報如無線電）同一端點。COMMAND_ROLES + faction 守門 + magic-byte + audit。前端 UI 另做。
 # PATCH 2.41.1：#509-P3 範圍2 支援端點——`GET /api/tak/clients`（線上 TAK client callsign+uid，供下行
 #               推照片「點對點」挑收件人；READ_ROLES + best-effort）。搭配前端 v1.30.0「推照片到現場」UI。
-APP_VERSION = "2.41.1"
+# PATCH 2.41.2：#509-P3 echo hotfix——ICS 下行廣播的 `b-f-t-r` 會回到自己 subscriber，`handle_fileshare`
+#               原未濾（只有 #509-P2 輪詢濾 creatorUid=ICS-CMD）→ 自我 re-ingest 用重建的精簡 marker CoT
+#               覆寫既有 marker attributes、污染 COP（uplink 觀感壞）。改：handle_fileshare 亦跳過
+#               senderUid=ICS-CMD 的 b-f-t-r（照片推送時已本地掛，不需再 re-ingest）。
+APP_VERSION = "2.41.2"
 
 # CMD_VERSION：前端 UI 功能版本（不同於後端 SemVer APP_VERSION；規則見 CLAUDE.md 版號規則）
 # 兩軌版本命名，不可混用。由 /api/version 提供給前端，是唯一 source-of-truth；release 時更新此值。

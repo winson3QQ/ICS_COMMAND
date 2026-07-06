@@ -143,8 +143,14 @@ async def handle_fileshare(event) -> None:
     由 cop_service `_route_fileshare_cot`（#508 分流器）呼叫。best-effort：任何失敗只 log、不拋。
     """
     from services import tak_files
+    from services.tak_downlink import ICS_SELF_UID
 
     fs = (getattr(event, "detail", None) or {}).get("fileshare") or {}
+    # #509-P3：ICS 自己下行推的 b-f-t-r 會廣播回自己的 subscriber → **不得 re-ingest**（否則用重建的
+    # 精簡 marker CoT 覆寫既有 marker attributes；照片推送時已本地掛）。對齊 #509-P2 輪詢跳過 ICS 自傳。
+    if (fs.get("senderUid") or "") == ICS_SELF_UID:
+        log.debug("[tak] #509-P3 略過 ICS 自己下行推的 b-f-t-r（防 echo re-ingest）uid=%s", getattr(event, "uid", "?"))
+        return
     file_hash = (fs.get("sha256") or "").strip()
     if not _valid_sha256(file_hash):
         log.debug("[tak] fileshare 無有效 sha256，跳過 uid=%s", getattr(event, "uid", "?"))

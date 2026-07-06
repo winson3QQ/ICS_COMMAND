@@ -122,6 +122,35 @@ def test_handle_fileshare_end_to_end(tmp_path, monkeypatch):
     assert len(atts) == 1 and atts[0]["mimeType"] == "image/jpeg"
 
 
+def test_handle_fileshare_skips_ics_own_downlink(tmp_path, monkeypatch):
+    """#509-P3 echo 防護：ICS 自己下行推的 b-f-t-r（senderUid=ICS-CMD）廣播回自己 → 不 re-ingest
+    （不下載、不橋、不以重建 CoT 覆寫 marker）。"""
+    from core import config
+
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
+    monkeypatch.setattr(tak_files, "filestore_enabled", lambda: True)
+    called = []
+
+    async def _spy_dl(client, h, **kw):
+        called.append(h)
+        return None
+
+    monkeypatch.setattr(tak_files, "download_content", _spy_dl)
+    event = CoTEventIn(
+        uid="FS-ICS-OWN",
+        type="b-f-t-r",
+        time="2026-06-05T04:00:00Z",
+        start="2026-06-05T04:00:00Z",
+        stale="2099-01-01T00:00:00Z",
+        how="h-e",
+        lat=0.0,
+        lon=0.0,
+        detail={"fileshare": {"sha256": "b" * 64, "senderUid": "ICS-CMD", "filename": "x.zip"}},
+    )
+    asyncio.run(tak_attachments.handle_fileshare(event))
+    assert called == []  # 沒下載＝確定沒 re-ingest
+
+
 def test_handle_fileshare_no_sha_skips(tmp_path, monkeypatch):
     from core import config
 
