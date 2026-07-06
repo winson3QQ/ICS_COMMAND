@@ -109,6 +109,35 @@ def enroll_device(callsign: str, fingerprint: str, group: str | None = None) -> 
     return {"enrolled": False, "reason": f"registrar-error:{body.strip()[:120]}"}
 
 
+def enroll_infra_groups(callsign: str, fingerprint: str, groups) -> dict:
+    """#507：把 ICS **自身** infra 證註冊成 managed user + 設定其宣告的**多個** group（register op，
+    group 欄逗號分隔；registrar 逐群過白名單後展開成多個 `usermod -g`）。
+
+    回 {enrolled: bool, reason: str, groups?: str}。best-effort：任何失敗回 enrolled=False、不 raise。
+    與 `enroll_device` 差別：後者＝現場裝置發證時的**單一**初始群；本函式＝ICS 自身 infra 證對齊
+    宣告的**多群**（SoT＝services/tak_identity）。空群集回 no-groups（不送空 register）。
+    """
+    if not is_configured():
+        return {"enrolled": False, "reason": "enroll-not-configured"}
+    if not (callsign or "").isascii():
+        return {"enrolled": False, "reason": "non-ascii-callsign"}
+    # 清洗 + 去重 + 排序 + 逗號 join（**無空白**，否則 registrar valid_group 對 " red" fail-closed 拒）。
+    grps = sorted({g.strip() for g in (groups or ()) if g and g.strip()})
+    if not grps:
+        return {"enrolled": False, "reason": "no-groups"}
+    group_arg = ",".join(grps)
+    outcome, body = _submit_op(callsign, fingerprint, group_arg, "register", config.TAK_ENROLL_TIMEOUT_S)
+    if outcome == "ok":
+        log.info("[tak-enroll] infra %s → managed user，群=%s", callsign, group_arg)
+        return {"enrolled": True, "reason": "ok", "groups": group_arg}
+    if outcome == "write-failed":
+        return {"enrolled": False, "reason": f"queue-write-failed:{body}"}
+    if outcome == "timeout":
+        return {"enrolled": False, "reason": "timeout"}
+    log.warning("[tak-enroll] infra %s registrar 回報失敗：%s", callsign, body[:200])
+    return {"enrolled": False, "reason": f"registrar-error:{body.strip()[:120]}"}
+
+
 def deregister_device(callsign: str) -> dict:
     """#398 A：從 TAK 移除 managed user（usermod -D，經 registrar）——讓 ICS 的撤銷成為**真 deregister**，
     不再只是帳面 flag。回 {ok: bool, reason: str}。best-effort 不 raise。
@@ -176,3 +205,51 @@ def strip_anon_group(callsign: str, fingerprint: str) -> dict:
     if outcome in ("timeout", "write-failed"):
         return {"ok": False, "reason": outcome}
     return {"ok": False, "reason": f"registrar-error:{body.strip()[:120]}"}
+
+
+# ── #507：ICS infra 證身分編排（對帳宣告群 vs TAK 實際；可 apply 補群）──────────────
+
+
+def _infra_fingerprint(callsign: str) -> str | None:
+    """從 SoT 宣告的證檔算 infra 證 fingerprint（供註冊「還不在 TAK 名冊」的證——reconcile 查不到
+    它們的 fp）。走 tak_revocation 的證檔→SHA-256（冒號大寫 = registrar -f 格式）。讀不到回 None。"""
+    from services import tak_identity, tak_revocation
+
+    env = tak_identity.cert_env(callsign)
+    path = getattr(config, env, None) if env else None
+    return tak_revocation._cert_sha256_fingerprint(path) if path else None
+
+
+def reconcile_infra_groups(apply: bool = False) -> dict:
+    """#507 編排：對帳 ICS 自身 infra 證的**宣告群 vs TAK 實際**（services/tak_identity SoT）。
+
+    `apply=False`（預設，乙案開機/面板檢視）：只回 drift、不動 TAK。
+    `apply=True`（面板「一鍵對帳」）：對 **missing / unregistered** 者，取 fingerprint（reconcile 名冊有
+    就用、否則從證檔算）→ `enroll_infra_groups` 補進宣告的群。ok/unknown/extra 不動（extra 移除另議，
+    保守不自動砍群）。
+
+    回 {ok, drift: check_drift 結果, applied: [{callsign, ok, reason}], reason}。best-effort 不 raise。
+    """
+    from services import tak_identity
+
+    rec = reconcile_tak_users()
+    if not rec.get("ok"):
+        return {"ok": False, "drift": [], "applied": [], "reason": rec.get("reason", "reconcile-failed")}
+    drift = tak_identity.check_drift(rec.get("users") or [])
+    result: dict = {"ok": True, "drift": drift, "applied": [], "reason": "ok"}
+    if not apply:
+        return result
+    for row in drift:
+        if row["status"] not in ("missing", "unregistered"):
+            continue
+        cn = row["callsign"]
+        declared = tak_identity.required_groups(cn)
+        if not declared:  # 宣告空群（admin）→ 不需補
+            continue
+        fp = row.get("fingerprint") or _infra_fingerprint(cn)
+        if not fp:
+            result["applied"].append({"callsign": cn, "ok": False, "reason": "no-fingerprint"})
+            continue
+        res = enroll_infra_groups(cn, fp, set(declared))
+        result["applied"].append({"callsign": cn, "ok": bool(res.get("enrolled")), "reason": res.get("reason", "")})
+    return result

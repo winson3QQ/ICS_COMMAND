@@ -305,10 +305,13 @@ async def mission_sync_from_tak(request: Request):
 # 地點型雙向照片的「上行」半：現場（ATAK/iTAK）把照片存進 TAK Enterprise Sync file store，
 # ICS 主動拉下來在 COP 顯示。讀側協定已驗（tak_files；下載/搜尋/metadata），上傳（下行）另計。
 #
-# faction 安全設計：**不做全庫通搜**（會跨陣營洩圖）。列表端點綁在「本 session 看得到的
-# cop_entity」下 → 繼承該 marker 的 faction 可見度（看不到的 entity 一律 404、不洩存在）。
-# ICS 為指揮站、單一 READ cert 跨群落全見，故 faction 邊界**只能由 ICS 這側施加**，非靠 TAK
-# group（READ cert 全見）。
+# faction 安全設計（兩層，見 #507「兩面一軸」）：
+# ① TAK group 層——READ cert（ics-marti-read）由 #507 **宣告並註冊進 blue/red/neutral 全群**
+#    （services/tak_identity SoT + 面板一鍵對帳），故對 TAK 確為「跨群落全見」（指揮站權威豁免）。
+#    ⚠ 此非天生成立：read cert 若漏群只讀得到 public（現場 blue 檔 404）——故 #507 有開機漂移警示。
+# ② ICS 施加層——**不做全庫通搜**（會跨陣營洩圖）。列表端點綁在「本 session 看得到的 cop_entity」
+#    下 → 繼承該 marker 的 faction 可見度（看不到的 entity 一律 404、不洩存在）。
+# 即：TAK 讓 ICS 讀全部、faction 邊界由 **ICS 這側 per-session 施加**（非靠 TAK group 對 ICS 分艙）。
 
 _IMAGE_MIME_PREFIX = "image/"
 _CONTENT_DISPOSITION_SAFE = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._- "

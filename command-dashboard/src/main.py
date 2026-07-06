@@ -172,6 +172,33 @@ def _verify_audit_chain_on_boot() -> None:
         log.warning("[audit-chain] 開機驗證執行失敗（best-effort，不擋啟動）", exc_info=True)
 
 
+async def _check_infra_group_drift() -> None:
+    """#507 乙案：開機 best-effort 檢查 ICS 自身 infra 證的 TAK 群漂移，有漂移只 log warning，
+    **不自動 apply**（修由面板『一鍵對帳』POST /api/admin/tak/infra-groups/reconcile 觸發）。
+
+    reconcile 走 registrar 檔佇列（阻塞、可能逾時）→ 丟 thread 不擋事件迴圈。未配置 / registrar
+    未就緒 / 逾時一律安靜略過（best-effort，不炸開機）。"""
+    try:
+        from services import tak_identity, tak_user_enroll
+
+        res = await asyncio.to_thread(tak_user_enroll.reconcile_infra_groups, False)
+        if not res.get("ok"):
+            return  # 未配置 / registrar 未就緒 / 逾時 → 略過
+        if tak_identity.has_drift(res["drift"]):
+            bad = [
+                f"{d['callsign']}({d['status']})"
+                for d in res["drift"]
+                if d["status"] in ("missing", "extra", "unregistered")
+            ]
+            log.warning(
+                "[tak-identity] ICS infra 證群漂移：%s —— 面板『一鍵對帳』可修"
+                "（#507；例：read cert 缺群→讀不到現場照片）",
+                ", ".join(bad),
+            )
+    except Exception:
+        log.debug("[tak-identity] 開機 infra 群漂移檢查失敗（best-effort 略過）", exc_info=True)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     _assert_safe_mtls_config()
@@ -203,6 +230,8 @@ async def lifespan(app: FastAPI):
     from services import tak_runtime
 
     await tak_runtime.start_if_enabled()
+    # #507 乙案：開機 best-effort 檢查 ICS infra 證群漂移（只警示、不自動 apply；修走面板一鍵對帳）。
+    _infra_drift_task = asyncio.create_task(_check_infra_group_drift())
     yield
     # shutdown：停週期清理 + 停 TAK 訂閱 + 關閉所有 COP WS 連線（issue #29 PR-D in-process hub）
     # cancel 後 await 回收任務（否則 task 仍 pending → asyncio「Task was destroyed」警告 / 殘留）。
@@ -215,6 +244,9 @@ async def lifespan(app: FastAPI):
     _identity_task.cancel()
     with suppress(asyncio.CancelledError):
         await _identity_task
+    _infra_drift_task.cancel()  # #507：一次性開機檢查，多半已完成；cancel 為戒慎回收
+    with suppress(asyncio.CancelledError):
+        await _infra_drift_task
     await tak_runtime.stop()
     from services.realtime_hub import cop_hub
 

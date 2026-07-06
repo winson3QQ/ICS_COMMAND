@@ -67,7 +67,10 @@ from schemas.admin import (
     SuspendAllIn,
     TakRevokeByFingerprintIn,
 )
-from services import faction_service  # #343 紅藍隔離 admin 分類
+from services import (
+    faction_service,  # #343 紅藍隔離 admin 分類
+    tak_identity,  # #507 縫A：ICS infra 證身分 SoT（兩面一軸·消費半身）
+)
 from services.realtime_hub import cop_hub  # issue #29 PR-G1b：reset 後廣播 resync
 
 log = structlog.get_logger()
@@ -947,25 +950,22 @@ def _bundle_with_wg(tak_pkg: bytes, callsign: str, mode: str, wg_conf: str, wg_q
     return buf.getvalue()
 
 
-# #398 B：TAK 上非 dashboard-發的 cert-user（ICS 自身連線 / 管理 cert）——對帳時標 infra 非殭屍。
-_TAK_INFRA_USERS = frozenset({"ics-cot", "ics-tak-admin"})
-
-# #404：REST-only infra——只打 Marti REST（subscriptions/all、update-groups…，ROLE_ADMIN gate）、
-# **不訂閱 :8089 串流**，故其 __ANON__ 群**不洩漏串流資料 = 良性**，且移除唯一群會 bounce 回（usermod
-# 行為）→ 不列為隔離破口、不給 strip 鈕。⚠ ics-cot 雖也是 infra 但**是 streaming producer**，其 __ANON__
-# 仍是真破口，**不在此豁免**（差別＝會不會 stream，非 infra 與否）。
-_TAK_REST_ONLY_INFRA = frozenset({"ics-tak-admin"})
+# #398 B / #507：ICS 自身 infra cert-user 清單的 SoT 收斂到 services/tak_identity（宣告式「兩面一軸」
+# 消費半身）。原硬編 {ics-cot, ics-tak-admin} → 擴含 ics-marti-read/write：它們也是 ICS 自身證、不可
+# deregister，且 #507 起應在全群（blue/red/neutral）才讀得到現場 blue 檔。對帳時標 infra 非殭屍、防誤撤。
+# （tak_identity import 於檔頂 import 區。）
 
 
 def _is_infra_callsign(cn: str | None) -> bool:
     """是否為 ICS 保留身分（不可發/撤/移除）。**大小寫不敏感**——review 硬化：若 TAK usermod 視
     `ICS-COT`==`ics-cot`，精確比對會被大小寫變體繞過去刪掉 ics-cot；統一 lower 比對堵死。"""
-    return (cn or "").strip().lower() in _TAK_INFRA_USERS
+    return tak_identity.is_infra(cn)
 
 
 def _is_rest_only_infra(cn: str | None) -> bool:
-    """#404：REST-only infra（admin cert）—— __ANON__ 良性、不算破口（見 _TAK_REST_ONLY_INFRA）。"""
-    return (cn or "").strip().lower() in _TAK_REST_ONLY_INFRA
+    """#404：REST-only infra（不訂閱 :8089 串流）—— __ANON__ 對串流良性、不算破口。⚠ ics-cot 是
+    streaming producer，其 __ANON__ 仍是真破口，不在此豁免（差別＝會不會 stream，見 tak_identity）。"""
+    return tak_identity.is_rest_only(cn)
 
 
 @router.get("/tak/device-certs", tags=["account-admin"])
@@ -1292,10 +1292,13 @@ def reconcile_tak_device_certs(request: Request):
         m = _ics_match(cs, fp)
         # #404：per-user 群清單 + in_anon 旗標。groups=None（舊式 registrar 未回群）→ False（不誤判）；
         # 含 __ANON__ 或空群（runtime 落 __ANON__）→ True（producer 與任何 CA 證同頻＝隔離破口）。
-        # anon_exempt＝在 __ANON__ 但屬 REST-only infra（admin，不 stream）→ 良性、不算破口、不給 strip 鈕。
+        # anon_exempt＝在 __ANON__ 但屬 REST-only infra **且宣告不需任何 faction 群**（＝admin）→ 良性、
+        # 不算破口、不給 strip 鈕。#507：ics-marti-read/write 雖也 REST-only，但**宣告全群**（落 __ANON__＝
+        # 讀不到 blue 現場檔的真漂移，正是 #507 要修的）→ 不豁免、須在 anon_users 提醒補群，否則面板會把
+        # 該修的當良性藏起來（與 tak_identity.check_drift 判 missing 矛盾）。
         groups = u.get("groups")
         in_anon = groups is not None and ("__ANON__" in groups or len(groups) == 0)
-        anon_exempt = in_anon and _is_rest_only_infra(cs)
+        anon_exempt = in_anon and _is_rest_only_infra(cs) and not tak_identity.required_groups(cs)
         annotated.append(
             {
                 "callsign": cs,
@@ -1343,6 +1346,8 @@ def reconcile_tak_device_certs(request: Request):
         "ics_unsynced": ics_unsynced,
         "anon_users": anon_users,
         "online_anon": online_anon,
+        # #507 消費半身：ICS 自身 infra 證的宣告群 vs TAK 實際（面板顯示漂移 + 一鍵對帳）。
+        "infra_drift": tak_identity.check_drift(rec["users"]),
     }
 
 
@@ -1400,6 +1405,30 @@ def strip_anon_tak_user(callsign: str, request: Request):
     if not result.get("ok"):
         raise HTTPException(503, f"移出 __ANON__ 失敗：{result.get('reason')}")
     return {"ok": True, "callsign": cn, "strip_anon": result.get("reason")}
+
+
+@router.post("/tak/infra-groups/reconcile", tags=["account-admin"])
+def reconcile_infra_groups_apply(request: Request):
+    """#507 一鍵對帳（「兩面一軸」消費半身）：把 ICS 自身 infra 證補進宣告的 TAK 群。
+
+    sysadmin only。對缺群 / 未註冊的 infra 證，取 fingerprint（reconcile 名冊有就用、否則從證檔算）→
+    registrar 註冊補群（enroll_infra_groups）。ok/unknown/extra 不動（保守：不自動砍群）。強制 audit。
+    """
+    sess = _check_system_admin(request)
+    from services.tak_user_enroll import reconcile_infra_groups
+
+    result = reconcile_infra_groups(apply=True)
+    audit(
+        sess["username"],
+        None,
+        "tak_infra_groups_reconcile",
+        "tak",
+        "infra",
+        {"ok": result.get("ok"), "applied": result.get("applied"), "reason": result.get("reason")},
+    )
+    if not result.get("ok"):
+        raise HTTPException(503, f"infra 群對帳失敗：{result.get('reason')}")
+    return result
 
 
 @router.delete("/tak/device-certs/{cert_id}", tags=["account-admin"])

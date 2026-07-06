@@ -374,3 +374,73 @@ async def send_cot(cot_xml: str) -> None:
                 writer.close()
             except Exception:  # noqa: BLE001 — 關閉 best-effort，不掩蓋上游錯誤
                 pass
+
+
+# ── #507 Phase4：ICS 自報 SA presence（下行定址：現身現場 Contacts）─────────────────
+
+
+def build_presence_cot(
+    *,
+    callsign: str,
+    lat: float,
+    lon: float,
+    uid: str = ICS_SELF_UID,
+    stale_seconds: int = 180,
+    team_color: str = "Cyan",
+    role: str = "Team Member",
+    now: datetime | None = None,
+) -> str:
+    """組 ICS 自我 SA presence CoT（`a-f-G-U-C`）——讓 ICS 現身現場 ATAK/iTAK 的 Contacts，供派工/
+    指定通訊/指定傳檔。`endpoint='*:-1:stcp'`＝『經 server 連我』（TAK StreamingEndpointRewriteFilter
+    於串流端改寫成 ICS 實際連線）→ 對 ICS 的定向傳輸走 server 中介、非 P2P。
+
+    **誠實原則（#214，見 build_command_cot doc）**：位置為固定指揮部座標（config，非 GPS）；`how='m-g'`
+    （machine-generated，非 human-input）；**刻意不送**偽造裝置遙測 `<takv>/<status battery>/<track>/
+    `<precisionlocation GPS>`（ICS 非 GPS 裝置，偽造會誤導現場）。remarks 誠實標 `source: ICS`。
+    """
+    now = now or datetime.now(UTC)
+    t = now.strftime("%Y-%m-%dT%H:%M:%S.000Z")
+    stale = (now + timedelta(seconds=max(1, stale_seconds))).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+    group_name = (team_color or "").strip().title()
+    detail = (
+        f"<contact callsign={quoteattr(callsign)} endpoint='*:-1:stcp'/>"
+        + (f"<__group name={quoteattr(group_name)} role={quoteattr(role)}/>" if group_name else "")
+        + "<remarks>source: ICS 指揮部（自動 presence；非 GPS 裝置）</remarks>"
+    )
+    return (
+        "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>"
+        f"<event version='2.0' uid={quoteattr(uid)} type='a-f-G-U-C' "
+        f"how='m-g' time='{t}' start='{t}' stale='{stale}'>"
+        f"<point lat='{float(lat)}' lon='{float(lon)}' hae='0' ce='9999999' le='9999999'/>"
+        f"<detail>{detail}</detail>"
+        "</event>"
+    )
+
+
+def presence_enabled() -> bool:
+    """#507 Phase4：presence beacon 是否啟用（config opt-in，預設 OFF）。"""
+    return bool(config.TAK_PRESENCE_ENABLED)
+
+
+async def presence_beacon_loop(stop_event: asyncio.Event) -> None:
+    """週期送 ICS SA presence 直到 stop_event。best-effort：單次送失敗只 log、續跑（TAK 選配外部來源，
+    presence 中斷不擋 ICS）。sleep 走 stop_event.wait 可即時中斷（軟停立即收）。"""
+    interval = max(10, int(config.TAK_PRESENCE_INTERVAL_S))
+    log.info("tak.presence_beacon_start", callsign=config.TAK_PRESENCE_CALLSIGN, interval_s=interval)
+    while not stop_event.is_set():
+        try:
+            await send_cot(
+                build_presence_cot(
+                    callsign=config.TAK_PRESENCE_CALLSIGN,
+                    lat=config.TAK_PRESENCE_LAT,
+                    lon=config.TAK_PRESENCE_LON,
+                    stale_seconds=interval * 3,
+                )
+            )
+        except Exception:  # noqa: BLE001 — presence best-effort，送失敗只 log、續跑
+            log.debug("tak.presence_beacon_send_failed", exc_info=True)
+        try:
+            await asyncio.wait_for(stop_event.wait(), timeout=interval)
+        except TimeoutError:
+            pass  # 間隔到 → 續送下一輪
+    log.info("tak.presence_beacon_stop")
