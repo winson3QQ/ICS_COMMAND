@@ -18,6 +18,8 @@ import {
   createTakPhotoLoader,
   TAK_PHOTO_GRID_ID,
   TAK_PHOTO_UPLOAD_ID,
+  TAK_PHOTO_PUSH_ID,
+  TAK_PHOTO_PUSH_DEST_ID,
 } from '../../static/js/map/tak_photos.js';
 
 // ── Minimal fake DOM（注入 doc，不引 jsdom）──
@@ -259,5 +261,80 @@ describe('upload / bindUpload', () => {
   test('bindUpload：無 input → 安全 no-op', () => {
     const loader = createTakPhotoLoader({ authFetch: vi.fn(), doc });
     loader.bindUpload('U-1'); // 沒註冊 input → 不拋
+  });
+});
+
+// ── #509-P3 下行：push / bindPush（推照片到現場）──
+describe('takPhotoSectionHtml push 控制', () => {
+  test('canUpload=true 含推送控制 + 收件人多選', () => {
+    const h = takPhotoSectionHtml(true);
+    expect(h).toContain(`id="${TAK_PHOTO_PUSH_ID}"`);
+    expect(h).toContain(`id="${TAK_PHOTO_PUSH_DEST_ID}"`);
+    expect(h).toContain('推照片到現場');
+  });
+  test('canUpload=false 不含推送控制', () => {
+    expect(takPhotoSectionHtml(false)).not.toContain(TAK_PHOTO_PUSH_ID);
+  });
+});
+
+describe('push / bindPush', () => {
+  test('pushToField 廣播：POST /downlink/photo，不帶 dest', async () => {
+    let captured;
+    const af = vi.fn(async (url, opts) => {
+      captured = { url, opts };
+      return { ok: true };
+    });
+    const loader = createTakPhotoLoader({ authFetch: af, doc });
+    const ok = await loader.pushToField('U-1', new Blob([new Uint8Array([1])], { type: 'image/jpeg' }), '');
+    expect(ok).toBe(true);
+    expect(captured.url).toBe('/api/tak/downlink/photo');
+    expect(captured.opts.body.get('marker_uid')).toBe('U-1');
+    expect(captured.opts.body.get('dest')).toBeNull(); // 廣播不帶 dest
+  });
+
+  test('pushToField 點對點：帶 dest（逗號分隔）', async () => {
+    let captured;
+    const af = vi.fn(async (url, opts) => {
+      captured = { url, opts };
+      return { ok: true };
+    });
+    const loader = createTakPhotoLoader({ authFetch: af, doc });
+    await loader.pushToField('U-1', new Blob([new Uint8Array([1])], { type: 'image/jpeg' }), '3QQ-iTAK,3QQ-atak');
+    expect(captured.opts.body.get('dest')).toBe('3QQ-iTAK,3QQ-atak');
+  });
+
+  test('bindPush：填 client 選項 + 選檔 → 依所選收件人推送 → reload', async () => {
+    const input = makeFakeEl('input');
+    input.files = [new Blob([new Uint8Array([1])], { type: 'image/jpeg' })];
+    input.value = 'x';
+    doc._register(TAK_PHOTO_PUSH_ID, input);
+    const sel = makeFakeEl('select');
+    sel.selectedOptions = [{ value: '3QQ-iTAK' }]; // 選了一個 client
+    doc._register(TAK_PHOTO_PUSH_DEST_ID, sel);
+    const calls = [];
+    const af = vi.fn(async (url) => {
+      calls.push(url);
+      if (url.includes('/clients'))
+        return { ok: true, json: async () => ({ clients: [{ callsign: '3QQ-iTAK', uid: 'u1' }, { callsign: '3QQ-atak', uid: 'u2' }] }) };
+      if (url.includes('/downlink/photo')) return { ok: true };
+      return { ok: true, status: 200, json: async () => ({ files: [] }) };
+    });
+    const loader = createTakPhotoLoader({ authFetch: af, doc });
+    await loader.bindPush('U-1');
+    expect(sel.children.length).toBe(2); // 填了兩個 client option
+    await input._fire('change');
+    expect(calls.some((u) => u.includes('/api/tak/downlink/photo'))).toBe(true);
+    expect(calls.some((u) => u.includes('/for-entity/U-1'))).toBe(true); // 推後 reload
+    expect(input.value).toBe(''); // 清空允許再推
+  });
+
+  test('fetchClients 失敗 → 回空（仍可廣播）', async () => {
+    const loader = createTakPhotoLoader({ authFetch: vi.fn(async () => ({ ok: false })), doc });
+    expect(await loader.fetchClients()).toEqual([]);
+  });
+
+  test('bindPush：無 input → 安全 no-op', async () => {
+    const loader = createTakPhotoLoader({ authFetch: vi.fn(), doc });
+    await loader.bindPush('U-1'); // 沒註冊 input → 不拋
   });
 });

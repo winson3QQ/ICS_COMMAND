@@ -153,6 +153,7 @@ COMMAND  POST   /api/sync/push
 READ     GET    /api/sync/{sync_id}
 COMMAND  POST   /api/sync/{sync_id}/resolve
 WRITE    POST   /api/tak/chat
+READ     GET    /api/tak/clients
 SYSADMIN POST   /api/tak/connection
 COMMAND  POST   /api/tak/downlink
 COMMAND  POST   /api/tak/downlink/photo

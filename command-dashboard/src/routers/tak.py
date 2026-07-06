@@ -599,6 +599,25 @@ async def downlink_photo(
     return {"ok": True, **result}
 
 
+@router.get("/clients")
+async def list_tak_clients():
+    """線上 TAK client 名單（callsign+uid）——供 #509-P3 下行「點對點」挑收件人。
+
+    RBAC=READ_ROLES（中央 gate GET）。未配置讀 cert → 422；TAK 暫斷/錯 → 回空清單（best-effort，
+    不擋 UI，指揮官仍可選廣播）。
+    """
+    if not tak_files.filestore_enabled():
+        raise HTTPException(422, "TAK 未配置")
+    client = tak_files._build_read_client()
+    try:
+        clients = await tak_files.list_online_clients(client)
+    except Exception:  # noqa: BLE001 — 列舉失敗 best-effort，回空不擋 UI
+        clients = []
+    finally:
+        await client.close()
+    return {"clients": clients}
+
+
 @router.get("/status")
 def tak_status():
     """TAK 整合啟用狀態 + **連線健康**（P2-23 #163）。:8089 訂閱由 lifespan 依 TAK_ENABLED 啟動。

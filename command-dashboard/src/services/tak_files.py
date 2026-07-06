@@ -153,6 +153,27 @@ async def search_files(client, **filters) -> list[dict]:
     return _parse_search_results(data)
 
 
+_CLIENT_ENDPOINTS_PATH = "/Marti/api/clientEndPoints"
+_CALLSIGN_KEYS = ("callsign", "Callsign")
+_UID_KEYS = ("uid", "Uid", "UID")
+
+
+async def list_online_clients(client) -> list[dict]:
+    """線上 TAK client 名單（供 #509-P3 下行點對點挑收件人）→ [{callsign, uid}]，依 uid 去重、
+    依 callsign 排序。走 `/Marti/api/clientEndPoints`（read cert）；跨版本欄位容錯。查無/失敗回空。"""
+    data = await client.get_json(_CLIENT_ENDPOINTS_PATH, None)
+    rows = _parse_search_results(data)  # data/results/裸 list 容錯（同 search）
+    seen: set[str] = set()
+    out: list[dict] = []
+    for r in rows:
+        cs = _first(r, _CALLSIGN_KEYS)
+        uid = _first(r, _UID_KEYS)
+        if cs and uid and uid not in seen:
+            seen.add(uid)
+            out.append({"callsign": cs, "uid": uid})
+    return sorted(out, key=lambda x: x["callsign"].lower())
+
+
 async def get_file_metadata(client, file_hash: str) -> dict | None:
     """取單檔 metadata（Resource：mimeType/name/uid/keywords…）。hash 先驗 SHA-256。
 
