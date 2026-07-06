@@ -18,6 +18,7 @@ P2-04（#105）新增：
   routers/tak.py(REST push, P2-03) **共同呼叫**；兩者只呼叫、不定義（協調契約見 #105）。
 """
 
+import asyncio
 import logging
 import sqlite3
 
@@ -580,16 +581,25 @@ async def _handle_tak_delete(event: CoTEventIn) -> dict | None:
     return res
 
 
-def _route_fileshare_cot(event: CoTEventIn) -> None:
-    """#508：fileshare CoT（`b-f-t-*`）分流——**不進 cop_entities**（此前誤存成 marker，是 #509 前的髒源）。
+# #509：fileshare 背景處理 task 集（防 create_task 無引用被 GC 的 asyncio gotcha；done 即自清）。
+_fileshare_bg_tasks: set[asyncio.Task] = set()
 
-    - `b-f-t-r`（fileshare 通告，detail 帶 senderUrl/sha256/filename）：現場分享/廣播照片的通告。
-      **交 #509 附件模型**接手（抓 Enterprise Sync content → 解 mission-package zip → 掛 marker 顯示）；
-      #508 階段只 log（#509 會在此接抓取 handler）。
+
+def _route_fileshare_cot(event: CoTEventIn) -> None:
+    """#508/#509：fileshare CoT（`b-f-t-*`）分流——**不進 cop_entities**（此前誤存成 marker）。
+
+    - `b-f-t-r`（fileshare 通告，detail 帶 senderUrl/sha256/filename）：現場分享/廣播照片的通告 →
+      **#509 `tak_attachments.handle_fileshare`** 抓 mission-package zip → ingest 內含 b-i-x-i marker
+      + 存照片。走**背景 task**（抓 3.5MB zip + 解 + ingest 可能數秒 → 不阻 :8089 串流 ingest）；
+      handle_fileshare best-effort 不拋。
     - `b-f-t-a`（ack）：檔案傳輸確認，非 COP 物件 → drop。
     """
     if event.type.startswith("b-f-t-r"):
-        log.info("[tak] 收到 fileshare 通告 b-f-t-r（交 #509 附件模型；#508 暫不落地）uid=%s", event.uid)
+        from services import tak_attachments
+
+        task = asyncio.create_task(tak_attachments.handle_fileshare(event))
+        _fileshare_bg_tasks.add(task)
+        task.add_done_callback(_fileshare_bg_tasks.discard)
     else:
         log.debug("[tak] 收到 fileshare 控制 CoT type=%s（drop）", event.type)
     return None
