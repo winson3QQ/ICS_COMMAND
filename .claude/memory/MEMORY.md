@@ -5,7 +5,8 @@ ICS_DMAS 的 memory（行為規則、架構決策、HTTPS 決策、Remote SoT、
 
 ## 本 repo 特有
 
-- [tak-filestore-image-uplink](tak-filestore-image-uplink.md) — TAK file store 圖片上下傳(#503)：讀側契約(search 回 **data 鍵**非 results)/faction 綁 marker；**[2026-07-06 定讞·#507 已上 prod] 現場照片確實在 Enterprise Sync(直查 DB)，ICS 抓 404 真因=group 隔離(read cert 不在 blue)非 P2P/非 mission——推翻 07-05 判斷。#507「兩面一軸」修：read/write 補進三群(backend-v2.38.1)，實測抓現場照 200；照片自動上 COP 還差 #508/#509。presence beacon 交付(預設 OFF)**
+- [tak-filestore-image-uplink](tak-filestore-image-uplink.md) — TAK file store 圖片上下傳(#503)：讀側契約(search 回 **data 鍵**非 results)/faction 綁 marker；**[2026-07-06 定讞·#507 已上 prod] 現場照片確實在 Enterprise Sync(直查 DB)，ICS 抓 404 真因=group 隔離(read cert 不在 blue)非 P2P/非 mission。#507「兩面一軸」修 read/write 補三群(backend-v2.38.1)。**[2026-07-06 上行端到端通]#508 分流器+#509 附件模型(b-f-t-r→抓 zip→掛 marker，backend-v2.39.0)+#509-P2 主動輪詢橋(補 ATAK 不廣播 b-f-t-r 之漏，backend-v2.40.0；hotfix 2.40.1=輪詢不濾 tool 才收得到 tool=private 的新 ATAK)。iTAK 走被動、ATAK 走輪詢，現場照片自動上 COP。presence beacon 開起來(現身 Contacts)**
+- [tak-server-data-lifecycle-unmanaged](tak-server-data-lifecycle-unmanaged.md) — **TAK server 側資料(Enterprise Sync resource/postgres)無生命週期管理，照片/包只進不出越積越多(EXPIRATION=-1 永不過期)**；使用者拍板刪除若要刪到 server DB 須**系統化(retention/GC)非逐張手動**；本地刪除須配 **hash 墓碑**否則輪詢復活；刪除限指揮層+audit、且不會從現場裝置本機消失(TAK client 硬限制)。記著、未實作
 - [tak-mission-datasync-plane](tak-mission-datasync-plane.md) — **TAK 第三資料平面 Mission/Data Sync：ICS 零消費(#506)**；三平面分工(stream/enterprise-sync/mission)；M0-M4 建置計畫；**[2026-07-06 修正] M2「讀 mission 拿照片」前提作廢——照片走 fileshare→Enterprise Sync 非 mission(#507 group 權限修已上 prod)；mission 平面本身仍有值(作戰圖/協作/AAR)但非照片路，#506 降為非照片消費**
 
 - [precommit-ruff-config-cwd](precommit-ruff-config-cwd.md) — pre-commit cd 進 command-dashboard/，root-level 腳本須 line-length=120（ruff 0.11.7）否則 commit 中止（stash 衝突回滾）
