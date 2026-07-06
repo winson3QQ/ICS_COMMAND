@@ -253,7 +253,11 @@ COOKIE_SECURE_OVERRIDE: bool | None = (
 #               只切第一張證再解（原用 ssl.PEM_cert_to_DER_cert 對整檔多張證 base64 併解、長度非 4 倍數
 #               即拋 → None）。修 prod 一鍵對帳 ics-marti-write「no-fingerprint」註冊失敗（read 僥倖過關、
 #               write 中招）；連帶修 infra_fingerprints 撤銷保護一直漏 write 的潛在 bug。
-APP_VERSION = "2.38.1"
+# MINOR 2.39.0：#508 縫B CoT 種類分流器（denylist 攔 b-f-t-*/t-x-* 非實體家族，不再誤存成 marker）+
+#               #509 縫C 現場照片附件模型——`b-f-t-r` fileshare → 抓 mission-package zip（zip-slip/magic/
+#               size 縱深防護）→ ingest 內含 b-i-x-i 影像 marker 上圖 + 抽照片存本地（檔名=sha256）掛
+#               marker，經既有 #503 面板顯示（faction 守門於 marker 可見度）。現場分享/廣播照片自動上 COP。
+APP_VERSION = "2.39.0"
 
 # CMD_VERSION：前端 UI 功能版本（不同於後端 SemVer APP_VERSION；規則見 CLAUDE.md 版號規則）
 # 兩軌版本命名，不可混用。由 /api/version 提供給前端，是唯一 source-of-truth；release 時更新此值。

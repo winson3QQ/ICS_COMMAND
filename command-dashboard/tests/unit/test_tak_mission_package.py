@@ -101,3 +101,21 @@ def test_empty_package_raises():
 def test_too_many_entries_raises():
     with pytest.raises(mp.MissionPackageError):
         mp.parse_mission_package(_mk_zip({f"a/{i}.txt": b"x" for i in range(mp._MAX_ENTRIES + 1)}))
+
+
+def test_corrupt_entry_raises_missionpackageerror():
+    """central directory 完好但某 entry 壓縮資料損毀（截斷/CRC 不符）→ read 期才拋 →
+    _read_entry 一律轉 MissionPackageError（不讓 zlib/BadZipFile 逃出 best-effort 邊界）。"""
+    # 造：central directory 正常列出 .cot，但把壓縮 body 尾段截掉 → zf.read 觸發解壓錯。
+    good = _mk_zip({"7283d28d/7283d28d.cot": _COT})
+    # 從尾端砍掉 central directory 之外的資料無效；改用 monkeypatch 模擬 read 失敗更穩。
+    import zlib
+
+    class _Boom(zipfile.ZipFile):
+        def read(self, name):  # noqa: A003 — 覆寫以模擬損毀 entry
+            raise zlib.error("corrupt")
+
+    buf = io.BytesIO(good)
+    zf = _Boom(buf)
+    with pytest.raises(mp.MissionPackageError):
+        mp._read_entry(zf, "7283d28d/7283d28d.cot")

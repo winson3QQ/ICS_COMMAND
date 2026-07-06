@@ -36,6 +36,15 @@ class MissionPackageError(Exception):
     """mission-package 解析失敗（非 zip / 損毀 / 超限 / 全空）。"""
 
 
+def _read_entry(zf: zipfile.ZipFile, name: str) -> bytes:
+    """讀 zip entry bytes；損毀/截斷/CRC 不符 entry 的解壓例外一律轉 MissionPackageError（不可信來源、
+    best-effort：ZipFile 建構只讀 central directory，實際解壓錯在 read 期才拋，須在此收）。"""
+    try:
+        return zf.read(name)
+    except Exception as exc:  # noqa: BLE001 — BadZipFile/zlib.error/EOFError… 一律轉本模組錯
+        raise MissionPackageError(f"entry 解壓失敗 {name}：{exc}") from exc
+
+
 def _looks_like_image(data: bytes) -> bool:
     if data.startswith(_IMAGE_MAGIC):
         return True
@@ -80,14 +89,14 @@ def parse_mission_package(zip_bytes: bytes) -> dict:
         if info.file_size > _MAX_IMAGE_BYTES:
             continue
         if lower.endswith(".cot") and cot_xml is None:
-            data = zf.read(name)
+            data = _read_entry(zf, name)
             total += len(data)
             if total > _MAX_TOTAL_BYTES:
                 raise MissionPackageError("解壓總量超限（防 zip bomb）")
             cot_xml = data.decode("utf-8", "replace")
             continue
         if lower.endswith(_IMAGE_EXTS):
-            data = zf.read(name)
+            data = _read_entry(zf, name)
             total += len(data)
             if total > _MAX_TOTAL_BYTES:
                 raise MissionPackageError("解壓總量超限（防 zip bomb）")

@@ -597,7 +597,12 @@ def _route_fileshare_cot(event: CoTEventIn) -> None:
     if event.type.startswith("b-f-t-r"):
         from services import tak_attachments
 
-        task = asyncio.create_task(tak_attachments.handle_fileshare(event))
+        try:
+            task = asyncio.create_task(tak_attachments.handle_fileshare(event))
+        except RuntimeError:
+            # 無 running loop（理論上 ingest 皆在 loop 內；防呆：附件為選配，抓不到 loop 只 log 不阻斷）。
+            log.warning("[tak] #509 fileshare 無 running loop，附件跳過 uid=%s", event.uid)
+            return None
         _fileshare_bg_tasks.add(task)
         task.add_done_callback(_fileshare_bg_tasks.discard)
     else:

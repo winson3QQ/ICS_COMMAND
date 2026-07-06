@@ -117,6 +117,14 @@ async def handle_fileshare(event) -> None:
             row = await cop_service.ingest_cot_event(ev)
             if row:
                 marker_uid = row["uid"]
+                # dogfood 觀測：b-i-x-i 影像 marker 常無 producer 連結 → faction 可能為 NULL；NULL 時
+                # 演習中受限操作員（非 sysadmin）看不到此照片。log 供現場對照「照片有進但看不到」。
+                _faction = row.get("faction")
+                log.info(
+                    "[tak] #509 fileshare marker ingest uid=%s faction=%s",
+                    marker_uid,
+                    _faction if _faction is not None else "NULL(全域可見受限)",
+                )
         except Exception:  # noqa: BLE001 — 內含 CoT 解析/ingest 失敗 best-effort
             log.warning("[tak] #509 fileshare 內 CoT ingest 失敗", exc_info=True)
     if not marker_uid:
