@@ -34,6 +34,7 @@ from services import (
     tak_downlink,
     tak_files,
     tak_missions,
+    tak_photo_push,
     tak_resync,
     tak_runtime,
     tak_service,
@@ -531,6 +532,71 @@ async def upload_tak_file(request: Request, marker_uid: str = Form(...), file: U
     finally:
         await client.close()
     return {"ok": True, "hash": tak_files.extract_hash(result), "marker_uid": marker_uid}
+
+
+@router.post("/downlink/photo")
+async def downlink_photo(
+    request: Request,
+    marker_uid: str = Form(...),
+    file: UploadFile = File(...),
+    dest: str = Form(""),
+):
+    """#509-P3 下行「顯示到現場」：把照片（掛在 marker M 上）推到現場 TAK client 的地圖。
+
+    與 `/files/upload`（只上 Enterprise Sync 供 ICS 側 #503 面板顯示）不同——本端點**打包
+    mission-package zip + 廣播/點對點 `b-f-t-r`**，讓現場 client 建 marker + 掛照片（真機定讞：
+    推裸 jpg 不吃、要推 zip）。甲（M=現有 marker）/乙（M=ICS 新建 marker）同一端點。
+
+    `dest`：逗號分隔的 client callsign → 點對點只送這些；空 → 廣播（送 ICS 所在 group）。
+    RBAC=COMMAND_ROLES（中央 gate：POST /api/tak/*）。faction：只准推**本 session 看得到的 marker**
+    （繼承 for-entity 守門，看不到/不存在 → 404）。audit-first。非圖片 → 415；空/過大 → 400/413；
+    未配置寫 cert / 缺座標 → 422；上傳或送出失敗 → 502。
+    """
+    # faction 安全：marker 必須存在且本 session 可見（同 /files/upload 守門）。
+    entity = cop_entity_repo.get_cop_entity(marker_uid)
+    vis = visible_factions_for_session(request.state.session)
+    if not entity or (vis is not None and entity.get("faction") not in vis):
+        raise HTTPException(404, "找不到該 COP 物件")
+    mimetype = file.content_type or ""
+    if not mimetype.startswith("image/"):
+        raise HTTPException(415, "只接受 image/* 照片")
+    content = await file.read()
+    if not content:
+        raise HTTPException(400, "空檔案")
+    if len(content) > _MAX_UPLOAD_BYTES:
+        raise HTTPException(413, f"檔案過大（上限 {_MAX_UPLOAD_BYTES} bytes）")
+    if not _looks_like_image(content):  # 不信 client Content-Type，驗真實 magic bytes
+        raise HTTPException(415, "檔案內容非圖片（magic bytes 不符）")
+    # dest：逗號分隔 callsign（點對點）；空 → 廣播。內容白名單擋注入（callsign 進 CoT XML）。
+    dest_callsigns = [c.strip() for c in (dest or "").split(",") if c.strip()] or None
+    if dest_callsigns:
+        validate_no_unsafe_strings(dest_callsigns)
+    operator = request.state.session["username"]
+    audit(
+        operator,
+        None,
+        "TAK_PHOTO_PUSH",
+        "tak",
+        marker_uid,
+        {"name": file.filename, "mime": mimetype, "bytes": len(content), "dest": dest_callsigns or "broadcast"},
+        exercise_id=current_exercise_id(),
+    )
+    try:
+        result = await tak_photo_push.push_photo_to_marker(
+            marker_uid=marker_uid,
+            photo_bytes=content,
+            filename=file.filename or "photo.jpg",
+            mimetype=mimetype,
+            dest_callsigns=dest_callsigns,
+        )
+    except tak_photo_push.PhotoPushError as e:
+        raise HTTPException(422, f"下行推送失敗：{e}") from e
+    except (TakFilestoreError, TakRestError) as e:
+        raise HTTPException(502, f"TAK 上傳/送出失敗：{e}") from e
+    except (RuntimeError, OSError, TimeoutError) as e:
+        # send_cot 傳輸層失敗（未配置 / :8089 連不上 / 逾時）→ 502，不外洩 500 stack（zip 可能已上傳）。
+        raise HTTPException(502, f"TAK b-f-t-r 送出失敗：{e}") from e
+    return {"ok": True, **result}
 
 
 @router.get("/status")

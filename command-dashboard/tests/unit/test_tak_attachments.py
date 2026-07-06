@@ -188,6 +188,31 @@ def test_poll_bridges_missionpackage_skips_others_and_seen(tmp_path, monkeypatch
     assert len(tak_attachments.list_local_attachments("IMG-MARKER-1")) == 1
 
 
+def test_poll_skips_ics_own_uploads(tmp_path, monkeypatch):
+    """#509-P3：ICS 自己下行推的 zip（creatorUid=ICS-CMD）→ 輪詢跳過（不自我 re-ingest 覆寫 marker）。"""
+    from core import config
+
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
+    monkeypatch.setattr(tak_files, "_build_read_client", _fake_client)
+    tak_attachments._seen_hashes.clear()
+
+    dl_calls = []
+
+    async def _fake_search(client, **kw):
+        return [{"Hash": "c" * 64, "Keywords": ["missionpackage"], "Name": "ics.zip", "CreatorUid": "ICS-CMD"}]
+
+    async def _spy_bridge(client, h):
+        dl_calls.append(h)
+        return "M"
+
+    monkeypatch.setattr(tak_files, "search_files", _fake_search)
+    monkeypatch.setattr(tak_attachments, "_bridge_package_by_hash", _spy_bridge)
+
+    assert asyncio.run(tak_attachments.poll_filestore_once()) == 0  # ICS 自傳 → 不橋
+    assert dl_calls == []  # 根本沒進 _bridge
+    assert ("c" * 64) in tak_attachments._seen_hashes  # 標 seen 不重掃
+
+
 def test_bridge_attaches_even_when_package_cot_older(tmp_path, monkeypatch):
     """時序差異：live marker 較新 → ingest 回 None，但 marker 仍在 → 照片照樣掛（poll 關鍵韌性）。"""
     from core import config

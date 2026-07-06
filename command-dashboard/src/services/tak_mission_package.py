@@ -20,7 +20,9 @@ from __future__ import annotations
 
 import hashlib
 import io
+import re
 import zipfile
+from xml.sax.saxutils import quoteattr as _qa
 
 # 單圖上限 25MB、解壓總量上限 60MB、entry 數上限（防 zip bomb）。
 _MAX_IMAGE_BYTES = 25 * 1024 * 1024
@@ -123,3 +125,51 @@ def _mimetype_for(lower_name: str) -> str:
     if lower_name.endswith(".webp"):
         return "image/webp"
     return "image/jpeg"
+
+
+# ── #509-P3 下行：打包 mission-package（parse_mission_package 的反向）──────────────────
+
+_UNSAFE_ENTRY_RE = re.compile(r"[^A-Za-z0-9._-]")
+
+
+def _safe_zip_component(name: str, fallback: str) -> str:
+    """zip entry 路徑成分清成安全字元（防注入 zip 結構 / zip-slip）。空 → fallback。"""
+    cleaned = _UNSAFE_ENTRY_RE.sub("_", (name or "").strip())
+    return cleaned[:120] or fallback
+
+
+def build_mission_package(*, marker_uid: str, cot_xml: str, photo_name: str, photo_bytes: bytes) -> bytes:
+    """#509-P3：把「一個 marker CoT + 一張照片」打包成 mission-package zip（現場 client 收到即
+    建 marker + 掛照片）。結構對齊真機 iTAK（`parse_mission_package` 的反向）：
+
+        MANIFEST/manifest.xml
+        <uid>/<uid>.cot            ← marker CoT（甲=現有 marker 重建 / 乙=ICS 新建）
+        attach/<photo>            ← 照片本體
+
+    marker_uid / photo_name 皆清成安全 zip 路徑成分（防注入 zip 結構）。回 zip bytes（純邏輯、不觸網）。
+    """
+    uid_c = _safe_zip_component(marker_uid, "marker")
+    photo_c = _safe_zip_component(photo_name, "photo.jpg")
+    cot_entry = f"{uid_c}/{uid_c}.cot"
+    photo_entry = f"attach/{photo_c}"
+    manifest = (
+        "<?xml version='1.0' encoding='UTF-8'?>"
+        "<MissionPackageManifest version='2'>"
+        "<Configuration>"
+        f"<Parameter name='uid' value={_qa(marker_uid + '-pkg')}/>"
+        f"<Parameter name='name' value={_qa(photo_c)}/>"
+        "<Parameter name='onReceiveImport' value='true'/>"
+        "<Parameter name='onReceiveDelete' value='false'/>"
+        "</Configuration>"
+        "<Contents>"
+        f"<Content ignore='false' zipEntry={_qa(cot_entry)}><Parameter name='uid' value={_qa(marker_uid)}/></Content>"
+        f"<Content ignore='false' zipEntry={_qa(photo_entry)}><Parameter name='uid' value={_qa(marker_uid)}/></Content>"
+        "</Contents>"
+        "</MissionPackageManifest>"
+    )
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr("MANIFEST/manifest.xml", manifest)
+        z.writestr(cot_entry, cot_xml)
+        z.writestr(photo_entry, photo_bytes)
+    return buf.getvalue()
