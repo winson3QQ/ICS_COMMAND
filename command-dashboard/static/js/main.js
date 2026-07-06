@@ -231,6 +231,7 @@ document.addEventListener('click', function (e) {
     case 'adm-revoke-wg-peer': import('./auth.js').then(m => m.admRevokeWgPeer(btn.dataset.callsign)); break;  // 撤 WG-only peer
     case 'adm-deregister-tak-user': import('./auth.js').then(m => m.admDeregisterTakUser(btn.dataset.callsign)); break;  // #401：移除 TAK 殭屍
     case 'adm-strip-anon-tak-user': import('./auth.js').then(m => m.admStripAnonTakUser(btn.dataset.callsign)); break;  // #404：移出 __ANON__ 隔離破口
+    case 'adm-reconcile-infra-groups': import('./auth.js').then(m => m.admReconcileInfraGroups()); break;  // #507：消費半身一鍵對帳（infra 證補群）
     case 'adm-download-rootca': import('./auth.js').then(m => m.admDownloadRootCa()); break;
     case 'adm-faction-classify': import('./auth.js').then(m => m.admClassifyFaction(btn.dataset.clientKey, btn.dataset.faction, btn.dataset.callsign)); break;
     case 'adm-faction-override': import('./auth.js').then(m => m.admOverrideFaction()); break;

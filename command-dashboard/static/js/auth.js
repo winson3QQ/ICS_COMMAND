@@ -1285,7 +1285,42 @@ function _renderTakDriven(box, data, nullFpRevoked = []) {
       '⚠ ' + nullFpRevoked.length + ' 張 ICS 已撤但 <b>TAK 撤不掉</b>（無 fingerprint，#398 前發 → 需重發證 / 等過期）：' +
       nullFpRevoked.map(c => _escAudit(c.callsign)).join('、') + '</div>';
   }
+  html += _renderInfraDrift(data.infra_drift || []);  // #507：消費半身——ICS 自身 infra 證群對帳
   box.innerHTML = html;
+}
+
+// #507 消費半身漂移狀態 → [色, 標籤]（固定字串，非使用者內容）。
+const _INFRA_ST = {
+  ok: ['var(--text3)', '✓ 符合'],
+  missing: ['var(--red)', '⚠ 缺群'],
+  unregistered: ['var(--red)', '⚠ 未註冊'],
+  extra: ['var(--amber,#c90)', '⚠ 多群'],
+  unknown: ['var(--text3)', '· 未知'],
+};
+
+/** #507 消費半身：ICS 自身 infra 證的「宣告群 vs TAK 實際」+ 有漂移才出「一鍵對帳」鈕。
+ *  回 html 字串（純函式，可單測）。動態內容一律 _escAudit（CSP/XSS 安全，同面板其餘處）。 */
+export function _renderInfraDrift(drift) {
+  const rows = drift || [];
+  if (!rows.length) return '';
+  const hasDrift = rows.some(r => r.status === 'missing' || r.status === 'unregistered' || r.status === 'extra');
+  let html = '<div style="font-size:11px;color:var(--text3);margin:8px 0 4px;">ICS 自身 infra 證（消費半身）— 宣告群 vs TAK 實際：</div>';
+  for (const r of rows) {
+    const st = _INFRA_ST[r.status] || ['var(--text3)', _escAudit(r.status)];
+    const declared = (r.declared || []).join('/') || '—';
+    const actual = r.actual == null ? '（未在名冊）' : ((r.actual || []).join('/') || '（無群）');
+    html += '<div style="display:flex;align-items:center;gap:6px;padding:3px 0;border-bottom:1px solid var(--border,#222);font-size:12px;flex-wrap:wrap;">' +
+      '<span style="font-family:monospace;flex:1;min-width:80px;">' + _escAudit(r.callsign) + '</span>' +
+      '<span style="color:var(--text3);font-size:10px;">宣告 ' + _escAudit(declared) + '</span>' +
+      '<span style="color:var(--text3);font-size:10px;">實際 ' + _escAudit(actual) + '</span>' +
+      '<span style="color:' + st[0] + ';font-size:10px;">' + st[1] + '</span>' +
+      '</div>';
+  }
+  if (hasDrift) {
+    html += '<div style="margin:4px 0;"><button class="adm-btn" data-action="adm-reconcile-infra-groups">🔧 一鍵對帳（補群）</button>' +
+      '<span style="color:var(--text3);font-size:10px;margin-left:6px;">缺群 → ICS 讀不到該陣營現場檔（#507）</span></div>';
+  }
+  return html;
 }
 
 /** ICS-only fallback（reconcile 未配置時）：列 dashboard 發過的證 + Slice 1 同步徽章。 */
@@ -1341,6 +1376,26 @@ export async function admStripAnonTakUser(callsign) {
   if (!confirm('把「' + callsign + '」移出 __ANON__ 匿名群？\n保留其餘群（紅/藍/中立）。修正「與任何 CA 信任的證同頻、不明證可注入/竊聽」隔離破口。')) return;
   const resp = await authFetch(API_BASE + '/api/admin/tak/users/' + encodeURIComponent(callsign) + '/strip-anon', { method: 'POST' });
   if (!resp.ok) { alert('移出失敗（' + resp.status + '）：' + (await resp.text()).slice(0, 200)); return; }
+  admLoadTakDeviceCerts();
+}
+
+/** #507 消費半身一鍵對帳：把 ICS 自身 infra 證補進宣告的 TAK 群（缺群 → 讀不到現場陣營照片）。只補、不砍群。 */
+export async function admReconcileInfraGroups() {
+  if (!confirm('把 ICS 自身 infra 證補進宣告的 TAK 群（藍/紅/中）？\n修「讀取證缺群 → 讀不到現場陣營照片」。只補宣告缺的群，不砍群。')) return;
+  const resp = await authFetch(API_BASE + '/api/admin/tak/infra-groups/reconcile', { method: 'POST' });
+  if (!resp.ok) { alert('對帳失敗（' + resp.status + '）：' + (await resp.text()).slice(0, 200)); return; }
+  const body = await resp.json();
+  const applied = body.applied || [];
+  if (applied.length) {
+    const ok = applied.filter(a => a.ok).map(a => a.callsign);
+    const bad = applied.filter(a => !a.ok).map(a => a.callsign + '（' + a.reason + '）');
+    let msg = '對帳完成。';
+    if (ok.length) msg += '\n✓ 已補群：' + ok.join('、');
+    if (bad.length) msg += '\n✗ 失敗：' + bad.join('、');
+    alert(msg);
+  } else {
+    alert('無需對帳（infra 證群已符合宣告）。');
+  }
   admLoadTakDeviceCerts();
 }
 
