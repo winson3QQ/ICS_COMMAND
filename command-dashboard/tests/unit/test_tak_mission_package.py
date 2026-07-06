@@ -103,6 +103,28 @@ def test_too_many_entries_raises():
         mp.parse_mission_package(_mk_zip({f"a/{i}.txt": b"x" for i in range(mp._MAX_ENTRIES + 1)}))
 
 
+def test_build_mission_package_roundtrip():
+    """#509-P3：build_mission_package 打的包，自己的 parser 解得動（marker CoT + 照片還原）。"""
+    z = mp.build_mission_package(marker_uid="MK-1", cot_xml=_COT, photo_name="scene.jpg", photo_bytes=_JPEG)
+    out = mp.parse_mission_package(z)
+    assert out["cot_xml"] is not None and "b-i-x-i" in out["cot_xml"]
+    assert [i["name"] for i in out["images"]] == ["scene.jpg"]
+    assert out["images"][0]["data"] == _JPEG
+
+
+def test_build_mission_package_sanitizes_unsafe_zip_paths():
+    """marker_uid / photo_name 含 traversal → zip entry 清成安全，不得含 `..`（防注入 zip 結構）。"""
+    z = mp.build_mission_package(
+        marker_uid="../../evil", cot_xml=_COT, photo_name="../../../etc/passwd.jpg", photo_bytes=_JPEG
+    )
+    names = zipfile.ZipFile(io.BytesIO(z)).namelist()
+    # 真正的危險是 traversal 序列 `../` 與絕對路徑——成分內的 slash 已被清成 `_`，故不可能成 `../`。
+    assert not any("../" in n or n.startswith("/") or "\\" in n for n in names)
+    assert "MANIFEST/manifest.xml" in names
+    out = mp.parse_mission_package(z)  # 清理後仍有效可解包
+    assert len(out["images"]) == 1
+
+
 def test_corrupt_entry_raises_missionpackageerror():
     """central directory 完好但某 entry 壓縮資料損毀（截斷/CRC 不符）→ read 期才拋 →
     _read_entry 一律轉 MissionPackageError（不讓 zlib/BadZipFile 逃出 best-effort 邊界）。"""

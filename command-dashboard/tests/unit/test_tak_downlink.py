@@ -468,3 +468,44 @@ def test_presence_beacon_loop_best_effort_on_send_failure(monkeypatch):
     monkeypatch.setattr(config, "TAK_PRESENCE_INTERVAL_S", 10)
     asyncio.run(tak_downlink.presence_beacon_loop(stop))  # 不得外拋
     assert len(calls) == 1
+
+
+# ── #509-P3 下行 fileshare 通告（build_fileshare_cot）─────────────────────────────────
+
+
+def test_fileshare_broadcast_structure(monkeypatch):
+    """廣播 b-f-t-r：純 <fileshare>、senderUrl 指裝置面對位址、無 marti dest/peerHosted/ackrequest。"""
+    monkeypatch.setattr(config, "TAK_DEVICE_CONNECT_HOST", "10.13.13.1")
+    cot = tak_downlink.build_fileshare_cot(
+        file_hash="a" * 64, filename="scene.zip", size_bytes=1234, name="scene", lat=24.7, lon=121.0, now=_NOW
+    )
+    ev = _parse(cot)
+    assert ev.get("type") == "b-f-t-r" and ev.get("how") == "h-e"
+    fs = ev.find("detail/fileshare")
+    assert fs.get("senderUrl") == "https://10.13.13.1:8443/Marti/sync/content?hash=" + "a" * 64
+    assert fs.get("sha256") == "a" * 64 and fs.get("sizeInBytes") == "1234"
+    assert fs.get("filename") == "scene.zip" and fs.get("name") == "scene"
+    assert ev.find("detail/marti") is None  # 廣播無定址
+    assert "peerHosted" not in fs.attrib and ev.find("detail/ackrequest") is None  # 對齊真機廣播
+
+
+def test_fileshare_point_to_point_marti_dest(monkeypatch):
+    """dest_callsigns 給定 → <marti><dest callsign/> 點對點。"""
+    monkeypatch.setattr(config, "TAK_DEVICE_CONNECT_HOST", "10.13.13.1")
+    cot = tak_downlink.build_fileshare_cot(
+        file_hash="b" * 64, filename="s.zip", size_bytes=1, name="s", dest_callsigns=["3QQ-iTAK", "3QQ-atak"], now=_NOW
+    )
+    ev = _parse(cot)
+    dests = [d.get("callsign") for d in ev.findall("detail/marti/dest")]
+    assert dests == ["3QQ-iTAK", "3QQ-atak"]
+
+
+def test_fileshare_escapes_xml_metachars(monkeypatch):
+    """filename/name 走 quoteattr——XML 注入被中和。"""
+    monkeypatch.setattr(config, "TAK_DEVICE_CONNECT_HOST", "10.13.13.1")
+    cot = tak_downlink.build_fileshare_cot(
+        file_hash="c" * 64, filename='x"><evil/>.zip', size_bytes=1, name="n", now=_NOW
+    )
+    ev = _parse(cot)  # 能被解析＝未破壞結構
+    assert ev.find("detail/fileshare").get("filename") == 'x"><evil/>.zip'
+    assert ev.find("detail/evil") is None

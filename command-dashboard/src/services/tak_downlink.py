@@ -92,6 +92,52 @@ def build_command_cot(
     )
 
 
+def build_fileshare_cot(
+    *,
+    file_hash: str,
+    filename: str,
+    size_bytes: int,
+    name: str,
+    lat: float = 0.0,
+    lon: float = 0.0,
+    sender_callsign: str = "ICS-Command",
+    sender_uid: str = "ICS-CMD",
+    dest_callsigns: list[str] | None = None,
+    stale_minutes: int = 20,
+    now: datetime | None = None,
+) -> str:
+    """#509-P3 下行 fileshare 通告（`b-f-t-r`）——告訴現場 client 去 Enterprise Sync 抓某 zip。
+
+    格式對齊真機廣播 b-f-t-r（2026-07-06 抓包定讞）：純 `<fileshare>`，`senderUrl` 指向**裝置面對的**
+    Enterprise Sync（`config.TAK_DEVICE_CONNECT_HOST:8443`，非容器內網名 takserver）。`sha256`/`sizeInBytes`
+    = **zip 的**（非照片）。`dest_callsigns` 給定 → 加 `<marti><dest callsign/>` 點對點；否則廣播（無
+    marti dest → 送 ICS 所在 group）。**刻意不送** `peerHosted`/`<ackrequest>`（真機廣播無此二者）。
+    """
+    now = now or datetime.now(UTC)
+    t = now.strftime("%Y-%m-%dT%H:%M:%S.000Z")
+    stale = (now + timedelta(minutes=stale_minutes)).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+    url = f"https://{config.TAK_DEVICE_CONNECT_HOST}:8443/Marti/sync/content?hash={file_hash}"
+    marti = ""
+    if dest_callsigns:
+        dests = "".join(f"<dest callsign={quoteattr(c)}/>" for c in dest_callsigns if c)
+        if dests:
+            marti = f"<marti>{dests}</marti>"
+    detail = (
+        f"<fileshare filename={quoteattr(filename)} senderUrl={quoteattr(url)} "
+        f"sizeInBytes='{int(size_bytes)}' sha256={quoteattr(file_hash)} "
+        f"senderUid={quoteattr(sender_uid)} senderCallsign={quoteattr(sender_callsign)} name={quoteattr(name)}/>"
+        f"{marti}"
+    )
+    return (
+        "<?xml version='1.0' encoding='UTF-8' standalone='yes'?>"
+        f"<event version='2.0' uid={quoteattr('ICS-FSHARE-' + str(file_hash)[:16])} type='b-f-t-r' "
+        f"how='h-e' time='{t}' start='{t}' stale='{stale}'>"
+        f"<point lat='{float(lat)}' lon='{float(lon)}' hae='0' ce='9999999' le='9999999'/>"
+        f"<detail>{detail}</detail>"
+        "</event>"
+    )
+
+
 # #216：ICS 出向 GeoChat 的「站台身分」。ICS 是 TAK 訂閱者、非 GPS 裝置（無自身 SA/PLI 上線），
 # 故 wire 上原無 ICS 裝置 uid——出向通聯需要一個穩定 sender uid 才能組 chatgrp/link/uid。
 # 用固定站台 uid（指揮部視為單一 contact），實際發話者由 senderCallsign 帶出（誠實標明是誰）。

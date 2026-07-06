@@ -264,7 +264,12 @@ COOKIE_SECURE_OVERRIDE: bool | None = (
 # PATCH 2.40.1：#509-P2 hotfix——輪詢搜尋**不再濾 `tool=public`**。真機 dogfood：ATAK 分享落
 #               `tool=private`、iTAK 落 `tool=null`（分享方式而異），濾 public 漏掉新 ATAK 分享；改列舉
 #               全部、只靠 `missionpackage` keyword 辨識（正是 code-review 曾點名、被歷史資料誤導漏修處）。
-APP_VERSION = "2.40.1"
+# MINOR 2.41.0：#509-P3 下行「顯示到現場」後端——`POST /api/tak/downlink/photo`：把照片（掛在 marker M
+#               上）打包成 mission-package zip（`build_mission_package`）→ 上傳 Enterprise Sync（keyword=
+#               missionpackage）→ 廣播/點對點 `b-f-t-r`（`build_fileshare_cot`，格式真機抓包定讞）→ 現場
+#               client 建 marker + 掛照片。甲（M=現有 marker 補照片）/乙（M=ICS 新建 marker，非 TAK 來源
+#               情報如無線電）同一端點。COMMAND_ROLES + faction 守門 + magic-byte + audit。前端 UI 另做。
+APP_VERSION = "2.41.0"
 
 # CMD_VERSION：前端 UI 功能版本（不同於後端 SemVer APP_VERSION；規則見 CLAUDE.md 版號規則）
 # 兩軌版本命名，不可混用。由 /api/version 提供給前端，是唯一 source-of-truth；release 時更新此值。

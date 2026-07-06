@@ -193,11 +193,18 @@ async def poll_filestore_once() -> int:
     bridged = 0
     try:
         results = await tak_files.search_files(client)
+        from services.tak_downlink import ICS_SELF_UID
+
         for meta in results:
             h = tak_files.extract_hash(meta)
             if not h or not tak_files.is_valid_hash(h) or h in _seen_hashes:
                 continue
             if "missionpackage" not in [k.lower() for k in tak_files.extract_keywords(meta)]:
+                continue
+            if tak_files.extract_creator_uid(meta) == ICS_SELF_UID:
+                # #509-P3：ICS 自己下行推的 zip（creatorUid=ICS-CMD）→ 不 re-ingest（否則 marker CoT
+                # 自我 re-ingest 會覆寫既有 marker attributes）。ICS 側照片於推送時已本地掛。
+                _seen_hashes.add(h)
                 continue
             try:
                 res = await _bridge_package_by_hash(client, h)

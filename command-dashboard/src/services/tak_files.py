@@ -43,6 +43,7 @@ _SHA256_RE = re.compile(r"^[0-9a-fA-F]{64}$")
 _HASH_KEYS = ("hash", "Hash", "hashValue")
 _NAME_KEYS = ("name", "Name", "filename", "Filename")
 _MIME_KEYS = ("mimeType", "MIMEType", "mimetype", "contentType")
+_CREATOR_KEYS = ("creatorUid", "CreatorUid", "creatoruid")
 
 
 class TakFilestoreError(Exception):
@@ -88,6 +89,11 @@ def extract_name(meta: dict) -> str | None:
 def extract_mimetype(meta: dict) -> str | None:
     """從結果 dict 取 MIME type（跨版本欄位容錯）。"""
     return _first(meta, _MIME_KEYS)
+
+
+def extract_creator_uid(meta: dict) -> str | None:
+    """從 search 結果取 creatorUid（跨版本欄位容錯）——供 #509-P2 輪詢跳過 ICS 自傳（防自我 re-ingest）。"""
+    return _first(meta, _CREATOR_KEYS)
 
 
 def extract_keywords(meta: dict) -> list[str]:
@@ -207,7 +213,14 @@ def _build_write_client():
 
 
 async def upload_file(
-    client, *, content: bytes, filename: str, mimetype: str, creator_uid: str, marker_uid: str | None = None
+    client,
+    *,
+    content: bytes,
+    filename: str,
+    mimetype: str,
+    creator_uid: str,
+    marker_uid: str | None = None,
+    keywords: str | None = None,
 ) -> dict:
     """上傳檔案到 Enterprise Sync（POST /Marti/sync/upload）→ 回 server JSON（含 Hash/UID/…）。
 
@@ -224,6 +237,8 @@ async def upload_file(
     if marker_uid:
         params["uid"] = marker_uid  # 地點型連結：search?uid=<marker> 撈得到
         params["keywords"] = marker_uid
+    if keywords:
+        params["keywords"] = keywords  # 覆寫（#509-P3 下行 zip 用 'missionpackage'，讓收方/ICS 輪詢認得）
     result = await client.post_bytes(
         _UPLOAD_PATH, content, params=params, content_type=mimetype or "application/octet-stream"
     )
