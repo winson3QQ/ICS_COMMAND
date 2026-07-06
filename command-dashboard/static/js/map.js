@@ -2441,7 +2441,10 @@ function _openTakUnitDetail(id) {
   body += takPhotoSectionHtml(canUseRealModeControls());  // #503 上行顯示 + #506 M3 下行上傳（指揮層）
   _deps.openModal?.(`${affZh}單位 ${ent.callsign || ''}`, body);
   _takPhotoLoader.load(id);
-  if (canUseRealModeControls()) _takPhotoLoader.bindUpload(id);
+  if (canUseRealModeControls()) {
+    _takPhotoLoader.bindUpload(id);
+    _takPhotoLoader.bindPush(id); // #509-P3 下行：推照片到現場
+  }
 }
 // 開 detail modal（給左鍵 click 與右鍵 menu「編輯註記」共用）。
 export function _openContactDetail(id) {
@@ -2488,7 +2491,10 @@ export function _openContactDetail(id) {
   _deps.openModal?.(`${affZh}接觸 ${ent.callsign || ''}　·　左鍵拖曳可移動`, body);
   if (_hasTakPhotos) {
     _takPhotoLoader.load(id);
-    if (canUseRealModeControls()) _takPhotoLoader.bindUpload(id);
+    if (canUseRealModeControls()) {
+      _takPhotoLoader.bindUpload(id);
+      _takPhotoLoader.bindPush(id); // #509-P3 下行：推照片到現場
+    }
   }
 }
 

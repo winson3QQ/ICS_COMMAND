@@ -16,7 +16,10 @@
 
 export const TAK_PHOTO_GRID_ID = 'tak-photo-grid';
 export const TAK_PHOTO_UPLOAD_ID = 'tak-photo-upload';
+export const TAK_PHOTO_PUSH_ID = 'tak-photo-push'; // #509-P3 下行「推到現場」檔案輸入
+export const TAK_PHOTO_PUSH_DEST_ID = 'tak-photo-push-dest'; // 收件人多選（不選＝廣播）
 const _UPLOAD_STATUS_ID = 'tak-photo-upload-status';
+const _PUSH_STATUS_ID = 'tak-photo-push-status';
 const _CELL_STYLE =
   'display:flex;align-items:center;justify-content:center;width:72px;height:72px;' +
   'border:1px solid var(--border);border-radius:6px;overflow:hidden;background:var(--surface);text-decoration:none;';
@@ -30,11 +33,23 @@ export function takPhotoSectionHtml(canUpload = false) {
       `<label style="cursor:pointer;color:var(--accent,#2b6cd9);">📤 上傳照片<input type="file" id="${TAK_PHOTO_UPLOAD_ID}" accept="image/*" style="display:none"></label>` +
       `<span id="${_UPLOAD_STATUS_ID}" style="margin-left:8px;color:var(--text3);"></span></div>`
     : '';
+  // #509-P3 下行：把照片推到現場 client 的地圖（打包 mission-package → b-f-t-r）。收件人多選：
+  // 不選＝廣播全體；選一個以上＝點對點。與「上傳照片」（僅 ICS 側顯示）不同——本控制會送達現場。
+  const push = canUpload
+    ? '<div style="margin-top:8px;font-size:11px;">' +
+      `<label style="cursor:pointer;color:var(--accent,#2b6cd9);">📡 推照片到現場<input type="file" id="${TAK_PHOTO_PUSH_ID}" accept="image/*" style="display:none"></label>` +
+      `<span id="${_PUSH_STATUS_ID}" style="margin-left:8px;color:var(--text3);"></span>` +
+      '<div style="color:var(--text3);margin-top:4px;">收件人（不選＝廣播全體）：</div>' +
+      `<select id="${TAK_PHOTO_PUSH_DEST_ID}" multiple size="3" ` +
+      'style="width:100%;font-size:11px;margin-top:2px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;">' +
+      '</select></div>'
+    : '';
   return (
     '<div style="margin-top:12px;border-top:1px solid var(--border);padding-top:8px;">' +
     '<div style="font-size:11px;color:var(--text3);margin-bottom:6px;">📷 TAK 照片附件</div>' +
     `<div id="${TAK_PHOTO_GRID_ID}" style="display:flex;flex-wrap:wrap;gap:6px;font-size:11px;color:var(--text3);">載入中…</div>` +
     upload +
+    push +
     '</div>'
   );
 }
@@ -156,5 +171,61 @@ export function createTakPhotoLoader({ authFetch, doc } = {}) {
     });
   }
 
-  return { load, upload, bindUpload, _revokeAll };
+  // #509-P3 下行「推到現場」：線上 client 名單（供收件人多選）。best-effort：失敗回空（仍可廣播）。
+  async function fetchClients() {
+    try {
+      const r = await authFetch('/api/tak/clients');
+      if (!r.ok) return [];
+      return (await r.json()).clients || [];
+    } catch (_) {
+      return [];
+    }
+  }
+
+  // 推一張照片到現場（打包 zip + b-f-t-r）→ POST /api/tak/downlink/photo。dest 空＝廣播、逗號分隔＝點對點。
+  async function pushToField(uid, file, dest) {
+    const fd = new FormData();
+    fd.append('marker_uid', uid);
+    fd.append('file', file);
+    if (dest) fd.append('dest', dest);
+    const r = await authFetch('/api/tak/downlink/photo', { method: 'POST', body: fd });
+    return r.ok;
+  }
+
+  // 綁定「推照片到現場」控制（openModal 後呼叫）：填 client 選項 → 選檔 → 依所選收件人推送。
+  // CSP 安全（addEventListener + property set，非 inline/innerHTML）。
+  async function bindPush(uid) {
+    const input = _doc.getElementById(TAK_PHOTO_PUSH_ID);
+    if (!input || !uid) return;
+    const sel = _doc.getElementById(TAK_PHOTO_PUSH_DEST_ID);
+    const status = _doc.getElementById(_PUSH_STATUS_ID);
+    if (sel) {
+      const clients = await fetchClients();
+      if (!_doc.getElementById(TAK_PHOTO_PUSH_DEST_ID)) return; // modal 已關 → 別動 DOM
+      for (const c of clients) {
+        if (!c || !c.callsign) continue;
+        const opt = _doc.createElement('option');
+        opt.value = c.callsign; // property set → 不可信 callsign 安全（非 innerHTML）
+        opt.textContent = c.callsign;
+        sel.appendChild(opt);
+      }
+    }
+    input.addEventListener('change', async () => {
+      const file = input.files && input.files[0];
+      if (!file) return;
+      const dest = sel ? Array.from(sel.selectedOptions).map((o) => o.value).join(',') : '';
+      if (status) status.textContent = dest ? `推送給 ${dest}…` : '廣播推送…';
+      let ok = false;
+      try {
+        ok = await pushToField(uid, file, dest);
+      } catch (_) {
+        ok = false;
+      }
+      input.value = ''; // 清掉，允許再推同一檔
+      if (status) status.textContent = ok ? '✓ 已推送現場' : '✕ 推送失敗';
+      if (ok) await load(uid); // 本地也掛了 → 重載顯示
+    });
+  }
+
+  return { load, upload, bindUpload, fetchClients, pushToField, bindPush, _revokeAll };
 }
