@@ -28,7 +28,7 @@ _CONFIG_KEY = "tak.connection_enabled"
 # (subscribe_task, mission_poll_task|None, presence_beacon_task|None, stop_event)。#506 M1 / #507 P4：
 # mission poll 與 presence beacon 背景 task 與訂閱 task 共用同一 stop_event、同生共死（start 一起建、
 # stop 一起收）。未配置 mission feed / presence OFF 時對應槽為 None。is_running 仍以 subscribe task（[0]）為準。
-_handle: tuple[asyncio.Task, asyncio.Task | None, asyncio.Task | None, asyncio.Event] | None = None
+_handle: tuple[asyncio.Task, asyncio.Task | None, asyncio.Task | None, asyncio.Task | None, asyncio.Event] | None = None
 _lock = asyncio.Lock()
 # #222：on_connect resync/對帳互斥——flap（server 反覆關開）時上一輪未跑完就跳過，避免疊跑。
 _on_connect_lock = asyncio.Lock()
@@ -149,7 +149,18 @@ async def start() -> bool:
                 log.info("[tak] presence beacon task 啟動：callsign=%s", config.TAK_PRESENCE_CALLSIGN)
         except Exception:  # noqa: BLE001 — presence 為附加能力，啟動失敗不擋訂閱
             log.warning("[tak] presence beacon task 啟動失敗", exc_info=True)
-        _handle = (task, poll_task, beacon_task, stop_event)
+        # #509-P2：Enterprise Sync 主動輪詢橋（配了 TAK_FILESTORE_POLL_ENABLED 才起；共用 stop_event）。
+        # 啟動失敗不擋訂閱（附件輪詢為附加能力，失敗只 log）。
+        filestore_task = None
+        try:
+            from services import tak_attachments
+
+            if tak_attachments.filestore_poll_enabled():
+                filestore_task = asyncio.create_task(tak_attachments.filestore_poll_loop(stop_event))
+                log.info("[tak] #509-P2 file store 輪詢 task 啟動：%ss", config.TAK_FILESTORE_POLL_INTERVAL_S)
+        except Exception:  # noqa: BLE001 — file store 輪詢為附加能力，啟動失敗不擋訂閱
+            log.warning("[tak] #509-P2 file store 輪詢 task 啟動失敗", exc_info=True)
+        _handle = (task, poll_task, beacon_task, filestore_task, stop_event)
         log.info("[tak] CoT 訂閱背景 task 啟動：%s", config.TAK_COT_URL)
         return True
 
@@ -161,9 +172,9 @@ async def stop() -> bool:
     async with _lock:
         if _handle is None:
             return False
-        task, poll_task, beacon_task, stop_event = _handle
+        task, poll_task, beacon_task, filestore_task, stop_event = _handle
         _handle = None
-        stop_event.set()  # 軟停：停止重連 + 喚醒 poll/beacon loop 的 wait
+        stop_event.set()  # 軟停：停止重連 + 喚醒 poll/beacon/filestore loop 的 wait
         task.cancel()  # 硬停：中斷卡在 readcot 的 await
         with suppress(asyncio.CancelledError):
             await task
@@ -175,6 +186,10 @@ async def stop() -> bool:
             beacon_task.cancel()
             with suppress(asyncio.CancelledError):
                 await beacon_task
+        if filestore_task is not None:  # #509-P2：file store 輪詢 task 同收
+            filestore_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await filestore_task
         log.info("[tak] CoT 訂閱背景 task 已停止")
         return True
 
