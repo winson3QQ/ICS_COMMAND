@@ -157,6 +157,14 @@ async def download_file(client, file_hash: str, *, max_bytes: int = _MAX_DOWNLOA
     return await client.get_bytes(f"/Marti/api/files/{h}", max_bytes=max_bytes)
 
 
+async def download_content(client, file_hash: str, *, max_bytes: int = _MAX_DOWNLOAD_BYTES) -> bytes | None:
+    """下載 fileshare content（`GET /Marti/sync/content?hash=`）——**現場分享的 mission-package zip 走此
+    端點**（#509 reality-check 實證：現場 zip 於 /sync/content 回 200，不在 /Marti/api/files/{hash}）。
+    hash 先驗 SHA-256。回 bytes；查無回 None。max_bytes 上限保護（超過拋 TakRestError）。"""
+    h = _require_valid_hash(file_hash)
+    return await client.get_bytes(f"/Marti/sync/content?hash={h}", max_bytes=max_bytes)
+
+
 _UPLOAD_PATH = "/Marti/sync/upload"  # legacy Enterprise Sync 上傳 servlet（不在 /Marti/api OpenAPI）
 # 上傳檔名須純 ASCII 安全字元——server ESAPI 擋重音/標點/非 ASCII（#506 reality-check 實測 400）。
 _UNSAFE_NAME_RE = re.compile(r"[^A-Za-z0-9._-]")

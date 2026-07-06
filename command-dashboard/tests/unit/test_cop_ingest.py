@@ -370,3 +370,66 @@ def test_archive_can_be_set_by_later_update(captured_broadcasts):
     assert get_cop_entity("ARCH-2")["archived"] is False
     row = _ingest(_event(uid="ARCH-2", time="2026-06-05T04:01:00Z", type="a-u-G", how="h-g-i-g-o", archived=True))
     assert row["archived"] is True
+
+
+# ── #508：CoT 種類分流器——非實體家族不再誤存成 marker，實體（含 MEDEVAC/幾何）照存 ──────
+
+
+def test_fileshare_b_f_t_r_not_stored(captured_broadcasts):
+    """b-f-t-r（fileshare 通告）→ 不進 cop_entities（交 #509）；不廣播。"""
+    row = _ingest(_event(uid="FS-R-1", time="2026-06-05T04:00:00Z", type="b-f-t-r"))
+    assert row is None
+    assert get_cop_entity("FS-R-1") is None
+    assert len(captured_broadcasts) == 0
+
+
+def test_fileshare_b_f_t_a_not_stored():
+    """b-f-t-a（fileshare ack）→ drop、不落地。"""
+    assert _ingest(_event(uid="FS-A-1", time="2026-06-05T04:00:00Z", type="b-f-t-a")) is None
+    assert get_cop_entity("FS-A-1") is None
+
+
+def test_mission_change_t_x_m_not_stored():
+    """t-x-m-n（mission 建立變更）→ 不進 COP（mission 消費走 #506 poll）。"""
+    assert _ingest(_event(uid="TXM-1", time="2026-06-05T04:00:00Z", type="t-x-m-n")) is None
+    assert get_cop_entity("TXM-1") is None
+
+
+def test_tasking_control_t_x_c_not_stored():
+    """t-x-c-t（ping 等控制）→ 不進 COP。"""
+    assert _ingest(_event(uid="TXC-1", time="2026-06-05T04:00:00Z", type="t-x-c-t")) is None
+    assert get_cop_entity("TXC-1") is None
+
+
+def test_medevac_still_stored():
+    """**denylist 安全鎖**：MEDEVAC = b-a-o-tbl-medevac（b-* 實體）不是 b-f-t/t-x → 照存（allowlist 會誤丟）。"""
+    row = _ingest(_event(uid="MED-1", time="2026-06-05T04:00:00Z", type="b-a-o-tbl-medevac", callsign="CASEVAC-1"))
+    assert row is not None
+    assert get_cop_entity("MED-1") is not None
+
+
+def test_geometry_u_type_still_stored():
+    """**denylist 安全鎖**：u-* 幾何（矩形/多邊形/圓）不是 b-f-t/t-x → 照存。"""
+    row = _ingest(_event(uid="SHAPE-1", time="2026-06-05T04:00:00Z", type="u-d-r"))
+    assert row is not None
+    assert get_cop_entity("SHAPE-1") is not None
+
+
+def test_purge_non_entity_tak_rows():
+    """#508 清舊帳：硬刪既有誤存的 b-f-t-*/t-x-* source=tak 列；實體（a-*/MEDEVAC）保留；冪等。"""
+    from repositories import cop_entity_repo
+
+    # 直接 insert（繞過分流器）模擬舊版 ingest 誤存的非實體列
+    for uid, typ in (("PURGE-FS", "b-f-t-a"), ("PURGE-TXM", "t-x-m-n"), ("PURGE-TXD", "t-x-d-d")):
+        cop_entity_repo.insert_cop_entity(
+            cop_service.normalize_cot(_event(uid=uid, time="2026-06-05T04:00:00Z", type=typ))
+        )
+    _ingest(_event(uid="PURGE-UNIT", time="2026-06-05T04:00:00Z", type="a-f-G"))
+    _ingest(_event(uid="PURGE-MED", time="2026-06-05T04:00:00Z", type="b-a-o-tbl-medevac"))
+
+    assert cop_entity_repo.purge_non_entity_tak_rows() == 3  # 三個非實體被硬刪
+    for uid in ("PURGE-FS", "PURGE-TXM", "PURGE-TXD"):
+        assert get_cop_entity(uid) is None
+    assert get_cop_entity("PURGE-UNIT") is not None  # 實體保留
+    assert get_cop_entity("PURGE-MED") is not None
+    assert cop_entity_repo.purge_non_entity_tak_rows() == 0  # 冪等

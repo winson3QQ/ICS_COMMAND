@@ -525,6 +525,21 @@ def clear_residual_entities(actor: str | None = None) -> dict:
     return {"cleared": cleared, "kept": kept}
 
 
+def purge_non_entity_tak_rows() -> int:
+    """#508：硬刪既有誤存的「非實體」CoT 列——`source='tak'` 且 type 為 `b-f-t-*`/`t-x-*` 家族
+    （fileshare 通告/ack、mission 變更、tasking/控制、t-x-d-d）。#508 分流器上線前這些被 fall through
+    誤存成 marker；非真實體 → **硬刪**（非 soft-delete 墓碑，無 AAR/回放價值）。冪等（清乾淨即回 0）。
+
+    只碰 `source='tak'`（不動指揮部自建 manual/command）+ 明確非實體前綴（denylist，與 cop_service
+    分流器一致）；a-*/u-*/b-m-*/b-a-*（MEDEVAC）等實體不在此列、不誤刪。回刪除筆數。"""
+    with get_conn() as conn:
+        cur = conn.execute(
+            "DELETE FROM cop_entities WHERE source = 'tak' "  # nosec B608 — 常量 WHERE，無外部輸入
+            "AND (type LIKE 'b-f-t%' OR type LIKE 't-x-%')"
+        )
+        return cur.rowcount
+
+
 # ── cop_entity_tracks ────────────────────────────────────────────────────────
 
 

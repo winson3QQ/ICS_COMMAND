@@ -209,6 +209,14 @@ async def lifespan(app: FastAPI):
     ensure_initial_admin_token()
     cleanup_legacy_admin_pin_config()  # #384：刪升級殘留的已廢 admin_pin* config 列（防低權讀 hash）
     cleanup_expired_sessions()  # 清除上次遺留的過期 session
+    # #508：清既有誤存的非實體 CoT 列（fileshare/tasking 被舊版 ingest fall through 存成 marker）。
+    # 分流器上線後不再產生；一次性清舊帳，冪等（每次開機跑、清乾淨即 0）。best-effort：失敗不擋開機。
+    from repositories import cop_entity_repo as _cop_repo
+
+    with suppress(Exception):
+        _purged = _cop_repo.purge_non_entity_tak_rows()
+        if _purged:
+            log.info("[tak] #508 清既有誤存非實體 CoT 列：%d 筆", _purged)
     # P1-13（issue #27）：首次啟動 / fresh deploy 把 seed 複製到 runtime；
     # 已存在則 no-op。避免 first GET /api/map_config 抓不到檔。
     from services import map_config_store

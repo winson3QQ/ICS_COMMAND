@@ -28,7 +28,16 @@ from core.input_safety import validate_no_unsafe_strings
 from repositories import cop_entity_repo
 from repositories._helpers import audit
 from schemas.tak import ChatSendIn, CoTEventIn, DownlinkCommandIn, TakConnectionToggleIn
-from services import cop_service, tak_downlink, tak_files, tak_missions, tak_resync, tak_runtime, tak_service
+from services import (
+    cop_service,
+    tak_attachments,
+    tak_downlink,
+    tak_files,
+    tak_missions,
+    tak_resync,
+    tak_runtime,
+    tak_service,
+)
 from services.exercise_service import current_exercise_id
 from services.tak_files import TakFilestoreError
 from services.tak_rest_client import TakRestError
@@ -367,6 +376,9 @@ async def list_entity_files(uid: str, request: Request):
         for m in results
         if (tak_files.extract_mimetype(m) or "").startswith(_IMAGE_MIME_PREFIX) and tak_files.extract_hash(m)
     ]
+    # #509：併入 ICS 本地附件（現場分享/廣播照片：b-f-t-r → mission-package 解出的照片，掛此 marker）。
+    # 形狀對齊 Enterprise Sync 結果（{hash,name,mimeType}）→ 前端 tak_photos 不用改即一併顯示。
+    images.extend(tak_attachments.list_local_attachments(uid))
     return {"uid": uid, "files": images}
 
 
@@ -381,11 +393,36 @@ async def download_tak_file(file_hash: str, request: Request):
     故實務上使用者只會拿到看得到之 marker 的附件 hash。**嚴格 per-hash faction gating**
     （反查附件所屬 marker 是否可見）待附件↔marker 連結真機確認後補（follow-up #503）。
     """
-    if not tak_files.filestore_enabled():
-        raise HTTPException(422, "TAK file store 未配置（缺 TAK_MARTI_URL 或讀 cert）")
     if not tak_files.is_valid_hash(file_hash):
         raise HTTPException(400, "非法檔案 hash（須 SHA-256 hex）")
     operator = request.state.session["username"]
+    # #509：ICS 本地附件（現場照片，存 DATA_DIR/tak_attachments/<sha256>）——優先本地、免打 TAK；
+    # faction 守門於所掛 marker 可見度（反查附件所屬 marker 不可見 → 404 不洩存在）。
+    local_owner = tak_attachments.local_attachment_owner(file_hash)
+    if local_owner is not None:
+        ent = cop_entity_repo.get_cop_entity(local_owner)
+        vis = visible_factions_for_session(request.state.session)
+        if ent and vis is not None and ent.get("faction") not in vis:
+            raise HTTPException(404, "找不到該檔案")
+        got = tak_attachments.read_local_attachment(file_hash)
+        if got is None:
+            raise HTTPException(404, "查無此附件")
+        data, content_type = got
+        audit(
+            operator,
+            None,
+            "TAK_FILE_DOWNLOAD",
+            "tak",
+            file_hash,
+            {"bytes": len(data), "mime": content_type, "source": "local"},
+            exercise_id=current_exercise_id(),
+        )
+        return Response(
+            content=data, media_type=content_type, headers={"Content-Disposition": 'inline; filename="attachment"'}
+        )
+    # ── 否則走 TAK Enterprise Sync（#503）──
+    if not tak_files.filestore_enabled():
+        raise HTTPException(422, "TAK file store 未配置（缺 TAK_MARTI_URL 或讀 cert）")
     client = tak_files._build_read_client()
     try:
         meta = await tak_files.get_file_metadata(client, file_hash)

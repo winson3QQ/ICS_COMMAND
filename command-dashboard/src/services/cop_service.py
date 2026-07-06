@@ -18,6 +18,7 @@ P2-04（#105）新增：
   routers/tak.py(REST push, P2-03) **共同呼叫**；兩者只呼叫、不定義（協調契約見 #105）。
 """
 
+import asyncio
 import logging
 import sqlite3
 
@@ -580,6 +581,35 @@ async def _handle_tak_delete(event: CoTEventIn) -> dict | None:
     return res
 
 
+# #509：fileshare 背景處理 task 集（防 create_task 無引用被 GC 的 asyncio gotcha；done 即自清）。
+_fileshare_bg_tasks: set[asyncio.Task] = set()
+
+
+def _route_fileshare_cot(event: CoTEventIn) -> None:
+    """#508/#509：fileshare CoT（`b-f-t-*`）分流——**不進 cop_entities**（此前誤存成 marker）。
+
+    - `b-f-t-r`（fileshare 通告，detail 帶 senderUrl/sha256/filename）：現場分享/廣播照片的通告 →
+      **#509 `tak_attachments.handle_fileshare`** 抓 mission-package zip → ingest 內含 b-i-x-i marker
+      + 存照片。走**背景 task**（抓 3.5MB zip + 解 + ingest 可能數秒 → 不阻 :8089 串流 ingest）；
+      handle_fileshare best-effort 不拋。
+    - `b-f-t-a`（ack）：檔案傳輸確認，非 COP 物件 → drop。
+    """
+    if event.type.startswith("b-f-t-r"):
+        from services import tak_attachments
+
+        try:
+            task = asyncio.create_task(tak_attachments.handle_fileshare(event))
+        except RuntimeError:
+            # 無 running loop（理論上 ingest 皆在 loop 內；防呆：附件為選配，抓不到 loop 只 log 不阻斷）。
+            log.warning("[tak] #509 fileshare 無 running loop，附件跳過 uid=%s", event.uid)
+            return None
+        _fileshare_bg_tasks.add(task)
+        task.add_done_callback(_fileshare_bg_tasks.discard)
+    else:
+        log.debug("[tak] 收到 fileshare 控制 CoT type=%s（drop）", event.type)
+    return None
+
+
 async def ingest_cot_event(event: CoTEventIn) -> dict | None:
     """CoT 進 COP 的**共用消費者（接縫）**：normalize → upsert(CAS) → 廣播。
 
@@ -599,6 +629,17 @@ async def ingest_cot_event(event: CoTEventIn) -> dict | None:
     # → 刪除無作用，正是 #161 部分真因（iTAK 其實有送刪除信號，是我們沒處理）。
     if event.type.startswith("t-x-d-d"):
         return await _handle_tak_delete(event)
+    # #508：CoT 種類分流器——非地圖實體的家族在此各歸各路，**不再 fall through 誤存成 cop_entity marker**
+    # （此前 b-f-t-r/b-f-t-a/t-x-m-* 全被當 marker 存）。刻意用 **denylist（攔非實體家族）非 allowlist**：
+    # 地圖實體用各種前綴（a-* 單位、u-* 幾何、b-m-* route、b-r-* MEDEVAC/CASEVAC、感測器…），allowlist
+    # 會誤丟 MEDEVAC/幾何 → 只攔明確的非實體家族，其餘照常存為 entity。
+    if event.type.startswith("b-f-t"):
+        return _route_fileshare_cot(event)  # b-f-t-r 附件通告（交 #509）/ b-f-t-a ack → 不落地
+    if event.type.startswith("t-x-"):
+        # 其餘 tasking/控制（t-x-m-* mission 變更 / t-x-c-t ping / t-x-takp-v 版本…；t-x-d-d 上面已處理）。
+        # mission 內容消費走 #506 poll（非串流 ingest）→ 這裡只 log、不進 COP 主表。
+        log.debug("[tak] 收到 tasking/控制 CoT（不進 COP）type=%s uid=%s", event.type, event.uid)
+        return None
     entity = normalize_cot(event)
     # #267：解析 entity 歸屬演習（roster × 活躍窗），覆寫 normalize_cot 的 current_exercise_id 預設。
     # 須在 _resolve_faction 前——faction 查綁 entity.exercise_id 的 per-場分類。
