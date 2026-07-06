@@ -25,17 +25,38 @@ from __future__ import annotations
 ALL_FACTION_GROUPS: frozenset[str] = frozenset({"blue", "red", "neutral"})
 
 
-# callsign(=cert CN) → {groups: 宣告應在的群, plane: 資料平面, streams: 是否訂閱 :8089 串流}
+# callsign(=cert CN) → {groups: 宣告應在的群, plane: 資料平面, streams: 是否訂閱 :8089 串流,
+#                        cert_env: 該證 PEM 路徑的 config 屬性名（供編排算 fingerprint 註冊未在名冊的證）}
 #
 # streams=True 的證若落 __ANON__ 會洩漏串流資料（#404 隔離破口）；streams=False（REST-only）
 # 的證落 __ANON__ 無串流洩漏（良性），但仍可能因缺群而讀不到 group 內的檔（#507 要修的）。
 ICS_INFRA_IDENTITY: dict[str, dict] = {
-    "ics-cot": {"groups": ALL_FACTION_GROUPS, "plane": "streaming", "streams": True},
-    "ics-marti-read": {"groups": ALL_FACTION_GROUPS, "plane": "rest-read", "streams": False},
-    "ics-marti-write": {"groups": ALL_FACTION_GROUPS, "plane": "rest-write", "streams": False},
+    "ics-cot": {
+        "groups": ALL_FACTION_GROUPS,
+        "plane": "streaming",
+        "streams": True,
+        "cert_env": "TAK_CLIENT_CERT",
+    },
+    "ics-marti-read": {
+        "groups": ALL_FACTION_GROUPS,
+        "plane": "rest-read",
+        "streams": False,
+        "cert_env": "TAK_MARTI_READ_CERT",
+    },
+    "ics-marti-write": {
+        "groups": ALL_FACTION_GROUPS,
+        "plane": "rest-write",
+        "streams": False,
+        "cert_env": "TAK_MARTI_WRITE_CERT",
+    },
     # admin＝純管理面（update-groups / user-management），不讀資料檔、不訂閱串流 → 不需 faction 群；
     # 落 __ANON__ 良性（REST-only）。宣告空群 = 「不預期在任何 faction 群」。
-    "ics-tak-admin": {"groups": frozenset(), "plane": "rest-admin", "streams": False},
+    "ics-tak-admin": {
+        "groups": frozenset(),
+        "plane": "rest-admin",
+        "streams": False,
+        "cert_env": "TAK_MARTI_ADMIN_CERT",
+    },
 }
 
 
@@ -59,6 +80,13 @@ def required_groups(callsign: str | None) -> frozenset[str] | None:
     """宣告：此 infra 證**應在**哪些 group。非 infra 證回 None（不受本 SoT 管）。"""
     ent = ICS_INFRA_IDENTITY.get((callsign or "").strip().lower())
     return ent["groups"] if ent else None
+
+
+def cert_env(callsign: str | None) -> str | None:
+    """此 infra 證 PEM 路徑的 config 屬性名（如 `TAK_MARTI_READ_CERT`）。編排端 `getattr(config, …)`
+    解析路徑 → 算 fingerprint 註冊未在 TAK 名冊的證。非 infra 回 None。"""
+    ent = ICS_INFRA_IDENTITY.get((callsign or "").strip().lower())
+    return ent["cert_env"] if ent else None
 
 
 # 漂移狀態：ok=符合宣告；missing=缺應在的群；extra=多了不該有的 faction 群；

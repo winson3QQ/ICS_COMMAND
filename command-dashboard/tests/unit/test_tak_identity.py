@@ -53,6 +53,14 @@ class TestInfraDeclaration:
         assert tak_identity.required_groups("ics-tak-admin") == frozenset()  # 純管理、不需 faction 群
         assert tak_identity.required_groups("3QQ-atak") is None  # 非 infra 不受 SoT 管
 
+    def test_cert_env_映射(self):
+        """callsign → 證檔 config 屬性名（供編排算 fingerprint）。"""
+        assert tak_identity.cert_env("ics-cot") == "TAK_CLIENT_CERT"
+        assert tak_identity.cert_env("ics-marti-read") == "TAK_MARTI_READ_CERT"
+        assert tak_identity.cert_env("ics-marti-write") == "TAK_MARTI_WRITE_CERT"
+        assert tak_identity.cert_env("ics-tak-admin") == "TAK_MARTI_ADMIN_CERT"
+        assert tak_identity.cert_env("3QQ-atak") is None
+
 
 class TestCheckDrift:
     def test_ok_符合宣告(self):

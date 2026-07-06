@@ -1346,6 +1346,8 @@ def reconcile_tak_device_certs(request: Request):
         "ics_unsynced": ics_unsynced,
         "anon_users": anon_users,
         "online_anon": online_anon,
+        # #507 消費半身：ICS 自身 infra 證的宣告群 vs TAK 實際（面板顯示漂移 + 一鍵對帳）。
+        "infra_drift": tak_identity.check_drift(rec["users"]),
     }
 
 
@@ -1403,6 +1405,30 @@ def strip_anon_tak_user(callsign: str, request: Request):
     if not result.get("ok"):
         raise HTTPException(503, f"移出 __ANON__ 失敗：{result.get('reason')}")
     return {"ok": True, "callsign": cn, "strip_anon": result.get("reason")}
+
+
+@router.post("/tak/infra-groups/reconcile", tags=["account-admin"])
+def reconcile_infra_groups_apply(request: Request):
+    """#507 一鍵對帳（「兩面一軸」消費半身）：把 ICS 自身 infra 證補進宣告的 TAK 群。
+
+    sysadmin only。對缺群 / 未註冊的 infra 證，取 fingerprint（reconcile 名冊有就用、否則從證檔算）→
+    registrar 註冊補群（enroll_infra_groups）。ok/unknown/extra 不動（保守：不自動砍群）。強制 audit。
+    """
+    sess = _check_system_admin(request)
+    from services.tak_user_enroll import reconcile_infra_groups
+
+    result = reconcile_infra_groups(apply=True)
+    audit(
+        sess["username"],
+        None,
+        "tak_infra_groups_reconcile",
+        "tak",
+        "infra",
+        {"ok": result.get("ok"), "applied": result.get("applied"), "reason": result.get("reason")},
+    )
+    if not result.get("ok"):
+        raise HTTPException(503, f"infra 群對帳失敗：{result.get('reason')}")
+    return result
 
 
 @router.delete("/tak/device-certs/{cert_id}", tags=["account-admin"])
