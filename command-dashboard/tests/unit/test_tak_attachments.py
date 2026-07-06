@@ -160,9 +160,12 @@ def test_poll_bridges_missionpackage_skips_others_and_seen(tmp_path, monkeypatch
     monkeypatch.setattr(tak_files, "_build_read_client", _fake_client)
     tak_attachments._seen_hashes.clear()
 
+    seen_kw = {}
+
     async def _fake_search(client, **kw):
+        seen_kw.update(kw)
         return [
-            {"Hash": "c" * 64, "Keywords": ["missionpackage"], "Name": "field.zip"},
+            {"Hash": "c" * 64, "Keywords": ["missionpackage"], "Name": "field.zip", "Tool": "private"},
             {"Hash": "d" * 64, "Keywords": ["MK-99"], "Name": "ics-upload.jpg"},  # #503 自傳 → 跳過
         ]
 
@@ -173,7 +176,9 @@ def test_poll_bridges_missionpackage_skips_others_and_seen(tmp_path, monkeypatch
     monkeypatch.setattr(tak_files, "download_content", _fake_dl)
 
     n = asyncio.run(tak_attachments.poll_filestore_once())
-    assert n == 1  # 只橋 missionpackage 那筆
+    assert n == 1  # 只橋 missionpackage 那筆（tool=private 也橋，見下）
+    # 回歸：不得把搜尋限死 tool=public（真機 ATAK 分享落 tool=private，濾 public 會漏）。
+    assert seen_kw.get("tool") != "public"
     assert get_cop_entity("IMG-MARKER-1") is not None
     assert len(tak_attachments.list_local_attachments("IMG-MARKER-1")) == 1
 

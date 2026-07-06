@@ -182,13 +182,17 @@ async def poll_filestore_once() -> int:
 
     只處理帶 `missionpackage` keyword 者（避開 ICS 自傳的 #503 檔——keyword=marker_uid）。下載層錯
     **不標 seen**（下輪重試）；解析/內容永久壞則於 _bridge 內判定、回 None 並標 seen 不重試。best-effort：不拋。
+
+    **不濾 tool**（真機 dogfood：ATAK 分享落 `tool=private`、iTAK 落 `tool=null`、部分 `tool=public`——
+    分享方式而異，不可靠）→ 列舉全部、只靠 `missionpackage` keyword 辨識現場包。原濾 `tool=public`
+    會漏掉新 ATAK 分享（tool=private），正是 code-review 曾點名、被歷史資料誤導而漏修之處。
     """
     from services import tak_files
 
     client = tak_files._build_read_client()
     bridged = 0
     try:
-        results = await tak_files.search_files(client, tool="public")
+        results = await tak_files.search_files(client)
         for meta in results:
             h = tak_files.extract_hash(meta)
             if not h or not tak_files.is_valid_hash(h) or h in _seen_hashes:

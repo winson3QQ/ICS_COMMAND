@@ -261,7 +261,10 @@ COOKIE_SECURE_OVERRIDE: bool | None = (
 #               zip 走 #509 同一套（抓→解→ingest marker→掛照片）。補被動 `b-f-t-r` 之漏：現場照片都上
 #               Enterprise Sync，但通告定址因 client 而異（iTAK 廣播到得了 ICS、ATAK 不廣播 → 等不到），
 #               主動輪詢對 iTAK/ATAK 一視同仁。dogfood 定讞（真機直查 Enterprise Sync resource 表）。
-APP_VERSION = "2.40.0"
+# PATCH 2.40.1：#509-P2 hotfix——輪詢搜尋**不再濾 `tool=public`**。真機 dogfood：ATAK 分享落
+#               `tool=private`、iTAK 落 `tool=null`（分享方式而異），濾 public 漏掉新 ATAK 分享；改列舉
+#               全部、只靠 `missionpackage` keyword 辨識（正是 code-review 曾點名、被歷史資料誤導漏修處）。
+APP_VERSION = "2.40.1"
 
 # CMD_VERSION：前端 UI 功能版本（不同於後端 SemVer APP_VERSION；規則見 CLAUDE.md 版號規則）
 # 兩軌版本命名，不可混用。由 /api/version 提供給前端，是唯一 source-of-truth；release 時更新此值。
