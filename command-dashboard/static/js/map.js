@@ -2440,7 +2440,7 @@ function _openTakUnitDetail(id) {
   body += `<div style="font-size:10px;color:var(--text3);margin-top:8px;">來源：TAK · 唯讀</div>`;
   body += takPhotoSectionHtml(canUseRealModeControls());  // #503 上行顯示 + #506 M3 下行上傳（指揮層）
   _deps.openModal?.(`${affZh}單位 ${ent.callsign || ''}`, body);
-  _takPhotoLoader.load(id);
+  _takPhotoLoader.load(id, { canDelete: canUseRealModeControls() }); // #518 指揮層可刪本地附件
   if (canUseRealModeControls()) {
     _takPhotoLoader.bindUpload(id);
     _takPhotoLoader.bindPush(id); // #509-P3 下行：推照片到現場
@@ -2494,7 +2494,7 @@ export function _openContactDetail(id) {
   else if (_canPushNonTak) body += takPhotoSectionHtml(true, { pushOnly: true });
   _deps.openModal?.(`${affZh}接觸 ${ent.callsign || ''}　·　左鍵拖曳可移動`, body);
   if (_hasTakPhotos) {
-    _takPhotoLoader.load(id);
+    _takPhotoLoader.load(id, { canDelete: canUseRealModeControls() }); // #518 指揮層可刪本地附件
     if (canUseRealModeControls()) {
       _takPhotoLoader.bindUpload(id);
       _takPhotoLoader.bindPush(id); // #509-P3 下行：推照片到現場

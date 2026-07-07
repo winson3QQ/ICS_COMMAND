@@ -20,7 +20,7 @@ chat #463 放寬 WRITE_ROLES，清單見 role_enum 的 /api/tak/ 各 case）。
 
 import uuid
 
-from fastapi import APIRouter, File, Form, HTTPException, Request, Response, UploadFile
+from fastapi import APIRouter, File, Form, HTTPException, Query, Request, Response, UploadFile
 
 from auth.role_enum import visible_factions_for_session
 from core import config
@@ -461,6 +461,53 @@ async def download_tak_file(file_hash: str, request: Request):
         media_type=content_type,
         headers={"Content-Disposition": f'inline; filename="{filename}"'},
     )
+
+
+@router.delete("/files/{file_hash}")
+async def delete_tak_attachment(
+    file_hash: str,
+    request: Request,
+    purge_server: bool = Query(False),
+):
+    """#518：刪除一張本地附件（現場照片）。方向感知、L1（本地一律）+ L2（`purge_server` 連 server 檔庫）。
+
+    RBAC = COMMAND_ROLES（破壞性指揮動作，中央 gate：DELETE /api/tak/files/* → COMMAND_ROLES）。
+    faction 安全：反查附件所屬 marker，只准刪**本 session 看得到的 marker** 之附件（看不到/不存在 → 404
+    不洩存在）。只有 **ICS 本地附件** 可經此刪（純 Enterprise Sync 檔非本端點對象）→ 查無本地附件 → 404。
+    audit-first：破壞性動作（含不可逆 L2）前先落稽核意圖（marker + 是否請求 purge_server）；server 刪除
+    結果（成敗）走 log（tak_attachments.delete_attachment 內 log.info/warning）。
+
+    誠實紅線：任何刪除都不會讓照片從現場持有裝置本機消失（TAK client 硬限制）——前端須明講。
+    回：delete_attachment 的狀態 dict（local_deleted / server_purged / server_error / direction）。
+    """
+    if not tak_files.is_valid_hash(file_hash):
+        raise HTTPException(400, "非法檔案 hash（須 SHA-256 hex）")
+    operator = request.state.session["username"]
+    # faction 守門：反查附件所屬 marker，須存在且本 session 可見（繼承 download/for-entity 同守門）。
+    owner = tak_attachments.local_attachment_owner(file_hash)
+    if owner is None:
+        raise HTTPException(404, "查無此本地附件")
+    ent = cop_entity_repo.get_cop_entity(owner)
+    vis = visible_factions_for_session(request.state.session)
+    if not ent or (vis is not None and ent.get("faction") not in vis):
+        raise HTTPException(404, "找不到該附件")
+    # audit-first：破壞性動作（含不可逆 L2 server 清）前先落稽核意圖，杜絕「刪了但崩在 audit 前 → 無軌」。
+    audit(
+        operator,
+        None,
+        "TAK_ATTACHMENT_DELETE",
+        "tak",
+        file_hash,
+        {"marker_uid": owner, "purge_server_requested": purge_server},
+        exercise_id=current_exercise_id(),
+    )
+    # 只刪 caller 已守門的這個 marker 的連結（不波及同 sha 掛在其他不可見 marker 的連結）。
+    result = await tak_attachments.delete_attachment(
+        file_hash, marker_uid=owner, actor=operator, purge_server=purge_server
+    )
+    if not result.get("local_deleted"):
+        raise HTTPException(404, "查無此本地附件")
+    return result
 
 
 _MAX_UPLOAD_BYTES = 32 * 1024 * 1024  # 上傳單檔上限（照片有界，防灌爆）

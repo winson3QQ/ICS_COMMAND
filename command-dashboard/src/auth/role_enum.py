@@ -219,6 +219,11 @@ def allowed_roles_for(method: str, path: str) -> frozenset[str] | None:
         # P2-24（#164）：runtime 開關 TAK 連線＝關掉整 COP 態勢全斷、blast radius 最大 →
         # 比照 /api/exercises/ DELETE 鎖 SYSADMIN_ONLY（commander 不可，避免誤觸把全 COP 弄瞎）。
         return SYSADMIN_ONLY
+    if path.startswith("/api/tak/files/") and method == "DELETE":
+        # #518：刪除現場照片附件（本地 + 選配連 TAK server 檔庫）＝破壞性指揮動作 → COMMAND_ROLES。
+        # 若落下方通用 `/api/tak/` 分支，DELETE 非 POST 會歸到 else→READ_ROLES（observer/operator
+        # 可刪），故此處顯式收緊。對齊「其餘破壞性 POST 維持 COMMAND_ROLES」的紀律。
+        return COMMAND_ROLES
     if path.startswith("/api/tak/"):
         # #146：REST ingest（POST /api/tak/events）收緊到 COMMAND_ROLES —— 防 operator 經此
         # 端點注入/竄改 tak 物件、繞過 cop PUT/DELETE 的來源守門。真實 TAK 資料走 :8089 串流

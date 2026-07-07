@@ -159,6 +159,7 @@ COMMAND  POST   /api/tak/downlink
 COMMAND  POST   /api/tak/downlink/photo
 COMMAND  POST   /api/tak/events
 COMMAND  POST   /api/tak/mission-sync
+COMMAND  DELETE /api/tak/files/{file_hash}
 READ     GET    /api/tak/files/for-entity/{uid}
 READ     GET    /api/tak/files/{file_hash}
 COMMAND  POST   /api/tak/files/upload

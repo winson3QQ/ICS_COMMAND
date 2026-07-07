@@ -338,6 +338,36 @@ class TakRestClient:
                 await _backoff_sleep(attempt)
         raise TakRestError(f"Marti POST {path} 重試 {self._max_retries} 次耗盡") from last_exc
 
+    async def delete_path(self, path: str, params: dict | None = None) -> bool:
+        """DELETE path（#518：`DELETE /Marti/api/files/{hash}` 清 Enterprise Sync 檔庫）。
+
+        rate-limit + 指數退避重試（連線錯 / 5xx）；4xx 不重試立即拋。
+        回傳：True（2xx 成功，含 404 視 caller——此處 <300 才 True）。
+        raise TakRestError：4xx（用戶端錯，不重試，含 404 檔不存在）/ 重試耗盡。
+        語意同 get/post 系列，只是 HTTP method = DELETE。
+        """
+        last_exc: Exception | None = None
+        url = _join_url(self._base_url, path)
+        for attempt in range(self._max_retries):
+            await self._rate_limit()
+            try:
+                session = await self._ensure_session()
+                async with session.delete(url, params=params) as resp:
+                    status, text = resp.status, await resp.text()
+            except (TimeoutError, aiohttp.ClientError) as exc:
+                last_exc = exc
+                if attempt < self._max_retries - 1:
+                    await _backoff_sleep(attempt)
+                continue
+            if status < 300:
+                return True
+            if 400 <= status < 500:
+                raise TakRestError(f"Marti DELETE {path} HTTP {status}（用戶端錯，不重試）：{text[:200]}")
+            last_exc = TakRestError(f"Marti DELETE {path} HTTP {status}：{text[:200]}")
+            if attempt < self._max_retries - 1:
+                await _backoff_sleep(attempt)
+        raise TakRestError(f"Marti DELETE {path} 重試 {self._max_retries} 次耗盡") from last_exc
+
     async def poll(
         self,
         path: str,

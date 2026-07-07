@@ -175,3 +175,9 @@ class CoPEntityLink(BaseModel):
     url: str | None = None
     remarks: str | None = None
     mime: str | None = None  # 非空 = 外部資源
+    # #518：附件方向感知刪除。direction = 照片來源方向（'uplink'=現場→ICS / 'downlink'=ICS→現場 /
+    # None=舊資料未標）——決定清除預設（下行 ICS 是 owner→預設連 server 清；上行源頭在現場→預設只清本地）。
+    # pkg_hash = 該照片所屬 mission-package zip 在 Enterprise Sync 的 hash（L2 `DELETE /Marti/api/files/{hash}`
+    # 的刪除目標 + 立墓碑擋輪詢復活的鍵；上行 = bridge 的 file_hash、下行 = 上傳回傳的 zip_hash）。
+    direction: str | None = None
+    pkg_hash: str | None = None
