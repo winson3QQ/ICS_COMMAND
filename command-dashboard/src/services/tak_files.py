@@ -196,6 +196,22 @@ async def download_file(client, file_hash: str, *, max_bytes: int = _MAX_DOWNLOA
     return await client.get_bytes(f"/Marti/api/files/{h}", max_bytes=max_bytes)
 
 
+async def delete_file(client, file_hash: str) -> bool:
+    """#518 L2：從 Enterprise Sync 檔庫刪除單檔（`DELETE /Marti/api/files/{hash}`）。hash 先驗 SHA-256。
+
+    刪除目標＝現場照片所屬的 **mission-package zip hash**（非影像內容 hash——影像包在 zip 裡、
+    非獨立 resource；見 memory tak-server-data-lifecycle-unmanaged 的 L2 granularity gap）。
+    caller 傳 write cert client（讀 client 無刪權）。回 True（2xx）。
+    raise TakFilestoreError（hash 非法）/ TakRestError（HTTP，含 404 檔不存在——caller 決定吞或報）。
+
+    ⚠ 真機未驗：zip 走 `/Marti/sync/content` 下載，但刪除端點為 `/Marti/api/files/{hash}`——兩者
+    是否指同一 resource 待真機確認。故 caller（tak_attachments.delete_attachment）把 L2 設 best-effort、
+    狀態分開回報：即使 server 端刪失敗（404/其他），本地 L1 刪除仍成立、輪詢墓碑仍擋復活。
+    """
+    h = _require_valid_hash(file_hash)
+    return await client.delete_path(f"/Marti/api/files/{h}")
+
+
 async def download_content(client, file_hash: str, *, max_bytes: int = _MAX_DOWNLOAD_BYTES) -> bytes | None:
     """下載 fileshare content（`GET /Marti/sync/content?hash=`）——**現場分享的 mission-package zip 走此
     端點**（#509 reality-check 實證：現場 zip 於 /sync/content 回 200，不在 /Marti/api/files/{hash}）。

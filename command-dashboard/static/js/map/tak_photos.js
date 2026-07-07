@@ -24,6 +24,20 @@ const _CELL_STYLE =
   'display:flex;align-items:center;justify-content:center;width:72px;height:72px;' +
   'border:1px solid var(--border);border-radius:6px;overflow:hidden;background:var(--surface);text-decoration:none;';
 const _IMG_STYLE = 'width:100%;height:100%;object-fit:cover;';
+// #518 方向徽記（左上）+ 刪除鈕（右上）：絕對定位疊在縮圖上。CSP 安全（style property，非 inline handler）。
+const _BADGE_STYLE =
+  'position:absolute;top:1px;left:1px;font-size:11px;line-height:1;padding:1px 2px;border-radius:3px;' +
+  'background:rgba(0,0,0,0.55);color:#fff;pointer-events:none;';
+const _DEL_BTN_STYLE =
+  'position:absolute;top:1px;right:1px;font-size:11px;line-height:1;padding:1px 3px;border:none;border-radius:3px;' +
+  'background:rgba(0,0,0,0.55);color:#fff;cursor:pointer;';
+const _DIALOG_OVERLAY_STYLE =
+  'position:fixed;inset:0;z-index:10000;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.4);';
+const _DIALOG_BOX_STYLE =
+  'max-width:320px;padding:14px 16px;border-radius:8px;background:var(--surface,#fff);color:var(--text,#111);' +
+  'border:1px solid var(--border,#ccc);box-shadow:0 4px 16px rgba(0,0,0,0.3);font-size:13px;';
+const _DIALOG_BTN_STYLE =
+  'padding:4px 10px;font-size:12px;border:1px solid var(--border,#ccc);border-radius:4px;cursor:pointer;background:var(--surface,#fff);color:var(--text,#111);';
 
 // #509-P3 下行：把照片推到現場 client 的地圖（打包 mission-package → b-f-t-r）。收件人多選：
 // 不選＝廣播全體；選一個以上＝點對點。與「上傳照片」（僅 ICS 側顯示）不同——本控制會送達現場。
@@ -113,7 +127,8 @@ export function createTakPhotoLoader({ authFetch, doc } = {}) {
    * 拉某 marker 的 file store 附件清單 → 逐張塞縮圖進 #tak-photo-grid。
    * best-effort：清單失敗顯示錯誤字、單張失敗只標該格。回傳 Promise（測試可 await）。
    */
-  async function load(uid) {
+  async function load(uid, opts = {}) {
+    const canDelete = !!opts.canDelete; // #518：指揮層才給刪除鈕（後端 COMMAND_ROLES 為權威守門）
     const grid = _doc.getElementById(TAK_PHOTO_GRID_ID);
     if (!grid || !uid) return;
     _revokeAll(); // revoke 前一個 modal 的 blob
@@ -145,14 +160,125 @@ export function createTakPhotoLoader({ authFetch, doc } = {}) {
       cell.target = '_blank';
       cell.rel = 'noopener';
       cell.title = f.name || 'photo'; // property set（非 innerHTML）→ 不可信檔名安全
-      cell.style.cssText = _CELL_STYLE;
+      cell.style.cssText = _CELL_STYLE + 'position:relative;';
       const img = _doc.createElement('img');
       img.alt = '⏳';
       img.style.cssText = _IMG_STYLE;
       cell.appendChild(img);
+      // #518 方向徽記：⬆ 上行（現場→指揮部）/ ⬇ 下行（指揮部→現場）。徽記無 pointer-events，不擋點圖。
+      if (f.direction) {
+        const badge = _doc.createElement('span');
+        badge.textContent = f.direction === 'downlink' ? '⬇' : '⬆';
+        badge.title = f.direction === 'downlink' ? '下行（指揮部→現場）' : '上行（現場→指揮部）';
+        badge.style.cssText = _BADGE_STYLE;
+        cell.appendChild(badge);
+      }
+      // #518 刪除鈕：僅本地附件（f.local）+ 指揮層。點鈕不觸發縮圖連結（preventDefault/stopPropagation）。
+      if (canDelete && f.local) {
+        const del = _doc.createElement('button');
+        del.type = 'button';
+        del.textContent = '🗑';
+        del.title = '刪除此照片';
+        del.style.cssText = _DEL_BTN_STYLE;
+        del.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          _openDeleteConfirm(f, uid);
+        });
+        cell.appendChild(del);
+      }
       grid.appendChild(cell);
       _bindPhoto(img, cell, f.hash);
     }
+  }
+
+  // #518：刪一張本地附件 → DELETE /api/tak/files/{hash}[?purge_server=true]。同源（過 CSRF 守門）+ auth。
+  async function deleteAttachment(hash, purgeServer) {
+    const q = purgeServer ? '?purge_server=true' : '';
+    const r = await authFetch(`/api/tak/files/${encodeURIComponent(hash)}${q}`, { method: 'DELETE' });
+    return r.ok;
+  }
+
+  // #518 方向感知刪除確認框（純 DOM builder，可測）。方向決定 L2 checkbox 預設：
+  //   下行（ICS 為 owner）→ 預設連 server 清；上行（源頭在現場）→ 預設只清本地。無 pkg_hash → checkbox 停用。
+  function buildDeleteDialog(f, { onConfirm, onCancel } = {}) {
+    const isDown = f.direction === 'downlink';
+    const purgeable = !!f.server_purgeable;
+    const overlay = _doc.createElement('div');
+    overlay.style.cssText = _DIALOG_OVERLAY_STYLE;
+    const box = _doc.createElement('div');
+    box.style.cssText = _DIALOG_BOX_STYLE;
+
+    const title = _doc.createElement('div');
+    title.textContent = '刪除此照片？';
+    title.style.cssText = 'font-weight:600;margin-bottom:6px;';
+    box.appendChild(title);
+
+    const dir = _doc.createElement('div');
+    dir.textContent = isDown
+      ? '下行照片（指揮部→現場，指揮部為擁有者）'
+      : f.direction === 'uplink'
+        ? '上行照片（現場→指揮部，來源在現場）'
+        : '方向未知（舊資料）';
+    dir.style.cssText = 'font-size:12px;color:var(--text3,#888);margin-bottom:6px;';
+    box.appendChild(dir);
+
+    const label = _doc.createElement('label');
+    label.style.cssText = 'display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:6px;';
+    const cb = _doc.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = purgeable && isDown; // 方向感知預設
+    cb.disabled = !purgeable;
+    label.appendChild(cb);
+    const cbText = _doc.createElement('span');
+    cbText.textContent = purgeable ? '連 TAK server 檔庫一起清（不可逆）' : '（無所屬 server 檔，僅能清本地）';
+    label.appendChild(cbText);
+    box.appendChild(label);
+
+    const note = _doc.createElement('div');
+    note.textContent = '⚠ 現場持有裝置本機仍會保留此照片，指揮部無法遠端刪除。';
+    note.style.cssText = 'font-size:11px;color:var(--warning,#c60);margin-bottom:8px;';
+    box.appendChild(note);
+
+    const btnRow = _doc.createElement('div');
+    btnRow.style.cssText = 'display:flex;gap:8px;justify-content:flex-end;';
+    const cancel = _doc.createElement('button');
+    cancel.type = 'button';
+    cancel.textContent = '取消';
+    cancel.style.cssText = _DIALOG_BTN_STYLE;
+    cancel.addEventListener('click', () => onCancel && onCancel());
+    const confirm = _doc.createElement('button');
+    confirm.type = 'button';
+    confirm.textContent = '確定刪除';
+    confirm.style.cssText = _DIALOG_BTN_STYLE + 'background:var(--danger,#c0392b);color:#fff;border-color:var(--danger,#c0392b);';
+    confirm.addEventListener('click', () => onConfirm && onConfirm(cb.checked));
+    btnRow.appendChild(cancel);
+    btnRow.appendChild(confirm);
+    box.appendChild(btnRow);
+
+    overlay.appendChild(box);
+    return overlay;
+  }
+
+  // 開刪除確認框（append 到 body）→ 確定則刪除；**無論成敗都 reload**（成功→照片消失、失敗→照片仍在＝
+  // 誠實反映真實狀態，不留「按了沒反應」的錯覺）；失敗另彈提示。取消則移除。
+  function _openDeleteConfirm(f, uid) {
+    if (!_doc.body) return;
+    const dialog = buildDeleteDialog(f, {
+      onConfirm: async (purgeServer) => {
+        dialog.remove();
+        let ok = false;
+        try {
+          ok = await deleteAttachment(f.hash, purgeServer);
+        } catch (_) {
+          ok = false;
+        }
+        if (!ok && typeof alert === 'function') alert('刪除失敗（權限/連線問題），照片仍在。');
+        await load(uid, { canDelete: true }); // 成敗都重載：反映真實狀態
+      },
+      onCancel: () => dialog.remove(),
+    });
+    _doc.body.appendChild(dialog);
   }
 
   // #506 M3 下行：上傳一張照片掛到 marker → POST /api/tak/files/upload（multipart）。
@@ -242,5 +368,15 @@ export function createTakPhotoLoader({ authFetch, doc } = {}) {
     });
   }
 
-  return { load, upload, bindUpload, fetchClients, pushToField, bindPush, _revokeAll };
+  return {
+    load,
+    upload,
+    bindUpload,
+    fetchClients,
+    pushToField,
+    bindPush,
+    deleteAttachment,
+    buildDeleteDialog,
+    _revokeAll,
+  };
 }

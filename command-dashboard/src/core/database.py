@@ -1651,6 +1651,31 @@ def _m038_cop_tracks_exercise_id_down(conn: sqlite3.Connection) -> None:
     # 舊 SQLite 無 DROP COLUMN；down 僅移索引（多出的 exercise_id 欄保留無害）。
 
 
+def _m041_attachment_direction_tombstone(conn: sqlite3.Connection) -> None:
+    """#518 附件方向感知刪除：cop_entity_links 補 direction/pkg_hash + 新增 zip-hash 墓碑表。
+
+    - direction/pkg_hash：ingest 時記照片方向（上行/下行）與所屬 mission-package zip hash
+      → 刪除時據方向給預設（下行連 server 清、上行預設只清本地）+ 據 pkg_hash 呼叫 L2 DELETE。
+    - tak_pkg_tombstones：**持久** zip-hash 墓碑。#509-P2 主動輪詢的 `_seen_hashes` 是 in-memory、
+      重啟清空 → 只刪本地/不立墓碑會被下一輪重抓復活（memory tak-server-data-lifecycle-unmanaged）。
+      本表讓輪詢跨重啟都跳過已刪的 zip，止住「刪了又回來」。keyed on zip hash（輪詢去重的粒度）。
+    """
+    _add_column_if_missing(conn, "cop_entity_links", "direction", "TEXT")
+    _add_column_if_missing(conn, "cop_entity_links", "pkg_hash", "TEXT")
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS tak_pkg_tombstones (
+            pkg_hash    TEXT PRIMARY KEY,
+            deleted_by  TEXT,
+            deleted_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
+        )
+    """)
+
+
+def _m041_attachment_direction_tombstone_down(conn: sqlite3.Connection) -> None:
+    """rollback：刪墓碑表（direction/pkg_hash 欄保留無害——舊 SQLite 無 DROP COLUMN，且 nullable）。"""
+    conn.execute("DROP TABLE IF EXISTS tak_pkg_tombstones")
+
+
 _AUDIT_LOG_NEW_DDL = """
     CREATE TABLE audit_log_new (
         id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1749,6 +1774,7 @@ _MIGRATIONS: list[tuple[int, str, object]] = [
     (38, "cop_tracks_exercise_id", _m038_cop_tracks_exercise_id),
     (39, "audit_log_drop_exercise_fk", _m039_audit_log_drop_exercise_fk),
     (40, "release_archived_exercise_entities", _m040_release_archived_exercise_entities),
+    (41, "attachment_direction_tombstone", _m041_attachment_direction_tombstone),
 ]
 
 

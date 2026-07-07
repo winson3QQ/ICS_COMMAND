@@ -275,7 +275,11 @@ COOKIE_SECURE_OVERRIDE: bool | None = (
 #               原未濾（只有 #509-P2 輪詢濾 creatorUid=ICS-CMD）→ 自我 re-ingest 用重建的精簡 marker CoT
 #               覆寫既有 marker attributes、污染 COP（uplink 觀感壞）。改：handle_fileshare 亦跳過
 #               senderUid=ICS-CMD 的 b-f-t-r（照片推送時已本地掛，不需再 re-ingest）。
-APP_VERSION = "2.41.2"
+# MINOR 2.42.0：#518 現場照片方向感知刪除——本地附件可刪（DELETE /api/tak/files/{hash}，COMMAND_ROLES
+#               + audit）；L1 刪本地檔+連結+持久 zip-hash 墓碑（止住 #509-P2 輪詢跨重啟復活）；L2 選配
+#               DELETE /Marti/api/files/{hash} 清 Enterprise Sync（best-effort、狀態分開回報）；attachment
+#               記 direction（上行/下行）+ pkg_hash。migration 41。
+APP_VERSION = "2.42.0"
 
 # CMD_VERSION：前端 UI 功能版本（不同於後端 SemVer APP_VERSION；規則見 CLAUDE.md 版號規則）
 # 兩軌版本命名，不可混用。由 /api/version 提供給前端，是唯一 source-of-truth；release 時更新此值。
@@ -283,10 +287,13 @@ APP_VERSION = "2.41.2"
 #         + 演習/放置/稽核 UI P1-13/14/16/#93 + 分類編輯器 #66）→ 0.x 畢業為 MAJOR 紀元。
 CMD_VERSION: str = os.getenv(
     "CMD_VERSION",
+    # MINOR v1.31.0：#518 現場照片方向感知刪除 UI——marker 詳情面板照片格加方向徽記（⬆上行/⬇下行）
+    # + 刪除鈕（指揮層），刪除確認框依方向給 L2「連 server 清」預設（下行預設清、上行預設只清本地）
+    # + 誠實標「現場裝置本機仍有」。
+    "v1.31.0",
     # PATCH v1.30.1：#517（#509-P3 乙）——「📡 推照片到現場」控制也掛到 ICS 自建（非 TAK 來源）marker
     # 面板（pushOnly 模式：只推送、無上行 grid/上傳）。指揮層 + TAK on 時顯示。把無線電等非 TAK 來源
     # 情報配圖推到現場（後端同端點早已支援）。
-    "v1.30.1",
     # MINOR v1.30.0：#509-P3 下行推照片 UI——marker 詳情面板加「📡 推照片到現場」（打包 mission-package
     # + b-f-t-r，現場 client 建 marker+掛照片）+ 收件人多選（不選＝廣播全體 / 選取＝點對點，選項由
     # GET /api/tak/clients 線上 client 名單填）。與「上傳照片」（僅 ICS 側顯示）並列。

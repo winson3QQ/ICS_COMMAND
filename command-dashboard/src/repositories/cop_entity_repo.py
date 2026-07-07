@@ -634,14 +634,24 @@ def insert_cop_link(link: CoPEntityLink) -> int:
         cur = conn.execute(
             """
             INSERT INTO cop_entity_links (
-                src_uid, relation, target_uid, target_type, url, remarks, mime
+                src_uid, relation, target_uid, target_type, url, remarks, mime, direction, pkg_hash
             ) VALUES (
-                :src_uid, :relation, :target_uid, :target_type, :url, :remarks, :mime
+                :src_uid, :relation, :target_uid, :target_type, :url, :remarks, :mime, :direction, :pkg_hash
             )
             """,
             payload,
         )
         return cur.lastrowid
+
+
+def delete_cop_link(src_uid: str, target_uid: str, relation: str) -> int:
+    """刪除指定 (src_uid, target_uid, relation) 的連結列，回刪除筆數。#518 附件刪除用。"""
+    with get_conn() as conn:
+        cur = conn.execute(
+            "DELETE FROM cop_entity_links WHERE src_uid = ? AND target_uid = ? AND relation = ?",
+            (src_uid, target_uid, relation),
+        )
+        return cur.rowcount
 
 
 def list_cop_links(
@@ -673,6 +683,27 @@ def list_cop_links(
     with get_conn() as conn:
         rows = conn.execute(sql, params).fetchall()
         return [row_to_dict(r) for r in rows]
+
+
+# ── tak_pkg_tombstones（#518：持久 zip-hash 墓碑，擋 #509-P2 輪詢刪後復活）─────────────
+
+
+def add_pkg_tombstone(pkg_hash: str, deleted_by: str | None = None) -> None:
+    """記一個 mission-package zip hash 為已刪墓碑（INSERT OR IGNORE，冪等）。輪詢據此永久跳過。"""
+    with get_conn() as conn:
+        conn.execute(
+            "INSERT OR IGNORE INTO tak_pkg_tombstones (pkg_hash, deleted_by) VALUES (?, ?)",
+            (pkg_hash, deleted_by),
+        )
+
+
+def is_pkg_tombstoned(pkg_hash: str) -> bool:
+    """該 zip hash 是否已被刪除立墓碑（輪詢/橋接跳過判斷）。"""
+    if not pkg_hash:
+        return False
+    with get_conn() as conn:
+        row = conn.execute("SELECT 1 FROM tak_pkg_tombstones WHERE pkg_hash = ?", (pkg_hash,)).fetchone()
+        return row is not None
 
 
 # ── 內部工具 ──────────────────────────────────────────────────────────────────

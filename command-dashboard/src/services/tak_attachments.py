@@ -50,8 +50,12 @@ def local_attachment_path(sha256: str):
     return _attach_dir() / sha256
 
 
-def _store_attachment(marker_uid: str, img: dict) -> bool:
-    """寫照片檔（檔名=sha256）+ cop_entity_links 記連結。dedup：同 (marker, sha256) 已存 → skip。回是否新存。"""
+def _store_attachment(marker_uid: str, img: dict, *, pkg_hash: str | None = None, direction: str | None = None) -> bool:
+    """寫照片檔（檔名=sha256）+ cop_entity_links 記連結。dedup：同 (marker, sha256) 已存 → skip。回是否新存。
+
+    #518：`pkg_hash`＝此照片所屬 mission-package zip 的 Enterprise Sync hash（L2 刪除目標 + 立墓碑鍵）；
+    `direction`＝'uplink'（現場→ICS）/'downlink'（ICS→現場）——決定刪除預設。兩者記進 link 供方向感知刪除。
+    """
     sha = img["sha256"]
     p = local_attachment_path(sha)
     if p is None:
@@ -71,9 +75,11 @@ def _store_attachment(marker_uid: str, img: dict) -> bool:
             url=f"{_LOCAL_URL_PREFIX}{sha}",
             remarks=img["name"],
             mime=img["mimetype"],
+            direction=direction,
+            pkg_hash=pkg_hash if (pkg_hash and _valid_sha256(pkg_hash)) else None,
         )
     )
-    log.info("[tak] #509 現場照片存本地並掛 marker uid=%s sha=%s", marker_uid, sha[:12])
+    log.info("[tak] #509 現場照片存本地並掛 marker uid=%s sha=%s dir=%s", marker_uid, sha[:12], direction or "?")
     return True
 
 
@@ -89,6 +95,13 @@ async def _bridge_package_by_hash(client, file_hash: str) -> str | None:
     不誤標 seen）；解析/內容永久壞 → 回 None（已定讞、不重試）。best-effort。
     """
     from services import cop_service, tak_files, tak_mission_package, tak_service
+
+    # #518：墓碑守門置於**共用橋接**——同時擋主動輪詢與被動 `handle_fileshare`（b-f-t-r 通告）兩路徑。
+    # 只在 poll 端擋會漏被動路徑：iTAK 重連廣播 b-f-t-r → handle_fileshare → 此處，若無守門會把已刪照片
+    # 重橋復活（正是「刪了又回來」）。已刪的 zip 一律不再抓/解/掛。
+    if cop_entity_repo.is_pkg_tombstoned(file_hash):
+        log.debug("[tak] #518 已刪墓碑 zip 跳過（不復活）hash=%s", file_hash[:12])
+        return None
 
     data = await tak_files.download_content(client, file_hash)  # 網路/HTTP 錯 → 拋給 caller
     if not data:
@@ -128,7 +141,10 @@ async def _bridge_package_by_hash(client, file_hash: str) -> str | None:
     # ② 抽照片存本地 + 掛 marker。存檔/連結失敗屬本地永久性錯（非下載暫斷）→ 內部吞、不外拋
     #    （否則 caller 會誤判為可重試的網路錯而永遠重抓同一包）。
     try:
-        stored = sum(_store_attachment(marker_uid, img) for img in pkg["images"])
+        # #518：現場橋接＝上行（uplink）；記所屬 zip hash（file_hash）供方向感知刪除 + L2 + 墓碑。
+        stored = sum(
+            _store_attachment(marker_uid, img, pkg_hash=file_hash, direction="uplink") for img in pkg["images"]
+        )
     except Exception:  # noqa: BLE001 — 本地存/連結失敗 best-effort，不冒充下載暫斷
         log.warning("[tak] #509 照片存本地/掛 marker 失敗 marker=%s", marker_uid, exc_info=True)
         return marker_uid
@@ -205,6 +221,11 @@ async def poll_filestore_once() -> int:
             h = tak_files.extract_hash(meta)
             if not h or not tak_files.is_valid_hash(h) or h in _seen_hashes:
                 continue
+            # #518：持久墓碑——指揮層刪過的 zip 永久跳過（跨重啟，補 in-memory `_seen_hashes` 之漏），
+            # 止住「刪了又回來」。查中即記入 in-memory set，本 process 後續輪不再打 DB。
+            if cop_entity_repo.is_pkg_tombstoned(h):
+                _seen_hashes.add(h)
+                continue
             if "missionpackage" not in [k.lower() for k in tak_files.extract_keywords(meta)]:
                 continue
             if tak_files.extract_creator_uid(meta) == ICS_SELF_UID:
@@ -253,13 +274,111 @@ async def filestore_poll_loop(stop_event) -> None:
 
 def list_local_attachments(entity_uid: str) -> list[dict]:
     """某 marker 的本地附件（現場照片）→ 對齊 #503 Enterprise Sync 結果形狀（{hash, name, mimeType}），
-    使前端 tak_photos 不用改即可一併顯示。"""
+    使前端 tak_photos 不用改即可一併顯示。
+
+    #518：額外帶 `direction`（'uplink'/'downlink'/None）與 `server_purgeable`（是否有 pkg_hash 可走 L2）——
+    供前端渲染方向徽記 + 決定清除預設（下行預設連 server 清、上行預設只清本地）。`local=True` 標本地附件
+    （相對於純 Enterprise Sync 結果），前端據此才顯示刪除鈕（只有本地附件可經 ICS 刪）。
+    """
     out: list[dict] = []
     for lk in cop_entity_repo.list_cop_links(src_uid=entity_uid, relation=_RELATION):
         sha = lk.get("target_uid") or ""
         if _valid_sha256(sha):
-            out.append({"hash": sha, "name": lk.get("remarks") or sha, "mimeType": lk.get("mime") or "image/jpeg"})
+            out.append(
+                {
+                    "hash": sha,
+                    "name": lk.get("remarks") or sha,
+                    "mimeType": lk.get("mime") or "image/jpeg",
+                    "direction": lk.get("direction"),
+                    "server_purgeable": bool(lk.get("pkg_hash")),
+                    "local": True,
+                }
+            )
     return out
+
+
+async def delete_attachment(
+    sha256: str, *, marker_uid: str | None = None, actor: str | None = None, purge_server: bool = False
+) -> dict:
+    """#518：刪一張本地附件（現場照片）。方向感知、L1（一律）+ L2（選配）。
+
+    **faction 邊界**：`marker_uid` 給定 → **只刪該 marker 對此 sha 的連結**（caller 已對這個 marker 做
+    faction 守門；不得波及同 sha 掛在其他〔可能不可見〕marker 上的連結）。省略時退回全 marker（僅
+    內部/測試用；HTTP 路徑一律帶 marker_uid）。
+
+    L1（一律做）：刪該 marker 的 cop_entity_links 連結 + 對其 `pkg_hash` 立**持久墓碑**（擋 #509-P2
+    輪詢跨重啟重抓復活）+ 若已無任一 marker 連此 sha 才刪本地檔（`DATA_DIR/tak_attachments/<sha256>`）。
+    L2（`purge_server=True` 才做）：`DELETE /Marti/api/files/{pkg_hash}` 從 Enterprise Sync 清整包 zip
+    （write cert）。**best-effort、狀態分開回報**：server 刪失敗（未配置/404/HTTP 錯）不推翻 L1——本地
+    已刪、墓碑已擋復活；只在回傳標 `server_purged=False` + `server_error`。
+
+    ⚠ 舊資料限制：migration 41 之前存的附件 `pkg_hash` 為 NULL（未記所屬 zip）→ 刪除無從立墓碑，
+    被動/輪詢仍可能重橋復活（僅影響本次部署前的既有附件）；新附件皆有 pkg_hash 不受此限。
+    誠實紅線：任何刪除都不會讓照片從現場持有裝置本機消失（TAK client 硬限制）——UI 須明講。
+    回 dict：{sha256, marker_uid, direction, pkg_hash, local_deleted, server_purged, server_error}。
+    查無此本地附件 → local_deleted=False（caller 回 404）。
+    """
+    from services import tak_files
+
+    result = {
+        "sha256": sha256,
+        "marker_uid": None,
+        "direction": None,
+        "pkg_hash": None,
+        "local_deleted": False,
+        "server_purged": None,  # None=未嘗試（未要求 purge）/ True/False=嘗試結果
+        "server_error": None,
+    }
+    if not _valid_sha256(sha256):
+        return result
+    # faction 邊界：限定在 caller 守門過的 marker（給定時），不撈同 sha 的其他 marker 連結。
+    links = cop_entity_repo.list_cop_links(src_uid=marker_uid, relation=_RELATION, target_uid=sha256)
+    if not links:
+        return result  # 查無本地附件連結（或該 marker 未連此 sha）
+    lk = links[0]
+    marker_uid = lk.get("src_uid")
+    pkg_hash = lk.get("pkg_hash")
+    result.update({"marker_uid": marker_uid, "direction": lk.get("direction"), "pkg_hash": pkg_hash})
+
+    # ── L1：刪連結 + 本地檔 + 立墓碑 ──────────────────────────────────────────
+    # 先立墓碑（即使後續步驟中斷，輪詢也不再復活此包）；pkg_hash 缺（舊資料）則跳過墓碑（無從擋）。
+    if pkg_hash and _valid_sha256(pkg_hash):
+        cop_entity_repo.add_pkg_tombstone(pkg_hash, deleted_by=actor)
+    # 刪此 marker 對此 sha 的所有連結列（通常 1 筆）。
+    for _link in links:
+        cop_entity_repo.delete_cop_link(_link.get("src_uid"), sha256, _RELATION)
+    # 本地檔：僅當**沒有其他 marker 仍連此 sha** 才刪實體檔（同一張圖可能被多 marker 共用，罕見但防呆）。
+    if not cop_entity_repo.list_cop_links(relation=_RELATION, target_uid=sha256):
+        p = local_attachment_path(sha256)
+        if p is not None and p.exists():
+            try:
+                p.unlink()
+            except OSError:
+                log.warning("[tak] #518 刪本地附件檔失敗（連結已移除）sha=%s", sha256[:12], exc_info=True)
+    result["local_deleted"] = True
+    log.info("[tak] #518 附件本地刪除 sha=%s marker=%s dir=%s", sha256[:12], marker_uid, result["direction"] or "?")
+
+    # ── L2：連 Enterprise Sync 檔庫清整包（選配、best-effort）──────────────────
+    if purge_server:
+        if not (pkg_hash and _valid_sha256(pkg_hash)):
+            result["server_purged"] = False
+            result["server_error"] = "無所屬 zip hash（舊資料未記 pkg_hash），無法定位 server 檔"
+        elif not tak_files.filestore_write_enabled():
+            result["server_purged"] = False
+            result["server_error"] = "TAK file store 寫入未配置（缺 Marti URL 或寫 cert）"
+        else:
+            client = tak_files._build_write_client()
+            try:
+                await tak_files.delete_file(client, pkg_hash)
+                result["server_purged"] = True
+                log.info("[tak] #518 L2 已清 Enterprise Sync zip=%s", pkg_hash[:12])
+            except Exception as e:  # noqa: BLE001 — L2 best-effort：不推翻 L1，狀態分開回報
+                result["server_purged"] = False
+                result["server_error"] = str(e)[:200]
+                log.warning("[tak] #518 L2 清 server 檔失敗 zip=%s：%s", pkg_hash[:12], e)
+            finally:
+                await client.close()
+    return result
 
 
 def local_attachment_owner(sha256: str) -> str | None:

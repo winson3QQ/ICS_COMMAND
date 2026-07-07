@@ -45,7 +45,9 @@ def _wire(monkeypatch, *, entity=_MARKER, upload_hash="d" * 64):
 
     monkeypatch.setattr(tak_files, "upload_file", _fake_upload)
     monkeypatch.setattr(tak_downlink, "send_cot", _fake_send)
-    monkeypatch.setattr(tak_attachments, "_store_attachment", lambda uid, img: stored.append((uid, img)) or True)
+    monkeypatch.setattr(
+        tak_attachments, "_store_attachment", lambda uid, img, **kw: stored.append((uid, img, kw)) or True
+    )
     return sent, uploaded, stored
 
 
@@ -63,6 +65,8 @@ def test_push_broadcast_happy_path(monkeypatch):
     assert "d" * 64 in sent[0] and "<marti>" not in sent[0]
     # 照片也在 ICS COP 本地掛 marker（不靠 poll re-ingest）
     assert stored and stored[0][0] == "MK-1" and stored[0][1]["data"] == _JPEG
+    # #518：下行掛載記 direction='downlink' + pkg_hash=上傳 zip hash（供方向感知刪除 + L2）
+    assert stored[0][2] == {"direction": "downlink", "pkg_hash": "d" * 64}
 
 
 def test_push_point_to_point_dest(monkeypatch):

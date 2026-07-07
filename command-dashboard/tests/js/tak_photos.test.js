@@ -348,3 +348,84 @@ describe('push / bindPush', () => {
     await loader.bindPush('U-1'); // 沒註冊 input → 不拋
   });
 });
+
+// ── #518：方向感知刪除（deleteAttachment / buildDeleteDialog / load 刪除鈕）──
+describe('#518 方向感知刪除', () => {
+  test('deleteAttachment：purge_server=false → DELETE 無 query', async () => {
+    let captured;
+    const af = vi.fn(async (url, opts) => {
+      captured = { url, opts };
+      return { ok: true };
+    });
+    const loader = createTakPhotoLoader({ authFetch: af, doc });
+    const ok = await loader.deleteAttachment('a'.repeat(64), false);
+    expect(ok).toBe(true);
+    expect(captured.url).toBe(`/api/tak/files/${'a'.repeat(64)}`);
+    expect(captured.opts.method).toBe('DELETE');
+  });
+
+  test('deleteAttachment：purge_server=true → 帶 ?purge_server=true', async () => {
+    let captured;
+    const af = vi.fn(async (url, opts) => {
+      captured = { url, opts };
+      return { ok: true };
+    });
+    const loader = createTakPhotoLoader({ authFetch: af, doc });
+    await loader.deleteAttachment('b'.repeat(64), true);
+    expect(captured.url).toContain('?purge_server=true');
+  });
+
+  test('buildDeleteDialog：下行 + 可清 → L2 checkbox 預設勾（ICS 為 owner）', () => {
+    const loader = createTakPhotoLoader({ authFetch: vi.fn(), doc });
+    const dlg = loader.buildDeleteDialog({ hash: 'c'.repeat(64), direction: 'downlink', server_purgeable: true }, {});
+    const cb = dlg.querySelector('INPUT');
+    expect(cb.checked).toBe(true);
+    expect(cb.disabled).toBe(false);
+  });
+
+  test('buildDeleteDialog：上行 + 可清 → L2 checkbox 預設不勾（源頭在現場）', () => {
+    const loader = createTakPhotoLoader({ authFetch: vi.fn(), doc });
+    const dlg = loader.buildDeleteDialog({ hash: 'c'.repeat(64), direction: 'uplink', server_purgeable: true }, {});
+    expect(dlg.querySelector('INPUT').checked).toBe(false);
+  });
+
+  test('buildDeleteDialog：無 pkg（server_purgeable=false）→ checkbox 停用', () => {
+    const loader = createTakPhotoLoader({ authFetch: vi.fn(), doc });
+    const dlg = loader.buildDeleteDialog({ hash: 'c'.repeat(64), direction: 'downlink', server_purgeable: false }, {});
+    const cb = dlg.querySelector('INPUT');
+    expect(cb.checked).toBe(false);
+    expect(cb.disabled).toBe(true);
+  });
+
+  test('buildDeleteDialog：確定鈕 → onConfirm(checkbox 狀態)；取消 → onCancel', async () => {
+    const loader = createTakPhotoLoader({ authFetch: vi.fn(), doc });
+    let confirmed = null;
+    let cancelled = false;
+    const dlg = loader.buildDeleteDialog(
+      { hash: 'c'.repeat(64), direction: 'downlink', server_purgeable: true },
+      { onConfirm: (p) => (confirmed = p), onCancel: () => (cancelled = true) },
+    );
+    const btns = dlg.querySelectorAll('BUTTON'); // [取消, 確定刪除]
+    await btns[1]._fire('click');
+    expect(confirmed).toBe(true); // 下行預設勾 → 傳 true
+    await btns[0]._fire('click');
+    expect(cancelled).toBe(true);
+  });
+
+  test('load：canDelete=true + local 附件 → 每格出刪除鈕 + 方向徽記', async () => {
+    const list = _resp({
+      files: [{ hash: 'a'.repeat(64), name: 'p.jpg', local: true, direction: 'uplink', server_purgeable: true }],
+    });
+    const loader = createTakPhotoLoader({ authFetch: _fakeAuthFetch({ list }), doc });
+    await loader.load('U-1', { canDelete: true });
+    expect(grid.querySelectorAll('BUTTON').length).toBe(1); // 刪除鈕
+    expect(grid.querySelectorAll('SPAN').length).toBe(1); // 方向徽記
+  });
+
+  test('load：canDelete=false → 無刪除鈕（後端仍為權威守門）', async () => {
+    const list = _resp({ files: [{ hash: 'a'.repeat(64), name: 'p.jpg', local: true, direction: 'uplink' }] });
+    const loader = createTakPhotoLoader({ authFetch: _fakeAuthFetch({ list }), doc });
+    await loader.load('U-1', { canDelete: false });
+    expect(grid.querySelectorAll('BUTTON').length).toBe(0);
+  });
+});

@@ -334,6 +334,10 @@ async def reset_db(request: Request):
         "chats",
         # #343：紅藍 client 分類（per-exercise）—— reset 須清，否則新場沿用舊分類。
         "client_faction",
+        # #518：現場照片刪除墓碑（zip hash）—— reset=乾淨起點須清，否則重分享的同一 mission-package
+        # 被舊墓碑永久壓住、輪詢不再橋回（照片在新場憑空消失）。附件實體檔（DATA_DIR/tak_attachments/）
+        # 仍為 runtime user data，不隨 reset-db 動（生命週期 retention 另案 #518 系統化收尾）。
+        "tak_pkg_tombstones",
     ]
     # #348 GAP2：prod 下 audit_log 為 append-only（不隨 reset 清，保課責軌；引擎層觸發器亦擋）；
     # dev 仍清，便於開發期反覆 reset/改試（使用者拍板）。

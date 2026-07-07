@@ -120,6 +120,9 @@ async def push_photo_to_marker(
                 "name": safe_name,
                 "mimetype": mimetype or "image/jpeg",
             },
+            # #518：ICS 推的＝下行（downlink），ICS 是 owner；記上傳回傳的 zip_hash 供方向感知刪除 + L2。
+            pkg_hash=zip_hash,
+            direction="downlink",
         )
     except Exception:  # noqa: BLE001 — 本地掛失敗不影響現場推送結果
         log.warning("[tak] #509-P3 推送後本地掛 marker 失敗 marker=%s", marker_uid, exc_info=True)
