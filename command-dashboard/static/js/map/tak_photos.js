@@ -25,24 +25,39 @@ const _CELL_STYLE =
   'border:1px solid var(--border);border-radius:6px;overflow:hidden;background:var(--surface);text-decoration:none;';
 const _IMG_STYLE = 'width:100%;height:100%;object-fit:cover;';
 
+// #509-P3 下行：把照片推到現場 client 的地圖（打包 mission-package → b-f-t-r）。收件人多選：
+// 不選＝廣播全體；選一個以上＝點對點。與「上傳照片」（僅 ICS 側顯示）不同——本控制會送達現場。
+function _pushControlHtml() {
+  return (
+    '<div style="margin-top:8px;font-size:11px;">' +
+    `<label style="cursor:pointer;color:var(--accent,#2b6cd9);">📡 推照片到現場<input type="file" id="${TAK_PHOTO_PUSH_ID}" accept="image/*" style="display:none"></label>` +
+    `<span id="${_PUSH_STATUS_ID}" style="margin-left:8px;color:var(--text3);"></span>` +
+    '<div style="color:var(--text3);margin-top:4px;">收件人（不選＝廣播全體）：</div>' +
+    `<select id="${TAK_PHOTO_PUSH_DEST_ID}" multiple size="3" ` +
+    'style="width:100%;font-size:11px;margin-top:2px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;">' +
+    '</select></div>'
+  );
+}
+
 /** 詳情面板照片區塊的靜態 HTML（無使用者資料）。openModal 後由 loader 非同步填 grid。
- *  canUpload=true（指揮層）→ 附「上傳照片」控制（#506 M3 下行：推現場照掛此 marker）。 */
-export function takPhotoSectionHtml(canUpload = false) {
+ *  canUpload=true（指揮層）→ 附「上傳照片」+「推照片到現場」控制。
+ *  opts.pushOnly=true（#509-P3 乙）→ 只出「推照片到現場」（ICS 自建 marker 無上行照片可看，
+ *  故省 grid/上傳；仍可把 ICS 的觀察〔如無線電情報〕配圖推到現場）。 */
+export function takPhotoSectionHtml(canUpload = false, opts = {}) {
+  const push = canUpload ? _pushControlHtml() : '';
+  if (opts.pushOnly) {
+    // 乙：只推送。無 canUpload（指揮層）→ 不出任何控制（回空字串，呼叫端不加區塊）。
+    return push
+      ? '<div style="margin-top:12px;border-top:1px solid var(--border);padding-top:8px;">' +
+          '<div style="font-size:11px;color:var(--text3);margin-bottom:2px;">📷 現場照片</div>' +
+          push +
+          '</div>'
+      : '';
+  }
   const upload = canUpload
     ? '<div style="margin-top:8px;font-size:11px;">' +
       `<label style="cursor:pointer;color:var(--accent,#2b6cd9);">📤 上傳照片<input type="file" id="${TAK_PHOTO_UPLOAD_ID}" accept="image/*" style="display:none"></label>` +
       `<span id="${_UPLOAD_STATUS_ID}" style="margin-left:8px;color:var(--text3);"></span></div>`
-    : '';
-  // #509-P3 下行：把照片推到現場 client 的地圖（打包 mission-package → b-f-t-r）。收件人多選：
-  // 不選＝廣播全體；選一個以上＝點對點。與「上傳照片」（僅 ICS 側顯示）不同——本控制會送達現場。
-  const push = canUpload
-    ? '<div style="margin-top:8px;font-size:11px;">' +
-      `<label style="cursor:pointer;color:var(--accent,#2b6cd9);">📡 推照片到現場<input type="file" id="${TAK_PHOTO_PUSH_ID}" accept="image/*" style="display:none"></label>` +
-      `<span id="${_PUSH_STATUS_ID}" style="margin-left:8px;color:var(--text3);"></span>` +
-      '<div style="color:var(--text3);margin-top:4px;">收件人（不選＝廣播全體）：</div>' +
-      `<select id="${TAK_PHOTO_PUSH_DEST_ID}" multiple size="3" ` +
-      'style="width:100%;font-size:11px;margin-top:2px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;">' +
-      '</select></div>'
     : '';
   return (
     '<div style="margin-top:12px;border-top:1px solid var(--border);padding-top:8px;">' +

@@ -2487,7 +2487,11 @@ export function _openContactDetail(id) {
   body += `<button data-action="deleteContact" data-id="${_escapeHtml(String(id))}" style="${BTN}background:var(--red);">🗑 刪除標記</button>`;
   // #503 上行：TAK 來源標記才有 file store 附件（本機 manual 標記 uid 不在 TAK，省一次無謂查詢）
   const _hasTakPhotos = ent.source === 'tak';
+  // #509-P3 乙：非 TAK 來源的 marker（ICS 自建，如無線電情報）——指揮層 + TAK on 時亦可「推照片到現場」
+  //（把 ICS 的觀察配圖推到現場）。只出推送控制（無上行 grid）。
+  const _canPushNonTak = !_hasTakPhotos && ent.lat != null && canUseRealModeControls() && _takEnabled;
   if (_hasTakPhotos) body += takPhotoSectionHtml(canUseRealModeControls());
+  else if (_canPushNonTak) body += takPhotoSectionHtml(true, { pushOnly: true });
   _deps.openModal?.(`${affZh}接觸 ${ent.callsign || ''}　·　左鍵拖曳可移動`, body);
   if (_hasTakPhotos) {
     _takPhotoLoader.load(id);
@@ -2495,6 +2499,8 @@ export function _openContactDetail(id) {
       _takPhotoLoader.bindUpload(id);
       _takPhotoLoader.bindPush(id); // #509-P3 下行：推照片到現場
     }
+  } else if (_canPushNonTak) {
+    _takPhotoLoader.bindPush(id); // #509-P3 乙：只綁推送（無上行 grid）
   }
 }
 

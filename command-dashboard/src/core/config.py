@@ -283,10 +283,13 @@ APP_VERSION = "2.41.2"
 #         + 演習/放置/稽核 UI P1-13/14/16/#93 + 分類編輯器 #66）→ 0.x 畢業為 MAJOR 紀元。
 CMD_VERSION: str = os.getenv(
     "CMD_VERSION",
+    # PATCH v1.30.1：#517（#509-P3 乙）——「📡 推照片到現場」控制也掛到 ICS 自建（非 TAK 來源）marker
+    # 面板（pushOnly 模式：只推送、無上行 grid/上傳）。指揮層 + TAK on 時顯示。把無線電等非 TAK 來源
+    # 情報配圖推到現場（後端同端點早已支援）。
+    "v1.30.1",
     # MINOR v1.30.0：#509-P3 下行推照片 UI——marker 詳情面板加「📡 推照片到現場」（打包 mission-package
     # + b-f-t-r，現場 client 建 marker+掛照片）+ 收件人多選（不選＝廣播全體 / 選取＝點對點，選項由
     # GET /api/tak/clients 線上 client 名單填）。與「上傳照片」（僅 ICS 側顯示）並列。
-    "v1.30.0",
     # MINOR v1.29.0：#507 消費半身面板——TAK 憑證對帳面板新增「ICS 自身 infra 證（消費半身）」
     # 段，顯示每張證「宣告群 vs TAK 實際」+ 漂移狀態（缺群/未註冊/多群）+「🔧 一鍵對帳」鈕（補群）。
     # 「兩面一軸」看得見（後端 backend-v2.38.0：infra 身分 SoT + registrar 多群 + 編排 apply + presence beacon）。

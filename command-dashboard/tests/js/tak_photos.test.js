@@ -275,6 +275,16 @@ describe('takPhotoSectionHtml push 控制', () => {
   test('canUpload=false 不含推送控制', () => {
     expect(takPhotoSectionHtml(false)).not.toContain(TAK_PHOTO_PUSH_ID);
   });
+  test('#509-P3 乙 pushOnly：只出推送控制，無上行 grid / 上傳', () => {
+    const h = takPhotoSectionHtml(true, { pushOnly: true });
+    expect(h).toContain(`id="${TAK_PHOTO_PUSH_ID}"`);
+    expect(h).toContain(`id="${TAK_PHOTO_PUSH_DEST_ID}"`);
+    expect(h).not.toContain(TAK_PHOTO_GRID_ID); // 無上行 grid
+    expect(h).not.toContain(TAK_PHOTO_UPLOAD_ID); // 無上傳
+  });
+  test('pushOnly 但非指揮層 → 空字串（無任何控制）', () => {
+    expect(takPhotoSectionHtml(false, { pushOnly: true })).toBe('');
+  });
 });
 
 describe('push / bindPush', () => {
