@@ -647,21 +647,37 @@ async def downlink_photo(
 
 
 @router.get("/clients")
-async def list_tak_clients():
+def list_tak_clients(request: Request):
     """線上 TAK client 名單（callsign+uid）——供 #509-P3 下行「點對點」挑收件人。
 
-    RBAC=READ_ROLES（中央 gate GET）。未配置讀 cert → 422；TAK 暫斷/錯 → 回空清單（best-effort，
-    不擋 UI，指揮官仍可選廣播）。
+    **來源＝COP（`cop_entities`, source='tak'），與「隊伍」面板／地圖同源**：所見即可選。
+    原走 Marti `/clientEndPoints` 會漏**憑證直連**的現場 client（truststore-trusted 非 managed
+    user → 不在名單）且與 COP 視圖不一致（memory `tak-marti-authz-model`）；改自 COP 取，消除
+    「隊伍看得到卻選不到」的落差，並免依賴時好時壞的 Marti REST 讀路徑。
+
+    可見性沿用地圖（#472 跨場共享池、只看 faction；無 active 場時容 NULL faction）；只列在線
+    （stale 未過 / archived）；排除 ICS 自身 presence beacon（推給自己無意義）。
+    RBAC=READ_ROLES（中央 gate GET）。回 {clients:[{callsign, uid}]}，uid 去重、callsign 排序。
     """
-    if not tak_files.filestore_enabled():
-        raise HTTPException(422, "TAK 未配置")
-    client = tak_files._build_read_client()
-    try:
-        clients = await tak_files.list_online_clients(client)
-    except Exception:  # noqa: BLE001 — 列舉失敗 best-effort，回空不擋 UI
-        clients = []
-    finally:
-        await client.close()
+    from services.tak_downlink import ICS_SELF_UID
+
+    vf = visible_factions_for_session(request.state.session)
+    entities = cop_entity_repo.list_cop_entities(
+        source="tak",
+        exercise_id=None,  # 同地圖：跨場共享池，不按場過濾
+        include_stale=False,  # 只列在線（honor archive/stale）
+        visible_factions=vf,
+        allow_null_faction=current_exercise_id() is None,  # 同 cop._allow_unclassified_tak
+    )
+    seen: set[str] = set()
+    clients: list[dict] = []
+    for e in entities:
+        uid, cs = e.get("uid"), e.get("callsign")
+        if not uid or not cs or uid in seen or uid == ICS_SELF_UID:
+            continue
+        seen.add(uid)
+        clients.append({"callsign": cs, "uid": uid})
+    clients.sort(key=lambda c: c["callsign"].lower())
     return {"clients": clients}
 
 

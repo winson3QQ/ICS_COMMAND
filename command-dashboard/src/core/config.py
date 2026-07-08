@@ -279,7 +279,10 @@ COOKIE_SECURE_OVERRIDE: bool | None = (
 #               + audit）；L1 刪本地檔+連結+持久 zip-hash 墓碑（止住 #509-P2 輪詢跨重啟復活）；L2 選配
 #               DELETE /Marti/api/files/{hash} 清 Enterprise Sync（best-effort、狀態分開回報）；attachment
 #               記 direction（上行/下行）+ pkg_hash。migration 41。
-APP_VERSION = "2.42.0"
+# PATCH 2.42.1：修「推照片到現場」收件人下拉空白——GET /api/tak/clients 來源從 Marti /clientEndPoints
+#               （漏憑證直連現場 client、與 COP 視圖不一致）改為 cop_entities（source='tak'，與「隊伍」
+#               面板同源）；faction 可見、排除 ICS 自身。移除死碼 tak_files.list_online_clients。
+APP_VERSION = "2.42.1"
 
 # CMD_VERSION：前端 UI 功能版本（不同於後端 SemVer APP_VERSION；規則見 CLAUDE.md 版號規則）
 # 兩軌版本命名，不可混用。由 /api/version 提供給前端，是唯一 source-of-truth；release 時更新此值。
