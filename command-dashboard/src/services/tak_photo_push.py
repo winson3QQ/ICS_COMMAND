@@ -73,7 +73,11 @@ async def push_photo_to_marker(
     safe_name = (filename or "photo.jpg").rsplit("/", 1)[-1] or "photo.jpg"
     stem = safe_name.rsplit(".", 1)[0] or "photo"
     zip_bytes = tak_mission_package.build_mission_package(
-        marker_uid=marker_uid, cot_xml=cot_xml, photo_name=safe_name, photo_bytes=photo_bytes
+        marker_uid=marker_uid,
+        cot_xml=cot_xml,
+        photo_name=safe_name,
+        photo_bytes=photo_bytes,
+        callsign=entity.get("callsign"),  # #509-P3 對齊 ATAK manifest：帶 marker callsign
     )
     local_hash = hashlib.sha256(zip_bytes).hexdigest()
 

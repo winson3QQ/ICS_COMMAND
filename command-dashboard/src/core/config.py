@@ -282,7 +282,15 @@ COOKIE_SECURE_OVERRIDE: bool | None = (
 # PATCH 2.42.1：修「推照片到現場」收件人下拉空白——GET /api/tak/clients 來源從 Marti /clientEndPoints
 #               （漏憑證直連現場 client、與 COP 視圖不一致）改為 cop_entities（source='tak'，與「隊伍」
 #               面板同源）；faction 可見、排除 ICS 自身。移除死碼 tak_files.list_online_clients。
-APP_VERSION = "2.42.1"
+# PATCH 2.42.2：GET /api/tak/clients 收斂為「推照片到現場」收件人正解——(1) faction 守門對齊地圖
+#               （套 FACTION_ISOLATION_ENABLED，非 admin 只見藍+中立、紅隱藏）；(2) **只列真裝置端點**
+#               （_is_contact_unit：有 team_color / 自報 a-f）**排除放置標記**（真機實測 DM 到標記送不到、
+#               到裝置送得到）；(3) 附 team_color/faction 供前端分「隊伍/陣營」兩軸群組。
+# PATCH 2.42.3：dogfood 兩修——(1) 下行照片現場**看不到**：`build_mission_package` 對齊 ATAK 抓包格式
+#               （照片放 hash 資料夾非 attach/、Config uid=marker 無 -pkg + callsign + onReceiveDelete=true）
+#               → ATAK 才把圖掛上 marker；(2) 上行「數十秒不等」：輪詢後備間隔 60s→15s（真正即時仍靠被動
+#               b-f-t-r，裝置行為）。
+APP_VERSION = "2.42.3"
 
 # CMD_VERSION：前端 UI 功能版本（不同於後端 SemVer APP_VERSION；規則見 CLAUDE.md 版號規則）
 # 兩軌版本命名，不可混用。由 /api/version 提供給前端，是唯一 source-of-truth；release 時更新此值。
@@ -290,10 +298,13 @@ APP_VERSION = "2.42.1"
 #         + 演習/放置/稽核 UI P1-13/14/16/#93 + 分類編輯器 #66）→ 0.x 畢業為 MAJOR 紀元。
 CMD_VERSION: str = os.getenv(
     "CMD_VERSION",
+    # MINOR v1.32.0：#509-P3 推照片收件人「照 TAK 做法」——選檔後**彈出收件人選擇視窗**（取代擠在窄面板的
+    # inline 多選框）：廣播 / 指定群組（隊伍 team + 陣營 faction 兩軸）/ 指定裝置，可混選取聯集、不選=廣播；
+    # 只列真裝置（排除放置標記）；faction 可見度由後端守門。主體 marker 任何來源皆可附圖推。
+    "v1.32.0",
     # MINOR v1.31.0：#518 現場照片方向感知刪除 UI——marker 詳情面板照片格加方向徽記（⬆上行/⬇下行）
     # + 刪除鈕（指揮層），刪除確認框依方向給 L2「連 server 清」預設（下行預設清、上行預設只清本地）
     # + 誠實標「現場裝置本機仍有」。
-    "v1.31.0",
     # PATCH v1.30.1：#517（#509-P3 乙）——「📡 推照片到現場」控制也掛到 ICS 自建（非 TAK 來源）marker
     # 面板（pushOnly 模式：只推送、無上行 grid/上傳）。指揮層 + TAK on 時顯示。把無線電等非 TAK 來源
     # 情報配圖推到現場（後端同端點早已支援）。
@@ -565,7 +576,10 @@ TAK_PRESENCE_LON: float = float(os.getenv("TAK_PRESENCE_LON", "0") or "0")
 # Enterprise Sync，但 `b-f-t-r` 通告的定址因 client 而異（iTAK 廣播到得了 ICS、ATAK 不廣播），只靠
 # 等通告會漏；主動輪詢對 iTAK/ATAK 一視同仁。預設 OFF（opt-in，同 presence/mission）。
 TAK_FILESTORE_POLL_ENABLED: bool = os.getenv("TAK_FILESTORE_POLL_ENABLED", "false").lower() == "true"
-TAK_FILESTORE_POLL_INTERVAL_S: int = int(os.getenv("TAK_FILESTORE_POLL_INTERVAL_S", "60"))  # 輪詢週期（秒）
+# 輪詢週期（秒）：預設 15s——上行照片的**後備即時性**（現場裝置不廣播 b-f-t-r 時只能靠輪詢，60s 太慢、
+# 使用者 dogfood 反映「數十秒不等」）。list 查詢輕量、只下載新包，故縮短間隔負載可控；真正即時仍靠被動
+# b-f-t-r（裝置行為）。TAK 負載/OOM 韌性另見 #523。
+TAK_FILESTORE_POLL_INTERVAL_S: int = int(os.getenv("TAK_FILESTORE_POLL_INTERVAL_S", "15"))
 
 # ── TAK Marti 服務 cert：讀/寫身分分離（#177 L1；cert-role 見 #176）──────────────
 # 兩張 step-ca 簽的 Marti REST cert，由 deploy/tak-server/pki/issue-tak-certs.sh 產出。

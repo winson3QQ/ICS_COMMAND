@@ -646,22 +646,35 @@ async def downlink_photo(
     return {"ok": True, **result}
 
 
+def _is_contact_unit(e: dict) -> bool:
+    """是否為**真裝置端點**（可作收件人），非放置標記。對齊前端 roster_panel `_isRosterUnit`：
+    TAK client self-SA 必帶 `<__group>`（隊色 team_color）；marker/點位（敵情/繪圖/事件）無 →
+    有 team_color 即裝置；或自報友軍（a-f，catch 無 __group 的友軍單位）。DM/群組定址只對真裝置有效
+    （標記無端點，`<dest callsign>` 路由不到——真機實測 dest=標記 送不到、dest=裝置 送得到）。"""
+    tc = (e.get("team_color") or "").strip()
+    if tc:
+        return True
+    t = e.get("type") or ""
+    return t.startswith("a-f-") or t == "a-f"
+
+
 @router.get("/clients")
 def list_tak_clients(request: Request):
-    """線上 TAK client 名單（callsign+uid）——供 #509-P3 下行「點對點」挑收件人。
+    """線上 TAK **裝置**名單——供 #509-P3 下行推照片挑收件人（廣播/群組/指定 client）。
 
     **來源＝COP（`cop_entities`, source='tak'），與「隊伍」面板／地圖同源**：所見即可選。
-    原走 Marti `/clientEndPoints` 會漏**憑證直連**的現場 client（truststore-trusted 非 managed
-    user → 不在名單）且與 COP 視圖不一致（memory `tak-marti-authz-model`）；改自 COP 取，消除
-    「隊伍看得到卻選不到」的落差，並免依賴時好時壞的 Marti REST 讀路徑。
+    原走 Marti `/clientEndPoints` 會漏**憑證直連**的現場 client 且與 COP 視圖不一致；改自 COP 取。
+    **只列真裝置**（`_is_contact_unit`：有 team_color / 自報 a-f）——**排除放置標記**（a-u/a-n/繪圖…
+    無端點，DM 送不到，真機實測坐實）。附 team_color/faction 供前端分「隊伍/陣營」兩軸群組。
 
-    可見性沿用地圖（#472 跨場共享池、只看 faction；無 active 場時容 NULL faction）；只列在線
-    （stale 未過 / archived）；排除 ICS 自身 presence beacon（推給自己無意義）。
-    RBAC=READ_ROLES（中央 gate GET）。回 {clients:[{callsign, uid}]}，uid 去重、callsign 排序。
+    可見性沿用地圖（#472 跨場共享池、只看 faction；無 active 場容 NULL faction）；只列在線
+    （stale 未過 / archived）；排除 ICS 自身 presence beacon。faction 守門對齊地圖（開關關→不過濾）：
+    sysadmin 見全部（含紅）、其餘藍方只見藍+中立（紅隱藏）。RBAC=READ_ROLES。
+    回 {clients:[{callsign, uid, team_color, faction}]}，uid 去重、callsign 排序。
     """
     from services.tak_downlink import ICS_SELF_UID
 
-    vf = visible_factions_for_session(request.state.session)
+    vf = visible_factions_for_session(request.state.session) if config.FACTION_ISOLATION_ENABLED else None
     entities = cop_entity_repo.list_cop_entities(
         source="tak",
         exercise_id=None,  # 同地圖：跨場共享池，不按場過濾
@@ -675,8 +688,10 @@ def list_tak_clients(request: Request):
         uid, cs = e.get("uid"), e.get("callsign")
         if not uid or not cs or uid in seen or uid == ICS_SELF_UID:
             continue
+        if not _is_contact_unit(e):  # 排除放置標記（非裝置端點，收件人無效）
+            continue
         seen.add(uid)
-        clients.append({"callsign": cs, "uid": uid})
+        clients.append({"callsign": cs, "uid": uid, "team_color": e.get("team_color"), "faction": e.get("faction")})
     clients.sort(key=lambda c: c["callsign"].lower())
     return {"clients": clients}
 

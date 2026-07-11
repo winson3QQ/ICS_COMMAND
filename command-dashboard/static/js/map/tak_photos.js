@@ -38,18 +38,22 @@ const _DIALOG_BOX_STYLE =
   'border:1px solid var(--border,#ccc);box-shadow:0 4px 16px rgba(0,0,0,0.3);font-size:13px;';
 const _DIALOG_BTN_STYLE =
   'padding:4px 10px;font-size:12px;border:1px solid var(--border,#ccc);border-radius:4px;cursor:pointer;background:var(--surface,#fff);color:var(--text,#111);';
+// #509-P3 收件人選擇視窗（推照片到現場）：較寬、可捲動。
+const _PUSH_BOX_STYLE =
+  'width:360px;max-width:92vw;max-height:80vh;overflow:auto;padding:14px 16px;border-radius:8px;' +
+  'background:var(--surface,#fff);color:var(--text,#111);border:1px solid var(--border,#ccc);' +
+  'box-shadow:0 4px 16px rgba(0,0,0,0.3);font-size:13px;';
+const _PUSH_ROW = 'display:flex;align-items:center;gap:8px;padding:6px 2px;cursor:pointer;font-size:13px;';
+const _FACTION_LABEL = { blue: '藍軍', red: '紅軍', neutral: '中立' };
 
 // #509-P3 下行：把照片推到現場 client 的地圖（打包 mission-package → b-f-t-r）。收件人多選：
 // 不選＝廣播全體；選一個以上＝點對點。與「上傳照片」（僅 ICS 側顯示）不同——本控制會送達現場。
 function _pushControlHtml() {
+  // 選檔後彈出收件人選擇視窗（廣播/群組/指定裝置）——收件方式移到視窗、不再擠在窄面板裡。
   return (
     '<div style="margin-top:8px;font-size:11px;">' +
     `<label style="cursor:pointer;color:var(--accent,#2b6cd9);">📡 推照片到現場<input type="file" id="${TAK_PHOTO_PUSH_ID}" accept="image/*" style="display:none"></label>` +
-    `<span id="${_PUSH_STATUS_ID}" style="margin-left:8px;color:var(--text3);"></span>` +
-    '<div style="color:var(--text3);margin-top:4px;">收件人（不選＝廣播全體）：</div>' +
-    `<select id="${TAK_PHOTO_PUSH_DEST_ID}" multiple size="3" ` +
-    'style="width:100%;font-size:11px;margin-top:2px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;">' +
-    '</select></div>'
+    `<span id="${_PUSH_STATUS_ID}" style="margin-left:8px;color:var(--text3);"></span></div>`
   );
 }
 
@@ -333,38 +337,172 @@ export function createTakPhotoLoader({ authFetch, doc } = {}) {
     return r.ok;
   }
 
-  // 綁定「推照片到現場」控制（openModal 後呼叫）：填 client 選項 → 選檔 → 依所選收件人推送。
-  // CSP 安全（addEventListener + property set，非 inline/innerHTML）。
-  async function bindPush(uid) {
-    const input = _doc.getElementById(TAK_PHOTO_PUSH_ID);
-    if (!input || !uid) return;
-    const sel = _doc.getElementById(TAK_PHOTO_PUSH_DEST_ID);
-    const status = _doc.getElementById(_PUSH_STATUS_ID);
-    if (sel) {
-      const clients = await fetchClients();
-      if (!_doc.getElementById(TAK_PHOTO_PUSH_DEST_ID)) return; // modal 已關 → 別動 DOM
-      for (const c of clients) {
-        if (!c || !c.callsign) continue;
-        const opt = _doc.createElement('option');
-        opt.value = c.callsign; // property set → 不可信 callsign 安全（非 innerHTML）
-        opt.textContent = c.callsign;
-        sel.appendChild(opt);
+  // 收件人選擇視窗（純 DOM builder，可測）：廣播 / 群組（隊伍 team_color + 陣營 faction 兩軸）/ 指定裝置。
+  // 群組與裝置可混選，取聯集去重；不選任何 = 廣播全體。faction 可見度已由後端守門（非 admin 拿不到紅
+  // → 紅群自然不出）。dest 只列真裝置（後端 _is_contact_unit 濾掉標記）。onSend(destArray) 回解析後 callsign。
+  function buildPushDialog(clients, { onSend, onCancel } = {}, opts = {}) {
+    clients = (clients || []).filter((c) => c && c.callsign);
+    const teams = new Map(); // team_color -> [callsign]
+    const factions = new Map(); // faction -> [callsign]
+    for (const c of clients) {
+      const tc = (c.team_color || '').trim();
+      if (tc) {
+        if (!teams.has(tc)) teams.set(tc, []);
+        teams.get(tc).push(c.callsign);
+      }
+      const fa = (c.faction || '').trim();
+      if (fa) {
+        if (!factions.has(fa)) factions.set(fa, []);
+        factions.get(fa).push(c.callsign);
       }
     }
+    const selGroups = new Map(); // key -> [members]
+    const selClients = new Set();
+
+    const overlay = _doc.createElement('div');
+    overlay.style.cssText = _DIALOG_OVERLAY_STYLE;
+    const box = _doc.createElement('div');
+    box.style.cssText = _PUSH_BOX_STYLE;
+
+    const title = _doc.createElement('div');
+    title.textContent = '📡 推照片到現場';
+    title.style.cssText = 'font-weight:600;margin-bottom:2px;';
+    box.appendChild(title);
+    if (opts.filename) {
+      const fn = _doc.createElement('div');
+      fn.textContent = '檔案：' + opts.filename;
+      fn.style.cssText = 'font-size:11px;color:var(--text3,#888);margin-bottom:6px;';
+      box.appendChild(fn);
+    }
+    const hint = _doc.createElement('div');
+    hint.textContent = '不選任何 = 廣播全體';
+    hint.style.cssText = 'font-size:11px;color:var(--text3,#888);margin-bottom:4px;';
+    box.appendChild(hint);
+
+    const send = _doc.createElement('button');
+    function _resolve() {
+      const set = new Set();
+      for (const members of selGroups.values()) for (const m of members) set.add(m);
+      for (const cs of selClients) set.add(cs);
+      return Array.from(set).sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+    }
+    function _refresh() {
+      const n = _resolve().length;
+      send.textContent = n ? `送出（${n} 個收件人）` : '送出（廣播全體）';
+    }
+    function _row(label, onToggle, sub) {
+      const row = _doc.createElement('label');
+      row.style.cssText = _PUSH_ROW;
+      const cb = _doc.createElement('input');
+      cb.type = 'checkbox';
+      cb.addEventListener('change', () => {
+        onToggle(cb.checked);
+        _refresh();
+      });
+      row.appendChild(cb);
+      const txt = _doc.createElement('span');
+      txt.textContent = label;
+      txt.style.cssText = 'flex:1;';
+      row.appendChild(txt);
+      if (sub) {
+        const s = _doc.createElement('span');
+        s.textContent = sub;
+        s.style.cssText = 'font-size:11px;color:var(--text3,#888);';
+        row.appendChild(s);
+      }
+      box.appendChild(row);
+    }
+    function _seclabel(t) {
+      const d = _doc.createElement('div');
+      d.textContent = t;
+      d.style.cssText = 'font-size:11px;color:var(--text3,#888);margin:10px 0 2px;';
+      box.appendChild(d);
+    }
+
+    if (teams.size) {
+      _seclabel('群組 · 隊伍');
+      for (const [tc, members] of teams)
+        _row(tc + ' 隊', (on) => (on ? selGroups.set('t:' + tc, members) : selGroups.delete('t:' + tc)), members.length + ' 台');
+    }
+    if (factions.size) {
+      _seclabel('群組 · 陣營');
+      for (const [fa, members] of factions)
+        _row(_FACTION_LABEL[fa] || fa, (on) => (on ? selGroups.set('f:' + fa, members) : selGroups.delete('f:' + fa)), members.length + ' 台');
+    }
+    _seclabel('指定裝置');
+    if (!clients.length) {
+      const none = _doc.createElement('div');
+      none.textContent = '目前無在線裝置（可廣播）';
+      none.style.cssText = 'font-size:12px;color:var(--text3,#888);padding:4px 2px;';
+      box.appendChild(none);
+    }
+    for (const c of clients) _row(c.callsign, (on) => (on ? selClients.add(c.callsign) : selClients.delete(c.callsign)));
+
+    const note = _doc.createElement('div');
+    note.textContent = '⚠ 只送給連線中的裝置；現場裝置本機仍會保留照片。';
+    note.style.cssText = 'font-size:11px;color:var(--warning,#c60);margin:10px 0 8px;';
+    box.appendChild(note);
+
+    const btnRow = _doc.createElement('div');
+    btnRow.style.cssText = 'display:flex;gap:8px;justify-content:flex-end;';
+    const cancel = _doc.createElement('button');
+    cancel.type = 'button';
+    cancel.textContent = '取消';
+    cancel.style.cssText = _DIALOG_BTN_STYLE;
+    cancel.addEventListener('click', () => onCancel && onCancel());
+    send.type = 'button';
+    send.style.cssText = _DIALOG_BTN_STYLE + 'background:var(--accent,#2b6cd9);color:#fff;border-color:var(--accent,#2b6cd9);';
+    send.addEventListener('click', () => onSend && onSend(_resolve()));
+    btnRow.appendChild(cancel);
+    btnRow.appendChild(send);
+    box.appendChild(btnRow);
+    _refresh();
+
+    overlay.appendChild(box);
+    return overlay;
+  }
+
+  // 開收件人選擇視窗（選檔後）→ 送出解析 dest → pushToField → reload。
+  async function _openPushDialog(uid, file) {
+    if (!_doc.body) return;
+    const status = _doc.getElementById(_PUSH_STATUS_ID);
+    let clients = [];
+    try {
+      clients = await fetchClients();
+    } catch (_) {
+      clients = [];
+    }
+    const dialog = buildPushDialog(
+      clients,
+      {
+        onSend: async (dest) => {
+          dialog.remove();
+          if (status) status.textContent = dest.length ? `推送給 ${dest.length} 個…` : '廣播推送…';
+          let ok = false;
+          try {
+            ok = await pushToField(uid, file, dest.join(','));
+          } catch (_) {
+            ok = false;
+          }
+          if (status) status.textContent = ok ? '✓ 已推送現場' : '✕ 推送失敗';
+          if (ok) await load(uid, { canDelete: true }); // 本地也掛了 → 重載顯示
+        },
+        onCancel: () => dialog.remove(),
+      },
+      { filename: file && file.name },
+    );
+    _doc.body.appendChild(dialog);
+  }
+
+  // 綁定「推照片到現場」控制（openModal 後呼叫）：選檔 → 彈收件人視窗選收件方式 → 推送。
+  function bindPush(uid) {
+    const input = _doc.getElementById(TAK_PHOTO_PUSH_ID);
+    if (!input || !uid) return;
     input.addEventListener('change', async () => {
       const file = input.files && input.files[0];
       if (!file) return;
-      const dest = sel ? Array.from(sel.selectedOptions).map((o) => o.value).join(',') : '';
-      if (status) status.textContent = dest ? `推送給 ${dest}…` : '廣播推送…';
-      let ok = false;
-      try {
-        ok = await pushToField(uid, file, dest);
-      } catch (_) {
-        ok = false;
-      }
       input.value = ''; // 清掉，允許再推同一檔
-      if (status) status.textContent = ok ? '✓ 已推送現場' : '✕ 推送失敗';
-      if (ok) await load(uid); // 本地也掛了 → 重載顯示
+      await _openPushDialog(uid, file);
     });
   }
 
@@ -375,6 +513,7 @@ export function createTakPhotoLoader({ authFetch, doc } = {}) {
     fetchClients,
     pushToField,
     bindPush,
+    buildPushDialog,
     deleteAttachment,
     buildDeleteDialog,
     _revokeAll,
