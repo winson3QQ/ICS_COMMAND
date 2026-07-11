@@ -112,6 +112,24 @@ def test_build_mission_package_roundtrip():
     assert out["images"][0]["data"] == _JPEG
 
 
+def test_build_mission_package_atak_manifest_format():
+    """#509-P3 真機對齊（2026-07-09 抓包）：照片放 **hash 資料夾**（非 `attach/`）、Config uid=marker
+    （**無 `-pkg`**）+ 帶 callsign + onReceiveDelete='true'、Contents 兩 entry 綁同一 marker uid——
+    ATAK 據此把圖掛成該 marker 的附件（原 ICS 格式偏離故現場顯示不出照片）。"""
+    z = mp.build_mission_package(
+        marker_uid="MK-1", cot_xml=_COT, photo_name="scene.jpg", photo_bytes=_JPEG, callsign="Drone-1"
+    )
+    zf = zipfile.ZipFile(io.BytesIO(z))
+    photo = next(n for n in zf.namelist() if n.endswith("scene.jpg"))
+    assert not photo.startswith("attach/")  # 不再用 attach/
+    assert len(photo.split("/")[0]) == 32  # 照片放 md5-length hash 資料夾
+    mani = zf.read("MANIFEST/manifest.xml").decode()
+    assert "MK-1-pkg" not in mani  # Config uid 不再帶 -pkg
+    assert "callsign" in mani and "Drone-1" in mani  # 帶 marker callsign
+    assert "onReceiveDelete' value='true'" in mani  # 對齊 ATAK（原為 false）
+    assert mani.count('value="MK-1"') >= 2  # Config uid + 兩 Contents 綁同一 marker
+
+
 def test_build_mission_package_sanitizes_unsafe_zip_paths():
     """marker_uid / photo_name 含 traversal → zip entry 清成安全，不得含 `..`（防注入 zip 結構）。"""
     z = mp.build_mission_package(

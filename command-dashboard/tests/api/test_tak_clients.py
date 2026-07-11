@@ -22,11 +22,13 @@ pytestmark = pytest.mark.api
 # client / auth（sysadmin）fixtures 在 tests/api/conftest.py 共用
 
 
-def _ingest_tak(uid, callsign, *, stale="2099-01-01T00:00:00Z"):
-    """經 TAK 串流接縫塞一個 source='tak' 單位（有 callsign）。stale 可帶過去值造離線。"""
+def _ingest_tak(uid, callsign, *, type_="a-f-G-U-C", team_color=None, stale="2099-01-01T00:00:00Z"):
+    """經 TAK 串流接縫塞一個 source='tak' entity。type_/team_color 可造裝置 vs 放置標記。
+    team_color 走 CoT `<__group name>`（ingest 由 detail 提取）；stale 過去值造離線。
+    裝置端點＝有 team_color 或自報 a-f；標記＝a-n/a-u… 且無 team_color。"""
     ev = CoTEventIn(
         uid=uid,
-        type="a-f-G-U-C",
+        type=type_,
         time="2026-07-08T00:00:00Z",
         start="2026-07-08T00:00:00Z",
         stale=stale,
@@ -34,6 +36,7 @@ def _ingest_tak(uid, callsign, *, stale="2099-01-01T00:00:00Z"):
         lat=24.8,
         lon=121.0,
         callsign=callsign,
+        detail={"__group": {"name": team_color}} if team_color else {},
     )
     asyncio.run(cop_service.ingest_cot_event(ev))
 
@@ -60,6 +63,28 @@ def test_clients_excludes_offline_stale(client, auth):
     callsigns = [c["callsign"] for c in client.get("/api/tak/clients", headers=auth).json()["clients"]]
     assert "LIVE-1" in callsigns
     assert "OFFLINE-1" not in callsigns  # 離線不列（同「隊伍」在線定義）
+
+
+def test_clients_excludes_placed_markers(client, auth):
+    """只列真裝置端點——放置標記（a-n/a-u，無 team_color）排除（DM 送不到，真機坐實）。"""
+    _ingest_tak("UID-DEV-F", "DEV-FRIENDLY")  # a-f-G-U-C（自報友軍）→ 裝置
+    _ingest_tak("UID-DEV-TC", "DEV-TEAM", type_="a-h-G", team_color="Cyan")  # 有 team_color → 裝置（即使 a-h）
+    _ingest_tak("UID-MARK-N", "MARK-N", type_="a-n-G")  # 中立點位標記、無 team → 標記
+    _ingest_tak("UID-MARK-U", "MARK-U", type_="a-u-G")  # 未知點位標記、無 team → 標記
+    callsigns = [c["callsign"] for c in client.get("/api/tak/clients", headers=auth).json()["clients"]]
+    assert "DEV-FRIENDLY" in callsigns
+    assert "DEV-TEAM" in callsigns  # 有 team_color 即裝置
+    assert "MARK-N" not in callsigns  # 標記排除
+    assert "MARK-U" not in callsigns  # 標記排除
+
+
+def test_clients_shape_carries_team_and_faction(client, auth):
+    """回傳帶 team_color/faction 供前端分「隊伍/陣營」兩軸群組。"""
+    _ingest_tak("UID-G", "GRP-DEV", team_color="Blue")
+    row = next(c for c in client.get("/api/tak/clients", headers=auth).json()["clients"] if c["callsign"] == "GRP-DEV")
+    assert row["team_color"] == "Blue"
+    assert "faction" in row  # 未分類 → None，但欄位在
+    assert row["uid"] == "UID-G"
 
 
 def test_clients_dedup_and_sorted(client, auth):

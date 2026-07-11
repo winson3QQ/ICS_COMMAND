@@ -138,28 +138,40 @@ def _safe_zip_component(name: str, fallback: str) -> str:
     return cleaned[:120] or fallback
 
 
-def build_mission_package(*, marker_uid: str, cot_xml: str, photo_name: str, photo_bytes: bytes) -> bytes:
+def build_mission_package(
+    *, marker_uid: str, cot_xml: str, photo_name: str, photo_bytes: bytes, callsign: str | None = None
+) -> bytes:
     """#509-P3：把「一個 marker CoT + 一張照片」打包成 mission-package zip（現場 client 收到即
-    建 marker + 掛照片）。結構對齊真機 iTAK（`parse_mission_package` 的反向）：
+    建 marker + **把照片掛成該 marker 的附件**）。
+
+    **結構嚴格對齊真機 ATAK 先例**（2026-07-09 抓包定讞——照片能否掛上 marker 全看這幾處對不對）：
 
         MANIFEST/manifest.xml
-        <uid>/<uid>.cot            ← marker CoT（甲=現有 marker 重建 / 乙=ICS 新建）
-        attach/<photo>            ← 照片本體
+        <marker_uid>/<marker_uid>.cot   ← marker CoT
+        <photo-hash>/<photo>            ← 照片放**以 hash 命名的資料夾**（非 'attach/'）
+
+    manifest 關鍵（偏離任一項照片就掛不上，原 ICS 版即因此顯示不出）：Configuration `uid`=**marker_uid**
+    （非 `-pkg`）、帶 `callsign`、`onReceiveDelete='true'`；Contents 兩個 zipEntry 都以 `Parameter uid=
+    marker_uid` 綁到同一 marker（ATAK 據此把 hash 資料夾裡的圖認成該 marker 的附件）。
 
     marker_uid / photo_name 皆清成安全 zip 路徑成分（防注入 zip 結構）。回 zip bytes（純邏輯、不觸網）。
     """
     uid_c = _safe_zip_component(marker_uid, "marker")
     photo_c = _safe_zip_component(photo_name, "photo.jpg")
+    # 照片放「hash 資料夾」——ATAK 認附件的慣例（先例：<32-hex>/photo.jpg）。md5 僅作唯一資料夾名、非安全用途。
+    photo_dir = hashlib.md5(photo_bytes, usedforsecurity=False).hexdigest()
     cot_entry = f"{uid_c}/{uid_c}.cot"
-    photo_entry = f"attach/{photo_c}"
+    photo_entry = f"{photo_dir}/{photo_c}"
+    cs = _safe_zip_component(callsign, photo_c) if callsign else photo_c
     manifest = (
         "<?xml version='1.0' encoding='UTF-8'?>"
         "<MissionPackageManifest version='2'>"
         "<Configuration>"
-        f"<Parameter name='uid' value={_qa(marker_uid + '-pkg')}/>"
+        f"<Parameter name='uid' value={_qa(marker_uid)}/>"
         f"<Parameter name='name' value={_qa(photo_c)}/>"
         "<Parameter name='onReceiveImport' value='true'/>"
-        "<Parameter name='onReceiveDelete' value='false'/>"
+        "<Parameter name='onReceiveDelete' value='true'/>"
+        f"<Parameter name='callsign' value={_qa(cs)}/>"
         "</Configuration>"
         "<Contents>"
         f"<Content ignore='false' zipEntry={_qa(cot_entry)}><Parameter name='uid' value={_qa(marker_uid)}/></Content>"
